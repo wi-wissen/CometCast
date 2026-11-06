@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "cc-cast"
+description = "Chromecast / Google Cast compatible sender (beta, untested on real devices)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Same meaning as in cc-media. Only a convenience default for `cargo test -p cc-cast`.
+default = ["h264-source"]
+h264-source = ["cc-media/h264-source"]
+h264-libloading = ["cc-media/h264-libloading"]
+
+[dependencies]
+cc-capture.workspace = true
+cc-media.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+rand.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "time", "sync", "rt", "macros"] }
+# Protobuf message types written with derive macros: no protoc and no build script needed.
+prost = "0.14"
+# mDNS (DNS-SD) discovery of `_googlecast._tcp`.
+mdns-sd = "0.21"
+# AES-128-CTR for the frame payload. Same versions the webrtc stack already pulls in.
+aes = "0.8"
+ctr = "0.9"
+# RSA signature check of the device-auth response, and X.509 parsing.
+ring = "0.17"
+x509-parser = { version = "0.18", features = ["verify"] }
+
+[dev-dependencies]
+rcgen.workspace = true
+time = "0.3"
+# Test only: generates the fake receiver's RSA device key at test time.
+rsa = "0.9"
+tokio = { workspace = true, features = ["io-util", "net", "time", "sync", "rt", "macros", "rt-multi-thread"] }
+

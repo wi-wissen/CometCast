@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 cc-airplay.workspace = true
+cc-cast.workspace = true
 cc-miracast.workspace = true
 cc-proto.workspace = true
 cc-receiver.workspace = true
@@ -32,5 +33,5 @@ cc-media.workspace = true
 # Release build, without any OpenH264 source build:
 #   cargo build --release -p cometcast-cli --no-default-features --features h264-libloading
 default = ["h264-source"]
-h264-source = ["cc-media/h264-source", "cc-sender/h264-source"]
-h264-libloading = ["cc-media/h264-libloading", "cc-sender/h264-libloading"]
+h264-source = ["cc-media/h264-source", "cc-sender/h264-source", "cc-cast/h264-source"]
+h264-libloading = ["cc-media/h264-libloading", "cc-sender/h264-libloading", "cc-cast/h264-libloading"]
