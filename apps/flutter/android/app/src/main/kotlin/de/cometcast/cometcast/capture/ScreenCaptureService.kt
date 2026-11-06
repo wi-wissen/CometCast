@@ -57,6 +57,18 @@ class ScreenCaptureService : Service() {
                 CaptureEvents.emitStopped("projection_stopped")
                 stopSelf()
             }
+
+            // Android 14+. NOT implemented beyond this comment: the encoder surface has a fixed
+            // size chosen at the start, so following a resized capture (single-app sharing) would
+            // need a new encoder or a scaling step. The VirtualDisplay keeps its size and the
+            // system scales the content into it. UNCERTAIN: letterboxing on a device not verified.
+            override fun onCapturedContentResize(
+                width: Int,
+                height: Int,
+            ) = Unit
+
+            // Not implemented: a hidden captured app is simply not drawn (frames repeat).
+            override fun onCapturedContentVisibilityChanged(isVisible: Boolean) = Unit
         }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -70,7 +82,26 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (projection != null) return START_NOT_STICKY // one session at a time
+        // Every start command that came from startForegroundService() must reach startForeground()
+        // within about 5 s, even if we then ignore it; otherwise Android throws
+        // ForegroundServiceDidNotStartInTimeException. So this happens first, on every path.
+        val foreground =
+            tryStartForeground(
+                intent.getStringExtra(EXTRA_TITLE) ?: "Comet Cast",
+                intent.getStringExtra(EXTRA_TEXT) ?: "",
+                intent.getStringExtra(EXTRA_STOP_LABEL) ?: "Stop",
+            )
+        if (!foreground) {
+            // Only report if no session runs; a running session keeps its own state.
+            if (projection == null) {
+                CaptureEvents.emitError("Could not start the capture notification")
+                stopSelf()
+            }
+            return START_NOT_STICKY
+        }
+        // One session at a time: a second start leaves the running session untouched (the
+        // notification above is the same one, so nothing visible changes).
+        if (projection != null) return START_NOT_STICKY
 
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val consent: Intent? =
@@ -85,13 +116,7 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-
-        // 1. Foreground first (Android 14: before getMediaProjection).
-        startAsForeground(
-            intent.getStringExtra(EXTRA_TITLE) ?: "Comet Cast",
-            intent.getStringExtra(EXTRA_TEXT) ?: "",
-            intent.getStringExtra(EXTRA_STOP_LABEL) ?: "Stop",
-        )
+        CaptureEvents.beginSession()
 
         try {
             // 2. Projection from the one-time consent result, 3. callback, 4. virtual display.
@@ -105,7 +130,7 @@ class ScreenCaptureService : Service() {
             val (w, h) = captureSize(intent.getIntExtra(EXTRA_MAX_DIMENSION, 1280))
             val fps = intent.getIntExtra(EXTRA_FPS, 30)
             val enc = ScreenEncoder(w, h, fps, intent.getIntExtra(EXTRA_BITRATE, 4_000_000))
-            enc.start()
+            enc.start() // releases its own resources if it throws
             encoder = enc
 
             display =
@@ -122,6 +147,7 @@ class ScreenCaptureService : Service() {
             instance = this
         } catch (e: Exception) {
             // SecurityException (consent invalid or reused), MediaCodec errors, ...
+            // onDestroy (after stopSelf) releases whatever was already created.
             CaptureEvents.emitError("Could not start screen capture: ${e.message}")
             stopSelf()
         }
@@ -147,6 +173,20 @@ class ScreenCaptureService : Service() {
     fun requestKeyFrame() {
         encoder?.requestKeyFrame()
     }
+
+    /** Guarded [startAsForeground]: SecurityException and friends must not crash the process. */
+    private fun tryStartForeground(
+        title: String,
+        text: String,
+        stopLabel: String,
+    ): Boolean =
+        try {
+            startAsForeground(title, text, stopLabel)
+            true
+        } catch (e: Exception) {
+            // SecurityException (missing permission or type), ForegroundServiceStartNotAllowed...
+            false
+        }
 
     private fun startAsForeground(
         title: String,

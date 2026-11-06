@@ -3,7 +3,10 @@ package de.cometcast.cometcast.capture
 
 import android.app.Activity
 import android.content.Context
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.media.projection.MediaProjectionManager
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -22,6 +25,10 @@ import io.flutter.plugin.common.MethodChannel
  * - `requestKeyFrame`: asks the encoder for a key frame.
  *
  * EventChannel `de.cometcast/capture/frames`: see [CaptureEvents].
+ *
+ * Android 13+ (API 33): `start` first asks for POST_NOTIFICATIONS (system dialog, only while it is
+ * not granted), then shows the consent dialog whatever the answer was. The capture works without
+ * the permission; the notification is then hidden. UNCERTAIN: not tried on a device.
  *
  * Android 14 rule: consent is asked for EVERY session. The consent result is passed to the service
  * once and dropped; nothing here caches it.
@@ -52,9 +59,16 @@ class CaptureBridge(
                 }
                 pendingResult = result
                 pendingArgs = (call.arguments as? Map<*, *>) ?: emptyMap<Any, Any>()
-                val manager = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                @Suppress("DEPRECATION")
-                activity.startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_CONSENT)
+                if (needsNotificationPermission()) {
+                    // Asked first; the consent dialog follows whatever the user answers
+                    // (see onRequestPermissionsResult). Denying only hides the notification.
+                    activity.requestPermissions(
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        REQUEST_NOTIFICATIONS,
+                    )
+                } else {
+                    launchConsent()
+                }
             }
             "stop" -> {
                 activity.stopService(Intent(activity, ScreenCaptureService::class.java))
@@ -66,6 +80,28 @@ class CaptureBridge(
             }
             else -> result.notImplemented()
         }
+    }
+
+    private fun needsNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT >= 33 &&
+            activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+
+    private fun launchConsent() {
+        val manager = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        @Suppress("DEPRECATION")
+        activity.startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_CONSENT)
+    }
+
+    /**
+     * Called from MainActivity.onRequestPermissionsResult. Returns true if the result was ours.
+     * Granted or denied makes no difference for the capture: the foreground service runs without
+     * the permission, only its notification is hidden by the system (Android 13+).
+     */
+    fun onRequestPermissionsResult(requestCode: Int): Boolean {
+        if (requestCode != REQUEST_NOTIFICATIONS) return false
+        if (pendingResult != null) launchConsent()
+        return true
     }
 
     /** Called from MainActivity.onActivityResult. Returns true if the result was ours. */
@@ -101,5 +137,6 @@ class CaptureBridge(
         const val METHOD_CHANNEL = "de.cometcast/capture"
         const val EVENT_CHANNEL = "de.cometcast/capture/frames"
         private const val REQUEST_CONSENT = 4712
+        private const val REQUEST_NOTIFICATIONS = 4713
     }
 }

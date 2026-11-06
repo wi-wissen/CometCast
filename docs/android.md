@@ -29,7 +29,7 @@ How it works (`apps/flutter/android/app/build.gradle.kts`, function `registerCar
 
 The library is loaded by its plain name (`libcc_ffi.so`) by `lib/core/rust_loader.dart`, which falls back to the file name when no `lib/` folder exists next to the executable. UNCERTAIN: that this resolves through Android's linker namespace was not run on a device.
 
-The release build type (`flutter build apk --release`, `flutter build appbundle`) uses `--release` with the workspace's LTO profile. It was **not run** (slow). It is still signed with the debug key (Flutter template default); a release key is not set up.
+The release build type (`flutter build apk --release`, `flutter build appbundle`) uses `--release` with the workspace's LTO profile. It was **not run** (slow). It is still signed with the **debug key**; a release key is not set up. Therefore the release build **fails on purpose** (Gradle task `checkReleaseSigning`, hooked into `preReleaseBuild`) unless `-PcometcastAllowDebugSigning=true` is given (for `flutter build`, which does not forward `-P`, set `ORG_GRADLE_PROJECT_cometcastAllowDebugSigning=true` in the environment). With it, the build prints a warning; such an APK is for local tests only and must never be distributed. CI builds the debug APK only. The failing/warning behaviour of this guard was not run (no release build was made).
 
 ### Build-time tools (nothing is bundled in the repository)
 
@@ -100,13 +100,17 @@ APK contents (`unzip -l build/app/outputs/flutter-apk/app-debug.apk`), dual-ABI 
 
 dl.google.com, maven.google.com, services.gradle.org, plugins.gradle.org and storage.googleapis.com answered normally. `repo.maven.apache.org` (Maven Central) answered **HTTP 429 for roughly every other request**, also for single sequential `curl` GETs (observed 200, 429, 200). Gradle's built-in three retries are not enough: the first builds failed with `Plugin [id: 'org.jetbrains.kotlin.android', version: '2.4.0'] was not found` although the POM exists (a direct `curl` returned 200). Raising `systemProp.org.gradle.internal.repository.max.tentatives` to 8 with a 3 s backoff in `~/.gradle/gradle.properties` did not help within 6 minutes (UNCERTAIN whether the property was honoured). What worked: a **local pass-through mirror** (about 40 lines of Python, retrying on 429 with backoff and caching) on `127.0.0.1:18090` plus a Gradle init script in `~/.gradle/init.d/` that points `https://repo.maven.apache.org/maven2` repositories to it. Both live outside the repository because they are specific to this sandbox. With it the first complete `flutter build apk --debug` took about 3 minutes. On a normal network none of this should be needed. UNCERTAIN: whether the 429 is permanent policy or load; it may differ on another day.
 
+### Stale ABIs and task wiring
+
+The task `cargoNdk<Type>` deletes `build/app/rust-jniLibs/<type>` before it runs, so an ABI from an earlier build cannot end up in a later APK. Checked with two builds: `--target-platform android-arm,android-arm64` gave `lib/arm64-v8a/libcc_ffi.so` and `lib/armeabi-v7a/libcc_ffi.so` in the APK (`unzip -l`); a following `--target-platform android-arm64` build gave only the arm64-v8a one. AGP refuses Provider instances in `jniLibs.srcDir(...)` and a `files(dir).builtBy(task)` collection did not trigger the task either (tried), so the `merge*JniLibFolders` / `merge*NativeLibs` tasks depend on `cargoNdk<Type>` explicitly.
+
 ## Android TV / Google TV
 
 Manifest (`AndroidManifest.xml`):
 
 - `<uses-feature android.hardware.touchscreen required="false">` and `<uses-feature android.software.leanback required="false">`: installable on TVs and still on phones.
 - A second intent filter with `android.intent.category.LEANBACK_LAUNCHER` on `MainActivity`, and `android:banner="@drawable/tv_banner"` on the application.
-- `INTERNET`, `ACCESS_NETWORK_STATE`; for capture `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS`.
+- `INTERNET`, `ACCESS_NETWORK_STATE` (no `usesCleartextTraffic`: `ws://` is opened by the Rust core with its own raw TCP sockets, which Android's cleartext policy does not govern; UNCERTAIN, not run on a device. TLS (`wss://`) verification in Rust uses `rustls-native-certs`; whether it finds Android's system CA store (it is not a plain PEM file) is UNVERIFIED and may need `rustls-platform-verifier`); for capture `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS`.
 
 Banner and icons: `python3 apps/flutter/android/tools/make_android_icons.py` (Pillow) reads `assets/logo/cometcast-app-icon-1024.png` and `cometcast-logo-dark-1024.png` and writes the launcher icons (48 to 192 px) and a 320x180 banner (navy background taken from the icon, the logo and the words "Comet Cast"). The originals are not modified. UNCERTAIN: the banner was only looked at as a PNG, not on a TV launcher; the text uses DejaVu Sans Bold on this machine (the script falls back to Pillow's default font).
 
@@ -138,9 +142,11 @@ Dart contract (no Dart wrapper exists yet; `lib` was left alone apart from the f
 
 Android 14 rules as implemented (from the Android documentation as understood; UNCERTAIN until run): `startForeground(..., FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)` before `getMediaProjection`; a `MediaProjection.Callback` registered before `createVirtualDisplay`; the consent result is used once and never stored, so every session asks again; `onStop` of the callback ends the session.
 
+Robustness as implemented (UNCERTAIN until run on a device): every start command reaches `startForeground()` first (also a second start while a session runs and a missing consent), and a failing `startForeground` (for example `SecurityException`) is caught and ends the service instead of crashing; `ScreenEncoder.start()` releases the codec and surface itself when it throws and `stop()` is safe on a half-started encoder. Backpressure in `CaptureEvents`: at most 8 encoded frames wait for the main looper, frames are dropped and counted (`dropped` in each frame event) while nobody listens or the queue is full, delta frames are skipped until the next key frame after a drop, the codec config is cached and replayed on `onListen` together with a key frame request, and `stopped` is sent once per session.
+
 **Not wired:** `cc-sender` sends only a synthetic VP8 test stream (see [flutter-bridge.md](flutter-bridge.md)). There is no H.264 path into the Rust core: no RTP packetisation for H.264, no FFI function that accepts external frames. Until that exists, the captured frames only reach Dart and go nowhere. Likely next step (not done, not decided): an FFI call that takes Annex B access units and a sender track that packetises them (RFC 6184), or a native path that bypasses the Dart event channel.
 
-Also UNCERTAIN, all untested: encoder acceptance on weak TV boxes, behaviour when the screen is static (the format sets `KEY_REPEAT_PREVIOUS_FRAME_AFTER` = 1 s), rotation and resize, the Android 15 "share one app" mode, the `POST_NOTIFICATIONS` flow, and whether Android TV devices offer MediaProjection at all (many TV boxes may not; to be checked on the Google TV Streamer).
+Also UNCERTAIN, all untested: encoder acceptance on weak TV boxes, behaviour when the screen is static (the format sets `KEY_REPEAT_PREVIOUS_FRAME_AFTER` = 1 s), rotation and resize (`onCapturedContentResize` and `onCapturedContentVisibilityChanged` are overridden but do nothing: the encoder size is fixed at the start), the Android 15 "share one app" mode, the `POST_NOTIFICATIONS` request (implemented in `CaptureBridge`: on Android 13+ the system dialog is shown before the consent dialog while the permission is missing; the capture continues if it is denied and only the notification is hidden), and whether Android TV devices offer MediaProjection at all (many TV boxes may not; to be checked on the Google TV Streamer).
 
 ## What a real-device test must check
 

@@ -133,3 +133,7 @@ Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
   system is used). H.264 from the capture skeleton into the Rust core. This is measurement point 1 /
   assumption A2 (and A7) in `docs/measurement-points.md`.
 - Apple TV is a separate native SwiftUI app: see `apps/apple-tv`.
+
+## Android release signing
+
+The Android release build type is signed with the debug key because no release keystore is configured. The build therefore fails unless `-PcometcastAllowDebugSigning=true` (Gradle) or `ORG_GRADLE_PROJECT_cometcastAllowDebugSigning=true` (environment, for `flutter build apk --release`) is set, and then only prints a warning. Such an APK is for local tests, never for distribution. See [docs/android.md](../../docs/android.md).
