@@ -22,5 +22,14 @@ tokio.workspace = true
 cc-media.workspace = true
 
 [features]
-# Load Cisco's prebuilt OpenH264 library (COMETCAST_OPENH264_LIB) in addition to the built-in source build.
-h264-libloading = ["cc-media/h264-libloading"]
+# How the H.264 code (OpenH264) gets into the program. See docs/capture.md, "H.264 licensing".
+#
+# * `h264-source` compiles OpenH264 from source: needs g++ and nasm, convenient for development
+#   and CI, but NOT for releases (UNCERTAIN: patent licence, see docs/capture.md).
+# * `h264-libloading` loads Cisco's prebuilt library from COMETCAST_OPENH264_LIB at run time.
+#
+# Release build, without any OpenH264 source build:
+#   cargo build --release -p cometcast-cli --no-default-features --features h264-libloading
+default = ["h264-source"]
+h264-source = ["cc-media/h264-source", "cc-sender/h264-source"]
+h264-libloading = ["cc-media/h264-libloading", "cc-sender/h264-libloading"]

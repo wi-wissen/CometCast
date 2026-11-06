@@ -10,16 +10,36 @@
 //! * At most one frame is in flight: the thread only captures after the async side reported
 //!   that the previous frame was handed to the transport ("token").
 //! * A key frame request (new peer, picture loss indication) re-encodes the last picture as an
-//!   IDR frame, even when the screen is static.
+//!   IDR frame, even when the screen is static. The request flag is cleared only when a frame
+//!   was really sent (the rate control may skip the picture), and requests are rate limited
+//!   ([`KEYFRAME_MIN_INTERVAL`]).
+//! * When the encoder skips a picture (rate control, `encode` returns `None`) the picture is
+//!   "owed": it is offered again on every tick until a frame comes out, without using up the
+//!   static refresh repeats ([`OWED_TIMEOUT`]).
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use cc_capture::{Capture, RawFrame, ScreenSource};
 use cc_media::refresh::{RefreshConfig, StaticRefresh};
-use cc_media::{BgraFrame, H264Config, H264Encoder};
+use cc_media::{BgraFrame, EncodedFrame, H264Config, H264Encoder};
+
+/// At most one key frame request is accepted per this time; the others are counted as ignored
+/// (a flood of PLI/FIR must not make the sender produce a key frame per request).
+/// UNCERTAIN: 1 s is a placeholder, not tuned.
+pub(crate) const KEYFRAME_MIN_INTERVAL: Duration = Duration::from_secs(1);
+
+/// How long a skipped picture is retried on every tick before the sender gives up on it.
+/// UNCERTAIN: placeholder. A probe (1080p content, 2 Mbit/s, 15 fps) saw skips last over 1.6 s
+/// after a 358 KB first frame.
+pub(crate) const OWED_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long [`Pipeline::stop`] waits for the thread (it may be stuck in a call to a dead X
+/// server). UNCERTAIN: placeholder.
+const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Settings for the screen mode of the sender.
 #[derive(Debug, Clone)]
@@ -60,6 +80,8 @@ pub(crate) struct Counters {
     pub(crate) keyframes: AtomicU64,
     pub(crate) encoded_bytes: AtomicU64,
     pub(crate) keyframe_requests: AtomicU64,
+    pub(crate) keyframe_requests_ignored: AtomicU64,
+    pub(crate) skipped: AtomicU64,
 }
 
 /// A copy of the pipeline counters.
@@ -75,12 +97,17 @@ pub struct ScreenStats {
     pub encoded: u64,
     /// Of those, frames made by static refresh.
     pub refreshes: u64,
-    /// Of those, key frames.
+    /// Of those, key frames (IDR frames only).
     pub keyframes: u64,
     /// Total size of the encoded frames in bytes.
     pub encoded_bytes: u64,
     /// Key frame requests (PLI/FIR) received from the receiver.
     pub keyframe_requests: u64,
+    /// Of those, requests that were ignored: one was already pending, or one was accepted
+    /// less than a second before (rate limit).
+    pub keyframe_requests_ignored: u64,
+    /// Encoder calls that produced no frame (the rate control skipped the picture).
+    pub skipped: u64,
 }
 
 impl Counters {
@@ -95,7 +122,82 @@ impl Counters {
             keyframes: g(&self.keyframes),
             encoded_bytes: g(&self.encoded_bytes),
             keyframe_requests: g(&self.keyframe_requests),
+            keyframe_requests_ignored: g(&self.keyframe_requests_ignored),
+            skipped: g(&self.skipped),
         }
+    }
+}
+
+/// What the pipeline needs from an encoder (a trait so tests can script it).
+pub(crate) trait FrameEncoder: Send {
+    /// Encode one picture; `None` = the rate control skipped it.
+    fn encode(
+        &mut self,
+        frame: &RawFrame,
+        force_key: bool,
+        timestamp_us: u64,
+    ) -> Result<Option<EncodedFrame>, String>;
+}
+
+impl FrameEncoder for H264Encoder {
+    fn encode(
+        &mut self,
+        frame: &RawFrame,
+        force_key: bool,
+        timestamp_us: u64,
+    ) -> Result<Option<EncodedFrame>, String> {
+        if force_key {
+            self.force_keyframe();
+        }
+        self.encode_bgra(
+            BgraFrame {
+                width: frame.width,
+                height: frame.height,
+                bgra: &frame.bgra,
+            },
+            timestamp_us,
+        )
+        .map_err(|e| e.to_string())
+    }
+}
+
+/// Turns key frame requests (PLI/FIR) into the flag the pipeline thread reads, with a rate
+/// limit. Cheap to clone; all clones share the state.
+#[derive(Clone)]
+pub(crate) struct KeyframeRequester {
+    flag: Arc<AtomicBool>,
+    counters: Arc<Counters>,
+    last_accepted: Arc<Mutex<Option<Instant>>>,
+    min_interval: Duration,
+}
+
+impl KeyframeRequester {
+    /// Register a request that arrived now. Returns whether it was accepted.
+    pub(crate) fn request(&self) -> bool {
+        self.request_at(Instant::now())
+    }
+
+    /// Like [`Self::request`] with the clock passed in (for tests).
+    pub(crate) fn request_at(&self, now: Instant) -> bool {
+        self.counters
+            .keyframe_requests
+            .fetch_add(1, Ordering::Relaxed);
+        let mut last = self
+            .last_accepted
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let too_soon = last.is_some_and(|t| now.saturating_duration_since(t) < self.min_interval);
+        // A request while one is still pending is already covered by that one.
+        let pending = self.flag.load(Ordering::Relaxed);
+        if too_soon || pending {
+            self.counters
+                .keyframe_requests_ignored
+                .fetch_add(1, Ordering::Relaxed);
+            return false;
+        }
+        *last = Some(now);
+        self.flag.store(true, Ordering::Relaxed);
+        true
     }
 }
 
@@ -110,7 +212,7 @@ pub(crate) struct Unit {
 pub(crate) enum Ended {
     /// The capture source says it is over.
     SourceGone,
-    /// Capture or encoding failed.
+    /// Capture or encoding failed, or the thread panicked or could not be started.
     Failed(String),
     /// Asked to stop.
     Stopped,
@@ -120,14 +222,31 @@ pub(crate) enum Ended {
 pub(crate) struct Pipeline {
     stop: Arc<AtomicBool>,
     keyframe: Arc<AtomicBool>,
+    counters: Arc<Counters>,
     token_tx: mpsc::Sender<()>,
     thread: Option<JoinHandle<()>>,
+    /// Disconnects when the thread has finished (it holds the only sender).
+    done_rx: mpsc::Receiver<()>,
+    /// How long [`Pipeline::stop`] waits for the thread.
+    pub(crate) stop_timeout: Duration,
 }
 
 impl Pipeline {
-    /// The flag that asks the thread for a key frame with its next frame.
+    /// The flag that asks the thread for a key frame with its next frame. Setting it
+    /// directly bypasses the rate limit; use [`Self::keyframe_requester`] for PLI/FIR.
+    #[cfg(test)]
     pub(crate) fn keyframe_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.keyframe)
+    }
+
+    /// The rate limited way to ask for a key frame.
+    pub(crate) fn keyframe_requester(&self) -> KeyframeRequester {
+        KeyframeRequester {
+            flag: Arc::clone(&self.keyframe),
+            counters: Arc::clone(&self.counters),
+            last_accepted: Arc::new(Mutex::new(None)),
+            min_interval: KEYFRAME_MIN_INTERVAL,
+        }
     }
 
     /// Tell the thread that the previous frame was handed to the transport.
@@ -135,10 +254,22 @@ impl Pipeline {
         let _ = self.token_tx.send(());
     }
 
-    pub(crate) fn stop(&mut self) {
+    /// Ask the thread to stop and wait for it, but not longer than `stop_timeout`: the thread
+    /// may be stuck in a call to an X server that died. A thread that does not finish in time
+    /// is left running on its own (it ends as soon as the call returns). Returns whether the
+    /// thread was joined.
+    pub(crate) fn stop(&mut self) -> bool {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(t) = self.thread.take() {
-            let _ = t.join();
+        let Some(t) = self.thread.take() else {
+            return true;
+        };
+        match self.done_rx.recv_timeout(self.stop_timeout) {
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+            // `Ok` never happens (nothing is sent); `Disconnected` = the thread is done.
+            _ => {
+                let _ = t.join();
+                true
+            }
         }
     }
 }
@@ -152,7 +283,7 @@ impl Drop for Pipeline {
 /// Everything the thread needs, built in `SenderCore::start` so errors show up early.
 pub(crate) struct Prepared {
     pub(crate) source: Box<dyn ScreenSource + Send>,
-    pub(crate) encoder: H264Encoder,
+    pub(crate) encoder: Box<dyn FrameEncoder>,
     pub(crate) options: ScreenOptions,
     pub(crate) counters: Arc<Counters>,
 }
@@ -178,13 +309,14 @@ pub(crate) fn prepare(options: ScreenOptions, counters: Arc<Counters>) -> Result
     .map_err(|e| e.to_string())?;
     Ok(Prepared {
         source,
-        encoder,
+        encoder: Box::new(encoder),
         options,
         counters,
     })
 }
 
-/// Start the thread. Frames arrive on `out`; the end of the thread is reported on `ended`.
+/// Start the thread. Frames arrive on `out`; the end of the thread is reported on `ended`
+/// (a panic and a failure to start the thread too, as [`Ended::Failed`]).
 pub(crate) fn spawn(
     prepared: Prepared,
     out: tokio::sync::mpsc::UnboundedSender<Unit>,
@@ -192,26 +324,59 @@ pub(crate) fn spawn(
 ) -> Pipeline {
     let stop = Arc::new(AtomicBool::new(false));
     let keyframe = Arc::new(AtomicBool::new(false));
+    let counters = Arc::clone(&prepared.counters);
     let (token_tx, token_rx) = mpsc::channel();
+    let (done_tx, done_rx) = mpsc::channel::<()>();
     // The first frame may go out at once.
     let _ = token_tx.send(());
     let thread = {
         let stop = Arc::clone(&stop);
         let keyframe = Arc::clone(&keyframe);
-        std::thread::Builder::new()
+        let ended_in_thread = ended.clone();
+        let spawned = std::thread::Builder::new()
             .name("cometcast-screen".into())
             .spawn(move || {
-                let result = run(prepared, &out, &token_rx, &stop, &keyframe);
-                let _ = ended.send(result);
-            })
-            .ok()
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    run(prepared, &out, &token_rx, &stop, &keyframe)
+                }))
+                .unwrap_or_else(|payload| {
+                    let what = payload
+                        .downcast_ref::<&str>()
+                        .map(|s| (*s).to_string())
+                        .or_else(|| payload.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_string());
+                    Ended::Failed(format!("capture thread panicked: {what}"))
+                });
+                let _ = ended_in_thread.send(result);
+                drop(done_tx);
+            });
+        match spawned {
+            Ok(handle) => Some(handle),
+            Err(e) => {
+                let _ = ended.send(Ended::Failed(format!(
+                    "cannot start the capture thread: {e}"
+                )));
+                None
+            }
+        }
     };
     Pipeline {
         stop,
         keyframe,
+        counters,
         token_tx,
         thread,
+        done_rx,
+        stop_timeout: STOP_TIMEOUT,
     }
+}
+
+/// A picture the encoder skipped and that must still be sent.
+#[derive(Debug, Clone, Copy)]
+struct Owed {
+    since: Instant,
+    /// Whether the skipped encode was a static refresh (only for the counters).
+    refresh: bool,
 }
 
 fn run(
@@ -226,43 +391,46 @@ fn run(
     let mut refresh = StaticRefresh::new(p.options.refresh);
     let mut last: Option<RawFrame> = None;
     let mut have_token = false;
+    let mut owed: Option<Owed> = None;
     let tick = Duration::from_secs(1) / p.options.fps.max(1);
 
-    // Encode `frame`; send it if the encoder produced something. Returns whether a frame
-    // was sent, or an error text.
-    let encode_and_send =
-        |enc: &mut H264Encoder, frame: &RawFrame, force_key: bool, is_refresh: bool| {
-            if force_key {
-                enc.force_keyframe();
-            }
-            let ts = started.elapsed().as_micros() as u64;
-            let encoded = enc
-                .encode_bgra(
-                    BgraFrame {
-                        width: frame.width,
-                        height: frame.height,
-                        bgra: &frame.bgra,
-                    },
-                    ts,
-                )
-                .map_err(|e| e.to_string())?;
-            let Some(encoded) = encoded else {
+    // Encode `frame`, honouring a pending key frame request, and send what comes out.
+    // Returns whether a frame was sent, or an error text. The key frame flag is taken before
+    // encoding and put back unless a frame went out, so a skipped picture does not lose the
+    // request (and a request arriving meanwhile is not lost either).
+    let encode_and_send = |enc: &mut dyn FrameEncoder, frame: &RawFrame, is_refresh: bool| {
+        let key = keyframe.swap(false, Ordering::Relaxed);
+        let ts = started.elapsed().as_micros() as u64;
+        let encoded = match enc.encode(frame, key, ts) {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                if key {
+                    keyframe.store(true, Ordering::Relaxed);
+                }
+                c.skipped.fetch_add(1, Ordering::Relaxed);
                 return Ok(false);
-            };
-            c.encoded.fetch_add(1, Ordering::Relaxed);
-            c.encoded_bytes
-                .fetch_add(encoded.data.len() as u64, Ordering::Relaxed);
-            if is_refresh {
-                c.refreshes.fetch_add(1, Ordering::Relaxed);
             }
-            if encoded.is_keyframe {
-                c.keyframes.fetch_add(1, Ordering::Relaxed);
+            Err(e) => {
+                if key {
+                    keyframe.store(true, Ordering::Relaxed);
+                }
+                return Err(e);
             }
-            if out.send(Unit { data: encoded.data }).is_err() {
-                return Err("sender is gone".to_string());
-            }
-            Ok(true)
         };
+        c.encoded.fetch_add(1, Ordering::Relaxed);
+        c.encoded_bytes
+            .fetch_add(encoded.data.len() as u64, Ordering::Relaxed);
+        if is_refresh {
+            c.refreshes.fetch_add(1, Ordering::Relaxed);
+        }
+        if encoded.is_keyframe {
+            c.keyframes.fetch_add(1, Ordering::Relaxed);
+        }
+        if out.send(Unit { data: encoded.data }).is_err() {
+            return Err("sender is gone".to_string());
+        }
+        Ok(true)
+    };
 
     loop {
         if stop.load(Ordering::Relaxed) {
@@ -282,18 +450,25 @@ fn run(
             Ok(v) => v,
             Err(e) => return Ended::Failed(e.to_string()),
         };
-        let want_key = keyframe.load(Ordering::Relaxed);
+        let now = Instant::now();
         match capture {
             Capture::Ended => return Ended::SourceGone,
             Capture::Frame(frame) => {
                 c.changed.fetch_add(1, Ordering::Relaxed);
-                let key = keyframe.swap(false, Ordering::Relaxed);
-                match encode_and_send(&mut p.encoder, &frame, key, false) {
-                    Ok(true) => have_token = false,
-                    Ok(false) => {}
+                match encode_and_send(&mut *p.encoder, &frame, false) {
+                    Ok(true) => {
+                        have_token = false;
+                        owed = None;
+                    }
+                    Ok(false) => {
+                        owed.get_or_insert(Owed {
+                            since: now,
+                            refresh: false,
+                        });
+                    }
                     Err(e) => return Ended::Failed(e),
                 }
-                refresh.picture_changed(Instant::now());
+                refresh.picture_changed(now);
                 last = Some(frame);
             }
             Capture::Unchanged => {
@@ -301,12 +476,32 @@ fn run(
                 let Some(frame) = last.as_ref() else {
                     continue;
                 };
-                let due_refresh = !want_key && refresh.poll(Instant::now());
-                if want_key || due_refresh {
-                    let key = keyframe.swap(false, Ordering::Relaxed);
-                    match encode_and_send(&mut p.encoder, frame, key, due_refresh) {
-                        Ok(true) => have_token = false,
-                        Ok(false) => {}
+                if owed.is_some_and(|o| now.duration_since(o.since) > OWED_TIMEOUT) {
+                    // Give up on this picture; the next change or request starts afresh.
+                    owed = None;
+                }
+                let want_key = keyframe.load(Ordering::Relaxed);
+                // A skipped picture is offered again on every tick, outside the refresh
+                // schedule, so skips do not use up its repeats.
+                let retry = owed;
+                let due_refresh = retry.is_none() && !want_key && refresh.poll(now);
+                if want_key || retry.is_some() || due_refresh {
+                    let is_refresh = !want_key && (due_refresh || retry.is_some_and(|o| o.refresh));
+                    match encode_and_send(&mut *p.encoder, frame, is_refresh) {
+                        Ok(true) => {
+                            have_token = false;
+                            owed = None;
+                        }
+                        Ok(false) => {
+                            if due_refresh {
+                                // This refresh counts as made once a retry gets it out; the
+                                // retries themselves do not use up `repeats`.
+                                owed = Some(Owed {
+                                    since: now,
+                                    refresh: true,
+                                });
+                            }
+                        }
                         Err(e) => return Ended::Failed(e),
                     }
                 }

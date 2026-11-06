@@ -11,6 +11,13 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Same meaning as in cc-media. Only a convenience default for `cargo test -p cc-sender`; the
+# workspace dependency has default-features = false, so other crates do not get it.
+default = ["h264-source"]
+h264-source = ["cc-media/h264-source"]
+h264-libloading = ["cc-media/h264-libloading"]
+
 [dependencies]
 cc-proto.workspace = true
 cc-transport.workspace = true

@@ -6,6 +6,7 @@
 //! video in [`MediaStats`].
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -56,8 +57,51 @@ pub struct SessionConfig {
     pub ice_servers: Vec<IceServerConfig>,
     /// If set, every RTP packet of incoming video is also sent to this channel (payload, marker
     /// bit, RTP timestamp). Meant for tests and tools that decode what arrives; the receiver
-    /// apps do not use it. The channel is unbounded, so the reader must keep up.
-    pub video_tap: Option<mpsc::UnboundedSender<VideoPacket>>,
+    /// apps do not use it. The channel is bounded: when the reader is too slow, packets are
+    /// dropped and counted ([`VideoTap::dropped`]).
+    pub video_tap: Option<VideoTap>,
+}
+
+/// Default size of the channel made by [`VideoTap::channel_default`], in packets.
+/// UNCERTAIN: placeholder (about 3 MB of 1200-byte packets).
+pub const VIDEO_TAP_CAPACITY: usize = 2048;
+
+/// The sending side of a bounded copy of the incoming video packets (see
+/// [`SessionConfig::video_tap`]). Cheap to clone.
+#[derive(Debug, Clone)]
+pub struct VideoTap {
+    tx: mpsc::Sender<VideoPacket>,
+    dropped: Arc<AtomicU64>,
+}
+
+impl VideoTap {
+    /// A tap with room for `capacity` packets (at least 1) and the receiver to read them from.
+    pub fn channel(capacity: usize) -> (Self, mpsc::Receiver<VideoPacket>) {
+        let (tx, rx) = mpsc::channel(capacity.max(1));
+        (
+            Self {
+                tx,
+                dropped: Arc::new(AtomicU64::new(0)),
+            },
+            rx,
+        )
+    }
+
+    /// [`Self::channel`] with [`VIDEO_TAP_CAPACITY`].
+    pub fn channel_default() -> (Self, mpsc::Receiver<VideoPacket>) {
+        Self::channel(VIDEO_TAP_CAPACITY)
+    }
+
+    /// Packets dropped because the reader was too slow (or gone).
+    pub fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+
+    fn offer(&self, packet: VideoPacket) {
+        if self.tx.try_send(packet).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 /// One incoming RTP video packet, as handed to [`SessionConfig::video_tap`].
@@ -455,7 +499,7 @@ struct Handler {
     remote_video: RemoteVideo,
     events: mpsc::UnboundedSender<SessionEvent>,
     stats: Arc<MediaStats>,
-    tap: Option<mpsc::UnboundedSender<VideoPacket>>,
+    tap: Option<VideoTap>,
 }
 
 #[async_trait]
@@ -539,7 +583,7 @@ impl PeerConnectionEventHandler for Handler {
                     let key = codec.is_some_and(|c| starts_key_frame(c, &p.payload));
                     stats.record(p.payload.len(), p.header.marker, key);
                     if let Some(tap) = &tap {
-                        let _ = tap.send(VideoPacket {
+                        tap.offer(VideoPacket {
                             payload: p.payload.clone(),
                             marker: p.header.marker,
                             timestamp: p.header.timestamp,
@@ -555,6 +599,30 @@ impl PeerConnectionEventHandler for Handler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_video_tap_is_bounded_and_counts_drops() {
+        let (tap, mut rx) = VideoTap::channel(3);
+        let packet = |n: u16| VideoPacket {
+            payload: Bytes::from_static(b"x"),
+            marker: false,
+            timestamp: 0,
+            sequence: n,
+        };
+        for n in 0..10 {
+            tap.offer(packet(n));
+        }
+        assert_eq!(tap.dropped(), 7);
+        assert_eq!(tap.clone().dropped(), 7, "clones share the counter");
+        let got: Vec<u16> = std::iter::from_fn(|| rx.try_recv().ok())
+            .map(|p| p.sequence)
+            .collect();
+        assert_eq!(got, [0, 1, 2], "the oldest packets are kept");
+        // A reader that is gone also counts as dropped, and never blocks.
+        drop(rx);
+        tap.offer(packet(11));
+        assert_eq!(tap.dropped(), 8);
+    }
 
     fn cfg(urls: &[&str], user: Option<&str>, cred: Option<&str>) -> IceServerConfig {
         IceServerConfig {

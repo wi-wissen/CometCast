@@ -20,8 +20,6 @@ pub use screen::{ScreenOptions, ScreenStats};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use std::sync::atomic::Ordering;
-
 use bytes::Bytes;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
@@ -354,15 +352,13 @@ async fn run(
                             let (frames_tx, frames_rx) = mpsc::unbounded_channel();
                             let (ended_tx, ended_rx) = mpsc::unbounded_channel();
                             let fps = p.options.fps.max(1);
-                            let p_counters = Arc::clone(&p.counters);
                             let pipeline = screen::spawn(p, frames_tx, ended_tx);
-                            let flag = pipeline.keyframe_flag();
+                            let requester = pipeline.keyframe_requester();
                             let v = Arc::clone(&video);
-                            let counters = Arc::clone(&p_counters);
                             keyframe_task = Some(tokio::spawn(async move {
                                 while v.next_keyframe_request().await {
-                                    counters.keyframe_requests.fetch_add(1, Ordering::Relaxed);
-                                    flag.store(true, Ordering::Relaxed);
+                                    // Counted and rate limited inside.
+                                    requester.request();
                                 }
                             }));
                             screen_run = Some(ScreenRun {

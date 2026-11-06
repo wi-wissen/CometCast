@@ -27,7 +27,8 @@ pub use ice::IceServerConfig;
 pub use net::{ServerAddr, TlsTrust};
 pub use rtp::{MediaSnapshot, MediaStats, VideoCodec, starts_key_frame};
 pub use session::{
-    ConnectionState, Session, SessionConfig, SessionEvent, VideoPacket, VideoSender,
+    ConnectionState, Session, SessionConfig, SessionEvent, VIDEO_TAP_CAPACITY, VideoPacket,
+    VideoSender, VideoTap,
 };
 pub use signaling::{SignalingClient, ws_url};
 

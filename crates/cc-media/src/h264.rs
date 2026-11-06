@@ -73,7 +73,8 @@ impl H264Backend {
             Self::Source => Ok(openh264::OpenH264API::from_source()),
             #[cfg(not(feature = "h264-source"))]
             Self::Source => Err(MediaError::BackendUnavailable(
-                "built without the h264-source feature",
+                "this program was built without the h264-source feature (no OpenH264 source build); \
+                 set COMETCAST_OPENH264_LIB to the path of Cisco's libopenh264 (h264-libloading)",
             )),
             #[cfg(feature = "h264-libloading")]
             Self::Library(path) => openh264::OpenH264API::from_blob_path(path)
@@ -197,7 +198,8 @@ impl H264Encoder {
         }
         Ok(Some(EncodedFrame {
             data,
-            is_keyframe: matches!(kind, FrameType::IDR | FrameType::I),
+            // Only IDR frames count: a plain I frame is not a point where a receiver can start.
+            is_keyframe: matches!(kind, FrameType::IDR),
             timestamp_us,
         }))
     }
@@ -459,7 +461,9 @@ mod tests {
     #[test]
     fn repeated_encoding_of_a_still_picture_is_measured() {
         let (w, h) = (640u32, 360u32);
-        // Text-like content: dark 6x10 "glyph" blocks with pseudo-random pixels on light grey.
+        // NOTE: this is random noise, not text. Dark/light pixels are drawn pseudo-randomly in
+        // 6x10 blocks (two of three blocks "inked" with 40 % dark pixels), the rest is light
+        // grey. It is a worst case for a video encoder and says little about real text.
         let mut px = vec![0u8; (w * h * 4) as usize];
         let mut seed = 12345u32;
         for y in 0..h {
