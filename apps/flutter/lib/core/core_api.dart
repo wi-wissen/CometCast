@@ -22,8 +22,10 @@ export 'package:cometcast/src/rust/api.dart'
 abstract class CoreApi {
   /// Connect to [server], create a room and report events. The first event is the room code.
   /// A start failure arrives as an `error` event, after which the stream ends.
-  Stream<ReceiverUiEvent> startReceiver(
-      {required String server, String? udpBind});
+  Stream<ReceiverUiEvent> startReceiver({
+    required String server,
+    String? udpBind,
+  });
 
   Future<void> stopReceiver();
 
@@ -42,6 +44,9 @@ abstract class CoreApi {
 
   /// Number of characters in a room code.
   int get roomCodeLength;
+
+  /// The characters a room code may contain (uppercase).
+  String get roomCodeAlphabet;
 }
 
 /// The real implementation: calls the Rust library.
@@ -52,8 +57,7 @@ class RustCoreApi implements CoreApi {
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
-  }) =>
-      rust.startReceiver(server: server, udpBind: udpBind);
+  }) => rust.startReceiver(server: server, udpBind: udpBind);
 
   @override
   Future<void> stopReceiver() => rust.stopReceiver();
@@ -64,13 +68,12 @@ class RustCoreApi implements CoreApi {
     required String server,
     int? seconds,
     String? udpBind,
-  }) =>
-      rust.startSender(
-        code: code,
-        server: server,
-        seconds: seconds,
-        udpBind: udpBind,
-      );
+  }) => rust.startSender(
+    code: code,
+    server: server,
+    seconds: seconds,
+    udpBind: udpBind,
+  );
 
   @override
   Future<void> stopSender() => rust.stopSender();
@@ -80,4 +83,7 @@ class RustCoreApi implements CoreApi {
 
   @override
   int get roomCodeLength => rust.roomCodeLength();
+
+  @override
+  String get roomCodeAlphabet => rust.roomCodeAlphabet();
 }

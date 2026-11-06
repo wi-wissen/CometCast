@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
+
 import 'core/core_api.dart';
 import 'receiver_controller.dart';
 import 'settings.dart';
@@ -63,8 +64,9 @@ class _ReceivePageState extends State<ReceivePage> {
                   child: Text(
                     t.serverEmpty,
                     key: const Key('serverError'),
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 ),
               const SizedBox(height: 16),
@@ -87,10 +89,14 @@ class _ReceivePageState extends State<ReceivePage> {
               const SizedBox(height: 24),
               _RoomCodeCard(code: _controller.roomCode),
               const SizedBox(height: 16),
-              Text(
-                _statusText(t),
-                key: const Key('statusText'),
-                style: Theme.of(context).textTheme.bodyLarge,
+              // liveRegion: screen readers announce changes of the status.
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _statusText(t),
+                  key: const Key('statusText'),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
               ),
               const SizedBox(height: 16),
               _StatsCard(controller: _controller),
@@ -115,8 +121,9 @@ class _ReceivePageState extends State<ReceivePage> {
         return t.statusIdle;
       case ReceiverPhase.starting:
         return t.statusConnecting;
-      case ReceiverPhase.running:
       case ReceiverPhase.ended:
+        return t.statusEnded;
+      case ReceiverPhase.running:
         if (c.connectionState != null) {
           return connectionStateText(t, c.connectionState);
         }
@@ -195,19 +202,20 @@ class _StatsCard extends StatelessWidget {
     final t = AppLocalizations.of(context);
     final theme = Theme.of(context);
     Widget row(String label, String value, Key key) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              Expanded(child: Text(label)),
-              Text(
-                value,
-                key: key,
-                style: theme.textTheme.titleMedium?.copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()]),
-              ),
-            ],
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          Text(
+            value,
+            key: key,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
-        );
+        ],
+      ),
+    );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -216,14 +224,23 @@ class _StatsCard extends StatelessWidget {
           children: [
             Text(t.statsTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            row(t.statsCodec, controller.codec ?? t.statsCodecUnknown,
-                const Key('statCodec')),
-            row(t.statsPackets, '${controller.packets}',
-                const Key('statPackets')),
+            row(
+              t.statsCodec,
+              controller.codec ?? t.statsCodecUnknown,
+              const Key('statCodec'),
+            ),
+            row(
+              t.statsPackets,
+              '${controller.packets}',
+              const Key('statPackets'),
+            ),
             row(t.statsBytes, '${controller.bytes}', const Key('statBytes')),
             row(t.statsFrames, '${controller.frames}', const Key('statFrames')),
-            row(t.statsKeyframes, '${controller.keyframes}',
-                const Key('statKeyframes')),
+            row(
+              t.statsKeyframes,
+              '${controller.keyframes}',
+              const Key('statKeyframes'),
+            ),
           ],
         ),
       ),

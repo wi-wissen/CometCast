@@ -9,8 +9,10 @@ import 'package:cometcast/main.dart';
 
 import 'fake_core.dart';
 
-Future<FakeCoreApi> openSend(WidgetTester tester,
-    {String locale = 'en'}) async {
+Future<FakeCoreApi> openSend(
+  WidgetTester tester, {
+  String locale = 'en',
+}) async {
   final core = FakeCoreApi();
   // Tall window so the whole (lazily built) page is on screen.
   tester.view.physicalSize = const Size(900, 1800);
@@ -18,8 +20,9 @@ Future<FakeCoreApi> openSend(WidgetTester tester,
   addTearDown(tester.view.reset);
   await tester.pumpWidget(CometCastApp(locale: Locale(locale), core: core));
   await tester.pumpAndSettle();
-  await tester
-      .tap(find.text(locale == 'en' ? 'Send screen' : 'Bildschirm senden'));
+  await tester.tap(
+    find.text(locale == 'en' ? 'Send screen' : 'Bildschirm senden'),
+  );
   await tester.pumpAndSettle();
   return core;
 }
@@ -31,8 +34,9 @@ void main() {
     expect(find.textContaining('not your screen'), findsOneWidget);
   });
 
-  testWidgets('rejects a code with a character outside the alphabet',
-      (tester) async {
+  testWidgets('rejects a code with a character outside the alphabet', (
+    tester,
+  ) async {
     final core = await openSend(tester);
     await tester.enterText(find.byKey(const Key('codeField')), 'k7m2qo');
     await tester.pump();
@@ -55,8 +59,9 @@ void main() {
     expect(core.senderCode, isNull);
   });
 
-  testWidgets('valid code starts the sender and shows progress',
-      (tester) async {
+  testWidgets('valid code starts the sender and shows progress', (
+    tester,
+  ) async {
     final core = await openSend(tester);
     await tester.enterText(find.byKey(const Key('codeField')), ' k7m2qx ');
     await tester.enterText(find.byKey(const Key('secondsField')), '12');
@@ -68,8 +73,10 @@ void main() {
 
     core.senderEvents.add(const SenderUiEvent.joined());
     await tester.pump();
-    expect(find.text('Joined the room. The connection is being set up …'),
-        findsOneWidget);
+    expect(
+      find.text('Joined the room. The connection is being set up …'),
+      findsOneWidget,
+    );
     core.senderEvents.add(SenderUiEvent.streaming(framesSent: BigInt.from(30)));
     await tester.pump();
     expect(find.text('Sending the test video: 30 frames sent'), findsOneWidget);
@@ -98,6 +105,40 @@ void main() {
     expect(find.textContaining('room_not_found'), findsOneWidget);
   });
 
+  testWidgets('typing uses ASCII-only capitals (no sharp s to SS)', (
+    tester,
+  ) async {
+    await openSend(tester);
+    await tester.enterText(find.byKey(const Key('codeField')), 'aßb');
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byKey(const Key('codeField')));
+    expect(field.controller!.text, 'AßB');
+  });
+
+  testWidgets('a sender stream that ends silently shows "Connection ended."', (
+    tester,
+  ) async {
+    final core = await openSend(tester);
+    await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+    await tester.tap(find.byKey(const Key('startButton')));
+    await tester.pump();
+    core.senderEvents.add(const SenderUiEvent.joined());
+    await tester.pump();
+    await core.senderEvents.close();
+    await tester.pump();
+    expect(find.text('Connection ended.'), findsOneWidget);
+  });
+
+  testWidgets('helper text is built from the alphabet of the core', (
+    tester,
+  ) async {
+    await openSend(tester);
+    expect(
+      find.text('6 characters, allowed: ABCDEFGHJKLMNPQRSTUVWXYZ23456789'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('German texts', (tester) async {
     await openSend(tester, locale: 'de');
     expect(find.text('Raumcode des Empfängers'), findsOneWidget);
@@ -105,7 +146,9 @@ void main() {
     expect(find.textContaining('nicht Ihren Bildschirm'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('codeField')), 'AB0');
     await tester.pump();
-    expect(find.textContaining('„0“ ist in einem Raumcode nicht erlaubt'),
-        findsOneWidget);
+    expect(
+      find.textContaining('„0“ ist in einem Raumcode nicht erlaubt'),
+      findsOneWidget,
+    );
   });
 }

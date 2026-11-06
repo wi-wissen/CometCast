@@ -12,7 +12,7 @@ const defaultServerAddress = '127.0.0.1:8443';
 /// Like a tiny Pinia store: screens read [serverAddress] and listen for changes.
 class AppSettings extends ChangeNotifier {
   AppSettings({String? serverAddress, this.udpBind})
-      : _serverAddress = serverAddress ?? defaultServerAddress;
+    : _serverAddress = serverAddress ?? defaultServerAddress;
 
   String _serverAddress;
 

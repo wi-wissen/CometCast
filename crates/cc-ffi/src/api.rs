@@ -14,6 +14,7 @@
 //! After changing this file, run the code generator again (docs/flutter-bridge.md).
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use cc_proto::{RoomCode, RoomCodeError};
@@ -190,22 +191,73 @@ fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
     }
 }
 
-/// Stop handle of the running receiver, if any. A `Mutex` is a lock: only one thread at a time.
-static RECEIVER_STOP: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
-/// Same for the sender.
-static SENDER_STOP: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
+/// Bookkeeping for "the one running receiver (or sender)".
+///
+/// `generation` counts starts and stops. A start remembers the number it got; if the number
+/// changed by the time `Core::start(..).await` returns, a stop (or a newer start) happened
+/// while connecting, and the new core must be closed at once. Without it a stop during the
+/// connect phase would be lost.
+struct Slot {
+    stop: Mutex<Option<oneshot::Sender<()>>>,
+    generation: AtomicU64,
+}
 
-/// Send the stop signal stored in `slot` (if any) and empty the slot.
-fn fire_stop(slot: &Mutex<Option<oneshot::Sender<()>>>) {
-    // A poisoned lock only means another thread panicked; the data is still usable.
-    let tx = slot.lock().unwrap_or_else(|p| p.into_inner()).take();
-    if let Some(tx) = tx {
-        let _ = tx.send(());
+impl Slot {
+    const fn new() -> Self {
+        Self {
+            stop: Mutex::new(None),
+            generation: AtomicU64::new(0),
+        }
+    }
+
+    /// Stop the running one (if any) and return the generation number for the new start.
+    fn begin(&self) -> u64 {
+        let g = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.fire();
+        g
+    }
+
+    /// Stop the running one, and invalidate a start that is still connecting.
+    fn stop(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.fire();
+    }
+
+    /// True if no stop or newer start happened since `begin` returned `generation`.
+    fn is_current(&self, generation: u64) -> bool {
+        self.generation.load(Ordering::SeqCst) == generation
+    }
+
+    fn fire(&self) {
+        // A poisoned lock only means another thread panicked; the data is still usable.
+        let tx = self.stop.lock().unwrap_or_else(|p| p.into_inner()).take();
+        if let Some(tx) = tx {
+            let _ = tx.send(());
+        }
+    }
+
+    fn store(&self, tx: oneshot::Sender<()>) {
+        *self.stop.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
     }
 }
 
-fn store_stop(slot: &Mutex<Option<oneshot::Sender<()>>>, tx: oneshot::Sender<()>) {
-    *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
+static RECEIVER: Slot = Slot::new();
+static SENDER: Slot = Slot::new();
+
+/// Run `task` in the background. If it panics, report that on `on_panic` instead of
+/// silently losing the stream (a panic inside a spawned task is otherwise swallowed).
+fn spawn_guarded(
+    task: impl std::future::Future<Output = ()> + Send + 'static,
+    on_panic: impl FnOnce() + Send + 'static,
+) {
+    let handle = tokio::spawn(task);
+    tokio::spawn(async move {
+        if let Err(e) = handle.await
+            && e.is_panic()
+        {
+            on_panic();
+        }
+    });
 }
 
 /// Start a receiver: connect to `server` (`host:port`), create a room and report events.
@@ -221,7 +273,7 @@ pub async fn start_receiver(
     udp_bind: Option<String>,
     events: StreamSink<ReceiverUiEvent>,
 ) {
-    fire_stop(&RECEIVER_STOP);
+    let generation = RECEIVER.begin();
     let mut options = ReceiverOptions::new(server);
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
@@ -235,35 +287,57 @@ pub async fn start_receiver(
             return;
         }
     };
-    let _ = events.add(ReceiverUiEvent::RoomCode {
-        code: core.room_code().as_str().to_owned(),
-    });
+    // A stop (or newer start) may have happened while we were connecting.
+    // If Dart stopped listening, `add` fails too. Either way: close the new core.
+    if !RECEIVER.is_current(generation)
+        || events
+            .add(ReceiverUiEvent::RoomCode {
+                code: core.room_code().as_str().to_owned(),
+            })
+            .is_err()
+    {
+        core.stop().await;
+        return;
+    }
     let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
-    store_stop(&RECEIVER_STOP, stop_tx);
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = &mut stop_rx => {
-                    core.stop().await;
-                    break;
-                }
-                ev = core.next_event() => {
-                    let Some(ev) = ev else { break };
-                    // If Dart stopped listening, `add` fails: shut down.
-                    if events.add(map_receiver_event(ev)).is_err() {
+    RECEIVER.store(stop_tx);
+    // A stop between the check above and `store` found an empty slot: check once more.
+    if !RECEIVER.is_current(generation) {
+        core.stop().await;
+        return;
+    }
+    let panic_sink = events.clone();
+    spawn_guarded(
+        async move {
+            loop {
+                tokio::select! {
+                    _ = &mut stop_rx => {
                         core.stop().await;
                         break;
                     }
+                    ev = core.next_event() => {
+                        let Some(ev) = ev else { break };
+                        // If Dart stopped listening, `add` fails: shut down.
+                        if events.add(map_receiver_event(ev)).is_err() {
+                            core.stop().await;
+                            break;
+                        }
+                    }
                 }
             }
-        }
-        // `events` is dropped here, which ends the Dart stream.
-    });
+            // `events` is dropped here, which ends the Dart stream.
+        },
+        move || {
+            let _ = panic_sink.add(ReceiverUiEvent::Error {
+                message: "internal error: the receiver task panicked".into(),
+            });
+        },
+    );
 }
 
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
 pub fn stop_receiver() {
-    fire_stop(&RECEIVER_STOP);
+    RECEIVER.stop();
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +396,7 @@ pub async fn start_sender(
     udp_bind: Option<String>,
     events: StreamSink<SenderUiEvent>,
 ) {
-    fire_stop(&SENDER_STOP);
+    let generation = SENDER.begin();
     let code = match RoomCode::parse(&code) {
         Ok(code) => code,
         Err(e) => {
@@ -346,36 +420,85 @@ pub async fn start_sender(
             return;
         }
     };
-    let _ = events.add(SenderUiEvent::Joined);
+    if !SENDER.is_current(generation) || events.add(SenderUiEvent::Joined).is_err() {
+        core.stop().await;
+        return;
+    }
     let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
-    store_stop(&SENDER_STOP, stop_tx);
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = &mut stop_rx => {
-                    core.stop().await;
-                    break;
-                }
-                ev = core.next_event() => {
-                    let Some(ev) = ev else { break };
-                    if events.add(map_sender_event(ev)).is_err() {
+    SENDER.store(stop_tx);
+    if !SENDER.is_current(generation) {
+        core.stop().await;
+        return;
+    }
+    let panic_sink = events.clone();
+    spawn_guarded(
+        async move {
+            loop {
+                tokio::select! {
+                    _ = &mut stop_rx => {
                         core.stop().await;
                         break;
                     }
+                    ev = core.next_event() => {
+                        let Some(ev) = ev else { break };
+                        if events.add(map_sender_event(ev)).is_err() {
+                            core.stop().await;
+                            break;
+                        }
+                    }
                 }
             }
-        }
-    });
+        },
+        move || {
+            let _ = panic_sink.add(SenderUiEvent::Error {
+                message: "internal error: the sender task panicked".into(),
+            });
+        },
+    );
 }
 
 /// Stop the running sender (does nothing if none runs). The Dart stream then ends.
 pub fn stop_sender() {
-    fire_stop(&SENDER_STOP);
+    SENDER.stop();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stop_during_connect_invalidates_the_start() {
+        let slot = Slot::new();
+        let g = slot.begin();
+        assert!(slot.is_current(g));
+        // A stop while the start is still connecting (before `store`) must be noticed.
+        slot.stop();
+        assert!(!slot.is_current(g));
+        // A newer start also invalidates an older one.
+        let g2 = slot.begin();
+        let g3 = slot.begin();
+        assert!(!slot.is_current(g2) && slot.is_current(g3));
+    }
+
+    #[test]
+    fn stop_fires_the_stored_signal_once() {
+        let slot = Slot::new();
+        let g = slot.begin();
+        let (tx, mut rx) = oneshot::channel::<()>();
+        slot.store(tx);
+        assert!(slot.is_current(g));
+        slot.stop();
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[tokio::test]
+    async fn panic_in_a_guarded_task_is_reported() {
+        let (tx, rx) = oneshot::channel::<()>();
+        spawn_guarded(async { panic!("boom") }, move || {
+            let _ = tx.send(());
+        });
+        assert!(rx.await.is_ok());
+    }
 
     #[test]
     fn room_code_check_matches_cc_proto() {

@@ -37,7 +37,7 @@
   "receiveNotice": "Diese Version zählt das eingehende Video nur. Die Bildanzeige (Dekodierung und Darstellung) folgt mit der nativen Decoder-Arbeit.",
   "sendNotice": "Diese Version sendet ein eingebautes Testvideo (VP8), nicht Ihren Bildschirm. Die Bildschirmaufnahme folgt mit der nativen Capture-Arbeit.",
   "roomCodeInputLabel": "Raumcode des Empfängers",
-  "roomCodeHelper": "6 Zeichen: Buchstaben ohne I und O, Zahlen von 2 bis 9",
+  "roomCodeHelper": "{length} Zeichen, erlaubt sind: {alphabet}",
   "roomCodeWrongLength": "Der Code muss genau {length} Zeichen haben.",
   "roomCodeInvalidChar": "Das Zeichen „{char}“ ist in einem Raumcode nicht erlaubt.",
   "durationLabel": "Dauer in Sekunden",
@@ -46,5 +46,6 @@
   "sendFinished": "Fertig: {frames} Bilder gesendet",
   "sendJoined": "Dem Raum beigetreten. Die Verbindung wird eingerichtet …",
   "copyCode": "Code kopieren",
-  "codeCopied": "Code kopiert"
+  "codeCopied": "Code kopiert",
+  "statusEnded": "Die Verbindung wurde beendet."
 }

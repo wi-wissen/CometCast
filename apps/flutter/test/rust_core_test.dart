@@ -68,8 +68,9 @@ void main() {
 
   test('starting a sender with a bad code reports an error event', () async {
     const core = RustCoreApi();
-    final events =
-        await core.startSender(code: 'nope', server: '127.0.0.1:1').toList();
+    final events = await core
+        .startSender(code: 'nope', server: '127.0.0.1:1')
+        .toList();
     expect(events, hasLength(1));
     expect(events.single, isA<SenderUiEvent_Error>());
   }, skip: skip);

@@ -39,6 +39,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # The version everything was verified with. UNCERTAIN: the action must find it.
+          flutter-version: '3.47.9'
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -51,14 +53,33 @@ jobs:
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev xvfb
       - run: flutter pub get
       - run: flutter gen-l10n
-      # The bridge code is committed. This step regenerates it and fails if it is out of date.
+      # The bridge code is committed. This step regenerates it and fails if it is out of date
+      # (changed files or new untracked files).
       # UNCERTAIN: the codegen version must match the flutter_rust_bridge version in
       # crates/cc-ffi/Cargo.toml and apps/flutter/pubspec.yaml (2.13.0 today).
+      - name: Cache the code generator
+        id: codegen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/flutter_rust_bridge_codegen
+          key: frb-codegen-2.13.0-${{ runner.os }}
+      - name: Install the code generator
+        if: steps.codegen-cache.outputs.cache-hit != 'true'
+        run: cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
       - name: Check generated bridge code is up to date
         run: |
-          cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
           flutter_rust_bridge_codegen generate
-          git diff --exit-code -- . ../../crates/cc-ffi
+          if [ -n "$(git status --porcelain -- . ../../crates/cc-ffi)" ]; then
+            git status --porcelain -- . ../../crates/cc-ffi
+            git diff -- . ../../crates/cc-ffi | head -50
+            exit 1
+          fi
+      - name: Rust checks for cc-ffi
+        working-directory: .
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -p cc-ffi --all-targets -- -D warnings
+          cargo test -p cc-ffi
       - run: flutter analyze
       # The real-library tests in test/rust_core_test.dart need libcc_ffi.so first.
       - name: Build the Rust core for the tests

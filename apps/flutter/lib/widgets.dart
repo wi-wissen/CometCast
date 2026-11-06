@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
+
 import 'core/core_api.dart';
 import 'settings.dart';
 
@@ -52,8 +53,9 @@ class ServerField extends StatefulWidget {
 }
 
 class _ServerFieldState extends State<ServerField> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.settings.serverAddress);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.settings.serverAddress,
+  );
 
   @override
   void dispose() {
@@ -132,9 +134,7 @@ class NoticeBox extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
+              style: Theme.of(context).textTheme.bodyMedium
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),

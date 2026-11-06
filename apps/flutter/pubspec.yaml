@@ -6,17 +6,17 @@ version: 0.1.0+1
 publish_to: none
 
 environment:
-  # UNCERTAIN: Dart 3.x range; adjust to the SDK that `flutter --version` reports.
-  sdk: ">=3.4.0 <4.0.0"
+  # 3.13 is what `flutter pub get` needs for the current dependencies (freezed 4.x in
+  # dev_dependencies requires Dart >=3.13.0; flutter_rust_bridge 2.13.0 needs >=3.9.2).
+  sdk: ">=3.13.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  # UNCERTAIN: intl version must match what flutter_localizations pins; if
-  # `flutter pub get` complains, use `intl: any`.
-  intl: any
+  # Same range that flutter_localizations (Flutter 3.47.9) declares.
+  intl: ^0.20.3
   # Bridge to the Rust core. Must be the same version as the `flutter_rust_bridge` crate
   # in crates/cc-ffi/Cargo.toml (checked by the code generator).
   flutter_rust_bridge: 2.13.0
