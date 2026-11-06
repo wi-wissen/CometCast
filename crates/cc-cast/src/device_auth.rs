@@ -25,9 +25,20 @@
 //!   download or embed them** (project rule: no key or certificate material taken from a
 //!   product). The caller must supply anchors ([`TrustAnchors`]); with none, the default
 //!   policy [`DeviceAuth::Verify`] fails closed with an explanatory error.
-//! * UNCERTAIN: the chain check here only verifies the issuer signatures and validity dates.
-//!   Open Screen's validator additionally checks key usage, the Cast policy OIDs and the
-//!   device policy of the certificate, and evaluates the CRL; none of that is implemented.
+//! * The chain check (step 3) verifies, for every link: the issuer signature, the validity
+//!   dates and the roles. The device certificate (the leaf) must NOT be a CA and must carry a
+//!   KeyUsage allowing `digitalSignature` (UNCERTAIN: real device leaves are assumed to carry
+//!   that extension; a leaf without it is rejected). Every issuer must be a CA
+//!   (`BasicConstraints` CA=true) and `pathLenConstraint` is honoured; intermediates must
+//!   carry a KeyUsage with `keyCertSign` (a trust anchor without any KeyUsage is tolerated,
+//!   one with a KeyUsage must have it). A non-CA certificate can therefore never sign another
+//!   certificate of the chain.
+//!   NOT checked (UNCERTAIN, Open Screen's validator does these): the Cast policy OIDs and the
+//!   device policy of the certificate, CRL evaluation (the CRL in the response is ignored),
+//!   name constraints, and unknown critical extensions.
+//! * SHA-1: a response that asks for (or defaults to) SHA-1 is accepted, as Open Screen does
+//!   (`enforce_sha256_checking` is false there). That happens only after the chain has been
+//!   validated up to an anchor; the sender itself always asks for SHA-256.
 //! * [`DeviceAuth::InsecureSkip`] skips all of it. It exists so that a beta tester can try
 //!   a real device without the anchors. Without device auth, anyone on the network who
 //!   answers on port 8009 is accepted as the receiver (and gets the screen picture).
@@ -71,8 +82,8 @@ impl TrustAnchors {
 pub enum DeviceAuth {
     /// Check the receiver's device authentication against these anchors (default policy).
     Verify(TrustAnchors),
-    /// Do NOT trust the device: the challenge is still sent and logged, but a failed or
-    /// missing proof is ignored and the chain is not checked. Must be enabled explicitly
+    /// Do NOT trust the device: no challenge is sent (the device-auth exchange is skipped
+    /// entirely) and nothing about the device is checked. Must be enabled explicitly
     /// (CLI: `--insecure-skip-device-auth`).
     InsecureSkip,
 }
@@ -229,8 +240,58 @@ pub fn verify_response(
     })
 }
 
+/// Role checks for a certificate used as an issuer. `cas_below` is the number of intermediate
+/// CA certificates between it and the leaf (what `pathLenConstraint` limits). `strict_usage`:
+/// a KeyUsage extension with `keyCertSign` is required (intermediates); for trust anchors an
+/// absent KeyUsage is tolerated, a present one must still allow it.
+fn check_issuer_role(
+    cert: &X509Certificate<'_>,
+    cas_below: usize,
+    strict_usage: bool,
+) -> Result<(), String> {
+    let name = cert.subject();
+    match cert.basic_constraints() {
+        Ok(Some(bc)) if bc.value.ca => {
+            if let Some(max) = bc.value.path_len_constraint
+                && cas_below as u64 > u64::from(max)
+            {
+                return Err(format!("certificate {name} violates its pathLenConstraint"));
+            }
+        }
+        _ => {
+            return Err(format!(
+                "certificate {name} is not a CA (BasicConstraints CA=true is required to sign)"
+            ));
+        }
+    }
+    match cert.key_usage() {
+        Ok(Some(ku)) if ku.value.key_cert_sign() => Ok(()),
+        Ok(None) if !strict_usage => Ok(()),
+        _ => Err(format!(
+            "certificate {name} may not sign certificates (KeyUsage keyCertSign is missing)"
+        )),
+    }
+}
+
+/// The device certificate must be an end-entity certificate that can sign data.
+fn check_leaf_role(cert: &X509Certificate<'_>) -> Result<(), String> {
+    let name = cert.subject();
+    if let Ok(Some(bc)) = cert.basic_constraints()
+        && bc.value.ca
+    {
+        return Err(format!("device certificate {name} must not be a CA"));
+    }
+    match cert.key_usage() {
+        Ok(Some(ku)) if ku.value.digital_signature() => Ok(()),
+        _ => Err(format!(
+            "device certificate {name} does not allow digitalSignature"
+        )),
+    }
+}
+
 /// Walk from the leaf up: each certificate must be signed by a later chain member or by an
-/// anchor, and all must be valid now.
+/// anchor, all must be valid now, the leaf must be an end-entity certificate and every issuer
+/// must be a CA (see [`check_issuer_role`]). `chain[0]` is the device certificate.
 fn verify_chain(
     chain: &[X509Certificate<'_>],
     anchors: &[X509Certificate<'_>],
@@ -238,6 +299,7 @@ fn verify_chain(
 ) -> Result<(), CastError> {
     let fail = |m: String| CastError::DeviceAuth(m);
     let at = ASN1Time::from_timestamp(now_unix).map_err(|_| fail("bad current time".into()))?;
+    check_leaf_role(&chain[0]).map_err(fail)?;
     let mut idx = 0;
     loop {
         let cert = &chain[idx];
@@ -247,24 +309,46 @@ fn verify_chain(
                 cert.subject()
             )));
         }
-        if let Some(a) = anchors.iter().find(|a| {
-            a.subject() == cert.issuer() && cert.verify_signature(Some(a.public_key())).is_ok()
-        }) {
+        // Intermediates between the leaf and the issuer we are looking for.
+        let cas_below = idx;
+        let mut role_error = None;
+        let anchor = anchors.iter().find(|a| {
+            a.subject() == cert.issuer()
+                && cert.verify_signature(Some(a.public_key())).is_ok()
+                && match check_issuer_role(a, cas_below, false) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        role_error = Some(e);
+                        false
+                    }
+                }
+        });
+        if let Some(a) = anchor {
             if !a.validity().is_valid_at(at) {
                 return Err(fail("the trust anchor is not valid now".into()));
             }
             return Ok(());
         }
         let next = chain.iter().enumerate().skip(idx + 1).find(|(_, c)| {
-            c.subject() == cert.issuer() && cert.verify_signature(Some(c.public_key())).is_ok()
+            c.subject() == cert.issuer()
+                && cert.verify_signature(Some(c.public_key())).is_ok()
+                && match check_issuer_role(c, cas_below, true) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        role_error = Some(e);
+                        false
+                    }
+                }
         });
         match next {
             Some((i, _)) => idx = i,
             None => {
-                return Err(fail(format!(
-                    "certificate {} does not chain to a trust anchor",
-                    cert.subject()
-                )));
+                return Err(fail(role_error.unwrap_or_else(|| {
+                    format!(
+                        "certificate {} does not chain to a trust anchor",
+                        cert.subject()
+                    )
+                })));
             }
         }
     }
@@ -284,6 +368,165 @@ mod tests {
         let c = d.challenge.unwrap();
         assert_eq!(c.sender_nonce.unwrap(), vec![7; 16]);
         assert_eq!(c.hash_algorithm, Some(HashAlgorithm::Sha256 as i32));
+    }
+
+    // ---- chain role checks (certificates generated here; nothing from a product) ----
+
+    use rcgen::{
+        BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, Issuer, KeyPair,
+        KeyUsagePurpose,
+    };
+    use ::time::{Duration as TD, OffsetDateTime};
+
+    struct Node {
+        params: CertificateParams,
+        key: KeyPair,
+        der: Vec<u8>,
+    }
+
+    /// `ca`: `None` = end entity. `signer`: `None` = self-signed.
+    fn node(
+        cn: &str,
+        ca: Option<BasicConstraints>,
+        usages: Vec<KeyUsagePurpose>,
+        signer: Option<&Node>,
+    ) -> Node {
+        let now = OffsetDateTime::now_utc();
+        let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
+        let mut dn = DistinguishedName::new();
+        dn.push(DnType::CommonName, cn);
+        params.distinguished_name = dn;
+        params.is_ca = ca.map_or(IsCa::ExplicitNoCa, IsCa::Ca);
+        params.key_usages = usages;
+        params.not_before = now - TD::days(1);
+        params.not_after = now + TD::days(30);
+        let key = KeyPair::generate().unwrap();
+        let der = match signer {
+            None => params.self_signed(&key).unwrap().der().to_vec(),
+            Some(s) => {
+                let issuer = Issuer::new(s.params.clone(), &s.key);
+                params.signed_by(&key, &issuer).unwrap().der().to_vec()
+            }
+        };
+        Node { params, key, der }
+    }
+
+    fn ca(cn: &str, signer: Option<&Node>, bc: BasicConstraints) -> Node {
+        node(cn, Some(bc), vec![KeyUsagePurpose::KeyCertSign], signer)
+    }
+
+    fn leaf(cn: &str, signer: &Node) -> Node {
+        node(
+            cn,
+            None,
+            vec![KeyUsagePurpose::DigitalSignature],
+            Some(signer),
+        )
+    }
+
+    /// Run `verify_chain` on `[chain...]` against `[anchor]`.
+    fn run(chain: &[&Node], anchor: &Node) -> Result<(), String> {
+        fn parse(n: &Node) -> X509Certificate<'_> {
+            X509Certificate::from_der(&n.der).unwrap().1
+        }
+        let chain: Vec<_> = chain.iter().map(|n| parse(n)).collect();
+        let anchors = vec![parse(anchor)];
+        verify_chain(
+            &chain,
+            &anchors,
+            OffsetDateTime::now_utc().unix_timestamp(),
+        )
+        .map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn well_formed_chains_verify() {
+        let root = ca("root", None, BasicConstraints::Unconstrained);
+        let ica = ca("ica", Some(&root), BasicConstraints::Constrained(0));
+        let dev = leaf("device", &ica);
+        run(&[&dev, &ica], &root).unwrap();
+        // Directly under the root as well.
+        let dev2 = leaf("device2", &root);
+        run(&[&dev2], &root).unwrap();
+    }
+
+    #[test]
+    fn a_non_ca_device_leaf_cannot_act_as_issuer() {
+        // The reviewer's forged chain: [forged, legit-leaf] where the legit leaf is not a CA.
+        let root = ca("root", None, BasicConstraints::Unconstrained);
+        let legit = leaf("legit device (not a CA)", &root);
+        let forged = leaf("forged device", &legit);
+        let e = run(&[&forged, &legit], &root).unwrap_err();
+        assert!(e.contains("not a CA"), "{e}");
+    }
+
+    #[test]
+    fn issuer_needs_ca_flag_and_key_cert_sign() {
+        let root = ca("root", None, BasicConstraints::Unconstrained);
+        // CA=true but no keyCertSign.
+        let no_ku = node(
+            "ica-no-ku",
+            Some(BasicConstraints::Unconstrained),
+            vec![KeyUsagePurpose::DigitalSignature],
+            Some(&root),
+        );
+        let dev = leaf("device", &no_ku);
+        let e = run(&[&dev, &no_ku], &root).unwrap_err();
+        assert!(e.contains("keyCertSign"), "{e}");
+        // keyCertSign but no BasicConstraints CA flag.
+        let not_ca = node(
+            "ica-not-ca",
+            None,
+            vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::DigitalSignature],
+            Some(&root),
+        );
+        let dev = leaf("device", &not_ca);
+        assert!(run(&[&dev, &not_ca], &root).is_err());
+    }
+
+    #[test]
+    fn path_length_is_enforced() {
+        let root = ca("root", None, BasicConstraints::Unconstrained);
+        let ica1 = ca("ica1", Some(&root), BasicConstraints::Constrained(0));
+        let ica2 = ca("ica2", Some(&ica1), BasicConstraints::Constrained(0));
+        let dev = leaf("device", &ica2);
+        let e = run(&[&dev, &ica2, &ica1], &root).unwrap_err();
+        assert!(e.contains("pathLen"), "{e}");
+        // The same shape is fine when ica1 allows one CA below.
+        let ica1 = ca("ica1", Some(&root), BasicConstraints::Constrained(1));
+        let ica2 = ca("ica2", Some(&ica1), BasicConstraints::Constrained(0));
+        let dev = leaf("device", &ica2);
+        run(&[&dev, &ica2, &ica1], &root).unwrap();
+    }
+
+    #[test]
+    fn the_leaf_must_be_an_end_entity_that_can_sign_data() {
+        let root = ca("root", None, BasicConstraints::Unconstrained);
+        // A CA used as the device certificate.
+        let as_leaf = ca("ca-as-leaf", Some(&root), BasicConstraints::Unconstrained);
+        let e = run(&[&as_leaf], &root).unwrap_err();
+        assert!(e.contains("must not be a CA"), "{e}");
+        // A leaf without digitalSignature.
+        let no_sig = node(
+            "device",
+            None,
+            vec![KeyUsagePurpose::KeyEncipherment],
+            Some(&root),
+        );
+        let e = run(&[&no_sig], &root).unwrap_err();
+        assert!(e.contains("digitalSignature"), "{e}");
+    }
+
+    #[test]
+    fn a_non_ca_anchor_is_refused() {
+        let fake_root = node(
+            "not-a-ca-root",
+            None,
+            vec![KeyUsagePurpose::DigitalSignature],
+            None,
+        );
+        let dev = leaf("device", &fake_root);
+        assert!(run(&[&dev], &fake_root).is_err());
     }
 
     #[test]
