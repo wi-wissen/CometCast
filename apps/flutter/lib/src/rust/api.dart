@@ -4,11 +4,13 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import 'frb_generated.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `fire_stop`, `map_receiver_event`, `map_sender_event`, `stats_event`, `store_stop`
+// These functions are ignored because they are not marked as `pub`: `begin`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `spawn_guarded`, `stats_event`, `stop`, `store`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Slot`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
@@ -29,10 +31,13 @@ int roomCodeLength() => RustLib.instance.api.crateApiRoomCodeLength();
 /// returned error to the listener.)
 /// `udp_bind` is for development only (for example `127.0.0.1:0` for same-machine tests);
 /// `None` uses the default (all interfaces).
-Stream<ReceiverUiEvent> startReceiver(
-        {required String server, String? udpBind}) =>
-    RustLib.instance.api
-        .crateApiStartReceiver(server: server, udpBind: udpBind);
+Stream<ReceiverUiEvent> startReceiver({
+  required String server,
+  String? udpBind,
+}) => RustLib.instance.api.crateApiStartReceiver(
+  server: server,
+  udpBind: udpBind,
+);
 
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
 Future<void> stopReceiver() => RustLib.instance.api.crateApiStopReceiver();
@@ -43,13 +48,17 @@ Future<void> stopReceiver() => RustLib.instance.api.crateApiStopReceiver();
 /// An invalid code or an unknown room is reported as [`SenderUiEvent::Error`] and the stream
 /// ends (see [`start_receiver`] for why errors are events).
 /// `udp_bind` is for development only, see [`start_receiver`].
-Stream<SenderUiEvent> startSender(
-        {required String code,
-        required String server,
-        int? seconds,
-        String? udpBind}) =>
-    RustLib.instance.api.crateApiStartSender(
-        code: code, server: server, seconds: seconds, udpBind: udpBind);
+Stream<SenderUiEvent> startSender({
+  required String code,
+  required String server,
+  int? seconds,
+  String? udpBind,
+}) => RustLib.instance.api.crateApiStartSender(
+  code: code,
+  server: server,
+  seconds: seconds,
+  udpBind: udpBind,
+);
 
 /// Stop the running sender (does nothing if none runs). The Dart stream then ends.
 Future<void> stopSender() => RustLib.instance.api.crateApiStopSender();
@@ -181,5 +190,4 @@ enum UiConnectionState {
 
   /// Closed.
   closed,
-  ;
 }

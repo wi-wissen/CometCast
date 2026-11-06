@@ -12,7 +12,8 @@ import 'fake_core.dart';
 void main() {
   testWidgets('shows English texts', (tester) async {
     await tester.pumpWidget(
-        CometCastApp(locale: const Locale('en'), core: FakeCoreApi()));
+      CometCastApp(locale: const Locale('en'), core: FakeCoreApi()),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Comet Cast'), findsOneWidget);
     expect(find.text('Send screen'), findsOneWidget);
@@ -21,7 +22,8 @@ void main() {
 
   testWidgets('shows German texts', (tester) async {
     await tester.pumpWidget(
-        CometCastApp(locale: const Locale('de'), core: FakeCoreApi()));
+      CometCastApp(locale: const Locale('de'), core: FakeCoreApi()),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Comet Cast'), findsOneWidget);
     expect(find.text('Bildschirm senden'), findsOneWidget);
@@ -30,7 +32,8 @@ void main() {
 
   testWidgets('shows the app icon', (tester) async {
     await tester.pumpWidget(
-        CometCastApp(locale: const Locale('en'), core: FakeCoreApi()));
+      CometCastApp(locale: const Locale('en'), core: FakeCoreApi()),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(Image), findsOneWidget);
   });

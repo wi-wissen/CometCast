@@ -49,14 +49,18 @@ class FakeCoreApi implements CoreApi {
   static const _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
   @override
+  String get roomCodeAlphabet => _alphabet;
+
+  @override
   int get roomCodeLength => 6;
 
   @override
   RoomCodeCheck checkRoomCode(String input) {
     // ASCII-only uppercase, like Rust's to_ascii_uppercase ('ſ' must stay invalid).
-    final upper = input
-        .trim()
-        .replaceAllMapped(RegExp('[a-z]'), (m) => m[0]!.toUpperCase());
+    final upper = input.trim().replaceAllMapped(
+      RegExp('[a-z]'),
+      (m) => m[0]!.toUpperCase(),
+    );
     for (final c in upper.split('')) {
       if (!_alphabet.contains(c)) return RoomCodeCheck.invalidChar(ch: c);
     }

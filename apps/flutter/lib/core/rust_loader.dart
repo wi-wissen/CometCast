@@ -36,7 +36,8 @@ String _fileName() {
 /// Load the Rust library once. Call before using any function of the core.
 Future<void> initRustCore({String? libraryPath}) {
   return RustLib.init(
-    externalLibrary:
-        ExternalLibrary.open(libraryPath ?? resolveCoreLibraryPath()),
+    externalLibrary: ExternalLibrary.open(
+      libraryPath ?? resolveCoreLibraryPath(),
+    ),
   );
 }

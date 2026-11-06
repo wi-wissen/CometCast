@@ -4,11 +4,14 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api.dart';
+
 import 'dart:async';
 import 'dart:convert';
+
 import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Main entrypoint of the Rust API
@@ -35,12 +38,8 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   /// Initialize flutter_rust_bridge in mock mode.
   /// No libraries for FFI are loaded.
-  static void initMock({
-    required RustLibApi api,
-  }) {
-    instance.initMockImpl(
-      api: api,
-    );
+  static void initMock({required RustLibApi api}) {
+    instance.initMockImpl(api: api);
   }
 
   /// Dispose flutter_rust_bridge
@@ -74,11 +73,11 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
-    stem: 'cc_ffi',
-    ioDirectory: '../../crates/cc-ffi/target/release/',
-    webPrefix: 'pkg/',
-    wasmBindgenName: 'wasm_bindgen',
-  );
+        stem: 'cc_ffi',
+        ioDirectory: '../../crates/cc-ffi/target/release/',
+        webPrefix: 'pkg/',
+        wasmBindgenName: 'wasm_bindgen',
+      );
 }
 
 abstract class RustLibApi extends BaseApi {
@@ -90,14 +89,17 @@ abstract class RustLibApi extends BaseApi {
 
   int crateApiRoomCodeLength();
 
-  Stream<ReceiverUiEvent> crateApiStartReceiver(
-      {required String server, String? udpBind});
+  Stream<ReceiverUiEvent> crateApiStartReceiver({
+    required String server,
+    String? udpBind,
+  });
 
-  Stream<SenderUiEvent> crateApiStartSender(
-      {required String code,
-      required String server,
-      int? seconds,
-      String? udpBind});
+  Stream<SenderUiEvent> crateApiStartSender({
+    required String code,
+    required String server,
+    int? seconds,
+    String? udpBind,
+  });
 
   Future<void> crateApiStopReceiver();
 
@@ -114,202 +116,233 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   RoomCodeCheck crateApiCheckRoomCode({required String input}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_String(input, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_room_code_check,
-        decodeErrorData: null,
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(input, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_room_code_check,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCheckRoomCodeConstMeta,
+        argValues: [input],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiCheckRoomCodeConstMeta,
-      argValues: [input],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiCheckRoomCodeConstMeta => const TaskConstMeta(
-        debugName: "check_room_code",
-        argNames: ["input"],
-      );
+  TaskConstMeta get kCrateApiCheckRoomCodeConstMeta =>
+      const TaskConstMeta(debugName: "check_room_code", argNames: ["input"]);
 
   @override
   Future<void> crateApiInitApp() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 2, port: port_);
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiInitAppConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiInitAppConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiInitAppConstMeta => const TaskConstMeta(
-        debugName: "init_app",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiInitAppConstMeta =>
+      const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
   String crateApiRoomCodeAlphabet() {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_String,
-        decodeErrorData: null,
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiRoomCodeAlphabetConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiRoomCodeAlphabetConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiRoomCodeAlphabetConstMeta => const TaskConstMeta(
-        debugName: "room_code_alphabet",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiRoomCodeAlphabetConstMeta =>
+      const TaskConstMeta(debugName: "room_code_alphabet", argNames: []);
 
   @override
   int crateApiRoomCodeLength() {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_u_32,
-        decodeErrorData: null,
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiRoomCodeLengthConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiRoomCodeLengthConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiRoomCodeLengthConstMeta => const TaskConstMeta(
-        debugName: "room_code_length",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiRoomCodeLengthConstMeta =>
+      const TaskConstMeta(debugName: "room_code_length", argNames: []);
 
   @override
-  Stream<ReceiverUiEvent> crateApiStartReceiver(
-      {required String server, String? udpBind}) {
+  Stream<ReceiverUiEvent> crateApiStartReceiver({
+    required String server,
+    String? udpBind,
+  }) {
     final events = RustStreamSink<ReceiverUiEvent>();
-    unawaited(handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_String(server, serializer);
-        sse_encode_opt_String(udpBind, serializer);
-        sse_encode_StreamSink_receiver_ui_event_Sse(events, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 5, port: port_);
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_String(server, serializer);
+            sse_encode_opt_String(udpBind, serializer);
+            sse_encode_StreamSink_receiver_ui_event_Sse(events, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 5,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiStartReceiverConstMeta,
+          argValues: [server, udpBind, events],
+          apiImpl: this,
+        ),
       ),
-      constMeta: kCrateApiStartReceiverConstMeta,
-      argValues: [server, udpBind, events],
-      apiImpl: this,
-    )));
+    );
     return events.stream;
   }
 
   TaskConstMeta get kCrateApiStartReceiverConstMeta => const TaskConstMeta(
-        debugName: "start_receiver",
-        argNames: ["server", "udpBind", "events"],
-      );
+    debugName: "start_receiver",
+    argNames: ["server", "udpBind", "events"],
+  );
 
   @override
-  Stream<SenderUiEvent> crateApiStartSender(
-      {required String code,
-      required String server,
-      int? seconds,
-      String? udpBind}) {
+  Stream<SenderUiEvent> crateApiStartSender({
+    required String code,
+    required String server,
+    int? seconds,
+    String? udpBind,
+  }) {
     final events = RustStreamSink<SenderUiEvent>();
-    unawaited(handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_String(code, serializer);
-        sse_encode_String(server, serializer);
-        sse_encode_opt_box_autoadd_u_32(seconds, serializer);
-        sse_encode_opt_String(udpBind, serializer);
-        sse_encode_StreamSink_sender_ui_event_Sse(events, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 6, port: port_);
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_String(code, serializer);
+            sse_encode_String(server, serializer);
+            sse_encode_opt_box_autoadd_u_32(seconds, serializer);
+            sse_encode_opt_String(udpBind, serializer);
+            sse_encode_StreamSink_sender_ui_event_Sse(events, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 6,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiStartSenderConstMeta,
+          argValues: [code, server, seconds, udpBind, events],
+          apiImpl: this,
+        ),
       ),
-      constMeta: kCrateApiStartSenderConstMeta,
-      argValues: [code, server, seconds, udpBind, events],
-      apiImpl: this,
-    )));
+    );
     return events.stream;
   }
 
   TaskConstMeta get kCrateApiStartSenderConstMeta => const TaskConstMeta(
-        debugName: "start_sender",
-        argNames: ["code", "server", "seconds", "udpBind", "events"],
-      );
+    debugName: "start_sender",
+    argNames: ["code", "server", "seconds", "udpBind", "events"],
+  );
 
   @override
   Future<void> crateApiStopReceiver() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 7, port: port_);
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStopReceiverConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiStopReceiverConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiStopReceiverConstMeta => const TaskConstMeta(
-        debugName: "stop_receiver",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiStopReceiverConstMeta =>
+      const TaskConstMeta(debugName: "stop_receiver", argNames: []);
 
   @override
   Future<void> crateApiStopSender() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 8, port: port_);
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStopSenderConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiStopSenderConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiStopSenderConstMeta => const TaskConstMeta(
-        debugName: "stop_sender",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiStopSenderConstMeta =>
+      const TaskConstMeta(debugName: "stop_sender", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -319,14 +352,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   RustStreamSink<ReceiverUiEvent> dco_decode_StreamSink_receiver_ui_event_Sse(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
 
   @protected
   RustStreamSink<SenderUiEvent> dco_decode_StreamSink_sender_ui_event_Sse(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -372,9 +407,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
       case 0:
-        return ReceiverUiEvent_RoomCode(
-          code: dco_decode_String(raw[1]),
-        );
+        return ReceiverUiEvent_RoomCode(code: dco_decode_String(raw[1]));
       case 1:
         return ReceiverUiEvent_PeerJoined();
       case 2:
@@ -396,9 +429,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 5:
         return ReceiverUiEvent_PeerLeft();
       case 6:
-        return ReceiverUiEvent_Error(
-          message: dco_decode_String(raw[1]),
-        );
+        return ReceiverUiEvent_Error(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -409,15 +440,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
       case 0:
-        return RoomCodeCheck_Valid(
-          code: dco_decode_String(raw[1]),
-        );
+        return RoomCodeCheck_Valid(code: dco_decode_String(raw[1]));
       case 1:
         return RoomCodeCheck_WrongLength();
       case 2:
-        return RoomCodeCheck_InvalidChar(
-          ch: dco_decode_String(raw[1]),
-        );
+        return RoomCodeCheck_InvalidChar(ch: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -434,19 +461,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           state: dco_decode_ui_connection_state(raw[1]),
         );
       case 2:
-        return SenderUiEvent_Streaming(
-          framesSent: dco_decode_u_64(raw[1]),
-        );
+        return SenderUiEvent_Streaming(framesSent: dco_decode_u_64(raw[1]));
       case 3:
-        return SenderUiEvent_Finished(
-          framesSent: dco_decode_u_64(raw[1]),
-        );
+        return SenderUiEvent_Finished(framesSent: dco_decode_u_64(raw[1]));
       case 4:
         return SenderUiEvent_PeerLeft();
       case 5:
-        return SenderUiEvent_Error(
-          message: dco_decode_String(raw[1]),
-        );
+        return SenderUiEvent_Error(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -491,14 +512,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   RustStreamSink<ReceiverUiEvent> sse_decode_StreamSink_receiver_ui_event_Sse(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
 
   @protected
   RustStreamSink<SenderUiEvent> sse_decode_StreamSink_sender_ui_event_Sse(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -575,10 +598,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_frames = sse_decode_u_64(deserializer);
         var var_keyframes = sse_decode_u_64(deserializer);
         return ReceiverUiEvent_Stats(
-            packets: var_packets,
-            bytes: var_bytes,
-            frames: var_frames,
-            keyframes: var_keyframes);
+          packets: var_packets,
+          bytes: var_bytes,
+          frames: var_frames,
+          keyframes: var_keyframes,
+        );
       case 5:
         return ReceiverUiEvent_PeerLeft();
       case 6:
@@ -655,7 +679,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   UiConnectionState sse_decode_ui_connection_state(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return UiConnectionState.values[inner];
@@ -674,35 +699,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_AnyhowException(
-      AnyhowException self, SseSerializer serializer) {
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.message, serializer);
   }
 
   @protected
   void sse_encode_StreamSink_receiver_ui_event_Sse(
-      RustStreamSink<ReceiverUiEvent> self, SseSerializer serializer) {
+    RustStreamSink<ReceiverUiEvent> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(
-        self.setupAndSerialize(
-            codec: SseCodec(
+      self.setupAndSerialize(
+        codec: SseCodec(
           decodeSuccessData: sse_decode_receiver_ui_event,
           decodeErrorData: sse_decode_AnyhowException,
-        )),
-        serializer);
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
   void sse_encode_StreamSink_sender_ui_event_Sse(
-      RustStreamSink<SenderUiEvent> self, SseSerializer serializer) {
+    RustStreamSink<SenderUiEvent> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(
-        self.setupAndSerialize(
-            codec: SseCodec(
+      self.setupAndSerialize(
+        codec: SseCodec(
           decodeSuccessData: sse_decode_sender_ui_event,
           decodeErrorData: sse_decode_AnyhowException,
-        )),
-        serializer);
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
@@ -725,7 +760,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_prim_u_8_strict(
-      Uint8List self, SseSerializer serializer) {
+    Uint8List self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
@@ -753,7 +790,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_receiver_ui_event(
-      ReceiverUiEvent self, SseSerializer serializer) {
+    ReceiverUiEvent self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
       case ReceiverUiEvent_RoomCode(code: final code):
@@ -769,11 +808,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(mime, serializer);
         sse_encode_opt_String(codec, serializer);
       case ReceiverUiEvent_Stats(
-          packets: final packets,
-          bytes: final bytes,
-          frames: final frames,
-          keyframes: final keyframes
-        ):
+        packets: final packets,
+        bytes: final bytes,
+        frames: final frames,
+        keyframes: final keyframes,
+      ):
         sse_encode_i_32(4, serializer);
         sse_encode_u_64(packets, serializer);
         sse_encode_u_64(bytes, serializer);
@@ -789,7 +828,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_room_code_check(
-      RoomCodeCheck self, SseSerializer serializer) {
+    RoomCodeCheck self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
       case RoomCodeCheck_Valid(code: final code):
@@ -805,7 +846,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_sender_ui_event(
-      SenderUiEvent self, SseSerializer serializer) {
+    SenderUiEvent self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
       case SenderUiEvent_Joined():
@@ -847,7 +890,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_ui_connection_state(
-      UiConnectionState self, SseSerializer serializer) {
+    UiConnectionState self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
   }

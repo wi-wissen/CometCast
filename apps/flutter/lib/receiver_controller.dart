@@ -59,21 +59,24 @@ class ReceiverController extends ChangeNotifier {
     packets = bytes = frames = keyframes = 0;
     error = null;
     notifyListeners();
-    _sub = core.startReceiver(server: server.trim(), udpBind: udpBind).listen(
-      _onEvent,
-      onError: (Object e) {
-        error = _describe(e);
-        phase = ReceiverPhase.ended;
-        notifyListeners();
-      },
-      onDone: () {
-        // The stream also ends after stop(); only mark "ended" if it was not the user.
-        if (phase == ReceiverPhase.running || phase == ReceiverPhase.starting) {
-          phase = ReceiverPhase.ended;
-          notifyListeners();
-        }
-      },
-    );
+    _sub = core
+        .startReceiver(server: server.trim(), udpBind: udpBind)
+        .listen(
+          _onEvent,
+          onError: (Object e) {
+            error = _describe(e);
+            phase = ReceiverPhase.ended;
+            notifyListeners();
+          },
+          onDone: () {
+            // The stream also ends after stop(); only mark "ended" if it was not the user.
+            if (phase == ReceiverPhase.running ||
+                phase == ReceiverPhase.starting) {
+              phase = ReceiverPhase.ended;
+              notifyListeners();
+            }
+          },
+        );
   }
 
   void _onEvent(ReceiverUiEvent e) {

@@ -53,30 +53,43 @@ void main() {
     await initRustCore();
   });
 
-  testWidgets('receiver shows a room code and the counters rise',
-      (tester) async {
-    expect(_server, isNotEmpty,
-        reason: 'pass --dart-define=COMETCAST_TEST_SERVER=host:port');
-    expect(_cli, isNotEmpty,
-        reason: 'pass --dart-define=COMETCAST_CLI=/path/to/cometcast-cli');
+  testWidgets('receiver shows a room code and the counters rise', (
+    tester,
+  ) async {
+    expect(
+      _server,
+      isNotEmpty,
+      reason: 'pass --dart-define=COMETCAST_TEST_SERVER=host:port',
+    );
+    expect(
+      _cli,
+      isNotEmpty,
+      reason: 'pass --dart-define=COMETCAST_CLI=/path/to/cometcast-cli',
+    );
 
-    await tester.pumpWidget(CometCastApp(
-      locale: const Locale('en'),
-      core: const RustCoreApi(),
-      // Same-machine test: bind WebRTC to loopback only.
-      settings: AppSettings(serverAddress: _server, udpBind: '127.0.0.1:0'),
-    ));
+    await tester.pumpWidget(
+      CometCastApp(
+        locale: const Locale('en'),
+        core: const RustCoreApi(),
+        // Same-machine test: bind WebRTC to loopback only.
+        settings: AppSettings(serverAddress: _server, udpBind: '127.0.0.1:0'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Receive on this device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('startButton')));
 
-    final gotCode =
-        await _waitFor(tester, () => _text(tester, 'roomCode') != '······');
-    expect(gotCode, isTrue,
-        reason:
-            'no room code appeared; status: ${_text(tester, 'statusText')}');
+    final gotCode = await _waitFor(
+      tester,
+      () => _text(tester, 'roomCode') != '······',
+    );
+    expect(
+      gotCode,
+      isTrue,
+      reason: 'no room code appeared; status: ${_text(tester, 'statusText')}',
+    );
     final code = _text(tester, 'roomCode');
     // ignore: avoid_print
     print('SMOKE room code on screen: $code');
@@ -103,28 +116,36 @@ void main() {
     print('SMOKE packets after first rise: $first');
 
     // Keeps rising while the sender streams.
-    final more = await _waitFor(tester, () => packets() > first + 20,
-        timeout: const Duration(seconds: 10));
+    final more = await _waitFor(
+      tester,
+      () => packets() > first + 20,
+      timeout: const Duration(seconds: 10),
+    );
     expect(more, isTrue, reason: 'packet counter stopped rising');
     expect(int.parse(_text(tester, 'statFrames')), greaterThan(0));
     expect(int.parse(_text(tester, 'statBytes')), greaterThan(0));
     expect(int.parse(_text(tester, 'statKeyframes')), greaterThan(0));
     expect(_text(tester, 'statCodec'), 'vp8');
     // ignore: avoid_print
-    print('SMOKE final: packets=${_text(tester, 'statPackets')} '
-        'bytes=${_text(tester, 'statBytes')} frames=${_text(tester, 'statFrames')} '
-        'keyframes=${_text(tester, 'statKeyframes')} codec=${_text(tester, 'statCodec')}');
+    print(
+      'SMOKE final: packets=${_text(tester, 'statPackets')} '
+      'bytes=${_text(tester, 'statBytes')} frames=${_text(tester, 'statFrames')} '
+      'keyframes=${_text(tester, 'statKeyframes')} codec=${_text(tester, 'statCodec')}',
+    );
 
     // The CLI stops after 8 s; the UI then reports that the sender left.
     final left = await _waitFor(
-        tester, () => find.text('The sender has left.').evaluate().isNotEmpty,
-        timeout: const Duration(seconds: 30));
+      tester,
+      () => find.text('The sender has left.').evaluate().isNotEmpty,
+      timeout: const Duration(seconds: 30),
+    );
     expect(left, isTrue, reason: 'peer-left status never appeared');
     sender.kill();
   });
 
-  testWidgets('send screen streams the test video to a receiver',
-      (tester) async {
+  testWidgets('send screen streams the test video to a receiver', (
+    tester,
+  ) async {
     expect(_server, isNotEmpty);
     const core = RustCoreApi();
     // A receiver without UI, started through the same bridge.
@@ -139,11 +160,13 @@ void main() {
     });
     expect(await _waitFor(tester, () => code != null), isTrue);
 
-    await tester.pumpWidget(CometCastApp(
-      locale: const Locale('en'),
-      core: core,
-      settings: AppSettings(serverAddress: _server, udpBind: '127.0.0.1:0'),
-    ));
+    await tester.pumpWidget(
+      CometCastApp(
+        locale: const Locale('en'),
+        core: core,
+        settings: AppSettings(serverAddress: _server, udpBind: '127.0.0.1:0'),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Send screen'));
     await tester.pumpAndSettle();
@@ -151,21 +174,33 @@ void main() {
     await tester.enterText(find.byKey(const Key('secondsField')), '5');
     await tester.tap(find.byKey(const Key('startButton')));
 
-    final streaming = await _waitFor(tester,
-        () => _text(tester, 'statusText').startsWith('Sending the test video'));
-    expect(streaming, isTrue,
-        reason: 'sender status: ${_text(tester, 'statusText')}');
-    expect(await _waitFor(tester, () => packets > BigInt.from(10)), isTrue,
-        reason: 'receiver saw no packets');
+    final streaming = await _waitFor(
+      tester,
+      () => _text(tester, 'statusText').startsWith('Sending the test video'),
+    );
+    expect(
+      streaming,
+      isTrue,
+      reason: 'sender status: ${_text(tester, 'statusText')}',
+    );
+    expect(
+      await _waitFor(tester, () => packets > BigInt.from(10)),
+      isTrue,
+      reason: 'receiver saw no packets',
+    );
     expect(sawTrack, isTrue);
     // After the duration the sender reports that it finished.
     expect(
-        await _waitFor(
-            tester, () => _text(tester, 'statusText').startsWith('Finished:')),
-        isTrue);
+      await _waitFor(
+        tester,
+        () => _text(tester, 'statusText').startsWith('Finished:'),
+      ),
+      isTrue,
+    );
     // ignore: avoid_print
     print(
-        'SMOKE send: ${_text(tester, 'statusText')}, receiver packets=$packets');
+      'SMOKE send: ${_text(tester, 'statusText')}, receiver packets=$packets',
+    );
     await sub.cancel();
     await core.stopReceiver();
   });

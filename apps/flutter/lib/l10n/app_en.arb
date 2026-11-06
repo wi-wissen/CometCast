@@ -158,9 +158,17 @@
   "@roomCodeInputLabel": {
     "description": "Label of the text field where the sender types the room code."
   },
-  "roomCodeHelper": "6 characters: letters without I and O, numbers 2 to 9",
+  "roomCodeHelper": "{length} characters, allowed: {alphabet}",
   "@roomCodeHelper": {
-    "description": "Helper text under the room code field."
+    "description": "Helper text under the room code field. The alphabet comes from the Rust core.",
+    "placeholders": {
+      "length": {
+        "type": "int"
+      },
+      "alphabet": {
+        "type": "String"
+      }
+    }
   },
   "roomCodeWrongLength": "The code must have exactly {length} characters.",
   "@roomCodeWrongLength": {
@@ -217,5 +225,9 @@
   "codeCopied": "Code copied",
   "@codeCopied": {
     "description": "Short message after the room code was copied."
+  },
+  "statusEnded": "Connection ended.",
+  "@statusEnded": {
+    "description": "Status text when the session ended without an error and without the other side leaving."
   }
 }

@@ -43,25 +43,25 @@ class SenderController extends ChangeNotifier {
     notifyListeners();
     _sub = core
         .startSender(
-      code: code,
-      server: server.trim(),
-      seconds: seconds,
-      udpBind: udpBind,
-    )
+          code: code,
+          server: server.trim(),
+          seconds: seconds,
+          udpBind: udpBind,
+        )
         .listen(
-      _onEvent,
-      onError: (Object e) {
-        error = e.toString();
-        phase = SenderPhase.ended;
-        notifyListeners();
-      },
-      onDone: () {
-        if (isActive) {
-          phase = SenderPhase.ended;
-          notifyListeners();
-        }
-      },
-    );
+          _onEvent,
+          onError: (Object e) {
+            error = e.toString();
+            phase = SenderPhase.ended;
+            notifyListeners();
+          },
+          onDone: () {
+            if (isActive) {
+              phase = SenderPhase.ended;
+              notifyListeners();
+            }
+          },
+        );
   }
 
   void _onEvent(SenderUiEvent e) {

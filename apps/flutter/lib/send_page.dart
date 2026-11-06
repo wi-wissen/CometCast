@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
+
 import 'core/core_api.dart';
 import 'sender_controller.dart';
 import 'settings.dart';
@@ -105,8 +106,9 @@ class _SendPageState extends State<SendPage> {
                     child: Text(
                       t.serverEmpty,
                       key: const Key('serverError'),
-                      style:
-                          TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   ),
                 const SizedBox(height: 16),
@@ -123,13 +125,14 @@ class _SendPageState extends State<SendPage> {
                     _UpperCaseFormatter(),
                     LengthLimitingTextInputFormatter(32),
                   ],
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontFamily: 'monospace',
-                        letterSpacing: 4,
-                      ),
+                  style: Theme.of(context).textTheme.headlineSmall
+                      ?.copyWith(fontFamily: 'monospace', letterSpacing: 4),
                   decoration: InputDecoration(
                     labelText: t.roomCodeInputLabel,
-                    helperText: t.roomCodeHelper,
+                    helperText: t.roomCodeHelper(
+                      widget.core.roomCodeLength,
+                      widget.core.roomCodeAlphabet,
+                    ),
                     errorText: _codeError(t),
                     border: const OutlineInputBorder(),
                   ),
@@ -171,10 +174,14 @@ class _SendPageState extends State<SendPage> {
                         ),
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  _statusText(t),
-                  key: const Key('statusText'),
-                  style: Theme.of(context).textTheme.bodyLarge,
+                // liveRegion: screen readers announce changes of the status.
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _statusText(t),
+                    key: const Key('statusText'),
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 NoticeBox(
@@ -200,8 +207,9 @@ class _SendPageState extends State<SendPage> {
         return t.statusConnecting;
       case SenderPhase.finished:
         return t.sendFinished(c.framesSent);
-      case SenderPhase.running:
       case SenderPhase.ended:
+        return t.statusEnded;
+      case SenderPhase.running:
         if (c.framesSent > 0) return t.sendStreaming(c.framesSent);
         if (c.connectionState != null) {
           return connectionStateText(t, c.connectionState);
@@ -211,12 +219,17 @@ class _SendPageState extends State<SendPage> {
   }
 }
 
-/// Turns typed letters into capitals (room codes are uppercase).
+/// Turns typed a-z into capitals (room codes are uppercase).
 class _UpperCaseFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
-  ) =>
-      newValue.copyWith(text: newValue.text.toUpperCase());
+  ) => newValue.copyWith(
+    // ASCII only, like Rust: toUpperCase() would turn 'ß' into 'SS'.
+    text: newValue.text.replaceAllMapped(
+      RegExp('[a-z]'),
+      (m) => m[0]!.toUpperCase(),
+    ),
+  );
 }

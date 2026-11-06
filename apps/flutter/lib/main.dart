@@ -21,11 +21,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Load the Rust core (libcc_ffi) before the first screen.
   await initRustCore();
-  runApp(CometCastApp(
-    core: const RustCoreApi(),
-    // Development only: bind WebRTC to one local address, e.g. COMETCAST_UDP_BIND=127.0.0.1:0.
-    settings: AppSettings(udpBind: _env('COMETCAST_UDP_BIND')),
-  ));
+  runApp(
+    CometCastApp(
+      core: const RustCoreApi(),
+      // Development only: bind WebRTC to one local address, e.g. COMETCAST_UDP_BIND=127.0.0.1:0.
+      settings: AppSettings(udpBind: _env('COMETCAST_UDP_BIND')),
+    ),
+  );
 }
 
 String? _env(String name) {
@@ -35,9 +37,12 @@ String? _env(String name) {
 
 /// Root widget (like App.vue). Pass [locale] to force a language (used by tests).
 class CometCastApp extends StatelessWidget {
-  CometCastApp(
-      {super.key, this.locale, required this.core, AppSettings? settings})
-      : settings = settings ?? AppSettings();
+  CometCastApp({
+    super.key,
+    this.locale,
+    required this.core,
+    AppSettings? settings,
+  }) : settings = settings ?? AppSettings();
 
   final Locale? locale;
 

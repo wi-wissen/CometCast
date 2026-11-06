@@ -34,9 +34,9 @@ Events: `ReceiverUiEvent` = room code, peer joined, connection state, video trac
 Rules worth knowing:
 
 - **Errors are events.** A start failure (server unreachable, bad or unknown room code) arrives as an `error` event, then the stream ends. Reason (observed with FRB 2.13.0 in `test/rust_core_test.dart`): for a function that returns a stream, a returned `Err` did not reach the stream listener and surfaced as an unhandled async error instead, so the API has no `Result`.
-- **One receiver and one sender at a time.** Starting a new one stops the old one. Cancelling the Dart stream subscription also stops the core.
+- **One receiver and one sender at a time.** Starting a new one stops the old one. `stop_*` also works while a start is still connecting: each start gets a generation number, and a start whose number is out of date after connecting closes its new core at once. Cancelling the Dart subscription alone does not stop the core immediately: the core notices at its next event (when `StreamSink::add` fails, at most about one second later while connected) and shuts down; the controllers therefore also call `stopReceiver()` / `stopSender()` explicitly. A panic inside a background task is caught and reported as an `error` event.
 - **Counters are `u64`**, which Dart sees as `BigInt`; the controllers convert with `toInt()`.
-- **Room-code validation is not duplicated** in Dart: the UI calls `checkRoomCode`. The Rust function reports a bad character before a wrong length so the UI can warn while someone is typing. The Dart test fake (`test/fake_core.dart`) has a small copy of the rule only for tests without the native library; `test/rust_core_test.dart` checks that it agrees with Rust.
+- **Room-code validation is not duplicated** in Dart: the UI calls `checkRoomCode`. The Rust function reports a bad character before a wrong length so the UI can warn while someone is typing. The helper text under the code field gets length and alphabet from Rust through an ARB placeholder. The Dart test fake (`test/fake_core.dart`) has a small copy of the rule only for tests without the native library; `test/rust_core_test.dart` checks that it agrees with Rust.
 - `udp_bind` (optional) is a development switch: bind WebRTC to one local address, for example `127.0.0.1:0` for tests on one machine. The app reads it from the environment variable `COMETCAST_UDP_BIND`. UNCERTAIN: whether the default (`0.0.0.0:0`) connects two peers on one machine was not tested; the smoke tests use `127.0.0.1:0`.
 
 ## Generated code: committed, deliberately
@@ -50,7 +50,7 @@ cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked   # once
 flutter_rust_bridge_codegen generate
 ```
 
-The version of the codegen, of the `flutter_rust_bridge` crate (`crates/cc-ffi/Cargo.toml`, pinned with `=`) and of the Dart package (`apps/flutter/pubspec.yaml`) must be the same; the generator checks this. 2.13.0 is the newest stable release found on crates.io and pub.dev on 2026-11-06 (2.14.0 was still beta). The config is `apps/flutter/flutter_rust_bridge.yaml`. The generator needs `freezed` and `build_runner` in `dev_dependencies` (and `freezed_annotation`) because the event enums carry data.
+The version of the codegen, of the `flutter_rust_bridge` crate (`crates/cc-ffi/Cargo.toml`, pinned with `=`) and of the Dart package (`apps/flutter/pubspec.yaml`) must be the same; the generator checks this. 2.13.0 is the newest stable release found on crates.io and pub.dev on 2026-11-06 (2.14.0 was still beta). The Dart SDK constraint (`>=3.13.0`) is what `flutter pub get` needs for the current dev dependencies (freezed 4.x). The config is `apps/flutter/flutter_rust_bridge.yaml`. The generator needs `freezed` and `build_runner` in `dev_dependencies` (and `freezed_annotation`) because the event enums carry data.
 
 ## `unsafe` and the lint table
 
