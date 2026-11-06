@@ -58,7 +58,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Bindings | UniFFI for Swift, flutter_rust_bridge for Flutter, wasm-bindgen for the web |
 | Apps | Flutter for Windows, macOS, Linux, Android, iOS, iPadOS and Android TV / Google TV |
 | Apple TV | Native SwiftUI receiver. If Flutter on TV does not hold up in the beta, a native Kotlin receiver is the fallback for Android TV |
-| Web app | Vue 3 + TypeScript + Vite + Rust WASM. Screen sharing works only in desktop browsers and needs HTTPS |
+| Web app | Vue 3 + TypeScript + Vite + Rust WASM. Screen sharing is expected only in desktop browsers and needs HTTPS (assumption A17; mobile support is unchecked) |
 | Server | `cometcast-server` (axum), coturn as a separate process, optional SFU |
 
 Native code is written only where the platform forces it (for example share and broadcast extensions, screen capture on Android).

@@ -40,7 +40,7 @@ You state that:
 1. Each Contribution is Your original work, or You have the right to submit it under this agreement.
 2. You are legally entitled to grant the rights in this agreement. If Your employer or school has rights in what You create, You have received a written waiver from them or they have signed a corporate agreement (see section 9).
 3. Your Contribution does not knowingly violate the rights of others.
-4. If You include third-party material, You will point it out in the pull request, name its source and licence, and the licence must be compatible with GPL-3.0-or-later.
+4. If You include third-party material, You will point it out in the pull request, name its source and licence, and the licence must be compatible with GPL-3.0-or-later. Material under a licence that does not allow the Steward to distribute it as described in section 3 (for example GPL-only code) may only be included with the Steward's prior written approval.
 5. Your Contribution does not contain material that the Project forbids (see CONTRIBUTING.md), such as extracted keys or certificates, FairPlay, Google Cast, AirServer or AirParrot material, DRM circumvention, or code copied from AGPL projects.
 6. You will tell the Steward if any statement here becomes untrue.
 

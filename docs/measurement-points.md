@@ -44,14 +44,17 @@ This file is the single list of those assumptions, the beta observations that wi
 
 These are measurements made during the beta. They are not preconditions for starting.
 
+> **Scope note on points 6 and 9.** Some measurement steps in the planning page involve third-party products (AirServer, AirParrot, Wireshark captures, certificate chains). Under this project's rules we do not extract keys or certificates and we do not take over AirServer, AirParrot, FairPlay or Cast material. Such steps are private research outside this repository: no extracted artefacts or captures are committed, and the certificate and AirServer parts need the maintainer's explicit sign-off first. Until then they count as "not done in this project".
+
+
 | # | Topic | What is measured | Next step | Assumption rows |
 | --- | --- | --- | --- | --- |
-| 1 | Flutter with Rust core | Spike 0: share extension on iOS/Android down to the core, video surface at 1080p30, operation on Google TV. Google TV Streamer is the yardstick, a 30 EUR box is the lower limit | Build the spike. If it fails: "Alternative A" (see the planning page, section "Oberfläche") | A2 |
+| 1 | Flutter with Rust core | Spike 0: share extension on iOS/Android down to the core, video surface at 1080p30, operation on Google TV. Google TV Streamer is the yardstick, a 30 EUR box is the lower limit | Build the spike. If it fails: "Alternative A" (Tauri with a Vue UI; see the planning page, section "Oberfläche") | A2 |
 | 2 | Desktop capture and WebRTC quality | Spikes 1 and 2: native capture on Windows, macOS, Linux (Wayland); 10 min of 1080p on lossy Wi-Fi: latency, CPU, frozen frames | | A1, A10, A11 |
 | 3 | Apple TV, iPhone and iPad | Spike 3: core for tvOS (crypto), WebRTC receiving, hayro, comparison with LiveKitWebRTC. Spikes 4 and 5: memory of the broadcast extension, Safari 27 on the iPad | Mini app on a real Apple TV; 10 min of sending from a large iPad | A13 |
 | 4 | Google TV and Linux mini PC as always-on receivers | Spikes 6 and 8: autostart, discovery in the background, one hour stable; `dpad` focus and 32-bit build on the Google TV Streamer; Apple TV in AppLock operation; confirm minimum requirements for Android TV boxes | Get the test devices | A7 |
 | 5 | Third-party receiving on the mini PC | Miracast: minimal app with `CreateSession(None)` unpackaged on Windows 11, who shows the PIN, the "Wireless Display" feature, MS-MICE, firewall, Wi-Fi chips. UxPlay: iPadOS 27 with `-h265`, endurance test of `-vrtp` (issue #465), PIN line through PTY, uxplay-windows against our own MSYS2 build | Minimal app with the `windows` crate, two mini-PC models, real iPads | A3, A4 |
-| 6 | Network on site and AirServer cross-check | mDNS forwarding, open ports between VLANs, split-DNS entry, SRV/domain search on Android and Apple, TURN exception for our own relay IP; cross-check the port list against a capture. AirServer chain: AuthChallenge on port 8009 (pychromecast or rust_cast), show `client_auth_certificate` and `intermediate_certificate` with `openssl x509` (issuer, subject, validity); check a test PC before/after for new root certificates and start parameters of the browser process. The mirroring negotiation can be read in the Open Screen source, so no capture is needed for it | Information from IT, test with `cometcast-cli`, one Windows PC with AirServer | A8, A5 |
+| 6 | Network on site and AirServer cross-check | mDNS forwarding, open ports between VLANs, split-DNS entry, SRV/domain search on Android and Apple, TURN exception for our own relay IP; cross-check the port list against a capture. AirServer chain: AuthChallenge on port 8009 (pychromecast or rust_cast), show `client_auth_certificate` and `intermediate_certificate` with `openssl x509` (issuer, subject, validity); check a test PC before/after for new root certificates and start parameters of the browser process. The mirroring negotiation can be read in the Open Screen source, so no capture is needed for it | Information from IT, test with `cometcast-cli`, one Windows PC with AirServer | A8, A1 |
 | 7 | Content test corpus | 20 to 30 video links (hit rate, YouTube hand-over on tvOS and Google TV, IP binding), 20 PDFs (hayro, spike 7), 5 Office files (office2pdf) | Assemble a corpus from real classroom files | A9 |
 | 8 | Load | Open server: brokering under bot load, ALTCHA solve time on the oldest device. Internal server: TURN with ten parallel streams, image quotas | Load test on a test server | A12 |
 | 9 | AirPlay sender path | Read the doubletake code (FairPlay SAP, pairing); test on a real Apple TV with current tvOS; Wireshark capture AirParrot to Apple TV: port of the mirroring connection, fp-setup in the mirroring path, latency, resolution, where the pairing is stored | doubletake on Linux against our own Apple TV, AirParrot trial licence on Windows | A6, A16 |
@@ -80,7 +83,7 @@ Spike 0 is the UI spike; spikes 1 to 9 are prototypes. They are no longer a run-
 
 - Cast mirroring sender (milestone M4): 9 to 14 PW, with buffer 12 to 17 PW.
 - AirPlay sender for the desktop (milestone M7): 12 to 25 PW; not deliverable without the FairPlay part.
-- Native desktop capture 6 to 12 PW, broadcast extension 3 to 6 PW, tvOS 3 to 6 PW were calculated for the alternative with native UIs, not for Flutter. A Flutter estimate is still missing and is to be added after spike 0.
+- Native desktop capture 6 to 12 PW, broadcast extension 3 to 6 PW, tvOS 3 to 6 PW were calculated for "Alternative A" (Tauri with a Vue UI), not for Flutter. A Flutter estimate is still missing and is to be added after spike 0.
 
 ## 5. Things that do not work (and what we offer instead)
 

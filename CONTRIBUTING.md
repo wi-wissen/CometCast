@@ -23,7 +23,7 @@ Common prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `chore`.
 
 Never state an assumption as a fact. If you are not sure, mark it and link it to [docs/measurement-points.md](docs/measurement-points.md):
 
-- In code: `// UNCERTAIN: <what is unsure> (see docs/measurement-points.md#a3)`
+- In code: `// UNCERTAIN: <what is unsure> (see docs/measurement-points.md, e.g. A3)`
 - In docs: `**Uncertain:** <what is unsure>` with a link to the matching row.
 
 If the assumption has no row yet, add one (rules at the top of that file). Use the words "sourced", "assumption" and "unchecked" for the status.
@@ -59,11 +59,10 @@ Run the checks that apply to the part you changed before you open a pull request
 
 ## Licence headers
 
-Every source file gets an SPDX header with the licence and a copyright line. Use the comment style of the language:
+Every source file gets an SPDX header with the licence. (A copyright line is not required yet; it is an open question for the steward.) Use the comment style of the language:
 
 ```rust
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) Comet Cast contributors
 ```
 
 The exact copyright line is to be confirmed with the steward; keep it as shown until then.
