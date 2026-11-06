@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Android and Android TV (Flutter app)
 
-Status: milestone M1 on Android, **build only**. The debug APK builds and contains the Rust core and the Flutter engine. **Nothing was run on a device or an emulator** (none was available), so every statement about runtime behaviour on Android, Android TV or Google TV below is untested. Measurement points: A2 and A7 in [measurement-points.md](measurement-points.md).
+Status: milestone M1 on Android, **build only**, plus the screen-capture wiring of milestone M6 (code and tests, see [Screen capture](#screen-capture-wired-to-the-rust-sender-not-run)). The debug APK builds and contains the Rust core and the Flutter engine. **Nothing was run on a device or an emulator** (none was available), so every statement about runtime behaviour on Android, Android TV or Google TV below is untested. Measurement points: A2 and A7 in [measurement-points.md](measurement-points.md).
 
 ## What exists
 
@@ -11,7 +11,9 @@ Status: milestone M1 on Android, **build only**. The debug APK builds and contai
 | Android TV manifest bits (leanback launcher, optional touchscreen / leanback, banner) | `apps/flutter/android/app/src/main/AndroidManifest.xml` | In the built APK (checked with `aapt2 dump badging`); not tried on a TV |
 | TV banner 320x180 and launcher icons | `res/drawable-xhdpi/tv_banner.png`, `res/mipmap-*`; script `android/tools/make_android_icons.py` | Generated from `assets/logo` (originals untouched) |
 | D-pad focus in the Flutter screens | `lib/widgets.dart`, `lib/home_page.dart`, `lib/main.dart`, `lib/send_page.dart` | Widget tests with simulated key events; no real remote tried |
-| Screen capture skeleton (Kotlin) | `android/app/src/main/kotlin/de/cometcast/cometcast/capture/` | **Compiles, never run. Not wired to the Rust core** |
+| Screen capture (Kotlin) | `android/app/src/main/kotlin/de/cometcast/cometcast/capture/` | **Compiles, never run.** Wired in code to the Rust sender through Dart (next sections) |
+| Dart capture wrapper and feeder | `lib/core/android_capture.dart`, `lib/capture_feeder.dart`, `lib/sender_controller.dart`, `lib/send_page.dart` | Widget and unit tests with fakes; never run on a device |
+| Rust `ExternalH264` input | `crates/cc-sender/src/external.rs`, API in `crates/cc-ffi/src/api.rs` | Tested on Linux with real H.264 end to end; the Android build of the library compiles |
 | CI job `android` | `.github/workflows/flutter.yml` | **Not run on GitHub** |
 
 ## How the Rust core gets into the APK
@@ -96,6 +98,8 @@ APK contents (`unzip -l build/app/outputs/flutter-apk/app-debug.apk`), dual-ABI 
 
 `aapt2 dump badging` shows: `leanback-launchable-activity` MainActivity, `uses-feature-not-required` for `android.hardware.touchscreen` and `android.software.leanback`, `banner='res/drawable-xhdpi-v4/tv_banner.png'`, `native-code: 'arm64-v8a'` (arm64-only build), and the service entry with `foregroundServiceType=0x20` (mediaProjection).
 
+After the M6 capture wiring the same `flutter build apk --debug --target-platform android-arm64` was run again: `Built build/app/outputs/flutter-apk/app-debug.apk` (about 97 MiB, 242 s with a cold Gradle cache). This only proves that the Kotlin, Dart and Rust changes compile and package. The mirror had to be extended to also stand in for `plugins.gradle.org/m2` (the plugin portal answered with Maven Central's 429 for the Flutter Gradle plugin's own dependencies).
+
 ### Gradle and Maven Central (HTTP 429) on this machine
 
 dl.google.com, maven.google.com, services.gradle.org, plugins.gradle.org and storage.googleapis.com answered normally. `repo.maven.apache.org` (Maven Central) answered **HTTP 429 for roughly every other request**, also for single sequential `curl` GETs (observed 200, 429, 200). Gradle's built-in three retries are not enough: the first builds failed with `Plugin [id: 'org.jetbrains.kotlin.android', version: '2.4.0'] was not found` although the POM exists (a direct `curl` returned 200). Raising `systemProp.org.gradle.internal.repository.max.tentatives` to 8 with a 3 s backoff in `~/.gradle/gradle.properties` did not help within 6 minutes (UNCERTAIN whether the property was honoured). What worked: a **local pass-through mirror** (about 40 lines of Python, retrying on 429 with backoff and caching) on `127.0.0.1:18090` plus a Gradle init script in `~/.gradle/init.d/` that points `https://repo.maven.apache.org/maven2` repositories to it. Both live outside the repository because they are specific to this sandbox. With it the first complete `flutter build apk --debug` took about 3 minutes. On a normal network none of this should be needed. UNCERTAIN: whether the 429 is permanent policy or load; it may differ on another day.
@@ -123,7 +127,7 @@ D-pad focus: **Flutter's built-in focus system, not the `dpad` package** (named 
 
 `test/dpad_focus_test.dart` (3 widget tests): arrow keys and select on the home screen; arrow keys between server field and start button on the receive screen; arrow keys through all fields of the send screen. These simulate key events only. UNCERTAIN / not tested: a real remote (Back and Home keys, long press), the on-screen keyboard that Android TV may open when a text field gets focus (entering the room code with a remote is likely awkward), overscan and 10-foot layout, focus after `Navigator.pop`, the `Material` text sizes on a TV.
 
-## Screen capture skeleton
+## Screen capture, wired to the Rust sender (not run)
 
 Files in `.../kotlin/de/cometcast/cometcast/capture/`:
 
@@ -134,17 +138,49 @@ Files in `.../kotlin/de/cometcast/cometcast/capture/`:
 | `CaptureBridge.kt` | MethodChannel `de.cometcast/capture`, consent dialog, `onActivityResult` |
 | `CaptureEvents.kt` | EventChannel `de.cometcast/capture/frames` |
 
-Dart contract (no Dart wrapper exists yet; `lib` was left alone apart from the focus work):
+Dart contract (implemented by `ChannelAndroidCapture` in `lib/core/android_capture.dart`):
 
 - `invokeMethod('start', {maxDimension, fps, bitrate, notificationTitle, notificationText, notificationStop})` returns `true` (started) or `false` (the user refused). The notification texts are meant to come from the ARB keys `captureNotificationTitle`, `captureNotificationText`, `captureNotificationStop` (added in English and German); the native side contains no user-visible strings except the notification channel's technical name.
-- `invokeMethod('stop')`, `invokeMethod('requestKeyFrame')`.
+- `invokeMethod('stop')`, `invokeMethod('requestSyncFrame')` (alias `requestKeyFrame`): sets `MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME` through `setParameters`.
 - The event stream emits maps: `config` (SPS/PPS, Annex B), `frame` (`ptsUs`, `keyFrame`, `data`), `stopped`, `error`. See `CaptureEvents.kt`.
 
 Android 14 rules as implemented (from the Android documentation as understood; UNCERTAIN until run): `startForeground(..., FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)` before `getMediaProjection`; a `MediaProjection.Callback` registered before `createVirtualDisplay`; the consent result is used once and never stored, so every session asks again; `onStop` of the callback ends the session.
 
 Robustness as implemented (UNCERTAIN until run on a device): every start command reaches `startForeground()` first (also a second start while a session runs and a missing consent), and a failing `startForeground` (for example `SecurityException`) is caught and ends the service instead of crashing; `ScreenEncoder.start()` releases the codec and surface itself when it throws and `stop()` is safe on a half-started encoder. Backpressure in `CaptureEvents`: at most 8 encoded frames wait for the main looper, frames are dropped and counted (`dropped` in each frame event) while nobody listens or the queue is full, delta frames are skipped until the next key frame after a drop, the codec config is cached and replayed on `onListen` together with a key frame request, and `stopped` is sent once per session.
 
-**Not wired:** `cc-sender` sends only a synthetic VP8 test stream (see [flutter-bridge.md](flutter-bridge.md)). There is no H.264 path into the Rust core: no RTP packetisation for H.264, no FFI function that accepts external frames. Until that exists, the captured frames only reach Dart and go nowhere. Likely next step (not done, not decided): an FFI call that takes Annex B access units and a sender track that packetises them (RFC 6184), or a native path that bypasses the Dart event channel.
+### What is wired (milestone M6, Android side)
+
+```
+MediaProjection -> VirtualDisplay -> ScreenEncoder (MediaCodec, surface input)
+  -> CaptureEvents -> EventChannel de.cometcast/capture/frames
+  -> CaptureFeeder (Dart): config -> push_codec_config, frame -> push_encoded_frame
+  -> cc-ffi (copies the bytes) -> cc-sender ExternalInput (normalise, SPS/PPS cache, bounded queue)
+  -> RTP packetiser of cc-transport (one frame in flight) -> WebRTC
+Rust key frame request (new peer, PLI/FIR, drop policy) -> keyframe_requested (polled every 100 ms)
+  -> MethodChannel requestSyncFrame -> MediaCodec PARAMETER_KEY_REQUEST_SYNC_FRAME
+```
+
+- **Rust (`cc-sender`, `external.rs`):** input mode `ExternalH264` (`SenderOptions::external`). Accepts Annex B (3 or 4 byte start codes) and AVCC (4 byte lengths; 1 to 3 byte lengths only after an `avcC` config record named them) and converts to Annex B. Codec config as Annex B or `avcC`. SPS/PPS are cached (also from the stream) and put in front of key frames that lack them (after a leading access unit delimiter); a key frame that cannot be completed is dropped and a new one is requested. Frames are refused until a peer is connected. The queue holds at most 3 units (placeholder), the sender task writes one unit at a time; a full queue drops the new unit, counts it, and then drops delta frames until the next key frame is pushed (and requests one); a new IDR replaces everything still queued. Key frame requests are rate limited to one per second like in the X11 path. RTP time steps come from the difference of the presentation times (clamped to 1 ms to 1 s), else from the wall clock. Counters: `ExternalStats`.
+- **FFI (`cc-ffi`):** `start_encoded_sender(code, server, udp_bind)` (stream of `SenderUiEvent`, with `EncodedStats` once per second), `push_encoded_frame(data, is_key, pts_us)` (sync, never blocks, **copies** `data`, returns `PushResult`), `push_codec_config(data)`, `keyframe_requested()` (poll; clears the flag). One encoded sender at a time (process-wide slot, `encoded.rs`); no `unsafe` was added outside the generated module. `capture_info` answers on Android with `Supported` and one monitor with the id `android-projection` (the size is not known to Rust).
+- **Dart:** the Send screen shows "Share this screen" when `captureInfo` says supported; when the monitor list holds `android-projection` and the app has an `AndroidCapture`, the switch starts the Android flow: system consent dialog first (nothing connects if the person refuses: translated message), then `start_encoded_sender`. The notification texts come from the ARB keys `captureNotification*`. A `stopped` event (person or system ended the projection), an `error` event, the receiver leaving or a start failure stop the capture service again and show a translated message (`sendCaptureDenied`, `sendCaptureStopped`, or the technical text behind the translated "Error:" prefix). The pairing is by the monitor id, not by `Platform.isAndroid`, so the flow is testable on Linux with fakes.
+- **Kotlin:** `requestSyncFrame` method added; the encoder asks for the Baseline profile (the offer says Constrained Baseline, `42e01f`) and retries without a profile if configuring fails; on API 29+ it sets `KEY_PREPEND_HEADER_TO_SYNC_FRAMES`.
+
+### What was verified, and what was not
+
+Verified without a device:
+
+- Rust tests with real H.264 (`crates/cc-receiver/tests/external_h264.rs`): OpenH264 encodes synthetic pictures, the test pushes them as Annex B (SPS/PPS in band) and as AVCC (SPS/PPS only in an `avcC` record), they go through the real sender, a real `cc-server` in the process and WebRTC over loopback to the native receiver, are reassembled and decoded; the colour and a colour change are checked, and a receiver PLI reaches the host as a key frame request which the host answers. Unit tests in `external.rs` cover both formats, the 4-byte-length-looks-like-a-start-code case, garbage, SPS/PPS insertion, the bounded queue and drop counting, and the rate limit.
+- Dart: widget tests of the Send screen with a fake capture and a fake core (consent pending, refused, started, stopped, error, receiver left, German texts), feeder tests, tests of the platform-channel wrapper against mocked `MethodChannel` / `EventChannel`, and one test against the real library.
+- `flutter build apk --debug --target-platform android-arm64` compiles the Kotlin, Dart and Rust changes (see "Commands that were run").
+
+**Not verified (nothing ran on a device or an emulator):**
+
+- UNCERTAIN: what `MediaCodec` really emits on real devices: whether the codec config arrives as a separate `CODEC_CONFIG` buffer (the Kotlin side forwards it as the `config` event) or inside the first frame, whether key frames carry SPS/PPS, whether the data is Annex B (assumed, as the Kotlin comments say) or something else. Both Annex B and AVCC are handled and tested in Rust, but only with OpenH264's output, not with a hardware encoder's.
+- UNCERTAIN: that the profile the encoder produces fits the offer (`42e01f`); a browser may refuse or mis-decode a High profile stream without a visible error. Level and resolution limits were not checked either.
+- UNCERTAIN: Android 14 and 15 behaviour of the consent dialog, the foreground service type, the "share one app" mode, a revoked projection, the notification permission flow (all in the Kotlin code from the earlier skeleton, never run).
+- UNCERTAIN: throughput of the Dart path (one platform channel message and one FFI copy per frame; the settings 1280 px, 30 fps and 4 Mbit/s are placeholders, not tuned or measured), latency, and the 100 ms polling for key frame requests.
+- UNCERTAIN: behaviour on a static screen (the encoder repeats the last frame after 1 s; whether devices honour `KEY_REPEAT_PREVIOUS_FRAME_AFTER` was not checked), rotation and resize (the encoder size is fixed at the start), and Android TV devices that have no screen capture.
+- Not done: audio, a native path past Dart (a possible later optimisation), the release build, a run of the GitHub workflow.
 
 Also UNCERTAIN, all untested: encoder acceptance on weak TV boxes, behaviour when the screen is static (the format sets `KEY_REPEAT_PREVIOUS_FRAME_AFTER` = 1 s), rotation and resize (`onCapturedContentResize` and `onCapturedContentVisibilityChanged` are overridden but do nothing: the encoder size is fixed at the start), the Android 15 "share one app" mode, the `POST_NOTIFICATIONS` request (implemented in `CaptureBridge`: on Android 13+ the system dialog is shown before the consent dialog while the permission is missing; the capture continues if it is denied and only the notification is hidden), and whether Android TV devices offer MediaProjection at all (many TV boxes may not; to be checked on the Google TV Streamer).
 

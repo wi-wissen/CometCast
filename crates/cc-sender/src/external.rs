@@ -629,7 +629,10 @@ fn complete_key_frame(st: &State, au: AccessUnit) -> Option<Vec<u8>> {
 /// An `avcC` record (ISO 14496-15): version 1, profile, compatibility, level, `111111xx` with
 /// the length size minus one, `111xxxxx` count of SPS, SPS (2-byte length each), count of PPS,
 /// PPS (2-byte length each).
-fn parse_avcc_record(d: &[u8]) -> Option<(usize, Vec<Vec<u8>>, Vec<Vec<u8>>)> {
+/// NAL units of one kind (all SPS, or all PPS).
+type NalSets = Vec<Vec<u8>>;
+
+fn parse_avcc_record(d: &[u8]) -> Option<(usize, NalSets, NalSets)> {
     if d.len() < 7 || d[0] != 1 {
         return None;
     }
