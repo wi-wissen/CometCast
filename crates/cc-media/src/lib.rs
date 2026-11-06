@@ -23,5 +23,9 @@ pub trait VideoEncoder {
     type Error;
 
     /// Encode one raw frame (pixel format is decided by the implementation).
-    fn encode(&mut self, raw_frame: &[u8], timestamp_us: u64) -> Result<Vec<EncodedFrame>, Self::Error>;
+    fn encode(
+        &mut self,
+        raw_frame: &[u8],
+        timestamp_us: u64,
+    ) -> Result<Vec<EncodedFrame>, Self::Error>;
 }

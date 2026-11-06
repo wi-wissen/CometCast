@@ -1,0 +1,73 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+@import 'tailwindcss';
+
+/* Palette follows the planning mockup "Leise mit nativen Rändern". */
+:root {
+  color-scheme: light dark;
+  --cc-bg: #eceef2;
+  --cc-surface: #fcfcfd;
+  --cc-sunk: #f1f2f5;
+  --cc-line: #e2e4e9;
+  --cc-line2: #cdd1d9;
+  --cc-fg: #1c2027;
+  --cc-muted: #646c7b;
+  --cc-accent: #2d4a8a;
+  --cc-accent-fg: #ffffff;
+  --cc-accent-soft: #e7ecf6;
+  --cc-ok: #2c7a51;
+  --cc-err: #b5483c;
+  --cc-warn: #93650c;
+  --cc-warn-soft: #f8efdc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cc-bg: #111318;
+    --cc-surface: #181b21;
+    --cc-sunk: #14161b;
+    --cc-line: #2b2f38;
+    --cc-line2: #3b404b;
+    --cc-fg: #e8eaef;
+    --cc-muted: #9aa1ae;
+    --cc-accent: #93aae6;
+    --cc-accent-fg: #0f1420;
+    --cc-accent-soft: #222a3d;
+    --cc-ok: #6cc597;
+    --cc-err: #f08c80;
+    --cc-warn: #e3b45a;
+    --cc-warn-soft: #322810;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--cc-bg);
+  --color-surface: var(--cc-surface);
+  --color-sunk: var(--cc-sunk);
+  --color-line: var(--cc-line);
+  --color-line2: var(--cc-line2);
+  --color-fg: var(--cc-fg);
+  --color-muted: var(--cc-muted);
+  --color-accent: var(--cc-accent);
+  --color-accent-fg: var(--cc-accent-fg);
+  --color-accent-soft: var(--cc-accent-soft);
+  --color-ok: var(--cc-ok);
+  --color-err: var(--cc-err);
+  --color-warn: var(--cc-warn);
+  --color-warn-soft: var(--cc-warn-soft);
+  --font-sans: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Roboto, Cantarell, 'Noto Sans', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --radius-cc: 6px;
+}
+
+html,
+body {
+  background: var(--cc-bg);
+  color: var(--cc-fg);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cc-accent);
+  outline-offset: 2px;
+}

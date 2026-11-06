@@ -1,0 +1,45 @@
+{
+  "app": {
+    "name": "Comet Cast",
+    "tagline": "Share your screen, documents, links and files.",
+    "preview": "Preview build (v0.1): nothing connects yet. This page only shows what the app will look like."
+  },
+  "lang": {
+    "label": "Language",
+    "en": "English",
+    "de": "Deutsch"
+  },
+  "nav": {
+    "back": "Back to start"
+  },
+  "home": {
+    "title": "What would you like to do?",
+    "sendScreen": { "title": "Send screen", "desc": "Show your screen on another device." },
+    "sendContent": { "title": "Send file or link", "desc": "Hand over a document, file or link." },
+    "receive": { "title": "Receive on this device", "desc": "Show a code and wait for a sender." }
+  },
+  "receive": {
+    "title": "Receive on this device",
+    "codeLabel": "Room code",
+    "codePlaceholder": "Will appear here",
+    "intro": "Later, this device will show a short room code. The sender enters it, and the screen, file or link arrives here.",
+    "willTitle": "What will come",
+    "will1": "A room code generated on this device",
+    "will2": "A direct connection to the sender, without an account",
+    "will3": "Screens, files, documents and links in one place"
+  },
+  "send": {
+    "title": "Send",
+    "codeLabel": "Room code of the receiver",
+    "codeHint": "6 characters: letters and digits, without easily confused ones (0, O, 1, I, L).",
+    "codeInvalid": "Please enter all 6 characters.",
+    "codeValid": "Code format looks good.",
+    "connect": "Connect",
+    "connectUnavailable": "Connecting is not available in this preview build.",
+    "capTitle": "Screen sharing on this browser",
+    "capOk": "Screen sharing is available in this browser.",
+    "capUnavailable": "Screen sharing is not available here. It works only in desktop browsers and requires HTTPS (or localhost).",
+    "capNoSecure": "This page is not in a secure context (HTTPS required).",
+    "capNoDisplay": "This browser does not offer screen capture (getDisplayMedia)."
+  }
+}

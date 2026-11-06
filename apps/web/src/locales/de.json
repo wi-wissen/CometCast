@@ -1,0 +1,45 @@
+{
+  "app": {
+    "name": "Comet Cast",
+    "tagline": "Bildschirm, Dokumente, Links und Dateien teilen.",
+    "preview": "Vorschau-Version (v0.1): Es wird noch nichts verbunden. Diese Seite zeigt nur, wie die App aussehen wird."
+  },
+  "lang": {
+    "label": "Sprache",
+    "en": "English",
+    "de": "Deutsch"
+  },
+  "nav": {
+    "back": "Zurück zum Start"
+  },
+  "home": {
+    "title": "Was möchten Sie tun?",
+    "sendScreen": { "title": "Bildschirm senden", "desc": "Ihren Bildschirm auf einem anderen Gerät zeigen." },
+    "sendContent": { "title": "Datei oder Link senden", "desc": "Ein Dokument, eine Datei oder einen Link übergeben." },
+    "receive": { "title": "Auf diesem Gerät empfangen", "desc": "Einen Code anzeigen und auf einen Absender warten." }
+  },
+  "receive": {
+    "title": "Auf diesem Gerät empfangen",
+    "codeLabel": "Raumcode",
+    "codePlaceholder": "Erscheint hier",
+    "intro": "Später zeigt dieses Gerät einen kurzen Raumcode an. Der Absender gibt ihn ein, und Bildschirm, Datei oder Link kommen hier an.",
+    "willTitle": "Was kommen wird",
+    "will1": "Ein auf diesem Gerät erzeugter Raumcode",
+    "will2": "Eine direkte Verbindung zum Absender, ohne Konto",
+    "will3": "Bildschirme, Dateien, Dokumente und Links an einem Ort"
+  },
+  "send": {
+    "title": "Senden",
+    "codeLabel": "Raumcode des Empfängers",
+    "codeHint": "6 Zeichen: Buchstaben und Ziffern, ohne leicht verwechselbare (0, O, 1, I, L).",
+    "codeInvalid": "Bitte alle 6 Zeichen eingeben.",
+    "codeValid": "Das Codeformat passt.",
+    "connect": "Verbinden",
+    "connectUnavailable": "Verbinden ist in dieser Vorschau-Version noch nicht möglich.",
+    "capTitle": "Bildschirmfreigabe in diesem Browser",
+    "capOk": "Bildschirmfreigabe ist in diesem Browser verfügbar.",
+    "capUnavailable": "Bildschirmfreigabe ist hier nicht verfügbar. Sie funktioniert nur in Desktop-Browsern und setzt HTTPS (oder localhost) voraus.",
+    "capNoSecure": "Diese Seite läuft nicht in einem sicheren Kontext (HTTPS erforderlich).",
+    "capNoDisplay": "Dieser Browser bietet keine Bildschirmaufnahme (getDisplayMedia)."
+  }
+}
