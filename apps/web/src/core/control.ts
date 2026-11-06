@@ -14,6 +14,12 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 export type ImageMime = (typeof IMAGE_MIME_TYPES)[number]
 export const MAX_LINK_LENGTH = 2048
+/** Longest message text (the receiver refuses longer ones). */
+export const MAX_TEXT_CHARS = 8192
+/**
+ * Longest file name, counted in Unicode characters (code points), the same way as the native clients
+ * (`MAX_NAME_LENGTH` in crates/cc-files). `String.length` counts UTF-16 units and would differ for emoji.
+ */
 export const MAX_NAME_LENGTH = 255
 /** Largest document a native sender sends (64 MiB). Only used to bound the data that is skipped. */
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
@@ -62,6 +68,13 @@ export function isImageMime(m: unknown): m is ImageMime {
  * A link is never opened by code; the receiver's person has to click (see ReceiveView).
  */
 export function validateLinkUrl(input: string): string | null {
+  const n = checkLinkUrl(input)
+  if (n === null) return null
+  // Idempotent by construction (the native clients do the same): what does not survive a second pass is refused.
+  return checkLinkUrl(n) === n ? n : null
+}
+
+function checkLinkUrl(input: string): string | null {
   const s = input.trim()
   if (s.length === 0 || s.length > MAX_LINK_LENGTH) return null
   // The URL parser silently drops tabs/newlines; reject them (and spaces, control chars) up front.
@@ -75,7 +88,21 @@ export function validateLinkUrl(input: string): string | null {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
   if (u.username !== '' || u.password !== '') return null
   if (u.hostname === '') return null
+  // The normalised form (percent-encoding, punycode) can be much longer than the input and must still fit
+  // a link message that the receiver accepts.
+  if (u.href.length > MAX_LINK_LENGTH) return null
   return u.href
+}
+
+/** Number of Unicode characters (code points) in a name. */
+export function nameLength(s: string): number {
+  return Array.from(s).length
+}
+
+/** `true` for a name of 1..MAX_NAME_LENGTH characters. */
+function isValidNameLength(s: string): boolean {
+  // Cheap bound first: a name of MAX_NAME_LENGTH characters has at most twice as many UTF-16 units.
+  return s.length > 0 && s.length <= MAX_NAME_LENGTH * 2 && nameLength(s) <= MAX_NAME_LENGTH
 }
 
 function isPositiveInt(n: unknown, max: number): n is number {
@@ -93,7 +120,7 @@ function parseCmd(c: unknown): ControlCmd | null {
 
 /** Parses and validates one text message. Returns null for anything unknown or malformed. */
 export function parseControlMessage(text: string): ControlMessage | null {
-  if (text.length > 8192) return null
+  if (text.length > MAX_TEXT_CHARS) return null
   let v: unknown
   try {
     v = JSON.parse(text)
@@ -108,20 +135,20 @@ export function parseControlMessage(text: string): ControlMessage | null {
       return cmd ? { kind: 'cmd', cmd } : null
     }
     case 'image': {
-      if (typeof o.name !== 'string' || o.name.length === 0 || o.name.length > MAX_NAME_LENGTH) return null
+      if (typeof o.name !== 'string' || !isValidNameLength(o.name)) return null
       if (!isImageMime(o.mime)) return null
       if (!isPositiveInt(o.size, MAX_IMAGE_BYTES)) return null
-      const name = stripBidi(o.name)
+      const name = sanitizeName(o.name)
       if (name.length === 0) return null
       return { kind: 'image', name, mime: o.mime, size: o.size }
     }
     case 'image_end':
       return { kind: 'image_end' }
     case 'document': {
-      if (typeof o.name !== 'string' || o.name.length === 0 || o.name.length > MAX_NAME_LENGTH) return null
+      if (typeof o.name !== 'string' || !isValidNameLength(o.name)) return null
       if (o.mime !== 'application/pdf') return null
       if (!isPositiveInt(o.size, MAX_DOCUMENT_BYTES)) return null
-      const name = stripBidi(o.name)
+      const name = sanitizeName(o.name)
       if (name.length === 0) return null
       return { kind: 'document', name, mime: 'application/pdf', size: o.size }
     }
@@ -148,6 +175,19 @@ export function chunkBytes(data: Uint8Array, size = CHUNK_SIZE): Uint8Array[] {
 export function stripBidi(s: string): string {
   return s.replace(/[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/g, '')
 }
+
+/**
+ * Removes control characters, bidirectional controls and other invisible characters from a displayed name:
+ * the Unicode "format" characters (Cf: zero-width space and joiners, BOM, soft hyphen, tag characters, ...),
+ * line and paragraph separators and a few blank-looking letters. The list is the same as `sanitize_name` in
+ * crates/cc-files/src/wire.rs (hand-written on both sides, UNCERTAIN: not generated from the Unicode data).
+ */
+export function sanitizeName(s: string): string {
+  return s.replace(INVISIBLE, '')
+}
+
+// eslint-disable-next-line no-control-regex
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u00ad\u0600-\u0605\u06dd\u070f\u0890\u0891\u08e2\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufeff\uffa0\ufff9-\ufffb\u{110bd}\u{110cd}\u{13430}-\u{1343f}\u{1bca0}-\u{1bca3}\u{1d173}-\u{1d17a}\u{e0000}-\u{e007f}]/gu
 
 export type TransferErrorCode =
   | 'unexpected_chunk'
@@ -345,7 +385,10 @@ export class ControlSender {
   sendLink(url: string): boolean {
     const v = validateLinkUrl(url)
     if (!v) return false
-    this.sendJson({ kind: 'link', url: v })
+    const msg: ControlMessage = { kind: 'link', url: v }
+    // The whole message must fit what the receiver accepts (JSON escaping can lengthen it).
+    if (JSON.stringify(msg).length > MAX_TEXT_CHARS) return false
+    this.sendJson(msg)
     return true
   }
 
@@ -377,7 +420,9 @@ export class ControlSender {
     if (!isImageMime(file.type)) throw new SendError('bad_type')
     if (file.size <= 0) throw new SendError('empty')
     if (file.size > MAX_IMAGE_BYTES) throw new SendError('too_large')
-    this.sendJson({ kind: 'image', name: file.name.slice(0, MAX_NAME_LENGTH) || 'image', mime: file.type, size: file.size })
+    // Clip by characters (not UTF-16 units, which could cut an emoji in half) and clean like the receiver does.
+    const name = sanitizeName(Array.from(file.name).slice(0, MAX_NAME_LENGTH).join('')) || 'image'
+    this.sendJson({ kind: 'image', name, mime: file.type, size: file.size })
     for (let o = 0; o < file.size; o += CHUNK_SIZE) {
       if (this.ch.bufferedAmount > HIGH_WATER) await this.waitDrain()
       if (!this.isOpen) throw new SendError('channel_closed')

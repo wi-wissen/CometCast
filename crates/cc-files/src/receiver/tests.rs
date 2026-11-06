@@ -120,7 +120,11 @@ fn oversize_announcements_are_refused() {
     let ev = r.handle_text(&image_start(MAX_IMAGE_BYTES + 1));
     assert_eq!(errors(&ev), [ContentError::BadMessage]);
     assert!(!r.transfer_active());
-    // Chunks that follow find no transfer.
+    // The data of the refused transfer is swallowed without further violations.
+    assert!(r.handle_binary(&[0; CHUNK_SIZE]).is_empty());
+    assert_eq!(r.violations(), 1);
+    assert!(r.handle_text(r#"{"kind":"image_end"}"#).is_empty());
+    // Afterwards chunks without a transfer are violations again.
     let ev = r.handle_binary(&[0; CHUNK_SIZE]);
     assert_eq!(errors(&ev), [ContentError::UnexpectedChunk]);
     // A receiver with a smaller limit refuses what the format would allow.
@@ -139,9 +143,10 @@ fn oversize_announcements_are_refused() {
         max_document_bytes: 1000,
         ..ContentOptions::default()
     });
+    // A refused document is reported as such, and does not leave an old one on screen.
     assert_eq!(
         errors(&tiny_docs.handle_text(&doc_start(1001))),
-        [ContentError::BadMessage]
+        [ContentError::DocumentRejected]
     );
     // The cc-docs file limit counts too.
     let limits = Limits {
@@ -154,7 +159,7 @@ fn oversize_announcements_are_refused() {
     });
     assert_eq!(
         errors(&docs.handle_text(&doc_start(501))),
-        [ContentError::BadMessage]
+        [ContentError::DocumentRejected]
     );
 }
 
@@ -303,26 +308,40 @@ fn a_refused_start_drops_an_open_transfer() {
     let ev = r.handle_text(r#"{"kind":"image","name":"x","mime":"image/svg+xml","size":5}"#);
     assert_eq!(errors(&ev), [ContentError::BadMessage]);
     assert!(!r.transfer_active());
+    // The one chunk the refused transfer announced is swallowed; a second one is too much.
+    assert!(r.handle_binary(&[0; 1000]).is_empty());
     assert_eq!(
         errors(&r.handle_binary(&[0; 1000])),
-        [ContentError::UnexpectedChunk]
+        [ContentError::TooLarge]
     );
 }
 
 #[test]
 fn wrong_mimes_and_junk_are_refused() {
     let mut r = rx();
-    for t in [
-        r#"{"kind":"image","name":"a","mime":"text/html","size":5}"#,
-        r#"{"kind":"image","name":"a","mime":"image/svg+xml","size":5}"#,
-        r#"{"kind":"document","name":"a","mime":"image/png","size":5}"#,
-        r#"{"kind":"document","name":"a","mime":"application/zip","size":5}"#,
-        r#"{"kind":"nonsense"}"#,
-        "not json",
-        "",
-        r#"{"kind":"image"}"#,
+    for (t, code) in [
+        (
+            r#"{"kind":"image","name":"a","mime":"text/html","size":5}"#,
+            ContentError::BadMessage,
+        ),
+        (
+            r#"{"kind":"image","name":"a","mime":"image/svg+xml","size":5}"#,
+            ContentError::BadMessage,
+        ),
+        (
+            r#"{"kind":"document","name":"a","mime":"image/png","size":5}"#,
+            ContentError::DocumentRejected,
+        ),
+        (
+            r#"{"kind":"document","name":"a","mime":"application/zip","size":5}"#,
+            ContentError::DocumentRejected,
+        ),
+        (r#"{"kind":"nonsense"}"#, ContentError::BadMessage),
+        ("not json", ContentError::BadMessage),
+        ("", ContentError::BadMessage),
+        (r#"{"kind":"image"}"#, ContentError::BadMessage),
     ] {
-        assert_eq!(errors(&r.handle_text(t)), [ContentError::BadMessage], "{t}");
+        assert_eq!(errors(&r.handle_text(t)), [code], "{t}");
         assert!(!r.transfer_active());
     }
 }
@@ -437,8 +456,9 @@ fn a_hostile_pdf_is_rejected_without_panic() {
     junk.extend((0..5000u32).map(|i| (i.wrapping_mul(2654435761) >> 24) as u8));
     let ev = feed(&mut r, document_transfer("j.pdf", &junk).unwrap());
     assert_eq!(errors(&ev), [ContentError::DocumentRejected]);
-    // Rejected files are not violations of the channel protocol.
-    assert_eq!(r.violations(), 0);
+    // A document that cannot be opened costs a child process, so it counts as a violation
+    // (the three above); it does not block a receiver that has budget left.
+    assert_eq!(r.violations(), 3);
     assert!(!r.is_blocked());
 }
 
@@ -528,4 +548,351 @@ fn event_debug_does_not_dump_bytes() {
     let b = Blob::new(vec![7; 100_000]);
     let s = format!("{b:?}");
     assert!(s.len() < 40, "{s}");
+}
+
+// ---------------------------------------------------------------------------------------
+// Flood control, preemption, refused transfers, decay, timeouts, open budget.
+// ---------------------------------------------------------------------------------------
+
+use std::time::{Duration, Instant};
+
+/// Run every job that is due, like the task of `cc-receiver` but without waiting.
+/// Returns the events and the number of jobs.
+fn drain(r: &mut ContentReceiver) -> (Vec<ContentEvent>, usize) {
+    let mut out = Vec::new();
+    let mut jobs = 0;
+    while let Next::Work(w) = r.next_action(Instant::now(), false) {
+        jobs += 1;
+        out.extend(r.finish_work(w.run()));
+    }
+    (out, jobs)
+}
+
+fn open_classroom() -> ContentReceiver {
+    let mut r = rx();
+    let ev = feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    assert!(errors(&ev).is_empty(), "{ev:?}");
+    r
+}
+
+#[test]
+fn a_flood_of_page_commands_costs_one_render() {
+    let mut r = open_classroom();
+    let started = Instant::now();
+    let mut events = Vec::new();
+    for i in 0..1000 {
+        let cmd = if i % 2 == 0 {
+            ControlCmd::NextPage
+        } else {
+            ControlCmd::PrevPage
+        };
+        events.extend(r.feed_text(&cmd_message(cmd)));
+    }
+    assert!(events.is_empty(), "feeding never renders: {events:?}");
+    let (ev, jobs) = drain(&mut r);
+    assert!(jobs <= 1, "{jobs} renders");
+    // 1000 alternating commands end on the page they started from.
+    assert_eq!(r.document_state(), Some((1, 3)));
+    assert!(ev.len() <= 1, "{ev:?}");
+    // A flood in one direction renders only the net target.
+    for _ in 0..1000 {
+        r.feed_text(&cmd_message(ControlCmd::NextPage));
+    }
+    let (ev, jobs) = drain(&mut r);
+    assert_eq!(jobs, 1);
+    assert!(
+        matches!(&ev[..], [ContentEvent::PageRendered { page: 3, .. }]),
+        "{ev:?}"
+    );
+    assert_eq!(r.violations(), 0);
+    assert!(started.elapsed() < Duration::from_secs(5), "bounded time");
+}
+
+#[test]
+fn stop_wins_over_a_running_render() {
+    let mut r = open_classroom();
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    let Next::Work(job) = r.next_action(Instant::now(), false) else {
+        panic!("a render is due")
+    };
+    // The job runs "elsewhere" while the next message arrives.
+    let ev = r.feed_text(&cmd_message(ControlCmd::Stop));
+    assert_eq!(ev, [ContentEvent::ContentStopped]);
+    // Its picture is stale and is dropped.
+    assert!(r.finish_work(job.run()).is_empty());
+    assert_eq!(r.document_state(), None);
+    // Page commands after stop find nothing to turn and nothing is rendered.
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    assert_eq!(drain(&mut r).1, 0);
+}
+
+#[test]
+fn a_newer_page_while_a_render_runs_is_rendered_after_it() {
+    // A fast render is allowed to finish; its picture is still delivered.
+    let mut r = open_classroom();
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    let Next::Work(job) = r.next_action(Instant::now(), false) else {
+        panic!()
+    };
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    let ev = r.finish_work(job.run());
+    assert!(
+        matches!(&ev[..], [ContentEvent::PageRendered { page: 2, .. }]),
+        "{ev:?}"
+    );
+    let (ev, _) = drain(&mut r);
+    assert!(
+        matches!(&ev[..], [ContentEvent::PageRendered { page: 3, .. }]),
+        "{ev:?}"
+    );
+
+    // With supersede_after = 0 a stale render is cancelled. (In process the renderer cannot
+    // be interrupted, so its result is a normal picture, which is fine to deliver.)
+    let mut r = ContentReceiver::new(ContentOptions {
+        isolation: Isolation::InProcess,
+        supersede_after: Duration::ZERO,
+        ..ContentOptions::default()
+    });
+    feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    let Next::Work(job) = r.next_action(Instant::now(), false) else {
+        panic!()
+    };
+    std::thread::sleep(Duration::from_millis(5));
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    let _ = r.finish_work(job.run());
+    let (ev, _) = drain(&mut r);
+    assert!(
+        matches!(ev.last(), Some(ContentEvent::PageRendered { page: 3, .. })),
+        "{ev:?}"
+    );
+}
+
+#[test]
+fn renders_keep_a_minimum_interval() {
+    let mut r = ContentReceiver::new(ContentOptions {
+        isolation: Isolation::InProcess,
+        min_render_interval: Duration::from_secs(3600),
+        ..ContentOptions::default()
+    });
+    feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    let t0 = Instant::now();
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    // The first render of the document just ran; the next one has to wait.
+    assert!(matches!(r.next_action(t0, true), Next::Wait(_)));
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    assert!(matches!(r.next_action(t0, true), Next::Wait(_)));
+    assert!(matches!(
+        r.next_action(t0 + Duration::from_secs(3601), true),
+        Next::Work(_)
+    ));
+}
+
+#[test]
+fn a_refused_transfer_is_one_violation_and_the_channel_stays_usable() {
+    // The reviewer's scenario: the receiver takes 1 MiB, the sender honestly sends 8 MiB.
+    let mut r = ContentReceiver::new(ContentOptions {
+        isolation: Isolation::InProcess,
+        max_document_bytes: 1024 * 1024,
+        ..ContentOptions::default()
+    });
+    let mut pdf = b"%PDF-1.4\n".to_vec();
+    pdf.resize(8 * 1024 * 1024, b' ');
+    let ev = feed(&mut r, document_transfer("big.pdf", &pdf).unwrap());
+    assert_eq!(errors(&ev), [ContentError::DocumentRejected], "{ev:?}");
+    assert_eq!(r.violations(), 1, "the whole refused transfer counts once");
+    assert!(!r.is_blocked());
+    // A valid link, and a small PDF, still work.
+    let ev = r.handle_text(&link_message("https://example.org/").unwrap());
+    assert!(
+        matches!(&ev[..], [ContentEvent::LinkRequested { .. }]),
+        "{ev:?}"
+    );
+    let ev = feed(&mut r, document_transfer("m.pdf", MINIMAL).unwrap());
+    assert!(errors(&ev).is_empty(), "{ev:?}");
+    assert_eq!(r.document_state(), Some((1, 1)));
+    // Refused transfers that keep coming still add up and block the receiver.
+    let mut blocked = false;
+    for _ in 0..100 {
+        feed(
+            &mut r,
+            document_transfer("big.pdf", &pdf[..2 * 1024 * 1024]).unwrap(),
+        );
+        blocked |= r.is_blocked();
+    }
+    assert!(blocked);
+}
+
+#[test]
+fn refused_data_is_bounded_by_the_announced_size() {
+    let mut r = rx();
+    // Announces 2 chunks of an image that is not allowed.
+    r.handle_text(r#"{"kind":"image","name":"a","mime":"image/svg+xml","size":32768}"#);
+    assert!(r.handle_binary(&[0; CHUNK_SIZE]).is_empty());
+    assert!(r.handle_binary(&[0; CHUNK_SIZE]).is_empty());
+    assert_eq!(
+        errors(&r.handle_binary(&[0; CHUNK_SIZE])),
+        [ContentError::TooLarge]
+    );
+    // Another message ends the skipping too (the sender gave up on the transfer).
+    r.handle_text(r#"{"kind":"image","name":"a","mime":"image/svg+xml","size":32768}"#);
+    assert!(r.handle_binary(&[0; CHUNK_SIZE]).is_empty());
+    let ev = r.handle_text(&link_message("https://example.org/").unwrap());
+    assert!(matches!(&ev[..], [ContentEvent::LinkRequested { .. }]));
+    assert_eq!(
+        errors(&r.handle_binary(&[0; CHUNK_SIZE])),
+        [ContentError::UnexpectedChunk]
+    );
+    // An absurd announcement is not believed: its chunks are violations again.
+    r.handle_text(&format!(
+        r#"{{"kind":"image","name":"a","mime":"image/svg+xml","size":{}}}"#,
+        MAX_SKIPPED_BYTES + 1
+    ));
+    assert_eq!(
+        errors(&r.handle_binary(&[0; CHUNK_SIZE])),
+        [ContentError::UnexpectedChunk]
+    );
+}
+
+#[test]
+fn violations_decay_over_time() {
+    let mut r = ContentReceiver::new(ContentOptions {
+        max_violations: 5,
+        violation_decay: Duration::from_millis(40),
+        ..ContentOptions::default()
+    });
+    for _ in 0..4 {
+        r.handle_text("junk");
+    }
+    assert_eq!(r.violations(), 4);
+    std::thread::sleep(Duration::from_millis(250));
+    r.handle_text("junk");
+    assert_eq!(r.violations(), 1, "the old ones were forgotten");
+    // A slow trickle never blocks...
+    for _ in 0..12 {
+        std::thread::sleep(Duration::from_millis(60));
+        r.handle_text("junk");
+    }
+    assert!(!r.is_blocked());
+    // ...a burst does.
+    for _ in 0..10 {
+        r.handle_text("junk");
+    }
+    assert!(r.is_blocked());
+}
+
+#[test]
+fn a_stalled_transfer_is_dropped_with_an_event() {
+    let mut r = ContentReceiver::new(ContentOptions {
+        transfer_idle_timeout: Duration::from_millis(30),
+        ..ContentOptions::default()
+    });
+    assert_eq!(r.idle_deadline(), None);
+    r.handle_text(&image_start(50_000));
+    r.handle_binary(&[0; CHUNK_SIZE]);
+    assert!(r.idle_deadline().is_some());
+    assert!(r.tick(Instant::now()).is_empty(), "not yet");
+    std::thread::sleep(Duration::from_millis(60));
+    let ev = r.tick(Instant::now());
+    assert_eq!(errors(&ev), [ContentError::TransferTimeout]);
+    assert!(!r.transfer_active());
+    assert_eq!(r.violations(), 0, "a stall is not a violation");
+    assert_eq!(r.idle_deadline(), None);
+    // The next transfer works.
+    let ev = feed(
+        &mut r,
+        image_transfer("i.png", ImageMime::Png, &[1; 10]).unwrap(),
+    );
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, ContentEvent::ImageReceived { .. }))
+    );
+}
+
+#[test]
+fn opening_documents_is_budgeted() {
+    let mut r = ContentReceiver::new(ContentOptions {
+        isolation: Isolation::InProcess,
+        open_burst: 2,
+        open_refill: Duration::from_secs(3600),
+        ..ContentOptions::default()
+    });
+    for _ in 0..2 {
+        let ev = feed(&mut r, document_transfer("m.pdf", MINIMAL).unwrap());
+        assert!(errors(&ev).is_empty(), "{ev:?}");
+    }
+    let ev = feed(&mut r, document_transfer("m.pdf", MINIMAL).unwrap());
+    assert_eq!(errors(&ev), [ContentError::DocumentRejected], "{ev:?}");
+    assert_eq!(r.document_state(), None, "the old document is gone too");
+    assert_eq!(r.violations(), 1);
+}
+
+#[test]
+fn a_refused_document_clears_the_old_one() {
+    let mut r = open_classroom();
+    assert!(r.document_state().is_some());
+    let ev = r.handle_text(&doc_start(MAX_DOCUMENT_BYTES + 1));
+    assert_eq!(errors(&ev), [ContentError::DocumentRejected]);
+    assert_eq!(r.document_state(), None);
+}
+
+#[test]
+fn a_panicking_job_keeps_the_violation_state() {
+    let mut r = open_classroom();
+    for _ in 0..5 {
+        r.handle_text("junk");
+    }
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    let Next::Work(job) = r.next_action(Instant::now(), false) else {
+        panic!()
+    };
+    let id = job.id();
+    drop(job); // the thread died with it
+    let ev = r.work_panicked(id);
+    assert_eq!(errors(&ev), [ContentError::RenderFailed]);
+    assert_eq!(r.violations(), 5, "nothing was reset");
+    // The receiver goes on: the page is asked for again.
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    assert_eq!(drain(&mut r).1, 1);
+}
+
+#[test]
+fn page_commands_that_arrive_while_a_document_opens_apply_to_it() {
+    let mut r = rx();
+    // Feed the whole transfer without running the open.
+    for item in document_transfer("c.pdf", CLASSROOM).unwrap() {
+        match item {
+            Outgoing::Text(t) => assert!(errors(&r.feed_text(&t)).is_empty()),
+            Outgoing::Binary(b) => assert!(r.feed_binary(b).is_empty()),
+        }
+    }
+    // The sender does not wait for the open: next, go to 3, back one.
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    r.feed_text(&cmd_message(ControlCmd::GoToPage { page: 3 }));
+    r.feed_text(&cmd_message(ControlCmd::PrevPage));
+    let (ev, jobs) = drain(&mut r);
+    assert_eq!(jobs, 2, "one open, one render");
+    assert!(
+        matches!(&ev[0], ContentEvent::DocumentOpened { pages: 3, .. }),
+        "{ev:?}"
+    );
+    assert!(
+        matches!(&ev[1..], [ContentEvent::PageRendered { page: 2, .. }]),
+        "{ev:?}"
+    );
+    // Stop while it opens wins: nothing is shown afterwards.
+    for item in document_transfer("c.pdf", CLASSROOM).unwrap() {
+        match item {
+            Outgoing::Text(t) => drop(r.feed_text(&t)),
+            Outgoing::Binary(b) => drop(r.feed_binary(b)),
+        }
+    }
+    r.feed_text(&cmd_message(ControlCmd::NextPage));
+    assert_eq!(
+        r.feed_text(&cmd_message(ControlCmd::Stop)),
+        [ContentEvent::ContentStopped]
+    );
+    let (ev, _) = drain(&mut r);
+    assert!(ev.is_empty(), "{ev:?}");
+    assert_eq!(r.document_state(), None);
 }

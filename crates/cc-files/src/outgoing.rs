@@ -7,8 +7,8 @@
 use cc_proto::ControlCmd;
 
 use crate::wire::{
-    CHUNK_SIZE, ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_NAME_LENGTH, Message,
-    validate_link,
+    CHUNK_SIZE, ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_NAME_LENGTH, MAX_TEXT_CHARS,
+    Message, validate_link,
 };
 
 /// One item to send on the data channel.
@@ -123,7 +123,13 @@ pub fn document_transfer<'a>(name: &str, data: &'a [u8]) -> Result<Transfer<'a>,
 /// The message that sends a link (validated and normalised first).
 pub fn link_message(url: &str) -> Result<String, SendError> {
     let url = validate_link(url).ok_or(SendError::BadLink)?;
-    Ok(Message::Link { url }.to_json())
+    let json = Message::Link { url }.to_json();
+    // `validate_link` already bounds the normalised URL; this guards the whole message
+    // (JSON escaping can lengthen it) against the receiver's limit.
+    if json.chars().count() > MAX_TEXT_CHARS {
+        return Err(SendError::BadLink);
+    }
+    Ok(json)
 }
 
 /// The message that sends a remote-control command.
@@ -202,6 +208,16 @@ mod tests {
             cmd_message(ControlCmd::NextPage),
             r#"{"cmd":"next_page","kind":"cmd"}"#
         );
+    }
+
+    #[test]
+    fn a_link_that_normalises_too_long_is_refused_before_sending() {
+        // 1500 characters in, 9000 after percent-encoding: it would be refused by the receiver.
+        let long = format!("https://a.org/{}", "é".repeat(1500));
+        assert_eq!(link_message(&long).unwrap_err(), SendError::BadLink);
+        let ok = link_message(&format!("https://a.org/{}", "é".repeat(100))).unwrap();
+        assert!(ok.chars().count() <= MAX_TEXT_CHARS);
+        assert!(crate::wire::parse_message(&ok, MAX_IMAGE_BYTES, MAX_DOCUMENT_BYTES).is_ok());
     }
 
     #[test]

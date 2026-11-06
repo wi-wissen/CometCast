@@ -6,9 +6,13 @@ import {
   ControlSender,
   ImageAssembler,
   MAX_IMAGE_BYTES,
+  MAX_LINK_LENGTH,
+  MAX_NAME_LENGTH,
   SendError,
   chunkBytes,
+  nameLength,
   parseControlMessage,
+  sanitizeName,
   stripBidi,
   validateLinkUrl,
   type ControlReceiverHandlers,
@@ -401,5 +405,66 @@ describe('ControlSender -> ControlReceiver end to end (fake channel pair)', () =
     ])
     a.readyState = 'closed'
     expect(() => s.sendCmd('stop')).toThrow(SendError)
+  })
+})
+
+describe('links that grow when normalised (regression: 1500 x e-acute became 9000 characters)', () => {
+  it('refuses a link whose normalised form is too long, on both the sending and the receiving side', () => {
+    const long = 'https://a.org/' + '\u00e9'.repeat(1500)
+    expect(long.length).toBeLessThanOrEqual(MAX_LINK_LENGTH)
+    expect(validateLinkUrl(long)).toBeNull()
+    const a = new FakeChannel()
+    expect(new ControlSender(a).sendLink(long)).toBe(false)
+    expect(a.sent).toEqual([])
+    expect(parseControlMessage(JSON.stringify({ kind: 'link', url: long }))).toBeNull()
+  })
+  it('accepts a link that is short enough after normalising, and the result is a fixed point', () => {
+    const ok = validateLinkUrl('https://a.org/' + '\u00e9'.repeat(300))
+    expect(ok).not.toBeNull()
+    expect(ok!.length).toBeLessThanOrEqual(MAX_LINK_LENGTH)
+    expect(validateLinkUrl(ok!)).toBe(ok)
+    const at = 'https://a.org/' + '\u00e9'.repeat(Math.floor((MAX_LINK_LENGTH - 14) / 6))
+    expect(validateLinkUrl(at)?.length).toBeLessThanOrEqual(MAX_LINK_LENGTH)
+    expect(validateLinkUrl(at + 'x'.repeat(2000))).toBeNull()
+  })
+  it('agrees with the native clients on the limit of the whole message', () => {
+    // Backslashes stay in a fragment and double in JSON: still under 8192 characters.
+    const bs = validateLinkUrl('https://a.org/#' + '\\'.repeat(2000))
+    expect(bs).not.toBeNull()
+    const a = new FakeChannel()
+    expect(new ControlSender(a).sendLink(bs!)).toBe(true)
+  })
+})
+
+describe('file names (same rules as crates/cc-files)', () => {
+  const meta = (name: string) => JSON.stringify({ kind: 'image', name, mime: 'image/png', size: 5 })
+  it('counts characters, not UTF-16 units', () => {
+    const emoji = '\u{1f4c4}'
+    expect(nameLength(emoji.repeat(255))).toBe(255)
+    expect(parseControlMessage(meta(emoji.repeat(255)))).not.toBeNull()
+    expect(parseControlMessage(meta(emoji.repeat(256)))).toBeNull()
+    expect(parseControlMessage(meta('\u00e9'.repeat(255)))).not.toBeNull()
+    expect(parseControlMessage(meta('\u00e9'.repeat(256)))).toBeNull()
+    expect(parseControlMessage(meta('x'.repeat(MAX_NAME_LENGTH + 1)))).toBeNull()
+  })
+  it.each([
+    '\u2028', '\u2029', '\u200b', '\u200d', '\ufeff', '\u00ad', '\u2060', '\u2062', '\u{e0041}', '\u{e0001}',
+    '\u2800', '\u3164', '\u202e', '\u0085', '\u0007', '\u180e',
+  ])('strips invisible U+%s from names', (c) => {
+    expect(sanitizeName(`a${c}b`)).toBe('ab')
+    expect(parseControlMessage(meta(`a${c}b`))).toMatchObject({ name: 'ab' })
+  })
+  it('keeps emoji and combining marks, and refuses a name that is only invisible', () => {
+    expect(sanitizeName('Zeugnis \u{1f4c4} e\u0301.pdf')).toBe('Zeugnis \u{1f4c4} e\u0301.pdf')
+    expect(parseControlMessage(meta('\u200b\u2028\ufeff'))).toBeNull()
+  })
+  it('clips a long name sent by this client by characters and cleans it', async () => {
+    const a = new FakeChannel()
+    const name = '\u200b' + '\u{1f4c4}'.repeat(300)
+    await new ControlSender(a).sendImage(source(bytes(5), name))
+    const sent = JSON.parse(a.sent[0] as string) as { name: string }
+    expect(nameLength(sent.name)).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+    expect(sent.name).not.toContain('\u200b')
+    expect(parseControlMessage(a.sent[0] as string)).not.toBeNull()
   })
 })

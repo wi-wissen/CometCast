@@ -67,15 +67,25 @@ impl ReceiverOptions {
 }
 
 /// The content events of a [`ReceiverCore`] (from [`ReceiverCore::take_content_events`]).
-/// The queue behind it is bounded: while the application does not read, the sender is slowed down.
+///
+/// The queue behind it is bounded by **count (16) and by bytes (32 MiB of pictures)**: while
+/// the application does not read, the sender is slowed down. A single event is always
+/// admitted into an empty queue, so a large page (up to the output limit of `cc-docs`,
+/// 7680 x 4320 pixels = 127 MiB of RGBA by default) can wait alone. A `PageRendered` that is
+/// still waiting when a newer one arrives is dropped: only the latest picture matters.
+///
+/// Keep reading this stream **while** you read [`ReceiverCore::next_event`] (for example in
+/// one `select!`, content first), and after [`ReceiverEvent::PeerLeft`] read it until it
+/// returns `None`: content that arrived just before the sender left is still queued then.
+/// UNCERTAIN: the sizes are placeholders, unmeasured.
 pub struct ContentEvents {
-    rx: mpsc::Receiver<ContentEvent>,
+    rx: content::EventStream,
 }
 
 impl ContentEvents {
     /// Next event, or `None` after the core has stopped and all were read.
     pub async fn next(&mut self) -> Option<ContentEvent> {
-        self.rx.recv().await
+        self.rx.next().await
     }
 }
 
@@ -139,7 +149,7 @@ pub struct ReceiverCore {
     ice_servers: Vec<IceServerConfig>,
     session: Arc<Session>,
     events: mpsc::UnboundedReceiver<ReceiverEvent>,
-    content_events: Option<mpsc::Receiver<ContentEvent>>,
+    content_events: Option<content::EventStream>,
     content_width: mpsc::UnboundedSender<u32>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
@@ -186,7 +196,7 @@ impl ReceiverCore {
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
         let (width_tx, width_rx) = mpsc::unbounded_channel();
-        let (content_tx, content_rx) = mpsc::channel(content::EVENT_QUEUE);
+        let (content_tx, content_rx) = content::event_queue();
         let content = options.content.map(|o| ContentSetup {
             options: o,
             widths: width_rx,
@@ -277,7 +287,7 @@ impl Drop for ReceiverCore {
 struct ContentSetup {
     options: ContentOptions,
     widths: mpsc::UnboundedReceiver<u32>,
-    events: mpsc::Sender<ContentEvent>,
+    events: content::EventSink,
 }
 
 /// The background loop: signalling messages in, session events in, receiver events out.

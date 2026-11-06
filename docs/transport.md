@@ -98,7 +98,7 @@ receiver accepts the first channel with that label and closes others. Message fo
 
 | Layer | What |
 | --- | --- |
-| `cc-transport`: `Session::create_control_channel`, `SessionEvent::ControlChannel`, `ControlChannel` | the channel; incoming messages through a **bounded** queue (64 messages); sending waits when more than 1 MiB is queued (`with_data_channel_send_buffer_limit`), thresholds 256 KiB / 1 MiB as the web client; `flush`, `close_graceful` |
+| `cc-transport`: `Session::create_control_channel`, `SessionEvent::ControlChannel`, `ControlChannel` | the channel; incoming messages through a queue bounded by **count** (64 messages, each up to the SCTP maximum; the size rules are checked by `cc-files`: 32 KiB for text, exactly 16 KiB for chunks, and every stray or malformed message counts as a violation there); sending waits when more than 1 MiB is queued (`with_data_channel_send_buffer_limit`), thresholds 256 KiB / 1 MiB as the web client; `flush`, `close_graceful` |
 | `cc-files` | `wire` (parse and validate every message, link rules like the web client's `validateLinkUrl`), `outgoing` (chunking), `receiver::ContentReceiver` (state machine) |
 | `cc-sender` | `ContentSender` (content-only sender), `ControlSender` (`send_image`, `send_document`, `send_link`, `send_cmd`, `finish`), `SenderOptions::control` for a channel next to video |
 | `cc-receiver` | `ReceiverOptions::content` turns it on; events come from `ReceiverCore::take_content_events()`: `TransferStarted`, `ImageReceived`, `LinkRequested`, `DocumentOpened`, `PageRendered`, `ContentStopped`, `Error`; `set_content_target_width` |
@@ -109,22 +109,55 @@ Receiver rules (each has a unit test in `crates/cc-files`, several also in `crat
   10 MiB, PDFs 64 MiB and `cc-docs`' own file limit); data past the announced size ends the transfer.
 - Every chunk is exactly 16 KiB except the last, so messages are bounded by size / 16 KiB (tiny-chunk floods are refused);
   chunks without a transfer, an end message of the wrong kind, a size mismatch and a transfer that interrupts another one
-  are protocol violations (reported; a flood of unexpected chunks gives one event). After 64 violations the receiver
-  blocks itself and closes the channel.
-- Links are validated again (http/https, no credentials, at most 2048 characters, no control characters, WHATWG parsing
-  through the `url` crate) and reported as `LinkRequested`; **never opened by the core**.
+  are protocol violations (reported; a flood of unexpected chunks gives one event; each stray chunk counts). After 64
+  violations the receiver blocks itself and closes the channel. Violations **decay**: one is forgotten per 2 s, so rare
+  slips in a long session do not add up, while a flood does. A **refused** transfer start (too large, type not allowed;
+  a refused `document` is reported as `DocumentRejected` and the shown document is closed) is one violation, and the
+  data of that transfer is swallowed silently up to the announced size (at most 1 GiB; a larger announcement is not
+  believed) and its end message; any other text message ends the skipping. An honest 8 MiB PDF sent to a receiver
+  that takes 1 MiB therefore costs one violation, not 513.
+- Links are validated again (http/https, no credentials, at most 2048 characters as written and as normalised, no control
+  characters, WHATWG parsing through the `url` crate, idempotent) and reported as `LinkRequested`; **never opened by the core**.
 - A PDF goes to `cc_docs::Document::open_with_options` (child process with memory and time limits, `Isolation::Auto` or the
   application's choice) and a page is rendered only after its size was checked against the output limits (scaled down to
-  fit when it would be too large). Page numbers are clamped by `DocumentSession`. Every failure is an `Error` event.
-- Memory on the receiving side is bounded: library queue (256 messages), inbox (64), event queue (8; a slow application
-  slows the sender down), one transfer buffer, one document. Tested: 48 images of 1 MiB to a reader that does not read.
+  fit when it would be too large). Page numbers are clamped by `DocumentSession`. Every failure is an `Error` event; a
+  document that cannot be opened is also a violation, and opens are rate limited (burst of 5, one more per 3 s), because
+  each costs a child process. A new document always closes the old one first (nothing stale stays shown).
+- Page commands do not render by themselves. The content task reads everything that is queued, so a flood of
+  `next_page` / `prev_page` / `go_to_page` costs **one** render of the last page asked for (tested: 1000 commands, a
+  handful of renders). Renders keep at least 100 ms between their starts. `stop`, a new document and a new image cancel a
+  running render at once (the cc-docs cancel flag kills the child process); a newer page cancels a render that already ran
+  for more than 1 s, a faster one is allowed to finish and its picture is still delivered. Opening a document cannot be
+  interrupted (up to the open time limit of `cc-docs`, 10 s by default); its result is dropped if `stop` came in the
+  meantime. A panic in the blocking thread does not reset the receiver: violations and the blocked state stay.
+  UNCERTAIN: 100 ms, 1 s and the open budget are placeholders, unmeasured; the in-process engine (tests, no worker)
+  cannot interrupt a render.
+- A transfer that receives nothing for 60 s is dropped with a `transfer_timeout` event (not a violation).
+- Memory on the receiving side is bounded: library queue (256 messages), inbox (64 messages, up to the SCTP maximum each),
+  event queue (see below), one transfer buffer (at most 64 MiB for a PDF, 10 MiB for an image), the document waiting to open
+  and the opened one (about 64 MiB each; the render child holds its own copy), and one page being rendered (at most the
+  output limit of `cc-docs`, 7680 x 4320 x 4 = about 127 MiB). The event queue is bounded by **count (16) and by bytes
+  (32 MiB of pictures)**; a single event is always admitted into an empty queue, and a `PageRendered` that is still queued
+  when a newer one arrives is dropped. So pages cannot pile up: the queue holds at most 32 MiB, or one event if that is
+  larger. Worst case at the default limits, roughly: 64 (transfer) + 64 + 64 (document) + 127 (render) + 127 (queued
+  page) = about 450 MiB plus the application's own copy of what it shows. UNCERTAIN: computed from the limits, not
+  measured. Tested: 48 images of 1 MiB to a reader that does not read; the byte bound of the queue in
+  `crates/cc-receiver/src/content.rs`.
 - `ContentSender` closes the data channel before the connection (the close is ordered after the data), so the browser
   delivers the last messages first; closing the connection at once lost the end of a transfer in about half of the runs
   against Chromium. `send-file` also stays connected until Ctrl-C (or `--seconds N`) because a web receiver drops the
   shown content when the sender leaves.
 
-UNCERTAIN: the limits (64 MiB documents, 64 violations, queue sizes, thresholds) are guesses, not measured. There is no
-timeout for a transfer that stalls half way (it holds one buffer until the next transfer or `stop`). Magic bytes of images
+**Integrators:** read `ReceiverCore::take_content_events()` **while** you read `next_event()` (one `select!`, content
+first; the CLI does), because the content task is slowed down by a full queue and `PeerLeft` is only emitted after the
+content that was on its way had a chance (at most 5 s) to be handed over. After `PeerLeft`, read the content stream until
+it returns `None` before you exit or drop the core; otherwise the last events (for example the final page) are lost.
+`cometcast-cli receive` does this. The tests of `crates/cc-receiver/tests/content.rs` render in the `cc-docs-worker` child
+process and **fail** when it is missing or broken (run `cargo build --workspace --bins` first); set
+`COMETCAST_ALLOW_INPROCESS_RENDER=1` to allow the in-process fallback on purpose.
+
+UNCERTAIN: the limits (64 MiB documents, 64 violations, queue sizes, thresholds) are guesses, not measured. The 60 s
+timeout of a stalled transfer is a placeholder. Magic bytes of images
 are not checked (the web client does not either); the declared type only decides how the application shows the bytes.
 Throughput of the data channel was not measured. Only Chromium was tested against the native peers.
 

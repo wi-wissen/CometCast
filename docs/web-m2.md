@@ -37,10 +37,10 @@ protocol types) once it has been exercised, and it may change.
 | `kind` | Fields | Meaning |
 |--------|--------|---------|
 | `cmd` | `cmd`: a `ControlCmd` from cc-proto in serde's default form: `"next_page"`, `"prev_page"`, `"stop"`, `{"go_to_page":{"page":3}}` | Remote-control command. The web receiver acts only on `stop` (closes the shown image or link); page commands are accepted and ignored until documents exist. |
-| `image` | `name` (string, 1..255), `mime` (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `size` (integer bytes, 1..10 MiB) | Starts an image transfer. Binary chunks follow. |
+| `image` | `name` (string, 1..255 characters), `mime` (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `size` (integer bytes, 1..10 MiB) | Starts an image transfer. Binary chunks follow. |
 | `image_end` | none | Ends the transfer; the receiver checks that the received byte count equals `size`. |
-| `link` | `url` (string, at most 2048 characters) | Asks the receiver to open a link. See below. |
-| `document` | `name` (string, 1..255), `mime` (`application/pdf` only), `size` (integer bytes, 1..64 MiB) | Starts a PDF transfer, **sent by native clients; the web client does not send it**. Binary chunks follow, exactly as for an image. UNCERTAIN: new kind, defined by the native clients, not yet agreed anywhere else; the 64 MiB limit is a guess. |
+| `link` | `url` (string, at most 2048 characters, **and the normalised URL at most 2048 characters too**) | Asks the receiver to open a link. See below. |
+| `document` | `name` (string, 1..255 characters), `mime` (`application/pdf` only), `size` (integer bytes, 1..64 MiB) | Starts a PDF transfer, **sent by native clients; the web client does not send it**. Binary chunks follow, exactly as for an image. UNCERTAIN: new kind, defined by the native clients, not yet agreed anywhere else; the 64 MiB limit is a guess. |
 | `document_end` | none | Ends the PDF transfer; the receiver checks that the received byte count equals `size`, then opens the document. |
 
 Example sequence for a document: `{"kind":"document","name":"a.pdf","mime":"application/pdf","size":24832}`,
@@ -52,13 +52,29 @@ document is shown).
 Example sequence for an image: `{"kind":"image","name":"a.png","mime":"image/png","size":40000}`,
 then three binary messages (16384, 16384, 7232 bytes), then `{"kind":"image_end"}`.
 
+### Names and link length
+
+- A `name` is 1 to 255 **Unicode characters** (code points), counted the same way on every client; the web
+  client counts code points, not UTF-16 units (an emoji is one character). The receiver removes control
+  characters, bidirectional controls and other invisible characters before showing a name: the Unicode
+  format characters (category Cf, e.g. U+200B, U+FEFF, U+00AD, tag characters U+E0000..U+E007F), U+2028 and
+  U+2029, and a few blank-looking letters (U+2800, U+3164, U+115F, U+1160, U+17B4, U+17B5, U+FFA0). A name
+  that is empty after cleaning is refused. UNCERTAIN: the list is hand-written on both sides (Rust
+  `sanitize_name`, web `sanitizeName`), not generated from the Unicode data.
+- A link counts against the 2048 characters **twice**: as written and as normalised (percent-encoding, punycode).
+  1500 times "e-acute" is 1500 characters but 9000 after normalising, so it is refused by the sender and by the
+  receiver. The whole `link` message must stay within 8192 characters. Validation is idempotent: a link that
+  passes becomes a URL that passes again, unchanged.
+
 ### Binary messages
 
 An `ArrayBuffer` of at most 16 KiB (16384 bytes) carrying the next bytes of the image announced by
 the last `image` message, in order. The channel is ordered and reliable, so there are no sequence
 numbers. A binary message without a preceding `image` (or `document`), or one that would exceed `size`, is
 rejected and the transfer is dropped. A new `image` message replaces a transfer in progress (a native
-receiver also reports that as a protocol violation).
+receiver also reports that as a protocol violation). A native receiver that **refuses** a start message
+(too large, type not allowed) counts that as one violation and silently swallows the chunks and the end
+message that follow, up to the announced size; the web client does not do that.
 
 The sender stops writing while the channel's `bufferedAmount` is above 1 MiB and resumes at the
 256 KiB low-water mark (`bufferedamountlow`).
@@ -87,8 +103,9 @@ measurements behind them. 16 KiB is the size commonly considered interoperable a
   render PDFs through `cc-docs` in a child process (the file is treated as hostile, see
   [documents.md](documents.md)).
 - Native receivers apply the same rules as the web client (MIME allow list, link validation, chunk rule, size
-  limits) and a few more: a hard size cap while receiving, a message-count cap, and blocking a peer after 64
-  protocol violations. Details in [transport.md](transport.md).
+  limits) and a few more: a hard size cap while receiving, a message-count cap, a stalled-transfer timeout
+  (60 s), merging of page commands, and blocking a peer after 64 protocol violations (which decay, one per 2 s).
+  Details in [transport.md](transport.md).
 
 UNCERTAIN: whether a link opened by someone else's request is acceptable for every deployment (for
 example kiosks) is not decided; a policy or allow list may be needed later.

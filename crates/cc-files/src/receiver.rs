@@ -3,11 +3,22 @@
 //! everything and drives a PDF through `cc-docs`.
 //!
 //! [`ContentReceiver`] is a plain state machine: feed it each text and binary message of the
-//! channel in order, collect [`ContentEvent`]s. It does no network I/O and never panics on
-//! hostile input. The only calls that can take long are opening a document and rendering a
-//! page (both happen in the sandboxed render process of `cc-docs`, up to its time limits), so
-//! callers run [`ContentReceiver::handle_text`] off the async runtime's threads
-//! (`cc-receiver` does).
+//! channel in order ([`ContentReceiver::feed_text`], [`ContentReceiver::feed_binary`]),
+//! collect [`ContentEvent`]s. It does no network I/O and never panics on hostile input.
+//!
+//! The only things that can take long are opening a document and rendering a page (both
+//! happen in the sandboxed render process of `cc-docs`, up to its time limits). Feeding never
+//! blocks: it leaves such jobs as [`Work`] for [`ContentReceiver::next_action`]; the caller
+//! runs [`Work::run`] on a thread that may block and hands the result to
+//! [`ContentReceiver::finish_work`] (`cc-receiver` does). While a job runs, messages keep
+//! coming in, so:
+//!
+//! * a flood of page commands is merged into one render of the last page asked for, and
+//!   renders keep a minimum interval;
+//! * `stop`, a new document and a new image cancel a running render at once (a render that is
+//!   slow and stale is cancelled too); a document open cannot be interrupted, its result is
+//!   dropped when it returns;
+//! * [`ContentReceiver::handle_text`] is the simple form that does it all in the calling thread.
 //!
 //! Safety rules (each one has a test):
 //! * Memory is bounded: at most one transfer is held, its buffer is reserved once at the
@@ -19,19 +30,31 @@
 //! * Chunks without a transfer, an end message of the wrong kind, a size mismatch and a new
 //!   transfer that interrupts one are protocol violations. Too many violations (default 64)
 //!   block the receiver: further input is ignored and the owner is told to close the channel.
+//!   Violations decay (one per 2 s by default), so a long session is not blocked by rare slips.
+//!   A **refused** transfer start (too large, type not allowed) is one violation; the data
+//!   that follows is swallowed silently up to the announced size, then its end message.
+//! * Opening a document is budgeted: a failed open is a violation, and opens are rate limited
+//!   (burst of 5, one more per 3 s), because each costs a child process.
+//! * A transfer that stalls for 60 s is dropped with an event ([`ContentReceiver::tick`]).
 //! * Links are validated again here and **never opened**; the event only asks.
 //! * A PDF is only handed to `cc-docs`, which checks it again, renders in a child process
 //!   and treats it as hostile. A page is only rendered after its size was checked against
 //!   the output limits.
 
+use std::collections::VecDeque;
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
-use cc_docs::{DocError, Document, DocumentSession, Isolation, Limits, SessionEvent as DocEvent};
+use cc_docs::{
+    DocError, Document, DocumentSession, Isolation, Limits, RenderOptions, SessionEvent as DocEvent,
+};
 use cc_proto::ControlCmd;
 
 use crate::wire::{
-    CHUNK_SIZE, ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, Message, ParseError, parse_message,
+    CHUNK_SIZE, ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, Message, ParseError, TransferKind,
+    announced_transfer, parse_message,
 };
 
 /// Smallest width a page is rendered at, in pixels.
@@ -92,6 +115,8 @@ pub enum ContentError {
     RenderFailed,
     /// Too many protocol violations; the receiver ignores further input.
     TooManyErrors,
+    /// A transfer received nothing for too long and was dropped (not a violation).
+    TransferTimeout,
 }
 
 impl ContentError {
@@ -108,6 +133,7 @@ impl ContentError {
             Self::DocumentRejected => "document_rejected",
             Self::RenderFailed => "render_failed",
             Self::TooManyErrors => "too_many_errors",
+            Self::TransferTimeout => "transfer_timeout",
         }
     }
 }
@@ -184,6 +210,22 @@ pub struct ContentOptions {
     pub target_width: u32,
     /// Protocol violations after which the receiver blocks.
     pub max_violations: u32,
+    /// Shortest time between the starts of two page renders (default 100 ms). Page commands
+    /// that arrive in between are merged: only the last page asked for is rendered.
+    pub min_render_interval: Duration,
+    /// A running render is cancelled when a newer page is asked for and it has run longer
+    /// than this (default 1 s). Faster renders are allowed to finish, so a steady stream of
+    /// commands still shows pictures. `stop`, a new document and a new image always cancel at once.
+    pub supersede_after: Duration,
+    /// A transfer that receives nothing for this long is dropped (default 60 s, zero = never).
+    pub transfer_idle_timeout: Duration,
+    /// One protocol violation is forgotten per this much time (default 2 s, zero = never).
+    pub violation_decay: Duration,
+    /// Documents that may be opened in a burst (default 5; the bucket refills one per
+    /// [`Self::open_refill`]). Opening costs a child process and up to the open time limit.
+    pub open_burst: u32,
+    /// Time to refill one document open (default 3 s, zero = no limit on opens).
+    pub open_refill: Duration,
 }
 
 impl Default for ContentOptions {
@@ -195,9 +237,24 @@ impl Default for ContentOptions {
             isolation: Isolation::Auto,
             target_width: DEFAULT_TARGET_WIDTH,
             max_violations: DEFAULT_MAX_VIOLATIONS,
+            min_render_interval: Duration::from_millis(100),
+            supersede_after: Duration::from_secs(1),
+            transfer_idle_timeout: Duration::from_secs(60),
+            violation_decay: Duration::from_secs(2),
+            open_burst: 5,
+            open_refill: Duration::from_secs(3),
         }
     }
 }
+
+/// The data of a refused transfer that is swallowed silently is bounded by what the sender
+/// announced, but at most this much; a bigger announcement is not believed and its chunks
+/// count as violations as before.
+/// UNCERTAIN: placeholder, unmeasured.
+pub const MAX_SKIPPED_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Page commands remembered while a document opens (the oldest are dropped past this).
+const MAX_QUEUED_COMMANDS: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -212,36 +269,180 @@ struct Active {
     buf: Vec<u8>,
     chunks: u64,
     max_chunks: u64,
+    last_activity: Instant,
+}
+
+/// The data of a refused transfer, which is dropped without further violations.
+struct Skipping {
+    document: bool,
+    chunks_left: u64,
+    last_activity: Instant,
 }
 
 /// A document that is shown.
 struct Shown {
-    doc: Document,
+    doc: Arc<Document>,
     pages: DocumentSession,
+}
+
+/// Bookkeeping for the one blocking job that may run at a time.
+struct Inflight {
+    id: u64,
+    is_open: bool,
+    started: Instant,
+    cancel: Arc<AtomicBool>,
+}
+
+/// What [`ContentReceiver::next_action`] decides. (A value is matched at once; boxing the job would only add an allocation.)
+#[allow(clippy::large_enum_variant)]
+pub enum Next {
+    /// Run this on a thread that may block ([`Work::run`]) and give the result to
+    /// [`ContentReceiver::finish_work`].
+    Work(Work),
+    /// Ask again at this time (the minimum render interval has not passed).
+    Wait(Instant),
+    /// Nothing to do until the next message.
+    Idle,
+}
+
+// One value lives for the duration of one job and is moved once; boxing would only add an allocation.
+#[allow(clippy::large_enum_variant)]
+enum Job {
+    Open {
+        name: String,
+        bytes: Vec<u8>,
+        limits: Limits,
+        isolation: Isolation,
+    },
+    Render {
+        doc: Arc<Document>,
+        index: usize,
+        page: u32,
+        width: u32,
+        limits: Limits,
+        cancel: Arc<AtomicBool>,
+    },
+}
+
+/// A job that blocks: opening a PDF or rendering a page (both wait for the render process of
+/// `cc-docs`). It owns everything it needs, so the receiver itself stays available for
+/// messages (and for `stop`) while it runs.
+pub struct Work {
+    id: u64,
+    epoch: u64,
+    job: Job,
+}
+
+// Same as `Job`: one short-lived value per job.
+#[allow(clippy::large_enum_variant)]
+enum Done {
+    Opened {
+        name: String,
+        result: Result<Document, DocError>,
+    },
+    Rendered {
+        page: u32,
+        result: Result<cc_docs::RenderedPage, DocError>,
+    },
+}
+
+/// The result of a [`Work`].
+pub struct WorkDone {
+    id: u64,
+    epoch: u64,
+    done: Done,
+}
+
+impl Work {
+    /// Identifies the job, for [`ContentReceiver::work_panicked`].
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// Run the job. Blocks for as long as the render process needs (bounded by the limits of
+    /// `cc-docs`, or shorter when cancelled).
+    pub fn run(self) -> WorkDone {
+        let done = match self.job {
+            Job::Open {
+                name,
+                bytes,
+                limits,
+                isolation,
+            } => Done::Opened {
+                name,
+                result: Document::open_with_options(bytes, limits, isolation),
+            },
+            Job::Render {
+                doc,
+                index,
+                page,
+                width,
+                limits,
+                cancel,
+            } => Done::Rendered {
+                page,
+                result: render(&doc, index, width, &limits, cancel),
+            },
+        };
+        WorkDone {
+            id: self.id,
+            epoch: self.epoch,
+            done,
+        }
+    }
 }
 
 /// The receiver state machine. See the module docs.
 pub struct ContentReceiver {
     opts: ContentOptions,
     active: Option<Active>,
+    skipping: Option<Skipping>,
     shown: Option<Shown>,
     violations: u32,
     blocked: bool,
     /// After an `unexpected_chunk` event, further ones are counted but not reported until
     /// the next text message (a flood must not flood the event queue).
     quiet_chunks: bool,
+    last_decay: Instant,
+    /// Document that is complete and waits for its open.
+    open_pending: Option<(String, Vec<u8>)>,
+    /// Page commands that came in while the new document was opening; applied to it when it is
+    /// shown (the sender cannot know how long an open takes). At most [`MAX_QUEUED_COMMANDS`].
+    queued_cmds: VecDeque<ControlCmd>,
+    /// The shown page (or width) differs from the last picture asked for.
+    render_wanted: bool,
+    last_render_start: Option<Instant>,
+    inflight: Option<Inflight>,
+    next_job: u64,
+    /// Bumped whenever the content is replaced or stopped; results of older jobs are dropped.
+    epoch: u64,
+    open_tokens: f64,
+    open_last: Instant,
 }
 
 impl ContentReceiver {
     /// A receiver with the given options.
     pub fn new(opts: ContentOptions) -> Self {
+        let now = Instant::now();
+        let open_tokens = f64::from(opts.open_burst);
         Self {
             opts,
             active: None,
+            skipping: None,
             shown: None,
             violations: 0,
             blocked: false,
             quiet_chunks: false,
+            last_decay: now,
+            open_pending: None,
+            queued_cmds: VecDeque::new(),
+            render_wanted: false,
+            last_render_start: None,
+            inflight: None,
+            next_job: 0,
+            epoch: 0,
+            open_tokens,
+            open_last: now,
         }
     }
 
@@ -250,7 +451,8 @@ impl ContentReceiver {
         self.blocked
     }
 
-    /// Protocol violations seen so far.
+    /// Protocol violations counted now (they decay over time, see
+    /// [`ContentOptions::violation_decay`]).
     pub fn violations(&self) -> u32 {
         self.violations
     }
@@ -280,6 +482,8 @@ impl ContentReceiver {
         if !self.blocked && self.violations > self.opts.max_violations {
             self.blocked = true;
             self.active = None;
+            self.skipping = None;
+            self.drop_document();
             out.push(ContentEvent::Error {
                 error: ContentError::TooManyErrors,
                 detail: "too many protocol violations; the channel is ignored from now on".into(),
@@ -287,13 +491,101 @@ impl ContentReceiver {
         }
     }
 
-    /// Handle one text message.
+    /// Forget one violation per [`ContentOptions::violation_decay`] that has passed.
+    fn decay(&mut self, now: Instant) {
+        let step = self.opts.violation_decay;
+        if self.violations == 0 || step.is_zero() {
+            self.last_decay = now;
+            return;
+        }
+        let steps = now.saturating_duration_since(self.last_decay).as_nanos() / step.as_nanos();
+        if steps > 0 {
+            let steps32 = u32::try_from(steps).unwrap_or(u32::MAX);
+            self.violations = self.violations.saturating_sub(steps32);
+            self.last_decay += step.saturating_mul(steps32);
+        }
+    }
+
+    /// Drop the shown document and everything on its way to the screen: a document waiting
+    /// to open, a running job (cancelled; its result is dropped when it comes back).
+    fn drop_document(&mut self) {
+        self.shown = None;
+        self.open_pending = None;
+        self.queued_cmds.clear();
+        self.render_wanted = false;
+        self.epoch = self.epoch.wrapping_add(1);
+        if let Some(i) = &self.inflight {
+            i.cancel.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// The page to show changed: render again, and cancel a render that is slow and now stale.
+    fn page_wanted(&mut self) {
+        self.render_wanted = true;
+        if let Some(i) = &self.inflight
+            && !i.is_open
+            && i.started.elapsed() > self.opts.supersede_after
+        {
+            i.cancel.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Start swallowing the data of a refused transfer.
+    fn begin_skip(&mut self, document: bool, size: u64, now: Instant) {
+        if self.blocked || size > MAX_SKIPPED_BYTES {
+            return;
+        }
+        self.skipping = Some(Skipping {
+            document,
+            chunks_left: size.div_ceil(CHUNK_SIZE as u64),
+            last_activity: now,
+        });
+    }
+
+    /// Handle one text message and run the work it causes (blocks). For callers without an
+    /// event loop; the `cc-receiver` task uses [`Self::feed_text`] and [`Self::next_action`].
     pub fn handle_text(&mut self, text: &str) -> Vec<ContentEvent> {
+        let mut out = self.feed_text(text);
+        self.run_pending(&mut out);
+        out
+    }
+
+    /// Handle one binary message (a chunk).
+    pub fn handle_binary(&mut self, chunk: &[u8]) -> Vec<ContentEvent> {
+        self.feed_binary(chunk)
+    }
+
+    /// Set the width pages are rendered at and render the shown page again (blocks). See
+    /// [`Self::feed_target_width`] for the non-blocking form.
+    pub fn set_target_width(&mut self, width: u32) -> Vec<ContentEvent> {
+        self.feed_target_width(width);
+        let mut out = Vec::new();
+        self.run_pending(&mut out);
+        out
+    }
+
+    /// Run all work now, ignoring the render interval.
+    fn run_pending(&mut self, out: &mut Vec<ContentEvent>) {
+        while let Next::Work(w) = self.next_action(Instant::now(), false) {
+            let done = w.run();
+            out.extend(self.finish_work(done));
+        }
+    }
+
+    /// Feed one text message. Never blocks: opening a document and rendering are left as
+    /// work for [`Self::next_action`]. Page commands only change the wanted page, so a flood
+    /// of them costs one render.
+    pub fn feed_text(&mut self, text: &str) -> Vec<ContentEvent> {
         let mut out = Vec::new();
         if self.blocked {
             return out;
         }
+        let now = Instant::now();
+        self.decay(now);
         self.quiet_chunks = false;
+        // Any text message ends the skipping of a refused transfer; only its own end
+        // message is swallowed without a word.
+        let skipping = self.skipping.take();
         let msg = parse_message(
             text,
             self.opts.max_image_bytes,
@@ -315,27 +607,61 @@ impl ContentReceiver {
                     ParseError::BadMime => "type not allowed",
                     ParseError::BadLink => "link not allowed",
                 };
-                self.violation(&mut out, ContentError::BadMessage, detail);
+                let announced = announced_transfer(text);
+                let document = announced.is_some_and(|(k, _)| k == TransferKind::Document);
+                if document {
+                    // The old document must not stay on screen as if nothing happened.
+                    self.drop_document();
+                }
+                let error = if document {
+                    ContentError::DocumentRejected
+                } else {
+                    ContentError::BadMessage
+                };
+                self.violation(&mut out, error, detail);
+                // One violation for the refused transfer; its data is swallowed.
+                if let Some((_, size)) = announced {
+                    self.begin_skip(document, size, now);
+                }
                 return out;
             }
         };
         match msg {
             Message::Image { name, mime, size } => {
-                self.start(&mut out, Kind::Image(mime), name, size);
+                self.start(&mut out, Kind::Image(mime), name, size, now);
             }
-            Message::Document { name, size } => self.start(&mut out, Kind::Document, name, size),
-            Message::ImageEnd => self.end(&mut out, false),
-            Message::DocumentEnd => self.end(&mut out, true),
+            Message::Document { name, size } => {
+                self.start(&mut out, Kind::Document, name, size, now);
+            }
+            Message::ImageEnd | Message::DocumentEnd => {
+                let document = msg == Message::DocumentEnd;
+                if skipping.is_some_and(|s| s.document == document) {
+                    return out; // the end of the refused transfer
+                }
+                self.end(&mut out, document, now);
+            }
             Message::Link { url } => out.push(ContentEvent::LinkRequested { url }),
             Message::Cmd(cmd) => self.command(&mut out, &cmd),
         }
         out
     }
 
-    /// Handle one binary message (a chunk).
-    pub fn handle_binary(&mut self, chunk: &[u8]) -> Vec<ContentEvent> {
+    /// Feed one binary message (a chunk).
+    pub fn feed_binary(&mut self, chunk: &[u8]) -> Vec<ContentEvent> {
         let mut out = Vec::new();
         if self.blocked {
+            return out;
+        }
+        let now = Instant::now();
+        self.decay(now);
+        if let Some(s) = self.skipping.as_mut() {
+            if s.chunks_left == 0 {
+                self.skipping = None;
+                self.violation(&mut out, ContentError::TooLarge, "more data than announced");
+            } else {
+                s.chunks_left -= 1;
+                s.last_activity = now;
+            }
             return out;
         }
         let Some(a) = self.active.as_mut() else {
@@ -367,12 +693,31 @@ impl ContentReceiver {
                 // Capacity was reserved at the start, so this does not reallocate.
                 a.buf.extend_from_slice(chunk);
                 a.chunks += 1;
+                a.last_activity = now;
             }
         }
         out
     }
 
-    fn start(&mut self, out: &mut Vec<ContentEvent>, kind: Kind, name: String, size: u64) {
+    /// Set the width pages are rendered at; the shown page is rendered again (as work).
+    pub fn feed_target_width(&mut self, width: u32) {
+        let width = width.max(MIN_RENDER_WIDTH);
+        if width != self.opts.target_width {
+            self.opts.target_width = width;
+            if self.shown.is_some() && !self.blocked {
+                self.page_wanted();
+            }
+        }
+    }
+
+    fn start(
+        &mut self,
+        out: &mut Vec<ContentEvent>,
+        kind: Kind,
+        name: String,
+        size: u64,
+        now: Instant,
+    ) {
         if self.active.take().is_some() {
             self.violation(
                 out,
@@ -383,17 +728,20 @@ impl ContentReceiver {
                 return;
             }
         }
+        let document = kind == Kind::Document;
         let Ok(size_usize) = usize::try_from(size) else {
             self.violation(out, ContentError::TooLarge, "size does not fit");
+            self.begin_skip(document, size, now);
             return;
         };
         let mut buf = Vec::new();
         if buf.try_reserve_exact(size_usize).is_err() {
             self.violation(out, ContentError::TooLarge, "cannot reserve memory");
+            self.begin_skip(document, size, now);
             return;
         }
         out.push(ContentEvent::TransferStarted {
-            document: kind == Kind::Document,
+            document,
             name: name.clone(),
             size,
         });
@@ -404,10 +752,11 @@ impl ContentReceiver {
             buf,
             chunks: 0,
             max_chunks: size.div_ceil(CHUNK_SIZE as u64),
+            last_activity: now,
         });
     }
 
-    fn end(&mut self, out: &mut Vec<ContentEvent>, document: bool) {
+    fn end(&mut self, out: &mut Vec<ContentEvent>, document: bool, now: Instant) {
         let Some(a) = self.active.take() else {
             self.violation(out, ContentError::NoTransfer, "end without a transfer");
             return;
@@ -431,97 +780,243 @@ impl ContentReceiver {
         match a.kind {
             Kind::Image(mime) => {
                 // A picture replaces a document that was shown.
-                self.shown = None;
+                self.drop_document();
                 out.push(ContentEvent::ImageReceived {
                     name: a.name,
                     mime,
                     bytes: Blob::new(a.buf),
                 });
             }
-            Kind::Document => self.open_document(out, a.name, a.buf),
+            Kind::Document => self.queue_document(out, a.name, a.buf, now),
         }
     }
 
-    fn open_document(&mut self, out: &mut Vec<ContentEvent>, name: String, bytes: Vec<u8>) {
+    /// Take a token from the open budget.
+    fn open_allowed(&mut self, now: Instant) -> bool {
+        let refill = self.opts.open_refill;
+        if refill.is_zero() {
+            return true;
+        }
+        let burst = f64::from(self.opts.open_burst);
+        let gained =
+            now.saturating_duration_since(self.open_last).as_secs_f64() / refill.as_secs_f64();
+        self.open_last = now;
+        self.open_tokens = (self.open_tokens + gained).min(burst);
+        if self.open_tokens >= 1.0 {
+            self.open_tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn queue_document(
+        &mut self,
+        out: &mut Vec<ContentEvent>,
+        name: String,
+        bytes: Vec<u8>,
+        now: Instant,
+    ) {
         // The old document goes away first, whatever happens to the new one.
-        self.shown = None;
-        let doc = match Document::open_with_options(
-            bytes,
-            self.opts.doc_limits,
-            self.opts.isolation.clone(),
-        ) {
-            Ok(d) => d,
-            Err(e) => {
-                out.push(doc_error(ContentError::DocumentRejected, &e));
-                return;
-            }
-        };
-        let pages = u32::try_from(doc.page_count())
-            .ok()
-            .and_then(DocumentSession::new);
-        let Some(pages) = pages else {
-            out.push(doc_error(
+        self.drop_document();
+        if !self.open_allowed(now) {
+            self.violation(
+                out,
                 ContentError::DocumentRejected,
-                &DocError::NoPages,
-            ));
+                "too many documents in a short time",
+            );
             return;
-        };
-        out.push(ContentEvent::DocumentOpened {
-            name,
-            pages: pages.page_count(),
-        });
-        self.shown = Some(Shown { doc, pages });
-        self.render_current(out);
+        }
+        self.open_pending = Some((name, bytes));
     }
 
     fn command(&mut self, out: &mut Vec<ContentEvent>, cmd: &ControlCmd) {
         if *cmd == ControlCmd::Stop {
             self.active = None;
-            self.shown = None;
+            self.drop_document();
             out.push(ContentEvent::ContentStopped);
             return;
         }
         let Some(shown) = self.shown.as_mut() else {
-            return; // page commands without a document are ignored (the web client does too)
+            // While the document is opening the commands wait for it; without any document
+            // they are ignored (the web client does too).
+            if self.open_pending.is_some() || self.inflight.as_ref().is_some_and(|i| i.is_open) {
+                if self.queued_cmds.len() >= MAX_QUEUED_COMMANDS {
+                    self.queued_cmds.pop_front();
+                }
+                self.queued_cmds.push_back(cmd.clone());
+            }
+            return;
         };
         if let DocEvent::PageChanged(_) = shown.pages.apply(cmd) {
-            self.render_current(out);
+            self.page_wanted();
         }
     }
 
-    /// Set the width pages are rendered at; the shown page is rendered again if it changed.
-    pub fn set_target_width(&mut self, width: u32) -> Vec<ContentEvent> {
-        let mut out = Vec::new();
-        let width = width.max(MIN_RENDER_WIDTH);
-        if width != self.opts.target_width {
-            self.opts.target_width = width;
-            if self.shown.is_some() && !self.blocked {
-                self.render_current(&mut out);
+    /// Decide what to do next, if the one job that may run at a time is not running. With
+    /// `pace` set, renders keep [`ContentOptions::min_render_interval`] between their starts.
+    pub fn next_action(&mut self, now: Instant, pace: bool) -> Next {
+        if self.blocked || self.inflight.is_some() {
+            return Next::Idle;
+        }
+        if let Some((name, bytes)) = self.open_pending.take() {
+            let job = Job::Open {
+                name,
+                bytes,
+                limits: self.opts.doc_limits,
+                isolation: self.opts.isolation.clone(),
+            };
+            return Next::Work(self.begin(job, true, now, Arc::new(AtomicBool::new(false))));
+        }
+        if self.render_wanted
+            && let Some(shown) = self.shown.as_ref()
+        {
+            if pace
+                && let Some(t) = self.last_render_start
+                && now < t + self.opts.min_render_interval
+            {
+                return Next::Wait(t + self.opts.min_render_interval);
             }
+            let cancel = Arc::new(AtomicBool::new(false));
+            let job = Job::Render {
+                doc: Arc::clone(&shown.doc),
+                index: shown.pages.current_index(),
+                page: shown.pages.current_page(),
+                width: self.opts.target_width,
+                limits: self.opts.doc_limits,
+                cancel: Arc::clone(&cancel),
+            };
+            self.render_wanted = false;
+            self.last_render_start = Some(now);
+            return Next::Work(self.begin(job, false, now, cancel));
+        }
+        Next::Idle
+    }
+
+    fn begin(&mut self, job: Job, is_open: bool, now: Instant, cancel: Arc<AtomicBool>) -> Work {
+        self.next_job += 1;
+        self.inflight = Some(Inflight {
+            id: self.next_job,
+            is_open,
+            started: now,
+            cancel,
+        });
+        Work {
+            id: self.next_job,
+            epoch: self.epoch,
+            job,
+        }
+    }
+
+    /// Apply the result of a [`Work`]. A result for content that was stopped or replaced in
+    /// the meantime is dropped.
+    pub fn finish_work(&mut self, done: WorkDone) -> Vec<ContentEvent> {
+        let mut out = Vec::new();
+        if self.inflight.as_ref().is_some_and(|i| i.id == done.id) {
+            self.inflight = None;
+        }
+        if self.blocked || done.epoch != self.epoch {
+            return out;
+        }
+        match done.done {
+            Done::Opened { name, result } => match result {
+                Ok(doc) => {
+                    let pages = u32::try_from(doc.page_count())
+                        .ok()
+                        .and_then(DocumentSession::new);
+                    let Some(pages) = pages else {
+                        let e = DocError::NoPages;
+                        self.violation(&mut out, ContentError::DocumentRejected, &e.to_string());
+                        return out;
+                    };
+                    out.push(ContentEvent::DocumentOpened {
+                        name,
+                        pages: pages.page_count(),
+                    });
+                    let mut pages = pages;
+                    for c in self.queued_cmds.drain(..) {
+                        pages.apply(&c);
+                    }
+                    self.shown = Some(Shown {
+                        doc: Arc::new(doc),
+                        pages,
+                    });
+                    self.render_wanted = true;
+                }
+                // A document that cannot be opened counts against the violation budget:
+                // every open costs a child process.
+                Err(e) => self.violation(&mut out, ContentError::DocumentRejected, &e.to_string()),
+            },
+            Done::Rendered { page, result } => match result {
+                Ok(p) => out.push(ContentEvent::PageRendered {
+                    page,
+                    width: p.width,
+                    height: p.height,
+                    rgba: Blob::new(p.rgba),
+                }),
+                Err(DocError::Cancelled) => {}
+                Err(e) => out.push(doc_error(ContentError::RenderFailed, &e)),
+            },
         }
         out
     }
 
-    fn render_current(&mut self, out: &mut Vec<ContentEvent>) {
-        let Some(shown) = self.shown.as_ref() else {
-            return;
+    /// The thread that ran a [`Work`] panicked (it should not). The receiver keeps its state
+    /// (violations, blocked); the job is reported as failed.
+    pub fn work_panicked(&mut self, id: u64) -> Vec<ContentEvent> {
+        let Some(i) = self.inflight.take_if(|i| i.id == id) else {
+            return Vec::new();
         };
-        let index = shown.pages.current_index();
-        let page = shown.pages.current_page();
-        match render(
-            &shown.doc,
-            index,
-            self.opts.target_width,
-            &self.opts.doc_limits,
-        ) {
-            Ok(p) => out.push(ContentEvent::PageRendered {
-                page,
-                width: p.width,
-                height: p.height,
-                rgba: Blob::new(p.rgba),
-            }),
-            Err(e) => out.push(doc_error(ContentError::RenderFailed, &e)),
+        let error = if i.is_open {
+            ContentError::DocumentRejected
+        } else {
+            ContentError::RenderFailed
+        };
+        vec![ContentEvent::Error {
+            error,
+            detail: "internal error while handling content".into(),
+        }]
+    }
+
+    /// When [`Self::tick`] next has something to do (the idle timeout of a transfer).
+    pub fn idle_deadline(&self) -> Option<Instant> {
+        let t = self.opts.transfer_idle_timeout;
+        if t.is_zero() {
+            return None;
         }
+        let a = self.active.as_ref().map(|a| a.last_activity);
+        let s = self.skipping.as_ref().map(|s| s.last_activity);
+        a.into_iter().chain(s).min().map(|at| at + t)
+    }
+
+    /// Drop a transfer that stalled (nothing received for
+    /// [`ContentOptions::transfer_idle_timeout`]) and say so. Not a violation: the network
+    /// can stall.
+    pub fn tick(&mut self, now: Instant) -> Vec<ContentEvent> {
+        let mut out = Vec::new();
+        let t = self.opts.transfer_idle_timeout;
+        if t.is_zero() {
+            return out;
+        }
+        if self
+            .skipping
+            .as_ref()
+            .is_some_and(|s| now.saturating_duration_since(s.last_activity) >= t)
+        {
+            self.skipping = None;
+        }
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|a| now.saturating_duration_since(a.last_activity) >= t)
+        {
+            self.active = None;
+            out.push(ContentEvent::Error {
+                error: ContentError::TransferTimeout,
+                detail: "the transfer stalled and was dropped".into(),
+            });
+        }
+        out
     }
 }
 
@@ -539,6 +1034,7 @@ fn render(
     index: usize,
     width: u32,
     limits: &Limits,
+    cancel: Arc<AtomicBool>,
 ) -> Result<cc_docs::RenderedPage, DocError> {
     let size = doc.page_size(index)?;
     if !size.is_valid() {
@@ -564,7 +1060,14 @@ fn render(
             height: h as u64,
         });
     }
-    doc.render_page(index, w as u32)
+    doc.render_page_with(
+        index,
+        w as u32,
+        &RenderOptions {
+            timeout: None,
+            cancel: Some(cancel),
+        },
+    )
 }
 
 #[cfg(test)]

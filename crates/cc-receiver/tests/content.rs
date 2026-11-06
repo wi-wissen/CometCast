@@ -3,9 +3,11 @@
 //! cc-server in this process and real UDP on 127.0.0.1: images, links, a PDF with page
 //! commands, stop, a slow reader (back-pressure), and a hostile sender.
 //!
-//! PDFs are rendered in the child process of cc-docs when the worker program `cc-docs-worker`
-//! is found (it is built by `cargo test --workspace` and found next to the test binaries),
-//! otherwise in process; the test says which.
+//! PDFs are rendered in the child process of cc-docs (the worker program `cc-docs-worker`,
+//! found next to the test binaries; run `cargo build --workspace --bins` first). If the worker
+//! is missing or does not work the tests **fail**: silently rendering in process would test a
+//! different, unsandboxed path. Set `COMETCAST_ALLOW_INPROCESS_RENDER=1` to allow the
+//! in-process fallback on purpose (for example on a platform without the worker).
 
 use std::time::Duration;
 
@@ -44,6 +46,11 @@ fn local_session() -> SessionConfig {
 /// A private copy of the render worker, made once per test run. The build directory can be
 /// rebuilt (for example by another cargo process) while the tests run, which would break a
 /// worker that runs from there.
+/// `COMETCAST_ALLOW_INPROCESS_RENDER=1` allows rendering in process when no worker works.
+fn allow_inprocess() -> bool {
+    std::env::var("COMETCAST_ALLOW_INPROCESS_RENDER").is_ok_and(|v| v == "1")
+}
+
 fn private_worker() -> Option<&'static std::path::PathBuf> {
     static COPY: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
     COPY.get_or_init(|| {
@@ -58,8 +65,13 @@ fn private_worker() -> Option<&'static std::path::PathBuf> {
             cc_docs::Limits::default(),
             Isolation::Process(WorkerSpec::new(copy.clone())),
         );
-        if probe.is_err() {
-            eprintln!("warning: the found cc-docs-worker does not work, rendering in process");
+        if let Err(e) = probe {
+            assert!(
+                allow_inprocess(),
+                "the found cc-docs-worker does not work ({e}); build the current one with \
+                 `cargo build --workspace --bins`, or set COMETCAST_ALLOW_INPROCESS_RENDER=1"
+            );
+            eprintln!("note: the found cc-docs-worker does not work, rendering in process");
             return None;
         }
         Some(copy)
@@ -71,6 +83,11 @@ fn content_options() -> ContentOptions {
     let isolation = if let Some(copy) = private_worker() {
         Isolation::Process(WorkerSpec::new(copy.clone()))
     } else {
+        assert!(
+            allow_inprocess(),
+            "cc-docs-worker not found; run `cargo build --workspace --bins` first, or set \
+             COMETCAST_ALLOW_INPROCESS_RENDER=1 to render in process"
+        );
         eprintln!("note: cc-docs-worker not found, rendering in process");
         Isolation::InProcess
     };
@@ -82,9 +99,13 @@ fn content_options() -> ContentOptions {
 }
 
 async fn start_receiver(server: &str) -> Rx {
+    start_receiver_with(server, content_options()).await
+}
+
+async fn start_receiver_with(server: &str, content: ContentOptions) -> Rx {
     let mut o = ReceiverOptions::new(server);
     o.session = local_session();
-    o.content = Some(content_options());
+    o.content = Some(content);
     Rx::new(ReceiverCore::start(o).await.expect("receiver start"))
 }
 
@@ -414,4 +435,92 @@ async fn a_receiver_without_content_refuses_the_channel() {
     let _ = tx.control().send_link("https://example.org/").await;
     tx.stop().await;
     rx.stop().await;
+}
+
+/// 1000 page commands in a row are merged into a few renders, and `stop` is honoured at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_flood_of_page_commands_is_merged_and_stop_is_prompt() {
+    let server = start_server().await;
+    let mut rx = start_receiver(&server).await;
+    let tx = start_content_sender(&server, &rx).await;
+    let ctl = tx.control();
+    ctl.send_document("class.pdf", CLASSROOM).await.unwrap();
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::DocumentOpened { pages: 3, .. }
+    ));
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::PageRendered { page: 1, .. }
+    ));
+
+    let started = std::time::Instant::now();
+    for i in 0..1000 {
+        let cmd = if i % 2 == 0 {
+            ControlCmd::NextPage
+        } else {
+            ControlCmd::PrevPage
+        };
+        ctl.send_cmd(cmd).await.unwrap();
+    }
+    ctl.send_cmd(ControlCmd::Stop).await.unwrap();
+    let mut renders = 0;
+    loop {
+        match next(&mut rx).await {
+            ContentEvent::PageRendered { .. } => renders += 1,
+            ContentEvent::ContentStopped => break,
+            other => panic!("{other:?}"),
+        }
+    }
+    // Before: one render per command (1000 x 100+ ms). Now a handful.
+    assert!(renders <= 40, "{renders} renders for 1000 commands");
+    assert!(
+        started.elapsed() < Duration::from_secs(20),
+        "stop was queued behind renders: {:?}",
+        started.elapsed()
+    );
+    // The channel is still fine afterwards.
+    ctl.send_link("https://example.org/").await.unwrap();
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::LinkRequested { .. }
+    ));
+    assert!(ctl.finish().await);
+    tx.stop().await;
+    rx.core.stop().await;
+}
+
+/// One refused transfer does not block the channel (the reviewer's scenario: the receiver takes
+/// 1 MiB, the sender honestly sends an 8 MiB PDF).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refused_document_does_not_block_the_channel() {
+    let server = start_server().await;
+    let mut opts = content_options();
+    opts.max_document_bytes = 1024 * 1024;
+    let mut rx = start_receiver_with(&server, opts).await;
+    let tx = start_content_sender(&server, &rx).await;
+    let ctl = tx.control();
+    let mut big = b"%PDF-1.4\n".to_vec();
+    big.resize(8 * 1024 * 1024, b' ');
+    ctl.send_document("big.pdf", &big).await.unwrap();
+    match next(&mut rx).await {
+        ContentEvent::Error { error, .. } => assert_eq!(error, ContentError::DocumentRejected),
+        other => panic!("{other:?}"),
+    }
+    ctl.send_link("https://example.org/after").await.unwrap();
+    // Exactly the one error above: the 512 chunks and the end message made no noise.
+    assert_eq!(
+        next(&mut rx).await,
+        ContentEvent::LinkRequested {
+            url: "https://example.org/after".into()
+        }
+    );
+    ctl.send_document("min.pdf", MINIMAL).await.unwrap();
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::DocumentOpened { pages: 1, .. }
+    ));
+    assert!(ctl.finish().await);
+    tx.stop().await;
+    rx.core.stop().await;
 }

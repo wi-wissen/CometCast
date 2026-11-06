@@ -23,9 +23,9 @@ pub use outgoing::{
 };
 pub use receiver::{
     Blob, ContentError, ContentEvent, ContentOptions, ContentReceiver, DEFAULT_MAX_VIOLATIONS,
-    DEFAULT_TARGET_WIDTH,
+    DEFAULT_TARGET_WIDTH, MAX_SKIPPED_BYTES, Next, Work, WorkDone,
 };
 pub use wire::{
     CHUNK_SIZE, ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_LINK_LENGTH, MAX_NAME_LENGTH,
-    MAX_TEXT_CHARS, Message, ParseError, validate_link,
+    MAX_TEXT_CHARS, Message, ParseError, TransferKind, announced_transfer, validate_link,
 };

@@ -23,13 +23,13 @@ use cc_transport::TlsTrust;
 
 pub const USAGE: &str = "\
   cometcast-cli send-file <CODE> <FILE> [--then CMDS] [--seconds N] [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
-  cometcast-cli send-link <CODE> <URL> [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
+  cometcast-cli send-link <CODE> <URL> [--seconds N] [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
 
 send-file sends an image (.png .jpg .jpeg .webp .gif, at most 10 MiB) or a PDF (.pdf, at most
 64 MiB) to the receiver with that room code. --then takes commands separated by commas, sent
-after the file: next, prev, go:N, stop (e.g. --then next,go:3,stop). The program stays
+after the file: next, prev, go:N (N from 1 to 1000000), stop (e.g. --then next,go:3,stop). The program stays
 connected until Ctrl-C, because receivers drop the content when the sender leaves; --seconds N
-leaves N seconds after sending (0 = at once). `receive` prints what
+leaves N seconds after sending (0 = at once); send-link takes --seconds too. `receive` prints what
 arrives as 'Content:' lines; a link is printed and never opened. See docs/web-m2.md.";
 
 /// What to send.
@@ -60,7 +60,7 @@ pub fn parse(link: bool, mut args: impl Iterator<Item = String>) -> Result<Cmd, 
             "--server" => server = args.next().ok_or("--server needs a value")?,
             "--bind" => bind = Some(args.next().ok_or("--bind needs a value")?),
             "--ca-file" => ca_file = Some(args.next().ok_or("--ca-file needs a value")?),
-            "--seconds" if !link => {
+            "--seconds" => {
                 let v = args.next().ok_or("--seconds needs a value")?;
                 stay = Some(
                     v.parse::<u64>()
@@ -108,8 +108,15 @@ fn parse_then(s: &str) -> Result<Vec<ControlCmd>, String> {
             other => other
                 .strip_prefix("go:")
                 .and_then(|n| n.parse::<u32>().ok())
+                // The receiver refuses page 0 and pages above the limit as a protocol violation.
+                .filter(|n| (1..=cc_files::wire::MAX_PAGE_NUMBER).contains(n))
                 .map(|page| ControlCmd::GoToPage { page })
-                .ok_or_else(|| format!("bad command {other:?} in --then")),
+                .ok_or_else(|| {
+                    format!(
+                        "bad command {other:?} in --then (go:N needs N from 1 to {})",
+                        cc_files::wire::MAX_PAGE_NUMBER
+                    )
+                }),
         })
         .collect()
 }
@@ -172,6 +179,56 @@ pub fn print_event(ev: &ContentEvent) {
     }
 }
 
+#[derive(Debug)]
+enum FileKind {
+    Pdf,
+    Image(ImageMime),
+}
+
+/// Read the file to send: the extension and the file type are checked first, then at most
+/// `limit + 1` bytes are read, so a file that grows, a device (`/dev/zero` reports length 0)
+/// or a FIFO cannot make this program read without bound.
+fn read_file(path: &str) -> Result<(String, FileKind, Vec<u8>), String> {
+    use std::io::Read;
+    let name = std::path::Path::new(path)
+        .file_name()
+        .map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
+    let (kind, limit) = if name.to_ascii_lowercase().ends_with(".pdf") {
+        (FileKind::Pdf, cc_files::MAX_DOCUMENT_BYTES)
+    } else if let Some(mime) = ImageMime::from_extension(&name) {
+        (FileKind::Image(mime), cc_files::MAX_IMAGE_BYTES)
+    } else {
+        return Err("only .png .jpg .jpeg .webp .gif and .pdf files can be sent".into());
+    };
+    // `metadata` follows symbolic links, so a link to a device is seen as a device.
+    let meta = std::fs::metadata(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    if !meta.is_file() {
+        return Err(format!("{path} is not a regular file"));
+    }
+    let file = std::fs::File::open(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("cannot read {path}: {e}"))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{path} is too large (at most {limit} bytes)"));
+    }
+    Ok((name, kind, bytes))
+}
+
+/// After the sender left: print the content events that are still queued, until the stream
+/// ends (the content task finished) or nothing comes for a short time. Returns `true` if any
+/// was printed. Without this, content that arrived just before `PeerLeft` could be lost when
+/// the program exits.
+pub async fn drain_events(events: &mut cc_receiver::ContentEvents) -> bool {
+    let mut any = false;
+    while let Ok(Some(ev)) = tokio::time::timeout(Duration::from_secs(2), events.next()).await {
+        any = true;
+        print_event(&ev);
+    }
+    any
+}
+
 pub async fn run(cmd: Cmd) -> ExitCode {
     match send(cmd).await {
         Ok(()) => ExitCode::SUCCESS,
@@ -191,25 +248,10 @@ async fn send(cmd: Cmd) -> Result<(), String> {
     }
     let payload = match &cmd.what {
         What::Link(u) => Payload::Link(u.clone()),
-        What::File { path, .. } => {
-            let name = std::path::Path::new(path)
-                .file_name()
-                .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
-            // Bounded read: nothing above the largest accepted size is loaded.
-            let limit = cc_files::MAX_DOCUMENT_BYTES + 1;
-            let meta = std::fs::metadata(path).map_err(|e| format!("cannot read {path}: {e}"))?;
-            if meta.len() > limit {
-                return Err(format!("{path} is too large"));
-            }
-            let bytes = std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?;
-            if name.to_ascii_lowercase().ends_with(".pdf") {
-                Payload::Pdf(name, bytes)
-            } else if let Some(mime) = ImageMime::from_extension(&name) {
-                Payload::Image(name, mime, bytes)
-            } else {
-                return Err("only .png .jpg .jpeg .webp .gif and .pdf files can be sent".into());
-            }
-        }
+        What::File { path, .. } => match read_file(path)? {
+            (name, FileKind::Pdf, bytes) => Payload::Pdf(name, bytes),
+            (name, FileKind::Image(mime), bytes) => Payload::Image(name, mime, bytes),
+        },
     };
 
     let mut trust = TlsTrust::system();
@@ -339,6 +381,73 @@ mod tests {
         assert!(parse(false, args("ABCDEF a.png --then fly")).is_err());
         assert!(parse(false, args("ABCDEF a.png --then go:x")).is_err());
         assert!(parse(false, args("ABCDEF a.png --bogus")).is_err());
+    }
+
+    #[test]
+    fn send_link_takes_seconds_but_not_then() {
+        let c = parse(true, args("ABCDEF https://example.org/ --seconds 3")).unwrap();
+        assert_eq!(c.stay, Some(3));
+        assert!(parse(true, args("ABCDEF https://example.org/ --seconds x")).is_err());
+    }
+
+    #[test]
+    fn page_numbers_in_then_must_be_in_range() {
+        for bad in ["go:0", "go:1000001", "go:-1", "go:4294967296", "next,go:0"] {
+            assert!(parse_then(bad).is_err(), "{bad}");
+        }
+        assert!(parse_then("go:1,go:1000000").is_ok());
+    }
+
+    fn temp(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("cometcast-cli-test-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        d.join(name)
+    }
+
+    #[test]
+    fn files_are_read_with_a_bound() {
+        let ok = temp("ok.png");
+        std::fs::write(&ok, [1u8; 100]).unwrap();
+        let (name, _, bytes) = read_file(ok.to_str().unwrap()).unwrap();
+        assert_eq!((name.as_str(), bytes.len()), ("ok.png", 100));
+        // Wrong extension: refused before the file is looked at.
+        assert!(
+            read_file("/nonexistent/x.txt")
+                .unwrap_err()
+                .contains("only .png")
+        );
+        // A directory with a good name is not a file.
+        let dir = temp("dir.pdf");
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(
+            read_file(dir.to_str().unwrap())
+                .unwrap_err()
+                .contains("not a regular file")
+        );
+        // Too large, found by the bounded read (a sparse file; the limit is 10 MiB for images).
+        let big = temp("big.png");
+        let f = std::fs::File::create(&big).unwrap();
+        f.set_len(cc_files::MAX_IMAGE_BYTES + 1).unwrap();
+        assert!(
+            read_file(big.to_str().unwrap())
+                .unwrap_err()
+                .contains("too large")
+        );
+        f.set_len(cc_files::MAX_IMAGE_BYTES).unwrap();
+        assert!(read_file(big.to_str().unwrap()).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_device_behind_a_link_is_not_read() {
+        let link = temp("zero.pdf");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink("/dev/zero", &link).unwrap();
+        assert!(
+            read_file(link.to_str().unwrap())
+                .unwrap_err()
+                .contains("not a regular file")
+        );
     }
 
     #[test]

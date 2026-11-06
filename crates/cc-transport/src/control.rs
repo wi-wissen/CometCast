@@ -8,7 +8,15 @@
 //! * Incoming messages go through a **bounded** queue ([`CONTROL_INBOX_CAPACITY`] messages).
 //!   When the application reads slowly, the internal reader task waits, the library's
 //!   receive buffer fills and SCTP flow control slows the peer down; nothing grows without
-//!   limit.
+//!   limit. The bound is a **count**, not a size: an incoming message is accepted up to the
+//!   SCTP maximum message size the connection negotiated, not only up to
+//!   [`MAX_MESSAGE_BYTES`] (that limit is for what *we* send). The size rules are checked
+//!   one layer up, by `cc-files`: a text message may be 32 KiB at most (and 8192 characters
+//!   to be valid), a binary chunk must be exactly 16 KiB except the last one of a transfer;
+//!   anything else is refused there, and **each stray or malformed message counts as one
+//!   protocol violation** (a chunk without a transfer included), so a peer that floods the
+//!   channel is cut off after a few dozen messages. Worst case in the inbox:
+//!   [`CONTROL_INBOX_CAPACITY`] messages of the SCTP maximum each.
 //! * Outgoing data is paced: the peer connection is built with a send-buffer limit
 //!   ([`SEND_BUFFER_LIMIT`]); [`ControlChannel::send_text`] and [`ControlChannel::send_binary`]
 //!   wait while that much is queued. The channel also reports `bufferedamountlow` at
@@ -32,11 +40,15 @@ use crate::error::TransportError;
 /// Label of the data channel (same as the web client).
 pub const CONTROL_LABEL: &str = "control";
 
-/// Largest message the library accepts (16 KiB), and the largest binary message we send.
+/// Largest message **we send** (16 KiB, the size that browsers interoperate on). Incoming
+/// messages are not limited to this here: they are accepted up to the SCTP maximum and
+/// checked by `cc-files` (module docs).
 pub const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 
-/// Messages that may wait for the application. 64 x 16 KiB = 1 MiB at most.
-/// UNCERTAIN: placeholder, unmeasured.
+/// Messages that may wait for the application: a count, not a size. With honest 16 KiB
+/// chunks that is 64 x 16 KiB = 1 MiB; a peer that sends larger messages can make it more
+/// (up to the SCTP maximum each), until `cc-files` refuses them.
+/// UNCERTAIN: placeholder, unmeasured; the SCTP maximum message size was not measured.
 pub const CONTROL_INBOX_CAPACITY: usize = 64;
 
 /// Sending waits while more than this is queued in the data channel (1 MiB, as the web client).
@@ -171,7 +183,7 @@ impl ControlChannel {
     }
 
     /// Send a text message. Waits while the send buffer is full. Messages above 16 KiB are
-    /// refused here; the format allows 8192 characters (docs/web-m2.md).
+    /// refused here; the format allows 8192 characters (docs/web-m2.md), which the receiver checks.
     pub async fn send_text(&self, text: &str) -> Result<(), TransportError> {
         if text.len() > MAX_MESSAGE_BYTES {
             return Err(TransportError::Invalid("control message too large".into()));
@@ -192,6 +204,12 @@ impl ControlChannel {
     /// Next message from the peer, or `None` after the channel closed and the queue is empty.
     pub async fn recv(&self) -> Option<ControlData> {
         self.inner.inbox.lock().await.recv().await
+    }
+
+    /// A message that is already waiting, without waiting for one. `None` when the queue is
+    /// empty (or closed and empty). Lets a reader take everything that piled up in one go.
+    pub async fn try_recv(&self) -> Option<ControlData> {
+        self.inner.inbox.lock().await.try_recv().ok()
     }
 
     /// Wait until everything queued for sending was released by SCTP (acknowledged), at most

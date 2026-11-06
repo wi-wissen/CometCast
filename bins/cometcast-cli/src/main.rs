@@ -705,6 +705,9 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
     tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
+            // Content before core events: the events of the last content must be read
+            // before `PeerLeft` ends the program.
+            biased;
             _ = &mut ctrl_c => {
                 println!("Interrupted, closing.");
                 core.stop().await;
@@ -754,6 +757,10 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
                 }
                 Some(ReceiverEvent::PeerLeft) => {
                     println!("Sender left.");
+                    // Content that arrived just before the sender left is still queued.
+                    if let Some(c) = content_events.as_mut() {
+                        got_content |= content::drain_events(c).await;
+                    }
                     core.stop().await;
                     return if got_video || got_content { ExitCode::SUCCESS } else { ExitCode::from(3) };
                 }

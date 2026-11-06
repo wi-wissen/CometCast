@@ -225,19 +225,92 @@ fn is_bidi(c: char) -> bool {
     matches!(c, '\u{200e}' | '\u{200f}' | '\u{061c}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 
-/// Removes control characters and bidirectional controls, which can make a displayed name
-/// read differently from what it is.
+/// Characters that are invisible or change how text is laid out, so a displayed name can
+/// read differently from what it is: the bidirectional controls, the Unicode "format"
+/// characters (category Cf: zero-width space and joiners, BOM, soft hyphen, invisible
+/// operators, tag characters, ...), the line and paragraph separators (Zl, Zp) and a few
+/// letters and symbols that render as blank (braille blank, Hangul fillers).
+///
+/// UNCERTAIN: a hand-written list of the Cf ranges of Unicode 15, not generated from the
+/// Unicode data; characters added to Cf later are not covered.
+fn is_invisible(c: char) -> bool {
+    is_bidi(c)
+        || matches!(c,
+            '\u{00ad}'
+            | '\u{0600}'..='\u{0605}'
+            | '\u{06dd}'
+            | '\u{070f}'
+            | '\u{0890}'..='\u{0891}'
+            | '\u{08e2}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{110bd}'
+            | '\u{110cd}'
+            | '\u{13430}'..='\u{1343f}'
+            | '\u{1bca0}'..='\u{1bca3}'
+            | '\u{1d173}'..='\u{1d17a}'
+            // The whole tag block (E0001 and E0020..E007F are Cf).
+            | '\u{e0000}'..='\u{e007f}'
+            // Blank-looking letters and symbols.
+            | '\u{115f}' | '\u{1160}' | '\u{17b4}' | '\u{17b5}' | '\u{2800}' | '\u{3164}' | '\u{ffa0}')
+}
+
+/// Removes control characters, bidirectional controls and other invisible characters (see
+/// `is_invisible`), which can make a displayed name read differently from what it is.
 pub fn sanitize_name(s: &str) -> String {
     s.chars()
-        .filter(|c| !c.is_control() && !is_bidi(*c))
+        .filter(|c| !c.is_control() && !is_invisible(*c))
         .collect()
+}
+
+/// What a transfer carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferKind {
+    /// An image.
+    Image,
+    /// A PDF document.
+    Document,
+}
+
+/// The kind and announced size of an `image` / `document` start message, read leniently: used
+/// when the message was **refused**, so that the receiver can skip the data that follows
+/// instead of counting every chunk as a violation. `None` if the text is not such a message
+/// or carries no usable size. Never panics.
+pub fn announced_transfer(text: &str) -> Option<(TransferKind, u64)> {
+    if text.len() > MAX_TEXT_CHARS * 4 {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let o = v.as_object()?;
+    let kind = match o.get("kind")?.as_str()? {
+        "image" => TransferKind::Image,
+        "document" => TransferKind::Document,
+        _ => return None,
+    };
+    let size = o.get("size")?.as_u64().filter(|s| *s > 0)?;
+    Some((kind, size))
 }
 
 /// Accepts only absolute `http`/`https` URLs without credentials. Returns the normalised
 /// URL, or `None`. The check follows `validateLinkUrl` of the web client: length at most 2048,
 /// no whitespace or control characters (the parser would silently drop tabs and newlines), a
 /// non-empty host. A link is never opened by code; the receiver's person has to decide.
+///
+/// The length limit applies to the input **and** to the normalised URL (percent-encoding and
+/// punycode can make it several times longer), so a link that passes always fits into a
+/// `link` message and passes the receiver's check. The result is a fixed point:
+/// `validate_link(validate_link(x))` equals `validate_link(x)`.
 pub fn validate_link(input: &str) -> Option<String> {
+    let normalised = check_link(input)?;
+    // Idempotent by construction: anything that does not survive a second pass is refused.
+    (check_link(&normalised).as_deref() == Some(normalised.as_str())).then_some(normalised)
+}
+
+fn check_link(input: &str) -> Option<String> {
     // Only plain spaces are trimmed; a tab, newline or U+0085 at the edge is refused below.
     let s = input.trim_matches(' ');
     if s.is_empty() || s.chars().count() > MAX_LINK_LENGTH {
@@ -267,7 +340,12 @@ pub fn validate_link(input: &str) -> Option<String> {
     if u.host_str().is_none_or(str::is_empty) {
         return None;
     }
-    Some(u.into())
+    let out: String = u.into();
+    // The normalised form is ASCII, so bytes and characters agree.
+    if out.len() > MAX_LINK_LENGTH {
+        return None;
+    }
+    Some(out)
 }
 
 impl Message {
@@ -514,6 +592,107 @@ mod tests {
             validate_link("https://bücher.example/").as_deref(),
             Some("https://xn--bcher-kva.example/")
         );
+    }
+
+    #[test]
+    fn invisible_characters_are_stripped_from_names() {
+        for c in [
+            '\u{2028}',
+            '\u{2029}',
+            '\u{200b}',
+            '\u{200d}',
+            '\u{feff}',
+            '\u{00ad}',
+            '\u{2060}',
+            '\u{2062}',
+            '\u{e0041}',
+            '\u{e0001}',
+            '\u{e007f}',
+            '\u{2800}',
+            '\u{3164}',
+            '\u{202e}',
+            '\u{0085}',
+            '\u{0007}',
+            '\u{180e}',
+        ] {
+            assert_eq!(sanitize_name(&format!("a{c}b")), "ab", "U+{:04X}", c as u32);
+        }
+        // Ordinary text, including emoji and combining marks, is kept.
+        assert_eq!(
+            sanitize_name("Zeugnis \u{1f4c4} é.pdf"),
+            "Zeugnis \u{1f4c4} é.pdf"
+        );
+        // A name that is only invisible characters is refused.
+        let only = r#"{"kind":"image","name":"\u200b\u2028\ufeff","mime":"image/png","size":3}"#;
+        assert_eq!(parse(only), Err(ParseError::InvalidFields));
+    }
+
+    #[test]
+    fn name_length_counts_characters() {
+        // 255 characters pass, also when they take 4 bytes (or 2 UTF-16 units) each.
+        let t = |n: &str| format!(r#"{{"kind":"image","name":"{n}","mime":"image/png","size":3}}"#);
+        assert!(parse(&t(&"\u{1f4c4}".repeat(255))).is_ok());
+        assert!(parse(&t(&"\u{1f4c4}".repeat(256))).is_err());
+        assert!(parse(&t(&"é".repeat(255))).is_ok());
+        assert!(parse(&t(&"é".repeat(256))).is_err());
+    }
+
+    #[test]
+    fn a_link_that_grows_when_normalised_is_refused_or_fits() {
+        // 1500 x 'é' is 1500 characters long but 6000 bytes after percent-encoding.
+        let long = format!("https://a.org/{}", "é".repeat(1500));
+        assert_eq!(validate_link(&long), None);
+        // Short enough after normalising: accepted, and the result is accepted unchanged.
+        let ok = format!("https://a.org/{}", "é".repeat(300));
+        let n = validate_link(&ok).expect("1800 bytes + prefix fit");
+        assert!(n.len() <= MAX_LINK_LENGTH);
+        assert_eq!(validate_link(&n).as_deref(), Some(n.as_str()));
+        // Exactly at the limit after normalising.
+        let fill = MAX_LINK_LENGTH - "https://a.org/".len();
+        let at = format!(
+            "https://a.org/{}",
+            "é".repeat(fill / 6) + &"x".repeat(fill % 6)
+        );
+        assert_eq!(validate_link(&at).map(|u| u.len()), Some(MAX_LINK_LENGTH));
+        let over = format!("{at}x");
+        assert_eq!(validate_link(&over), None);
+        // Whatever passes is idempotent and fits a message the receiver accepts.
+        for s in [
+            "https://example.org/a b",
+            "http://Example.ORG:80/%7Efoo?x=\u{e9}#\u{e9}",
+            "https://example.org\\@evil.example",
+            "https://bücher.example/ü?ü#ü",
+            "https://a.org/#\\\\\\\\",
+        ] {
+            if let Some(n) = validate_link(s) {
+                assert_eq!(validate_link(&n).as_deref(), Some(n.as_str()), "{s}");
+                let json = Message::Link { url: n }.to_json();
+                assert!(parse(&json).is_ok(), "{s}");
+            }
+        }
+        // A fragment full of backslashes doubles in JSON but still fits 8192 characters.
+        let bs = format!("https://a.org/#{}", "\\".repeat(2000));
+        let n = validate_link(&bs).expect("backslashes are kept in a fragment");
+        assert!(Message::Link { url: n }.to_json().chars().count() <= MAX_TEXT_CHARS);
+    }
+
+    #[test]
+    fn refused_starts_report_their_announced_size() {
+        let a = announced_transfer(r#"{"kind":"document","name":"a","mime":"x","size":9000000}"#);
+        assert_eq!(a, Some((TransferKind::Document, 9_000_000)));
+        let a = announced_transfer(r#"{"kind":"image","size":5}"#);
+        assert_eq!(a, Some((TransferKind::Image, 5)));
+        for bad in [
+            "",
+            "nope",
+            r#"{"kind":"link","size":5}"#,
+            r#"{"kind":"image","size":0}"#,
+            r#"{"kind":"image","size":-3}"#,
+            r#"{"kind":"image","size":1.5}"#,
+            r#"{"kind":"image"}"#,
+        ] {
+            assert_eq!(announced_transfer(bad), None, "{bad}");
+        }
     }
 
     #[test]
