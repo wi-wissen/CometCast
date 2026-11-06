@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "cc-ffi"
 description = "Stable facade for Swift and Flutter bindings"

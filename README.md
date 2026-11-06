@@ -48,7 +48,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | `bins/` | Binaries: `cometcast-server`, `cometcast-cli` | yes |
 | `apps/flutter` | Flutter app for desktop, mobile and Android TV / Google TV | yes |
 | `apps/apple-tv` | Native SwiftUI receiver for Apple TV | yes |
-| `apps/web` | Web app (Vue 3, TypeScript, Vite, Rust WASM) | yes |
+| `apps/web` | Web app (Vue 3, TypeScript, Vite; the Rust WASM core is planned, not built yet) | yes |
 | `assets/` | Logo and other assets | yes |
 | `docs/` | Documentation, see [docs/README.md](docs/README.md) | yes |
 | `tools/` | Helper scripts, for example the translation check | yes |
@@ -61,10 +61,10 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Area | Choice |
 | --- | --- |
 | Core | Rust workspace of `cc-*` crates: protocol, discovery, WebRTC transport, capture, documents, files, sender and receiver logic |
-| Bindings | UniFFI for Swift, flutter_rust_bridge for Flutter, wasm-bindgen for the web |
+| Bindings | flutter_rust_bridge for Flutter (in use). UniFFI for Swift and wasm-bindgen for the web are planned, not built yet |
 | Apps | Flutter for Windows, macOS, Linux, Android, iOS, iPadOS and Android TV / Google TV |
 | Apple TV | Native SwiftUI receiver. If Flutter on TV does not hold up in the beta, a native Kotlin receiver is the fallback for Android TV |
-| Web app | Vue 3 + TypeScript + Vite + Rust WASM. Screen sharing is expected only in desktop browsers and needs HTTPS (assumption A17; mobile support is unchecked) |
+| Web app | Vue 3 + TypeScript + Vite (Rust WASM core planned). Screen sharing is expected only in desktop browsers and needs HTTPS (assumption A17; mobile support is unchecked) |
 | Server | `cometcast-server` (axum), coturn as a separate process, optional SFU |
 
 Native code is written only where the platform forces it (for example share and broadcast extensions, screen capture on Android).

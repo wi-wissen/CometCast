@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 name: web
 
 on:
@@ -9,6 +10,9 @@ on:
     paths:
       - 'apps/web/**'
       - '.github/workflows/web.yml'
+
+permissions:
+  contents: read
 
 jobs:
   web:

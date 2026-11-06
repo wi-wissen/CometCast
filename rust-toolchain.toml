@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Uses the newest stable Rust. rustfmt and clippy are needed for CI.
 [toolchain]
 channel = "stable"

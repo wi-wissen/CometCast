@@ -32,3 +32,18 @@ The planned components and licences come from the project planning document (Rus
 ## Names
 
 Apple, AirPlay, tvOS, Google, Google Cast, Chromecast, Android, Miracast, AirServer, AirParrot and other names are trademarks of their owners. They are used only to describe compatibility.
+
+## Additional notes (from an audit, not yet a full list)
+
+- The full list of Rust crates is in `Cargo.lock`; all 372 external crates were reported as permissive
+  (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, Unlicense, BSL-1.0) by an audit that read the crate
+  metadata. Two oddities, neither a conflict: `allo-isolate` has no SPDX field but ships an Apache-2.0
+  licence file; `r-efi` is offered under MIT, Apache-2.0 or LGPL-2.1-or-later (we pick MIT).
+- npm build-time tools: `lightningcss` (MPL-2.0, three packages, pulled in by Tailwind). Runtime web
+  dependencies are Vue and vue-i18n (MIT). Flutter package licences were not audited yet.
+- Test fixtures `crates/cc-airplay/tests/fixtures/uxplay-1.68-real-*.txt` are output and help text of
+  UxPlay (GPL-3.0). UNCERTAIN: whether quoting that text needs a notice; the MAC address in one file
+  was replaced by zeros.
+- Logo and icon files under `assets/logo` come from the owner's design hand-off. The author and licence
+  of the artwork are not recorded in the repository yet (see the open questions).
+- A full generated list (for example with cargo-about or cargo-deny and `npm ls`) is still to do.

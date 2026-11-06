@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Comet Cast Rust workspace.
 # A workspace is a group of crates (Rust packages) built together with one Cargo.lock.
 [workspace]

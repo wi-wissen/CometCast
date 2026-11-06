@@ -1,6 +1,6 @@
 UxPlay 1.68: An Open-Source AirPlay mirroring and audio-streaming server.
 audio_disabled
 using network ports UDP 7011 6001 6000 TCP 7100 7000 7001
-using system MAC address 6a:17:00:ed:fc:75
+using system MAC address 00:00:00:00:00:00
 Initialized server socket(s)
 *** ERROR: No DNS-SD Server found (DNSServiceRegister call returned kDNSServiceErr_Unknown)

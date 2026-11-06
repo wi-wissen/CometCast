@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "cc-media"
 description = "Video codec traits and an H.264 encoder/decoder (OpenH264)"
