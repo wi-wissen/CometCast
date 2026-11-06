@@ -21,6 +21,9 @@
 //! }
 //! ```
 //!
+//! No environment variable moves the policy path (a user could redirect it). The `--policy-file`
+//! option of `cometcast-cli discover` is a development tool only.
+//!
 //! Unknown keys make the whole file invalid (a typo in a security setting must not be ignored
 //! silently). An invalid or unreadable policy file that exists is treated as a locked, empty
 //! policy ([`PolicyState::Invalid`]): the other sources are NOT used. UNCERTAIN: failing closed
@@ -216,14 +219,14 @@ impl PolicyOs {
     }
 }
 
-/// The managed locations for `os`, first match wins. `program_data` is the value of the
-/// `ProgramData` environment variable (Windows only).
+/// The managed locations for `os`, first match wins. The paths are fixed: no environment
+/// variable is read.
 ///
 /// UNCERTAIN: the macOS file name uses the bundle id of the Flutter app
 /// (`de.cometcast.cometcast`); a configuration profile with that preference domain is expected
 /// to produce `/Library/Managed Preferences/<domain>.plist`, which is NOT verified. The Windows
-/// path `%ProgramData%\CometCast\policy.json` is compile-checked only, never run on Windows.
-pub fn policy_locations_for(os: PolicyOs, program_data: Option<&str>) -> Vec<PolicyLocation> {
+/// path `C:\ProgramData\CometCast\policy.json` is compile-checked only, never run on Windows.
+pub fn policy_locations_for(os: PolicyOs) -> Vec<PolicyLocation> {
     match os {
         PolicyOs::Linux => vec![PolicyLocation {
             path: PathBuf::from("/etc/cometcast/policy.json"),
@@ -236,11 +239,15 @@ pub fn policy_locations_for(os: PolicyOs, program_data: Option<&str>) -> Vec<Pol
             require_root_owner: true,
         }],
         PolicyOs::Windows => {
-            let base = program_data
-                .filter(|p| !p.is_empty())
-                .unwrap_or(r"C:\ProgramData");
+            // The `ProgramData` environment variable is NOT used: a standard user can set it for
+            // their own processes and would redirect the policy. The fixed default is right
+            // on a normal installation.
+            // UNCERTAIN: SHGetKnownFolderPath(FOLDERID_ProgramData) would be exact if the
+            // folder was moved, but needs unsafe code, which this crate forbids.
             vec![PolicyLocation {
-                path: PathBuf::from(base).join("CometCast").join("policy.json"),
+                path: PathBuf::from(r"C:\ProgramData")
+                    .join("CometCast")
+                    .join("policy.json"),
                 format: PolicyFormat::Json,
                 require_root_owner: false,
             }]
@@ -250,8 +257,7 @@ pub fn policy_locations_for(os: PolicyOs, program_data: Option<&str>) -> Vec<Pol
 
 /// The locations for the running system.
 pub fn default_policy_locations() -> Vec<PolicyLocation> {
-    let pd = std::env::var("ProgramData").ok();
-    policy_locations_for(PolicyOs::current(), pd.as_deref())
+    policy_locations_for(PolicyOs::current())
 }
 
 /// Load the first policy file that exists. Blocking (file access).
@@ -266,8 +272,32 @@ pub fn load_policy(locations: &[PolicyLocation]) -> PolicyState {
     PolicyState::Absent
 }
 
+/// Open for reading without ever blocking: a FIFO at the policy path must not hang the
+/// start-up (opening a FIFO for reading waits for a writer unless `O_NONBLOCK` is set).
+fn open_nonblocking(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut o = std::fs::OpenOptions::new();
+    o.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.custom_flags(libc::O_NONBLOCK);
+    }
+    o.open(path)
+}
+
 fn read_location(loc: &PolicyLocation) -> Result<Option<ServerPolicy>, PolicyError> {
-    let file = match std::fs::File::open(&loc.path) {
+    // Look at the path itself first: a FIFO, socket or device (not a symlink, which may lead
+    // to a regular file) is refused without opening it.
+    match std::fs::symlink_metadata(&loc.path) {
+        Ok(m) if !m.is_file() && !m.file_type().is_symlink() => {
+            return Err(PolicyError::Unprotected("not a regular file"));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(PolicyError::Io(e.kind().to_string())),
+    }
+    check_parent(loc)?;
+    let file = match open_nonblocking(&loc.path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(PolicyError::Io(e.kind().to_string())),
@@ -291,6 +321,38 @@ fn read_location(loc: &PolicyLocation) -> Result<Option<ServerPolicy>, PolicyErr
         PolicyFormat::Plist => ServerPolicy::from_plist(&buf),
     }
     .map(Some)
+}
+
+/// The directory that holds the file decides who can replace the file: it must not be
+/// writable by group or others, and for the system paths it must be owned by root.
+/// Only the direct parent is checked. UNCERTAIN: a writable directory further up could still
+/// rename the parent; ancestors are not walked because sticky directories such as `/tmp` are
+/// legitimate ancestors in tests and the system paths are root-owned by default.
+#[cfg(unix)]
+fn check_parent(loc: &PolicyLocation) -> Result<(), PolicyError> {
+    use std::os::unix::fs::MetadataExt;
+    let parent = match loc.path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    let meta = std::fs::metadata(parent).map_err(|e| PolicyError::Io(e.kind().to_string()))?;
+    if !meta.is_dir() {
+        return Err(PolicyError::Unprotected("parent is not a directory"));
+    }
+    if meta.mode() & 0o022 != 0 {
+        return Err(PolicyError::Unprotected(
+            "directory writable by group or others",
+        ));
+    }
+    if loc.require_root_owner && meta.uid() != 0 {
+        return Err(PolicyError::Unprotected("directory not owned by root"));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn check_parent(_loc: &PolicyLocation) -> Result<(), PolicyError> {
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -401,17 +463,20 @@ mod tests {
 
     #[test]
     fn locations_per_os() {
-        let l = policy_locations_for(PolicyOs::Linux, None);
+        let l = policy_locations_for(PolicyOs::Linux);
         assert_eq!(l[0].path, Path::new("/etc/cometcast/policy.json"));
-        let m = policy_locations_for(PolicyOs::Macos, None);
+        let m = policy_locations_for(PolicyOs::Macos);
         assert_eq!(m[0].format, PolicyFormat::Plist);
-        let w = policy_locations_for(PolicyOs::Windows, Some(r"D:\PD"));
+        let w = policy_locations_for(PolicyOs::Windows);
         assert_eq!(
             w[0].path,
-            Path::new(r"D:\PD").join("CometCast").join("policy.json")
+            Path::new(r"C:\ProgramData")
+                .join("CometCast")
+                .join("policy.json")
         );
-        let w = policy_locations_for(PolicyOs::Windows, Some(""));
-        assert!(w[0].path.starts_with(r"C:\ProgramData"));
+        // The environment is not consulted, whatever it says.
+        // (Safe to check on every system: the function takes no environment.)
+        assert_eq!(w, policy_locations_for(PolicyOs::Windows));
     }
 
     #[test]
@@ -478,6 +543,66 @@ mod tests {
             assert!(matches!(load_policy(&[l]), PolicyState::Invalid(_)));
             let l = write(d.path(), "g.json", b"{}", 0o664);
             assert!(matches!(load_policy(&[l]), PolicyState::Invalid(_)));
+        }
+
+        #[test]
+        fn fifo_does_not_hang_and_fails_closed() {
+            let d = tempfile::tempdir().unwrap();
+            let p = d.path().join("fifo.json");
+            let st = std::process::Command::new("mkfifo").arg(&p).status();
+            let Ok(st) = st else {
+                eprintln!("mkfifo not available, test skipped");
+                return;
+            };
+            assert!(st.success());
+            // Also through a symlink: the open must not block either.
+            let link = d.path().join("link.json");
+            std::os::unix::fs::symlink(&p, &link).unwrap();
+            for path in [p, link] {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let loc = explicit_location(&path);
+                std::thread::spawn(move || {
+                    let _ = tx.send(load_policy(&[loc]));
+                });
+                let got = rx
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .expect("load_policy blocked on a FIFO");
+                assert!(matches!(got, PolicyState::Invalid(_)), "{got:?}");
+            }
+        }
+
+        #[test]
+        fn writable_directory_fails_closed() {
+            let d = tempfile::tempdir().unwrap();
+            let l = write(d.path(), "p.json", b"{}", 0o644);
+            assert!(matches!(
+                load_policy(std::slice::from_ref(&l)),
+                PolicyState::Active(_)
+            ));
+            for mode in [0o777, 0o770, 0o757] {
+                std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(mode)).unwrap();
+                match load_policy(std::slice::from_ref(&l)) {
+                    PolicyState::Invalid(why) => assert!(why.contains("directory"), "{why}"),
+                    other => panic!("{mode:o}: {other:?}"),
+                }
+            }
+            std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(matches!(load_policy(&[l]), PolicyState::Active(_)));
+        }
+
+        #[test]
+        fn directory_owner_is_demanded_with_the_file_owner() {
+            let d = tempfile::tempdir().unwrap();
+            let mut l = write(d.path(), "p.json", b"{}", 0o644);
+            l.require_root_owner = true;
+            let is_root = {
+                use std::os::unix::fs::MetadataExt;
+                std::fs::metadata(d.path()).unwrap().uid() == 0
+            };
+            match (load_policy(&[l]), is_root) {
+                (PolicyState::Active(_), true) | (PolicyState::Invalid(_), false) => {}
+                other => panic!("{other:?}"),
+            }
         }
 
         #[test]

@@ -6,8 +6,9 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use cc_discovery::{
-    AdvertiseOptions, DiscoverOptions, PolicyState, ReceiverEvent, advertise_receiver,
-    discover_receivers, discover_servers, policy::explicit_location,
+    AdvertiseOptions, DiscoverOptions, PolicyState, ReceiverEvent, ReceiverInfo,
+    advertise_receiver, announce::record_receiver, discover_receivers, discover_servers,
+    policy::explicit_location,
 };
 
 /// Arguments of `discover`.
@@ -34,6 +35,7 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<DiscoverAr
                     .filter(|n| (1..=3600).contains(n))
                     .ok_or(format!("bad --seconds value {v:?} (1 to 3600)"))?;
             }
+            // Development tool only: a real policy lives at the fixed system path.
             "--policy-file" => {
                 out.policy_file = Some(args.next().ok_or("--policy-file needs a value")?.into());
             }
@@ -73,14 +75,22 @@ pub async fn run(a: DiscoverArgs) -> ExitCode {
     };
     // The receiver browse runs at the same time as the server lookup.
     let browser = discover_receivers();
-    let mut receivers = Vec::new();
+    // At most MAX_RECEIVERS, one per instance name (the first one seen is kept).
+    let mut receivers: Vec<ReceiverInfo> = Vec::new();
     let report = discover_servers(&opts);
     // Listen for receivers for the same time as the announcement browse.
     let listen = async {
         if let Ok(mut b) = browser {
             let _ = tokio::time::timeout(Duration::from_secs(a.seconds), async {
                 while let Some(ev) = b.next().await {
-                    receivers.push(ev);
+                    match ev {
+                        ReceiverEvent::Found(r) => {
+                            record_receiver(&mut receivers, r);
+                        }
+                        ReceiverEvent::Lost(instance) => {
+                            receivers.retain(|r| r.instance != instance);
+                        }
+                    }
                 }
             })
             .await;
@@ -110,19 +120,15 @@ pub async fn run(a: DiscoverArgs) -> ExitCode {
         println!("note: {w}");
     }
     println!("receivers:");
-    let mut n = 0;
-    for ev in &receivers {
-        if let ReceiverEvent::Found(r) = ev {
-            n += 1;
-            println!(
-                "  {}  addresses {:?}  announced server {}",
-                r.name,
-                r.addresses,
-                r.announced_server.as_deref().unwrap_or("-")
-            );
-        }
+    for r in &receivers {
+        println!(
+            "  {}  addresses {:?}  announced server {}",
+            r.name,
+            r.addresses,
+            r.announced_server.as_deref().unwrap_or("-")
+        );
     }
-    if n == 0 {
+    if receivers.is_empty() {
         println!("  (none in {} s)", a.seconds);
     }
     ExitCode::SUCCESS

@@ -12,15 +12,18 @@
 //!
 //! DNS answers are untrusted. At most [`MAX_SRV_RECORDS`] records are looked at, targets must be
 //! valid host names that pass the network rules of [`crate::address`], and the whole lookup is
-//! limited by a timeout.
+//! limited by a timeout per request and a total budget over all search domains. DNS cannot
+//! say whether a server speaks TLS: a target that is a private IP literal or a `.local` name
+//! is returned as `ws://host:port`, every other target as `wss://host:port`
+//! ([`crate::address::network_server`]).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use hickory_resolver::TokioResolver;
 use hickory_resolver::proto::rr::{RData, RecordType};
 
-use crate::address::{Trust, normalize_server, validate_hostname};
+use crate::address::{network_server, validate_hostname};
 use crate::{DiscoveredServer, ServerSource};
 
 /// DNS name prefix of the service.
@@ -31,6 +34,8 @@ pub const MAX_SRV_RECORDS: usize = 32;
 pub const MAX_SRV_SERVERS: usize = 8;
 /// Most search domains asked.
 pub const MAX_SEARCH_DOMAINS: usize = 4;
+/// The whole lookup over all search domains may take this many times the time of one request.
+pub const TOTAL_BUDGET_FACTOR: u32 = 2;
 
 /// One SRV record as far as this crate needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,8 +190,9 @@ pub struct SrvOutcome {
 
 /// Look up `_cometcast._tcp.<domain>` for each search domain (at most
 /// [`MAX_SEARCH_DOMAINS`]) and return the servers of the first domain that has usable answers.
-/// `timeout` limits each request as a whole. Never panics on hostile answers: bad records are
-/// dropped.
+/// `timeout` limits each request as a whole; all requests together may take at most
+/// `timeout * `[`TOTAL_BUDGET_FACTOR`], then the search stops with a warning. Never panics on
+/// hostile answers: bad records are dropped.
 pub async fn lookup_srv_servers(
     resolver: &dyn SrvResolver,
     timeout: Duration,
@@ -195,6 +201,7 @@ pub async fn lookup_srv_servers(
     let mut rand_below = rand_below;
     let mut out = SrvOutcome::default();
     let mut seen: Vec<String> = Vec::new();
+    let deadline = Instant::now() + timeout.saturating_mul(TOTAL_BUDGET_FACTOR);
     for domain in resolver.search_domains() {
         if seen.len() >= MAX_SEARCH_DOMAINS {
             break;
@@ -207,19 +214,25 @@ pub async fn lookup_srv_servers(
         }
         seen.push(domain.clone());
         let name = format!("{SRV_PREFIX}.{domain}");
-        let records = match tokio::time::timeout(timeout, resolver.lookup_srv(&name)).await {
-            Err(_) | Ok(Err(ResolveError::Timeout)) => {
-                out.warnings
-                    .push(format!("DNS-SRV lookup for {name} timed out"));
-                continue;
-            }
-            Ok(Err(ResolveError::NoRecords)) => continue,
-            Ok(Err(e)) => {
-                out.warnings.push(format!("DNS-SRV lookup for {name}: {e}"));
-                continue;
-            }
-            Ok(Ok(r)) => r,
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            out.warnings
+                .push("DNS-SRV: the total time budget is used up".into());
+            break;
         };
+        let records =
+            match tokio::time::timeout(timeout.min(left), resolver.lookup_srv(&name)).await {
+                Err(_) | Ok(Err(ResolveError::Timeout)) => {
+                    out.warnings
+                        .push(format!("DNS-SRV lookup for {name} timed out"));
+                    continue;
+                }
+                Ok(Err(ResolveError::NoRecords)) => continue,
+                Ok(Err(e)) => {
+                    out.warnings.push(format!("DNS-SRV lookup for {name}: {e}"));
+                    continue;
+                }
+                Ok(Ok(r)) => r,
+            };
         let records: Vec<SrvRecord> = records.into_iter().take(MAX_SRV_RECORDS).collect();
         let unavailable = records.iter().any(|r| r.target == ".");
         if unavailable && records.len() == 1 {
@@ -230,21 +243,21 @@ pub async fn lookup_srv_servers(
         }
         let mut dropped = 0usize;
         for r in order_srv(records, &mut rand_below) {
-            let cand = normalize_server(
+            let cand = network_server(
                 &format!("{}:{}", r.target.trim_end_matches('.'), r.port),
-                Trust::Network,
+                None,
             );
             match cand {
-                Ok(address) if !out.servers.iter().any(|s| s.address == address) => {
+                Ok((address, _)) if !out.servers.iter().any(|s| s.address == address) => {
                     if out.servers.len() < MAX_SRV_SERVERS {
-                        out.servers.push(DiscoveredServer {
+                        out.servers.push(DiscoveredServer::new(
                             address,
-                            source: ServerSource::DnsSrv,
-                            detail: Some(format!(
+                            ServerSource::DnsSrv,
+                            Some(format!(
                                 "{name}, priority {}, weight {}",
                                 r.priority, r.weight
                             )),
-                        });
+                        ));
                     }
                 }
                 Ok(_) => {}
@@ -394,8 +407,15 @@ mod tests {
         );
         let o = run(&f).await;
         let a: Vec<&str> = o.servers.iter().map(|s| s.address.as_str()).collect();
-        assert_eq!(a, ["relay.corp.example:443", "backup.corp.example:8443"]);
+        assert_eq!(
+            a,
+            [
+                "wss://relay.corp.example:443",
+                "wss://backup.corp.example:8443"
+            ]
+        );
         assert!(o.servers.iter().all(|s| s.source == ServerSource::DnsSrv));
+        assert!(o.servers.iter().all(|s| s.tls == Some(true)));
         assert!(o.warnings.is_empty());
     }
 
@@ -411,7 +431,7 @@ mod tests {
         );
         let o = run(&f).await;
         assert_eq!(o.servers.len(), 1);
-        assert_eq!(o.servers[0].address, "x.b.example:1");
+        assert_eq!(o.servers[0].address, "wss://x.b.example:1");
     }
 
     #[tokio::test]
@@ -447,6 +467,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn local_targets_may_be_plain_others_get_tls() {
+        let mut f = Fake {
+            domains: vec!["a.example".into()],
+            ..Fake::default()
+        };
+        f.answers.insert(
+            "_cometcast._tcp.a.example".into(),
+            Ok(vec![
+                rec(0, 0, 80, "relay.local."),
+                rec(1, 0, 80, "192.168.1.9"),
+                rec(2, 0, 443, "relay.a.example"),
+            ]),
+        );
+        let o = run(&f).await;
+        let got: Vec<(&str, Option<bool>)> = o
+            .servers
+            .iter()
+            .map(|s| (s.address.as_str(), s.tls))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("ws://relay.local:80", Some(false)),
+                ("ws://192.168.1.9:80", Some(false)),
+                ("wss://relay.a.example:443", Some(true)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn total_time_budget_spans_all_search_domains() {
+        let f = Fake {
+            domains: vec![
+                "a.example".into(),
+                "b.example".into(),
+                "c.example".into(),
+                "d.example".into(),
+            ],
+            hang: true,
+            ..Fake::default()
+        };
+        let t = Instant::now();
+        let o = lookup_srv_servers(&f, Duration::from_millis(100), first).await;
+        let took = t.elapsed();
+        assert!(o.servers.is_empty());
+        assert!(
+            took < Duration::from_millis(350),
+            "4 x 100 ms must be cut to about 200 ms, took {took:?}"
+        );
+        assert!(o.warnings.iter().any(|w| w.contains("budget")));
+    }
+
+    #[tokio::test]
     async fn target_dot_means_unavailable() {
         let mut f = Fake {
             domains: vec!["a.example".into(), "b.example".into()],
@@ -475,6 +548,10 @@ mod tests {
             rec(0, 0, 80, "127.0.0.1"),
             rec(0, 0, 80, "localhost"),
             rec(0, 0, 80, "8.8.8.8"),
+            rec(0, 0, 80, "169.254.169.254"),
+            rec(0, 0, 80, "0x7f000001"),
+            rec(0, 0, 80, "2130706433"),
+            rec(0, 0, 80, "127.1"),
             rec(0, 0, 80, "bad_name.example"),
             rec(0, 0, 80, "evil.example/ws"),
             rec(0, 0, 80, "user@evil.example"),
@@ -494,7 +571,7 @@ mod tests {
         f.answers
             .insert("_cometcast._tcp.a.example".into(), Ok(recs));
         let o = run(&f).await;
-        assert_eq!(o.servers[0].address, "good.example:80");
+        assert_eq!(o.servers[0].address, "wss://good.example:80");
         assert!(o.servers.len() <= MAX_SRV_SERVERS);
         assert!(!o.servers.iter().any(|s| s.address.contains("127.0.0.1")));
         assert!(o.warnings.iter().any(|w| w.contains("refused")));
@@ -527,7 +604,7 @@ mod tests {
             "_cometcast._tcp.ok4.example".into(),
             Ok(vec![rec(0, 0, 1, "y.example")]),
         );
-        assert_eq!(run(&f).await.servers[0].address, "y.example:1");
+        assert_eq!(run(&f).await.servers[0].address, "wss://y.example:1");
     }
 
     #[tokio::test]

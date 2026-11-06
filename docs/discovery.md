@@ -52,7 +52,7 @@ File locations (first existing one is used):
 | --- | --- | --- |
 | Linux | `/etc/cometcast/policy.json` | JSON |
 | macOS | `/Library/Managed Preferences/de.cometcast.cometcast.plist` | property list, same keys |
-| Windows | `%ProgramData%\CometCast\policy.json` | JSON |
+| Windows | `C:\ProgramData\CometCast\policy.json` (fixed) | JSON |
 
 ```json
 {
@@ -71,10 +71,19 @@ File locations (first existing one is used):
   address is `host:port`, or with `ws://`, `wss://`, `http://`, `https://`; no path, no user
   name. Admin entries may use loopback and any IP.
 * On Unix the file must not be writable by group or others, and the system paths must be
-  owned by root; otherwise the policy counts as unusable (fail closed). Error messages never
-  contain file content.
-* There is no environment variable or setting that moves the policy path: a user could
-  otherwise point it away.
+  owned by root; otherwise the policy counts as unusable (fail closed). The same holds for
+  the **directory that holds the file** (its direct parent): not writable by group or others,
+  and owned by root for the system paths, because whoever can write the directory can replace
+  the file. Parents further up are **not** checked (UNCERTAIN: a writable ancestor could
+  rename the parent directory). The file is looked at with `lstat` first and opened with
+  `O_NONBLOCK`; a FIFO, socket or device at the path is refused (fail closed) and cannot hang
+  the start-up. Error messages never contain file content.
+* **No environment variable and no setting moves the policy path.** In particular the Windows
+  path is the fixed `C:\ProgramData`; the `ProgramData` variable is deliberately not read
+  because a standard user can set it for their own processes. (UNCERTAIN: if an
+  administrator moved the ProgramData folder, the policy is not found; the exact API,
+  `SHGetKnownFolderPath`, needs `unsafe`, which this crate forbids.) The `--policy-file`
+  option of `cometcast-cli discover` exists for development only; apps do not offer it.
 
 **UNCERTAIN, not verified, not tested:**
 
@@ -104,11 +113,14 @@ the search.
   domains. One attempt per name server, 3 s per request (placeholder, not measured).
 * DNS answers are untrusted: at most 32 records are looked at, at most 8 servers returned,
   targets must be valid host names (letters, digits, hyphens; no underscore, no IP literal in
-  a public range, no `localhost`, loopback, unspecified, multicast), port 0 is refused,
-  duplicates are removed. Bad records are dropped with a count in the warnings. No panics.
-* The `DnsSrv` result is plain `host:port` (no scheme), like the default list. **UNCERTAIN:**
-  nothing in DNS says whether the server speaks TLS; how the app decides between `ws://` and
-  `wss://` for such an address is outside this crate.
+  a public range, no `localhost`, loopback, unspecified, multicast, link-local incl. the
+  cloud metadata address), port 0 is refused, duplicates are removed. Bad records are dropped
+  with a count in the warnings. No panics.
+* Time: each request is limited by the request timeout and **all search domains together**
+  by twice that (a total budget); then the search stops with a warning.
+* **TLS rule for network data** (see "Network servers" below): DNS cannot say whether a server
+  speaks TLS, so the result carries a scheme: `ws://host:port` for a private IP literal or a
+  `.local` name, `wss://host:port` for every other target.
 * **UNCERTAIN, not covered:** Android's `getDomains` and iOS `lb._dns-sd._udp` browsing
   domains (RFC 6763 section 11). On those systems the hickory system configuration may be
   empty, in which case this step finds nothing. Split-DNS and VLAN effects are the subject of
@@ -135,16 +147,26 @@ receivers do not listen for senders yet.
 sender is pointed to sees room codes and the addresses of the devices. Therefore:
 
 * An announced server has the **lowest rank** after MDM and DNS-SRV, and above only the
-  default list.
+  default list. Receivers with the same DNS-SD instance name: the **first one seen is kept**;
+  a later announcement replaces it only if it comes from the same addresses and port (the
+  same device updating its record). Otherwise a second device could take over the entry.
+  Browses keep at most 64 receivers; the command line tool also drops an entry on `Lost`.
 * An MDM policy can switch announcements off (`forbid_announcement`), and
   `forbid_user_override` ignores them as well.
 * The `srv` value is checked like DNS data: no scheme, path or user name; host name or an IP
-  literal. An IP literal must be in a **private range** (RFC 1918, `100.64.0.0/10`,
-  link-local IPv4, unique-local IPv6 `fc00::/7`); a public server has to be given by name.
-  Loopback, unspecified, multicast, broadcast, IPv4-mapped and link-local IPv6 (needs a zone
-  id) are refused. UNCERTAIN: whether this is too strict for real sites is not known.
-* Only the first 32 TXT entries are read, names are cleaned, at most 8 addresses and 64
-  receivers are kept per browse.
+  literal. An IP literal must be in a **private range** (RFC 1918, `100.64.0.0/10`, unique-local
+  IPv6 `fc00::/7`); a public server has to be given by name. Loopback, unspecified, multicast,
+  broadcast, IPv4-mapped, **link-local IPv4 (`169.254.0.0/16`)** and link-local IPv6 (needs a
+  zone id) are refused, as are the cloud metadata addresses (`169.254.169.254` is covered by
+  the link-local rule, plus `100.100.100.200` and `fd00:ec2::254`). UNCERTAIN: whether this is
+  too strict for real sites is not known.
+* Host names are checked so that no spelling of an IPv4 address gets through as a "name": the
+  last label must contain a letter and must not start with `0x`. So `0x7f000001`, `0x7f.0x1`,
+  `1.0x1`, `0177.0.0.1`, `127.1` and `2130706433`, which `inet_aton` and URL parsers read as
+  IPv4, are refused for every source, MDM policy included.
+* Only the first 32 TXT entries are read, names are cleaned (control characters, Unicode
+  format characters such as bidi overrides and zero-width characters, and line/paragraph
+  separators are removed), at most 8 addresses and 64 receivers are kept per browse.
 * `advertise_receiver` applies the same checks to the server it is told to announce, so the
   mistake shows at the receiver.
 * The announcement only feeds a *list*. The app must show which server is used and where it
@@ -159,6 +181,28 @@ Backends: this is the `mdns-sd` backend (desktop). NWBrowser (Apple) and NsdMana
 are not implemented ([architecture.md](architecture.md)). Multicast can be blocked by
 switches, access points or VLANs; then receivers do not show up and the room code or QR code
 is the way ([measurement-points.md](measurement-points.md), A8).
+
+## Network servers: TLS and the local network
+
+Servers from DNS-SRV and from announcements are not trusted just because they are "on the
+LAN". Rule (`address::network_server`): **plain `ws://` is only accepted inside the local
+network**, that is for a private IP literal or a name ending in `.local`. Every other host is
+only usable with TLS (`wss://`):
+
+* An announcement whose host is outside the local network needs `tls=1` in the TXT record;
+  without it the announcement is dropped. With `tls=1` it is honoured for every host
+  (`wss://`), including private literals.
+* A DNS-SRV target outside the local network becomes `wss://host:port`; a private literal or
+  `.local` target becomes `ws://host:port`.
+* The result entries (`DiscoveredServer`) carry the scheme in `address` and a `tls` flag
+  (`Some(true)`/`Some(false)`; `None` only for policy and default entries without scheme).
+  The UI should show a plain `ws` entry as "unencrypted, local network".
+
+**Not checked:** a host *name* that resolves to a private or loopback address (DNS rebinding,
+names like `localtest.me`, or a `.local` name that someone on the LAN answers). This crate does
+no name resolution for the check. The transport and the app must not rely on the name alone.
+TLS also does not prove that the server is the *right* one: any host with a valid certificate
+passes. That is why the UI must show the server and its source.
 
 ## 4. The built-in list
 
@@ -181,7 +225,14 @@ while let Some(ReceiverEvent::Found(r)) = receivers.next().await { /* r.announce
 * `cc-ffi`: `server_defaults()` (sync) uses the offline variant, so the pre-fill order is
   "policy, then default list" and the development fallback stays last. `discover_servers()`
   (async) asks everything and returns `ServerCandidate { address, source }`, `locked` and
-  warnings. The Dart side does not call it yet.
+  warnings. The Dart side does not call it yet. `address` now carries the scheme for network
+  servers; the `tls` flag of `DiscoveredServer` is not passed through `cc-ffi` yet.
+
+## Minimum Rust version
+
+The workspace `rust-version` is **1.88** (`hickory-resolver` 0.26 declares it, and the code
+uses let-chains, stable since 1.88). UNCERTAIN: CI uses the stable toolchain, so no job builds
+with exactly 1.88.
 
 ## Tests
 

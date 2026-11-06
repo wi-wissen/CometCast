@@ -62,11 +62,7 @@ pub fn merge(
         for a in &p.servers {
             push(
                 &mut out.servers,
-                &DiscoveredServer {
-                    address: a.clone(),
-                    source: ServerSource::Mdm,
-                    detail: None,
-                },
+                &DiscoveredServer::new(a.clone(), ServerSource::Mdm, None),
             );
         }
         if p.forbid_user_override {
@@ -102,11 +98,7 @@ mod tests {
     use crate::policy::ServerPolicy;
 
     fn d(a: &str, s: ServerSource) -> DiscoveredServer {
-        DiscoveredServer {
-            address: a.into(),
-            source: s,
-            detail: None,
-        }
+        DiscoveredServer::new(a.into(), s, None)
     }
     fn srv() -> Vec<DiscoveredServer> {
         vec![

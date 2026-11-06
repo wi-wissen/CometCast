@@ -30,9 +30,10 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-# UNCERTAIN: 1.85 is the first release with edition 2024; the real minimum will be
-# raised when heavier dependencies (webrtc, axum, ...) are added and measured in CI.
-rust-version = "1.85"
+# UNCERTAIN: 1.88 is what hickory-resolver 0.26 declares and what let-chains in edition 2024
+# need (stable since 1.88); it is not measured by a CI job with exactly this toolchain
+# (CI uses the stable toolchain). It will be raised when heavier dependencies are added.
+rust-version = "1.88"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/wi-wissen/CometCast"
 authors = ["Comet Cast contributors"]

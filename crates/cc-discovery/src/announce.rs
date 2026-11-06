@@ -16,8 +16,10 @@
 //!
 //! Everything read from the network is untrusted: any device on the local network can send
 //! such a record. The announced server is checked with [`Trust::Network`] (host name, or a
-//! private IP literal; no scheme, path, loopback and so on), names are stripped of control
-//! characters and cut, and at most [`MAX_ADDRESSES`] addresses are kept. An announced server
+//! private IP literal; no scheme, path, loopback, link-local and so on) and with the TLS rule
+//! of [`network_server`]: plain `ws://` is only accepted for a private IP literal or a `.local`
+//! name, every other host needs `tls=1`. Names are stripped of control and format characters
+//! and cut, and at most [`MAX_ADDRESSES`] addresses are kept. An announced server
 //! is a suggestion of the lowest trust: it ranks after MDM and DNS-SRV, and an MDM policy can
 //! switch it off (`forbid_announcement`, or `forbid_user_override`). Because anybody on the
 //! network can announce, an announced server must never be used without the person seeing
@@ -36,7 +38,7 @@ use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::address::{Trust, clean_text, normalize_server};
+use crate::address::{Trust, clean_text, network_server, normalize_server};
 
 /// DNS-SD service type with domain, as `mdns-sd` wants it.
 pub const MDNS_SERVICE_TYPE: &str = "_cometcast._tcp.local.";
@@ -71,8 +73,10 @@ pub struct ReceiverInfo {
     pub addresses: Vec<IpAddr>,
     /// Port of the DNS-SD service.
     pub port: u16,
-    /// The server it announced, normalised, `wss://` prefix when `tls=1`. `None` when it
-    /// announced nothing or something that did not pass the checks.
+    /// The server it announced, normalised, always with scheme: `wss://host:port` when
+    /// `tls=1`, `ws://host:port` for a local-network host without it. `None` when it announced
+    /// nothing or something that did not pass the checks (including plain `ws` for a host
+    /// outside the local network).
     pub announced_server: Option<String>,
 }
 
@@ -104,9 +108,7 @@ pub fn receiver_from_parts<'a>(
         }
     }
     let announced_server = match (version, srv) {
-        (None | Some("1"), Some(s)) => normalize_server(s, Trust::Network)
-            .ok()
-            .map(|a| if tls { format!("wss://{a}") } else { a }),
+        (None | Some("1"), Some(s)) => network_server(s, Some(tls)).ok().map(|(a, _)| a),
         _ => None,
     };
     let name = name
@@ -199,10 +201,13 @@ pub fn advertise_receiver(opts: &AdvertiseOptions) -> Result<Advertisement, Mdns
             Some((_, a)) => (false, a),
             None => (false, full.as_str()),
         };
-        // The same checks as the senders will apply.
-        let authority = normalize_server(authority, Trust::Network)
+        // The same checks as the senders will apply (including the TLS rule).
+        let (checked, _) = network_server(authority, Some(tls))
             .map_err(|e| MdnsError(format!("server cannot be announced: {e}")))?;
-        props.push((TXT_SERVER.into(), authority));
+        let authority = checked
+            .split_once("://")
+            .map_or(checked.as_str(), |(_, a)| a);
+        props.push((TXT_SERVER.into(), authority.to_owned()));
         if tls {
             props.push((TXT_TLS.into(), "1".into()));
         }
@@ -300,6 +305,38 @@ pub fn discover_receivers() -> Result<ReceiverBrowser, MdnsError> {
     Ok(ReceiverBrowser { rx, daemon, task })
 }
 
+/// Remember `r` in `list` (at most [`MAX_RECEIVERS`] entries, one per instance name).
+///
+/// Anybody on the network can announce under any instance name. The FIRST announcement seen
+/// for a name is kept: a later one replaces it only when it comes from the same addresses and
+/// port (the same device updating its record, for example a new name or server); otherwise it
+/// is ignored, so a second device cannot take over the entry of the first. Returns whether the
+/// list changed.
+pub fn record_receiver(list: &mut Vec<ReceiverInfo>, r: ReceiverInfo) -> bool {
+    if let Some(old) = list.iter_mut().find(|o| o.instance == r.instance) {
+        if old.addresses == r.addresses && old.port == r.port && *old != r {
+            *old = r;
+            return true;
+        }
+        return false;
+    }
+    if list.len() < MAX_RECEIVERS {
+        list.push(r);
+        return true;
+    }
+    false
+}
+
+/// Stops the browse and the daemon when dropped (also when the future is cancelled).
+struct DaemonGuard(ServiceDaemon);
+
+impl Drop for DaemonGuard {
+    fn drop(&mut self) {
+        let _ = self.0.stop_browse(MDNS_SERVICE_TYPE);
+        let _ = self.0.shutdown();
+    }
+}
+
 /// Where announcements come from. A trait so that tests need no network.
 #[async_trait]
 pub trait AnnouncementSource: Send + Sync {
@@ -314,33 +351,24 @@ pub struct MdnsSource;
 #[async_trait]
 impl AnnouncementSource for MdnsSource {
     async fn browse(&self, wait: Duration) -> Result<Vec<ReceiverInfo>, MdnsError> {
-        let daemon = ServiceDaemon::new().map_err(|e| MdnsError(e.to_string()))?;
-        let events = match daemon.browse(MDNS_SERVICE_TYPE) {
-            Ok(e) => e,
-            Err(e) => {
-                let _ = daemon.shutdown();
-                return Err(MdnsError(e.to_string()));
-            }
-        };
+        let daemon = DaemonGuard(ServiceDaemon::new().map_err(|e| MdnsError(e.to_string()))?);
+        let events = daemon
+            .0
+            .browse(MDNS_SERVICE_TYPE)
+            .map_err(|e| MdnsError(e.to_string()))?;
         let deadline = Instant::now() + wait;
         let mut found: Vec<ReceiverInfo> = Vec::new();
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             match tokio::time::timeout(left, events.recv_async()).await {
                 Ok(Ok(ServiceEvent::ServiceResolved(info))) => {
                     if let Some(r) = receiver_from_resolved(&info) {
-                        if let Some(old) = found.iter_mut().find(|o| o.instance == r.instance) {
-                            *old = r;
-                        } else if found.len() < MAX_RECEIVERS {
-                            found.push(r);
-                        }
+                        record_receiver(&mut found, r);
                     }
                 }
                 Ok(Ok(_)) => {}
                 Ok(Err(_)) | Err(_) => break,
             }
         }
-        let _ = daemon.stop_browse(MDNS_SERVICE_TYPE);
-        let _ = daemon.shutdown();
         Ok(found)
     }
 }
@@ -382,10 +410,73 @@ mod tests {
             r.announced_server.as_deref(),
             Some("wss://relay.school.example:443")
         );
+        assert!(r.addresses.len() == 2);
         assert_eq!(r.addresses, [ip("192.168.0.9"), ip("fd00::2")]);
         let r = parts(FULL, &[("srv", "10.0.0.5:8443")]).unwrap();
-        assert_eq!(r.announced_server.as_deref(), Some("10.0.0.5:8443"));
+        assert_eq!(r.announced_server.as_deref(), Some("ws://10.0.0.5:8443"));
         assert_eq!(r.name, "Room 1");
+    }
+
+    #[test]
+    fn plain_ws_only_inside_the_local_network() {
+        let srv = |txt: &[(&str, &str)]| parts(FULL, txt).unwrap().announced_server;
+        // A public name without tls=1 is refused, with tls=1 accepted.
+        assert_eq!(srv(&[("srv", "relay.school.example:443")]), None);
+        assert_eq!(
+            srv(&[("srv", "relay.school.example:443"), ("tls", "0")]),
+            None
+        );
+        assert_eq!(
+            srv(&[("srv", "relay.school.example:443"), ("tls", "1")]).as_deref(),
+            Some("wss://relay.school.example:443")
+        );
+        // .local names and private literals may be plain, and tls=1 is honoured for them too.
+        assert_eq!(
+            srv(&[("srv", "relay.local:80")]).as_deref(),
+            Some("ws://relay.local:80")
+        );
+        assert_eq!(
+            srv(&[("srv", "192.168.0.2:80"), ("tls", "1")]).as_deref(),
+            Some("wss://192.168.0.2:80")
+        );
+        // Link-local and metadata addresses are never accepted.
+        assert_eq!(srv(&[("srv", "169.254.169.254:80")]), None);
+        assert_eq!(srv(&[("srv", "169.254.10.10:80"), ("tls", "1")]), None);
+        // Numeric/hex host spellings of loopback do not get through.
+        assert_eq!(srv(&[("srv", "0x7f000001:80"), ("tls", "1")]), None);
+    }
+
+    fn rinfo(instance: &str, addr: &str, name: &str) -> ReceiverInfo {
+        ReceiverInfo {
+            instance: instance.into(),
+            name: name.into(),
+            addresses: vec![ip(addr)],
+            port: 9,
+            announced_server: None,
+        }
+    }
+
+    #[test]
+    fn first_seen_announcement_is_kept() {
+        let mut l = Vec::new();
+        assert!(record_receiver(&mut l, rinfo("tv", "10.0.0.1", "A")));
+        // Another device claiming the same instance name does not replace it.
+        assert!(!record_receiver(&mut l, rinfo("tv", "10.0.0.66", "Evil")));
+        assert_eq!(l[0].name, "A");
+        // The same addresses may update the record.
+        assert!(record_receiver(&mut l, rinfo("tv", "10.0.0.1", "A2")));
+        assert_eq!(l[0].name, "A2");
+        assert!(!record_receiver(&mut l, rinfo("tv", "10.0.0.1", "A2")));
+        assert_eq!(l.len(), 1);
+    }
+
+    #[test]
+    fn receiver_list_is_bounded() {
+        let mut l = Vec::new();
+        for i in 0..(MAX_RECEIVERS + 20) {
+            record_receiver(&mut l, rinfo(&format!("tv{i}"), "10.0.0.1", "x"));
+        }
+        assert_eq!(l.len(), MAX_RECEIVERS);
     }
 
     #[test]
@@ -403,11 +494,15 @@ mod tests {
             "[::1]:1",
             "wss://x.example:443",
             "x.example:443/ws",
+            "relay.example.org:443",
             "user@x.example:443",
             "x.example",
             "x.example:0",
             "x y.example:1",
             "x.example:1\r\nHost: evil",
+            "169.254.169.254:80",
+            "0x7f000001:8443",
+            "2130706433:8443",
             "",
         ] {
             let r = parts(FULL, &[("srv", bad)]).unwrap();
@@ -425,8 +520,8 @@ mod tests {
 
     #[test]
     fn first_srv_wins_and_txt_is_bounded() {
-        let r = parts(FULL, &[("srv", "a.example:1"), ("srv", "b.example:2")]).unwrap();
-        assert_eq!(r.announced_server.as_deref(), Some("a.example:1"));
+        let r = parts(FULL, &[("srv", "a.local:1"), ("srv", "b.local:2")]).unwrap();
+        assert_eq!(r.announced_server.as_deref(), Some("ws://a.local:1"));
         // The announcement hidden behind 40 junk entries is not looked at.
         let mut txt: Vec<(String, String)> =
             (0..40).map(|i| (format!("k{i}"), "x".into())).collect();

@@ -533,6 +533,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "hickory-resolver",
+ "libc",
  "mdns-sd",
  "plist",
  "rand 0.9.5",

@@ -18,8 +18,9 @@ pub enum Trust {
     /// An administrator wrote it (MDM policy). Schemes, loopback and any IP are allowed.
     Admin,
     /// It came over the network (DNS, mDNS). No scheme; no loopback, unspecified, multicast,
-    /// broadcast or link-local IPv6; an IP literal must be in a private range (public servers
-    /// have to be given by name).
+    /// broadcast, link-local (IPv4 169.254.0.0/16 incl. the cloud metadata address, IPv6
+    /// fe80::/10); an IP literal must be in a private range (public servers have to be given
+    /// by name). See [`network_server`] for the TLS rule.
     Network,
 }
 
@@ -139,6 +140,12 @@ fn check_network_ip(ip: IpAddr) -> Result<(), AddressError> {
             if v4.is_unspecified() || v4.is_loopback() || v4.is_multicast() || v4.is_broadcast() {
                 return bad("loopback, unspecified, multicast or broadcast address");
             }
+            if v4.is_link_local() {
+                return bad("link-local addresses (169.254.0.0/16, cloud metadata) are refused");
+            }
+            if v4.octets() == [100, 100, 100, 200] {
+                return bad("cloud metadata address");
+            }
             if !is_private_v4(v4) {
                 return bad("public IP addresses must be given as a host name");
             }
@@ -154,6 +161,10 @@ fn check_network_ip(ip: IpAddr) -> Result<(), AddressError> {
             if v6.segments()[0] & 0xffc0 == 0xfe80 {
                 return bad("link-local IPv6 addresses need a zone id");
             }
+            // fd00:ec2::254 is the IPv6 metadata address of AWS.
+            if v6.segments()[..3] == [0xfd00, 0x0ec2, 0] && v6.segments()[7] == 0x254 {
+                return bad("cloud metadata address");
+            }
             if !is_unique_local_v6(v6) {
                 return bad("public IP addresses must be given as a host name");
             }
@@ -164,16 +175,21 @@ fn check_network_ip(ip: IpAddr) -> Result<(), AddressError> {
 
 fn is_private_v4(a: Ipv4Addr) -> bool {
     let o = a.octets();
-    a.is_private() || a.is_link_local() || (o[0] == 100 && (64..128).contains(&o[1]))
+    a.is_private() || (o[0] == 100 && (64..128).contains(&o[1]))
 }
 
 fn is_unique_local_v6(a: Ipv6Addr) -> bool {
     a.segments()[0] & 0xfe00 == 0xfc00
 }
 
-/// Check a DNS host name (letters, digits, hyphens; labels of 1 to 63 characters; the last
-/// label not all digits so that it cannot be mistaken for a malformed IPv4 address) and return
+/// Check a DNS host name (letters, digits, hyphens; labels of 1 to 63 characters) and return
 /// it in lower case without a trailing dot. Underscores are refused.
+///
+/// The last label must contain at least one letter `a` to `z` and must not start with `0x`.
+/// Reason: `inet_aton` (glibc, BSD), WHATWG URL parsers and others read hosts such as
+/// `127.1`, `2130706433`, `0177.0.0.1` (octal) or `0x7f000001` (hex) as IPv4 addresses, which
+/// would get around the IP-literal rules. A name whose last label has a letter and does not
+/// start with `0x` is never a number for those parsers.
 pub fn validate_hostname(name: &str) -> Result<String, AddressError> {
     let name = name.strip_suffix('.').unwrap_or(name);
     if name.is_empty() || name.len() > MAX_HOST_LEN {
@@ -192,23 +208,67 @@ pub fn validate_hostname(name: &str) -> Result<String, AddressError> {
             return Err(AddressError("bad character in host name"));
         }
     }
-    if name
-        .rsplit('.')
-        .next()
-        .is_some_and(|l| l.bytes().all(|c| c.is_ascii_digit()))
-    {
+    let last = name.rsplit('.').next().unwrap_or_default();
+    if last.starts_with("0x") || !last.bytes().any(|c| c.is_ascii_lowercase()) {
         return Err(AddressError(
-            "last label of a host name must not be numeric",
+            "last label of a host name must contain a letter and not look like a number",
         ));
     }
     Ok(name)
 }
 
-/// Remove control characters and surrounding blanks from text that came from the network and
-/// cut it to `max_chars` characters. Used for names shown to people.
+/// Is `host` (IPv6 without brackets) inside the local network by its form: an IP literal
+/// (already checked to be private by [`Trust::Network`]) or a name ending in `.local` (mDNS)?
+fn is_local_host(host: &str) -> bool {
+    host.parse::<IpAddr>().is_ok() || host.ends_with(".local")
+}
+
+/// Check a server address that came from the network and decide about TLS.
+///
+/// `tls` says what the source stated: `Some(true)` TLS (`wss`), `Some(false)` explicitly plain
+/// `ws`, `None` nothing (DNS-SRV cannot say). Rule: plain `ws` is only accepted inside the
+/// local network, that is for a private IP literal or a `.local` name. Every other host is only
+/// accepted with TLS: `Some(false)` is refused, `None` becomes `wss`. Returns the canonical
+/// address WITH scheme (`wss://host:port` or `ws://host:port`) and whether it is TLS.
+///
+/// A host NAME that resolves to a private or loopback address (DNS rebinding, `localtest.me`)
+/// is NOT detected: this crate does no name resolution here.
+pub fn network_server(input: &str, tls: Option<bool>) -> Result<(String, bool), AddressError> {
+    let addr = normalize_server(input, Trust::Network)?;
+    let host = addr.rsplit_once(':').map_or(addr.as_str(), |(h, _)| h);
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    let local = is_local_host(host);
+    let use_tls = match tls {
+        Some(true) => true,
+        Some(false) if local => false,
+        Some(false) => {
+            return Err(AddressError(
+                "plain ws is only accepted for private IP addresses and .local names",
+            ));
+        }
+        None => !local,
+    };
+    let scheme = if use_tls { "wss" } else { "ws" };
+    Ok((format!("{scheme}://{addr}"), use_tls))
+}
+
+/// Characters of the Unicode categories Cf (format: bidi overrides, zero width and so on),
+/// Zl and Zp. The standard library has no category lookup, so the list is explicit.
+/// UNCERTAIN: written by hand from Unicode 15/16; Cf characters added later are not covered.
+fn is_invisible_format(c: char) -> bool {
+    matches!(c as u32,
+        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2
+        | 0x180E | 0x200B..=0x200F | 0x2028..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F
+        | 0xFEFF | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F
+        | 0x1BCA0..=0x1BCA3 | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
+}
+
+/// Remove control characters (Cc), format characters (Cf: bidi overrides, zero-width
+/// characters), line and paragraph separators (Zl, Zp) and surrounding blanks from text that
+/// came from the network and cut it to `max_chars` characters. Used for names shown to people.
 pub fn clean_text(s: &str, max_chars: usize) -> String {
     s.chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !c.is_control() && !is_invisible_format(*c))
         .take(max_chars)
         .collect::<String>()
         .trim()
@@ -274,6 +334,10 @@ mod tests {
             "[fe80::1]:1",
             "[2001:db8::1]:1",
             "[::ffff:192.168.0.1]:1",
+            "169.254.169.254:80",
+            "169.254.1.1:80",
+            "100.100.100.200:80",
+            "[fd00:ec2::254]:80",
         ] {
             assert!(n(bad, Trust::Network).is_err(), "{bad}");
         }
@@ -305,6 +369,15 @@ mod tests {
             "a..example:80",
             "1.2.3:80",
             "999.1.1.1:80",
+            "0x7f000001:80",
+            "0x08080808:80",
+            "0xc0a80001:80",
+            "0x7f.0x1:80",
+            "1.0x1:80",
+            "0177.0.0.0x1:80",
+            "127.1:80",
+            "2130706433:80",
+            "0X7F000001:80",
             "::1:80",
             "[::1:80",
             "[::1]80",
@@ -320,6 +393,81 @@ mod tests {
     fn errors_do_not_echo_input() {
         let e = n("secret-token@host:80", Trust::Admin).unwrap_err();
         assert!(!e.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn numeric_and_hex_hosts_are_refused_for_every_trust() {
+        for h in [
+            "0x7f000001",
+            "0x7f.0x1",
+            "1.0x1",
+            "0177.0.0.0x1",
+            "127.1",
+            "2130706433",
+            "0300.0250.0.1",
+        ] {
+            assert!(validate_hostname(h).is_err(), "{h}");
+            for t in [Trust::Admin, Trust::Network] {
+                assert!(n(&format!("{h}:8443"), t).is_err(), "{h} {t:?}");
+            }
+        }
+        // Names with a letter in the last label stay valid, also with digits and 0x inside.
+        for h in [
+            "0x7f.example",
+            "a1.b2",
+            "example.c0m",
+            "1.2.3.abc",
+            "x0x1.org",
+        ] {
+            assert!(validate_hostname(h).is_ok(), "{h}");
+        }
+    }
+
+    #[test]
+    fn network_server_decides_about_tls() {
+        let ok = |s: &str, t| network_server(s, t).unwrap();
+        // Private IP literals and .local names may be plain.
+        assert_eq!(
+            ok("192.168.1.5:8443", Some(false)),
+            ("ws://192.168.1.5:8443".into(), false)
+        );
+        assert_eq!(
+            ok("[fd00::1]:8443", Some(false)),
+            ("ws://[fd00::1]:8443".into(), false)
+        );
+        assert_eq!(
+            ok("Relay.LOCAL:80", Some(false)),
+            ("ws://relay.local:80".into(), false)
+        );
+        assert_eq!(ok("10.0.0.5:1", None), ("ws://10.0.0.5:1".into(), false));
+        assert_eq!(
+            ok("10.0.0.5:1", Some(true)),
+            ("wss://10.0.0.5:1".into(), true)
+        );
+        // Other names need TLS: explicit plain is refused, unknown becomes wss.
+        assert!(network_server("relay.example.org:443", Some(false)).is_err());
+        assert_eq!(
+            ok("relay.example.org:443", None),
+            ("wss://relay.example.org:443".into(), true)
+        );
+        assert_eq!(
+            ok("relay.example.org:443", Some(true)),
+            ("wss://relay.example.org:443".into(), true)
+        );
+        // The Network rules still apply.
+        assert!(network_server("127.0.0.1:1", Some(true)).is_err());
+        assert!(network_server("169.254.169.254:80", Some(false)).is_err());
+        assert!(network_server("wss://x.example:1", Some(true)).is_err());
+        // Not detected, documented: a name that resolves to a private address.
+        assert!(network_server("localtest.me:443", Some(true)).is_ok());
+    }
+
+    #[test]
+    fn clean_text_strips_format_characters() {
+        // bidi override, zero width space, BOM, soft hyphen, line/paragraph separator, tag char.
+        let s = "a\u{202E}b\u{200B}c\u{FEFF}d\u{AD}e\u{2028}f\u{2029}g\u{E0041}h\u{2066}i";
+        assert_eq!(clean_text(s, 50), "abcdefghi");
+        assert_eq!(clean_text("Zo\u{eb} \u{1F600}", 50), "Zo\u{eb} \u{1F600}");
     }
 
     #[test]

@@ -80,11 +80,10 @@ pub async fn run_stream(
             msg = negotiated.connection.recv() => {
                 let m = msg?;
                 // A RECEIVER_STATUS that no longer lists our session means the app was stopped.
-                if let Some((_, st)) = m.text_payload().and_then(|t| parse_receiver_status(&t)) {
-                    if status_ends_session(&st, &negotiated.app.session_id) {
+                if let Some((_, st)) = m.text_payload().and_then(|t| parse_receiver_status(&t))
+                    && status_ends_session(&st, &negotiated.app.session_id) {
                         return Ok(StreamEnd::AppStopped);
                     }
-                }
             }
         }
     }

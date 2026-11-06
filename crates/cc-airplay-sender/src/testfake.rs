@@ -662,14 +662,15 @@ fn fake_hls_client(url: &str, state: &Mutex<FakeState>) {
             continue;
         };
         for line in String::from_utf8_lossy(&pl.body).lines() {
-            if line.ends_with(".ts") && seen.insert(line.to_owned()) {
-                if let Some(seg) = get(&format!("{base}/{line}")) {
-                    state
-                        .lock()
-                        .expect("lock")
-                        .fetched
-                        .push((line.to_owned(), seg.body));
-                }
+            if line.ends_with(".ts")
+                && seen.insert(line.to_owned())
+                && let Some(seg) = get(&format!("{base}/{line}"))
+            {
+                state
+                    .lock()
+                    .expect("lock")
+                    .fetched
+                    .push((line.to_owned(), seg.body));
             }
         }
     }

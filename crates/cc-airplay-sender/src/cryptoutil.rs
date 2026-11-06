@@ -78,7 +78,7 @@ pub fn unhex<const N: usize>(s: &str) -> Option<[u8; N]> {
 
 /// Parse hex of any even length up to `max` bytes.
 pub fn unhex_vec(s: &str, max: usize) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 || s.len() > max * 2 || !s.is_ascii() {
+    if s.len() & 1 == 1 || s.len() > max * 2 || !s.is_ascii() {
         return None;
     }
     (0..s.len() / 2)

@@ -77,22 +77,47 @@ pub fn lookup_order() -> [ServerSource; 4] {
 /// One server in the result, with where it came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveredServer {
-    /// Canonical address, `[scheme://]host:port` (see [`address::normalize_server`]).
+    /// Canonical address, `[scheme://]host:port` (see [`address::normalize_server`]). DNS-SRV
+    /// and announced servers always carry `wss://` or `ws://` (see [`address::network_server`]).
     pub address: String,
     /// The source that gave it.
     pub source: ServerSource,
     /// Extra text for people (record, device name, caveat). Never needed for decisions.
     pub detail: Option<String>,
+    /// Does the connection use TLS? `Some(true)` for `wss`/`https`, `Some(false)` for
+    /// `ws`/`http`, `None` when the address has no scheme (policy and default list: the app
+    /// decides). For DNS-SRV and announced servers it is always `Some`; `Some(false)` only for
+    /// a private IP literal or a `.local` name, and the UI should say so.
+    pub tls: Option<bool>,
+}
+
+impl DiscoveredServer {
+    /// Build an entry; `tls` is read from the scheme of `address`.
+    pub fn new(address: String, source: ServerSource, detail: Option<String>) -> Self {
+        let tls = match address.split_once("://") {
+            Some(("wss" | "https", _)) => Some(true),
+            Some(_) => Some(false),
+            None => None,
+        };
+        Self {
+            address,
+            source,
+            detail,
+            tls,
+        }
+    }
 }
 
 /// The built-in list as [`DiscoveredServer`]s.
 pub fn default_servers() -> Vec<DiscoveredServer> {
     DEFAULT_SERVERS
         .iter()
-        .map(|a| DiscoveredServer {
-            address: (*a).to_owned(),
-            source: ServerSource::DefaultList,
-            detail: Some("UNCERTAIN: placeholder, this host does not exist yet".into()),
+        .map(|a| {
+            DiscoveredServer::new(
+                (*a).to_owned(),
+                ServerSource::DefaultList,
+                Some("UNCERTAIN: placeholder, this host does not exist yet".into()),
+            )
         })
         .collect()
 }
@@ -233,11 +258,11 @@ pub async fn discover_servers_with(
                     .into_iter()
                     .filter_map(|r| {
                         let address = r.announced_server?;
-                        Some(DiscoveredServer {
+                        Some(DiscoveredServer::new(
                             address,
-                            source: ServerSource::DisplayAnnouncement,
-                            detail: Some(format!("announced by {}", r.name)),
-                        })
+                            ServerSource::DisplayAnnouncement,
+                            Some(format!("announced by {}", r.name)),
+                        ))
                     })
                     .collect();
                 (servers, Vec::new())
@@ -307,6 +332,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn tls_flag_follows_the_scheme() {
+        let t = |a: &str| DiscoveredServer::new(a.into(), ServerSource::Mdm, None).tls;
+        assert_eq!(t("wss://a.example:1"), Some(true));
+        assert_eq!(t("https://a.example"), Some(true));
+        assert_eq!(t("ws://10.0.0.1:1"), Some(false));
+        assert_eq!(t("a.example:443"), None);
+    }
+
     fn opts_with(policy: Option<&Path>) -> DiscoverOptions {
         DiscoverOptions {
             policy_locations: Some(
@@ -342,7 +376,7 @@ mod tests {
         assert_eq!(
             got,
             [
-                ("relay.corp.example:443", ServerSource::DnsSrv),
+                ("wss://relay.corp.example:443", ServerSource::DnsSrv),
                 ("10.1.1.1:8443", ServerSource::DisplayAnnouncement),
                 ("relay.cometcast.de:443", ServerSource::DefaultList),
             ]
@@ -381,7 +415,7 @@ mod tests {
             a,
             [
                 "wss://mdm.example:443",
-                "relay.corp.example:443",
+                "wss://relay.corp.example:443",
                 "10.1.1.1:8443"
             ]
         );

@@ -274,12 +274,12 @@ pub fn discover(window: Duration) -> Result<Vec<Device>> {
             found.insert(info.fullname.clone(), dev);
         }
         while let Ok(ev) = raop_rx.try_recv() {
-            if let ServiceEvent::ServiceResolved(info) = ev {
-                if let Some((mac, _)) = info.fullname.split_once('@') {
-                    if raop.len() < MAX_DEVICES && mac.len() <= 12 {
-                        raop.insert(mac.to_ascii_lowercase(), info.port);
-                    }
-                }
+            if let ServiceEvent::ServiceResolved(info) = ev
+                && let Some((mac, _)) = info.fullname.split_once('@')
+                && raop.len() < MAX_DEVICES
+                && mac.len() <= 12
+            {
+                raop.insert(mac.to_ascii_lowercase(), info.port);
             }
         }
     }

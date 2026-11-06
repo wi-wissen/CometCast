@@ -364,10 +364,10 @@ async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
             }
             _ => None,
         };
-        if let Some(o) = out {
-            if write_message(&mut s, &o).await.is_err() {
-                return;
-            }
+        if let Some(o) = out
+            && write_message(&mut s, &o).await.is_err()
+        {
+            return;
         }
     }
 }

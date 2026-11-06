@@ -22,8 +22,8 @@ environment (Rust 1.97, Linux) with its default features (`runtime-tokio`, `cryp
 clean `cargo build -p cc-transport` took about 40 s. Version 0.21 is a rewrite on top of the sans-io
 `rtc` crates, so its API differs from older 0.x versions and from most online examples. We also name
 `rtc` 0.21.1 directly because media types (codecs, RTCP) live there; keep both on the same version.
-UNCERTAIN: the minimum Rust version of these crates is not checked; the workspace `rust-version` (1.85) is
-still a placeholder and CI uses the stable toolchain.
+UNCERTAIN: the minimum Rust version of these crates is not checked; the workspace `rust-version` (1.88) is
+still not measured with exactly that toolchain and CI uses the stable toolchain.
 
 `cc-proto` is unchanged and still has no heavy dependencies (`cargo check -p cc-proto --target wasm32-unknown-unknown` passes).
 
