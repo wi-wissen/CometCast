@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# coturn configuration template for Comet Cast (internal mode, TURN REST credentials).
+# Fill in the @PLACEHOLDERS@ with ./render.sh (it reads ../.env and ../secrets/turn_secret).
+#
+# UNCERTAIN: This file was written from the planning page and from memory of coturn's
+# options. coturn was NOT run here, so NOTHING in this file is tested. Options and
+# values marked UNCERTAIN are assumptions; run `turnserver --help` / read the coturn
+# man page of the version you install before relying on any line.
+
+# ---- Ports ----
+listening-port=3478
+tls-listening-port=5349
+# UNCERTAIN: the relay port range. Narrow on purpose; open the same range in the firewall.
+min-port=@TURN_MIN_PORT@
+max-port=@TURN_MAX_PORT@
+
+# ---- Credentials: time-limited, made by cometcast-server (GET /ice-servers) ----
+# username = "<expiry unix time>:<id>", password = base64(HMAC-SHA1(secret, username)).
+use-auth-secret
+static-auth-secret=@TURN_SECRET@
+realm=@TURN_REALM@
+
+# ---- Addresses ----
+# UNCERTAIN: external-ip is needed when the machine is behind NAT. For a machine with
+# a public address you may remove it. Syntax "public/private" is used for NAT.
+external-ip=@TURN_EXTERNAL_IP@
+relay-ip=@TURN_RELAY_IP@
+
+# ---- Relay hardening ----
+# No relaying to multicast addresses.
+no-multicast-peers
+# WebRTC needs only UDP relaying. UNCERTAIN: remove this line if a client needs TCP relaying.
+no-tcp-relay
+# No management interface (telnet CLI).
+no-cli
+# Add a fingerprint to messages (standard for WebRTC).
+fingerprint
+# UNCERTAIN: switches off the NAT-behaviour-discovery feature (RFC 5780) so the server
+# is not used for scanning. Check that the option exists in your coturn version.
+no-rfc5780
+# UNCERTAIN: switch off old TLS versions on the TLS port.
+no-tlsv1
+no-tlsv1_1
+
+# ---- Quotas ----
+# UNCERTAIN: placeholders from the planning page. Too low a total-quota lets someone with
+# valid credentials block everybody else, so measure before tightening.
+user-quota=50
+total-quota=5000
+# UNCERTAIN: no max-bps / bps-capacity yet. The plan says: set it only after measuring
+# (1080p is roughly 2-5 Mbit/s per stream there, not measured).
+
+# ---- Where relayed packets may NOT go (SSRF protection) ----
+# The relay must not become a way into the server, management or router networks.
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+# UNCERTAIN: the next four ranges (documentation, benchmarking, reserved) are additions
+# that are not on the planning page.
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=240.0.0.0-255.255.255.255
+denied-peer-ip=::1
+denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+# EXCEPTION (important): the server's own relay address must stay reachable, otherwise
+# two devices in the SAME private network cannot relay to each other, because the relay
+# addresses are themselves private. Everything else private stays denied.
+# `allowed-peer-ip` only makes exceptions, it does not deny anything by itself.
+# UNCERTAIN: the planning page says to test this with two devices in one network.
+allowed-peer-ip=@TURN_RELAY_IP@
+
+# ---- TLS on 5349 ----
+# Certificate for the TURN host name (mounted from ../certs).
+cert=/etc/coturn/certs/fullchain.pem
+pkey=/etc/coturn/certs/privkey.pem
+
+# ---- Logging ----
+# UNCERTAIN: log to the console so `docker logs` shows it.
+log-file=stdout
+simple-log
