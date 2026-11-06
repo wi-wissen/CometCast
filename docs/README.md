@@ -11,6 +11,7 @@
 | [android.md](android.md) | Android and Android TV build (cargo-ndk), TV readiness, capture skeleton, what is untested |
 | [flutter-bridge.md](flutter-bridge.md) | How the Flutter app talks to the Rust core (flutter_rust_bridge), codegen, build integration |
 | [airplay.md](airplay.md) | AirPlay receiving through the separate UxPlay process (`cc-airplay`): supervisor, policy, licence boundary, what is unverified |
+| [miracast.md](miracast.md) | Miracast receiving on Windows 11 through `MiracastReceiver` (`cc-miracast`): design, requirements, test checklist for a real machine; compile-checked only, never run |
 | [i18n.md](i18n.md) | How the bilingual (de/en) UI works |
 
 Other project files: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [CLA](../CLA.md), [SECURITY](../SECURITY.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md).
