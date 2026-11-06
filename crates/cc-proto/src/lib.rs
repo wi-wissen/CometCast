@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Comet Cast protocol types: messages, room codes, versioning.
 //!
-//! Must stay usable on every target including WebAssembly, so it only depends on
-//! serde, serde_json and thiserror.
+//! Must stay usable on every target including WebAssembly, so its normal
+//! dependencies are only serde and thiserror (serde_json is used in tests).
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -47,7 +47,8 @@ impl RoomCode {
 
     /// Parse user input. Ignores case and surrounding spaces.
     pub fn parse(input: &str) -> Result<Self, RoomCodeError> {
-        let upper = input.trim().to_uppercase();
+        // ASCII-only uppercase: non-ASCII look-alikes (e.g. 'ſ') must not be accepted.
+        let upper = input.trim().to_ascii_uppercase();
         if upper.chars().count() != Self::LEN {
             return Err(RoomCodeError::WrongLength);
         }
@@ -190,6 +191,12 @@ pub enum ServerMsg {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_rejects_non_ascii_lookalikes() {
+        // 'ſ' (long s) uppercases to 'S' in Unicode, but is not a valid code character.
+        assert!(RoomCode::parse("ſ7M2QX").is_err());
+    }
 
     #[test]
     fn room_code_parse_is_case_insensitive_and_uppercases() {
