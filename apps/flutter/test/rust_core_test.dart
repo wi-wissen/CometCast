@@ -4,6 +4,7 @@
 // COMETCAST_FFI_LIB=/path/to/libcc_ffi.so. Without the library the tests are skipped.
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,6 +74,17 @@ void main() {
         .toList();
     expect(events, hasLength(1));
     expect(events.single, isA<SenderUiEvent_Error>());
+  }, skip: skip);
+
+  test('pushing encoded video without an encoded sender is refused', () {
+    const core = RustCoreApi();
+    final au = Uint8List.fromList([0, 0, 0, 1, 0x65, 1, 2]);
+    expect(
+      core.pushEncodedFrame(au, isKey: true, ptsUs: 0),
+      PushResult.noSender,
+    );
+    expect(core.pushCodecConfig(au), isFalse);
+    expect(core.keyframeRequested(), isFalse);
   }, skip: skip);
 
   test('server defaults come from cc-discovery', () {

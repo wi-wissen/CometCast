@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
+import 'core/android_capture.dart';
 import 'core/core_api.dart';
 import 'receive_page.dart';
 import 'send_page.dart';
@@ -12,10 +13,16 @@ import 'settings.dart';
 import 'widgets.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.core, required this.settings});
+  const HomePage({
+    super.key,
+    required this.core,
+    required this.settings,
+    this.androidCapture,
+  });
 
   final CoreApi core;
   final AppSettings settings;
+  final AndroidCapture? androidCapture;
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +63,13 @@ class HomePage extends StatelessWidget {
                         leading: const Icon(Icons.screen_share_outlined),
                         title: Text(t.homeSendScreen),
                         subtitle: Text(t.homeSendScreenHint),
-                        onTap: () =>
-                            open(SendPage(core: core, settings: settings)),
+                        onTap: () => open(
+                          SendPage(
+                            core: core,
+                            settings: settings,
+                            androidCapture: androidCapture,
+                          ),
+                        ),
                       ),
                     ),
                     FocusRing(

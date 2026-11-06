@@ -22,7 +22,8 @@ import io.flutter.plugin.common.MethodChannel
  *   captureNotification*): shows the system consent dialog and, if the user agrees, starts
  *   [ScreenCaptureService]. Replies `true` (started) or `false` (user said no).
  * - `stop`: stops the service.
- * - `requestKeyFrame`: asks the encoder for a key frame.
+ * - `requestSyncFrame` (alias `requestKeyFrame`): asks the encoder for a sync frame
+ *   (`MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME`). Called by Dart when the Rust core wants one.
  *
  * EventChannel `de.cometcast/capture/frames`: see [CaptureEvents].
  *
@@ -74,7 +75,9 @@ class CaptureBridge(
                 activity.stopService(Intent(activity, ScreenCaptureService::class.java))
                 result.success(null)
             }
-            "requestKeyFrame" -> {
+            // `requestSyncFrame` is the name the Dart wrapper uses; `requestKeyFrame` is the older
+            // alias of the skeleton. Both set MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME.
+            "requestSyncFrame", "requestKeyFrame" -> {
                 ScreenCaptureService.instance?.requestKeyFrame()
                 result.success(null)
             }

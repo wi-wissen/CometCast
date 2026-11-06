@@ -4,6 +4,7 @@ package de.cometcast.cometcast.capture
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Build
 import android.os.Bundle
 import android.view.Surface
 
@@ -39,8 +40,7 @@ class ScreenEncoder(
     private var needKeyFrame = false
     private var lastKeyRequestMs = 0L
 
-    /** Starts the encoder. If this throws, everything it created has been released again. */
-    fun start() {
+    private fun makeFormat(withProfile: Boolean): MediaFormat {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
         format.setInteger(
             MediaFormat.KEY_COLOR_FORMAT,
@@ -57,11 +57,38 @@ class ScreenEncoder(
         // frame after 1 s so that a still screen still produces output (key for a receiver that
         // joins late). Value in microseconds.
         format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1_000_000L)
+        // The WebRTC offer of the Rust core says Constrained Baseline (profile-level-id 42e01f), so
+        // ask for Baseline; if the encoder rejects it the caller retries without (and the output
+        // may then be a higher profile than announced). UNCERTAIN: not run on a device.
+        if (withProfile) {
+            format.setInteger(
+                MediaFormat.KEY_PROFILE,
+                MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline,
+            )
+        }
+        // Asks for SPS/PPS in front of every key frame (API 29+). Encoders may ignore it; the
+        // Rust side prepends cached SPS/PPS to key frames that lack them anyway.
+        if (Build.VERSION.SDK_INT >= 29) {
+            format.setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
+        }
+        return format
+    }
 
+    /** Starts the encoder. If this throws, everything it created has been released again. */
+    fun start() {
         try {
-            val c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            var c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
             codec = c
-            c.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            try {
+                c.configure(makeFormat(withProfile = true), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            } catch (e: RuntimeException) {
+                // Baseline not supported (IllegalArgumentException or CodecException): try again
+                // without a profile on a fresh codec. UNCERTAIN: never run on a device.
+                c.release()
+                c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                codec = c
+                c.configure(makeFormat(withProfile = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            }
             inputSurface = c.createInputSurface()
             surfaceCreated = true
             c.start()

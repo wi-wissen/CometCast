@@ -1073,6 +1073,8 @@ mod tests {
         assert_eq!(info.support, CaptureSupport::Supported);
         assert_eq!(info.monitors.len(), 1);
         assert_eq!(info.monitors[0].id, ANDROID_PROJECTION_ID);
+        // The Dart side (lib/core/android_capture.dart) compares with this literal.
+        assert_eq!(ANDROID_PROJECTION_ID, "android-projection");
     }
 
     /// The tests below share the process-wide slot: one test at a time.
