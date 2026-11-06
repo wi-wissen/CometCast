@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // "Send": enter the receiver's room code and send the built-in VP8 test video, or switch on
 // "Share this screen" to send the screen of this computer (Linux/X11 only for now; the Rust
-// core says whether that works on this system).
+// core says whether that works on this system). On Android the same switch starts the native
+// screen capture (consent dialog, MediaCodec) and sends what it encodes, see capture_feeder.dart.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
 
+import 'core/android_capture.dart';
 import 'core/core_api.dart';
 import 'sender_controller.dart';
 import 'settings.dart';
@@ -18,10 +20,18 @@ const _maxSeconds = 3600;
 const _defaultSeconds = 30;
 
 class SendPage extends StatefulWidget {
-  const SendPage({super.key, required this.core, required this.settings});
+  const SendPage({
+    super.key,
+    required this.core,
+    required this.settings,
+    this.androidCapture,
+  });
 
   final CoreApi core;
   final AppSettings settings;
+
+  /// The Android screen capture; null where there is none.
+  final AndroidCapture? androidCapture;
 
   @override
   State<SendPage> createState() => _SendPageState();
@@ -31,6 +41,7 @@ class _SendPageState extends State<SendPage> {
   late final SenderController _controller = SenderController(
     core: widget.core,
     udpBind: widget.settings.udpBind,
+    capture: widget.androidCapture,
   );
   final _code = TextEditingController();
   final _seconds = TextEditingController(text: '$_defaultSeconds');
@@ -55,6 +66,13 @@ class _SendPageState extends State<SendPage> {
   }
 
   bool get _captureSupported => _capture?.support is CaptureSupport_Supported;
+
+  /// The core listed the Android projection (it does so only when built for Android): the
+  /// screen is captured by the native code, not by the Rust core.
+  bool get _androidMode =>
+      widget.androidCapture != null &&
+      (_capture?.monitors.any((m) => m.id == androidProjectionMonitorId) ??
+          false);
 
   @override
   void dispose() {
@@ -102,6 +120,19 @@ class _SendPageState extends State<SendPage> {
       return;
     }
     widget.settings.rememberServer();
+    if (sharing && _androidMode) {
+      final t = AppLocalizations.of(context);
+      _controller.startCapture(
+        code: check.code,
+        server: widget.settings.serverAddress,
+        notification: CaptureNotificationTexts(
+          title: t.captureNotificationTitle,
+          text: t.captureNotificationText,
+          stopLabel: t.captureNotificationStop,
+        ),
+      );
+      return;
+    }
     _controller.start(
       code: check.code,
       server: widget.settings.serverAddress,
@@ -263,7 +294,9 @@ class _SendPageState extends State<SendPage> {
           key: const Key('shareScreenSwitch'),
           contentPadding: EdgeInsets.zero,
           title: Text(t.sendShareScreen),
-          subtitle: Text(t.sendShareScreenHint),
+          subtitle: Text(
+            _androidMode ? t.sendShareScreenHintAndroid : t.sendShareScreenHint,
+          ),
           value: _shareScreen && supported,
           onChanged: (supported && !active)
               ? (v) => setState(() => _shareScreen = v)
@@ -273,7 +306,10 @@ class _SendPageState extends State<SendPage> {
           Text(t.sendCaptureChecking, key: const Key('captureChecking'))
         else if (reason != null)
           NoticeBox(noticeKey: const Key('captureUnsupported'), text: reason),
-        if (_shareScreen && supported && monitors.isNotEmpty) ...[
+        if (_shareScreen &&
+            supported &&
+            monitors.isNotEmpty &&
+            !_androidMode) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             key: const Key('monitorDropdown'),
@@ -303,6 +339,9 @@ class _SendPageState extends State<SendPage> {
   String _statusText(AppLocalizations t) {
     final c = _controller;
     if (c.error != null) return t.statusError(c.error!);
+    if (c.awaitingConsent) return t.sendCaptureWaitingForConsent;
+    if (c.captureDenied) return t.sendCaptureDenied;
+    if (c.captureStopped) return t.sendCaptureStopped;
     if (c.receiverLeft) return t.statusPeerLeftReceiver;
     switch (c.phase) {
       case SenderPhase.idle:

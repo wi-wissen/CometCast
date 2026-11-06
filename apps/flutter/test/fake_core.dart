@@ -2,6 +2,7 @@
 // A stand-in for the Rust core in widget tests (no native library needed).
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:cometcast/core/core_api.dart';
 
@@ -16,6 +17,20 @@ class FakeCoreApi implements CoreApi {
   int stopReceiverCalls = 0;
   int stopSenderCalls = 0;
   ScreenRequest? senderScreen;
+
+  // The encoded (Android capture) path.
+  String? encodedCode;
+  String? encodedServer;
+  int startEncodedCalls = 0;
+  final pushedFrames = <({Uint8List data, bool isKey, int ptsUs})>[];
+  final pushedConfigs = <Uint8List>[];
+
+  /// What pushCodecConfig answers (false = "no encoded sender yet").
+  bool acceptConfig = true;
+  PushResult pushResult = PushResult.queued;
+
+  /// Answer of the next keyframeRequested call (cleared by it, like the real flag).
+  bool keyframeRequest = false;
 
   /// Pictures waiting for takeFrame (the newest is handed out, the others are dropped, like
   /// the real mailbox).
@@ -111,6 +126,41 @@ class FakeCoreApi implements CoreApi {
     senderServer = server;
     senderSeconds = seconds;
     return senderEvents.stream;
+  }
+
+  @override
+  Stream<SenderUiEvent> startEncodedSender({
+    required String code,
+    required String server,
+    String? udpBind,
+  }) {
+    startEncodedCalls++;
+    encodedCode = code;
+    encodedServer = server;
+    return senderEvents.stream;
+  }
+
+  @override
+  PushResult pushEncodedFrame(
+    Uint8List data, {
+    required bool isKey,
+    required int ptsUs,
+  }) {
+    pushedFrames.add((data: data, isKey: isKey, ptsUs: ptsUs));
+    return pushResult;
+  }
+
+  @override
+  bool pushCodecConfig(Uint8List data) {
+    pushedConfigs.add(data);
+    return acceptConfig;
+  }
+
+  @override
+  bool keyframeRequested() {
+    final r = keyframeRequest;
+    keyframeRequest = false;
+    return r;
   }
 
   @override
