@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Flutter
+on:
+  push:
+    branches: [main]
+    paths: ['apps/flutter/**', '.github/workflows/flutter.yml']
+  pull_request:
+    paths: ['apps/flutter/**', '.github/workflows/flutter.yml']
+permissions:
+  contents: read
+concurrency:
+  group: flutter-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/flutter
+    steps:
+      - uses: actions/checkout@v4
+      # UNCERTAIN: action version and channel not yet run on GitHub; locally verified with Flutter 3.47.9.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter gen-l10n
+      - run: flutter analyze
+      - run: flutter test
