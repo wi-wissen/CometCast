@@ -25,8 +25,8 @@ pub const PAYLOAD_TYPE_ANDROID_HACK: u8 = 96;
 /// `kDefaultTargetPlayoutDelay` in milliseconds.
 pub const DEFAULT_TARGET_DELAY_MS: u32 = 400;
 
-/// What we offer for the single video stream.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What we offer for the single video stream. `Debug` hides the AES key and IV mask.
+#[derive(Clone, PartialEq, Eq)]
 pub struct VideoOffer {
     /// Stream index (audio streams would come first; video-only starts at 0).
     pub index: u32,
@@ -48,6 +48,23 @@ pub struct VideoOffer {
     pub max_fps: u32,
     /// Maximum bit rate in bits per second.
     pub max_bitrate_bps: u32,
+}
+
+impl std::fmt::Debug for VideoOffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VideoOffer")
+            .field("index", &self.index)
+            .field("ssrc", &self.ssrc)
+            .field("payload_type", &self.payload_type)
+            .field("aes_key", &"<redacted>")
+            .field("aes_iv_mask", &"<redacted>")
+            .field("target_delay_ms", &self.target_delay_ms)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("max_fps", &self.max_fps)
+            .field("max_bitrate_bps", &self.max_bitrate_bps)
+            .finish()
+    }
 }
 
 impl VideoOffer {

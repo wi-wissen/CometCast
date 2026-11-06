@@ -44,6 +44,14 @@ pub enum StreamEnd {
     AppStopped,
 }
 
+/// Does this `RECEIVER_STATUS` mean our app session is gone? Only a status with an explicit
+/// `applications` array counts: one without it (volume change, ...) says nothing about the
+/// app. UNCERTAIN: a receiver that omits the array when it goes idle ends the stream by
+/// connection close or heartbeat timeout instead.
+fn status_ends_session(st: &crate::session::ReceiverStatus, session_id: &str) -> bool {
+    st.applications_listed && !st.apps.iter().any(|a| a.session_id == session_id)
+}
+
 /// Send frames and serve the receiver until something ends. `key_request` is set when the
 /// receiver asks for a picture refresh (the producer must then make a key frame).
 pub async fn run_stream(
@@ -73,7 +81,7 @@ pub async fn run_stream(
                 let m = msg?;
                 // A RECEIVER_STATUS that no longer lists our session means the app was stopped.
                 if let Some((_, st)) = m.text_payload().and_then(|t| parse_receiver_status(&t)) {
-                    if !st.apps.iter().any(|a| a.session_id == negotiated.app.session_id) {
+                    if status_ends_session(&st, &negotiated.app.session_id) {
                         return Ok(StreamEnd::AppStopped);
                     }
                 }
@@ -261,4 +269,31 @@ pub async fn mirror_screen(
         StreamEnd::SourceEnded => {}
     }
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ends(text: &str) -> bool {
+        let (_, st) = parse_receiver_status(text).unwrap();
+        status_ends_session(&st, "s-1")
+    }
+
+    #[test]
+    fn only_an_explicit_application_list_without_our_session_ends_the_stream() {
+        // Volume change: no `applications` array, says nothing about the app.
+        assert!(!ends(
+            r#"{"type":"RECEIVER_STATUS","status":{"volume":{"level":0.5}}}"#
+        ));
+        assert!(!ends(
+            r#"{"type":"RECEIVER_STATUS","status":{"applications":[{"sessionId":"s-1"}]}}"#
+        ));
+        assert!(ends(
+            r#"{"type":"RECEIVER_STATUS","status":{"applications":[]}}"#
+        ));
+        assert!(ends(
+            r#"{"type":"RECEIVER_STATUS","status":{"applications":[{"sessionId":"other"}]}}"#
+        ));
+    }
 }

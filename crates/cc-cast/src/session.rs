@@ -86,6 +86,9 @@ pub struct RunningApp {
 pub struct ReceiverStatus {
     /// Running applications.
     pub apps: Vec<RunningApp>,
+    /// True if the message carried an explicit `applications` array (possibly empty). A
+    /// status without one says nothing about which apps run (for example a volume change).
+    pub applications_listed: bool,
 }
 
 /// Parse the text of a `RECEIVER_STATUS` message. `None`: another message type.
@@ -100,10 +103,12 @@ pub fn parse_receiver_status(text: &str) -> Option<(Option<i64>, ReceiverStatus)
             .unwrap_or_default()
             .to_owned()
     };
-    let apps = v
+    let listed = v
         .get("status")
         .and_then(|st| st.get("applications"))
-        .and_then(Value::as_array)
+        .and_then(Value::as_array);
+    let applications_listed = listed.is_some();
+    let apps = listed
         .map(|apps| {
             apps.iter()
                 .map(|a| RunningApp {
@@ -117,7 +122,10 @@ pub fn parse_receiver_status(text: &str) -> Option<(Option<i64>, ReceiverStatus)
         .unwrap_or_default();
     Some((
         v.get("requestId").and_then(Value::as_i64),
-        ReceiverStatus { apps },
+        ReceiverStatus {
+            apps,
+            applications_listed,
+        },
     ))
 }
 
@@ -146,11 +154,11 @@ fn launch_reply(app_id: &str, m: &crate::proto::CastMessage) -> Option<LaunchRep
             .map(LaunchReply::App);
     }
     let v: Value = serde_json::from_str(&text).ok()?;
-    let reason = v
-        .get("reason")
-        .and_then(Value::as_str)
-        .unwrap_or("UNKNOWN")
-        .to_owned();
+    // The reason comes from the network and is printed by callers: escape and cap it.
+    let reason = crate::error::sanitize_display(
+        v.get("reason").and_then(Value::as_str).unwrap_or("UNKNOWN"),
+        64,
+    );
     match v.get("type")?.as_str()? {
         "LAUNCH_ERROR" => Some(LaunchReply::Error(reason)),
         "INVALID_REQUEST" => Some(LaunchReply::Invalid(reason)),
@@ -158,8 +166,8 @@ fn launch_reply(app_id: &str, m: &crate::proto::CastMessage) -> Option<LaunchRep
     }
 }
 
-/// The streaming parameters both sides agreed on.
-#[derive(Debug, Clone)]
+/// The streaming parameters both sides agreed on. `Debug` hides the AES key and IV mask.
+#[derive(Clone)]
 pub struct StreamParams {
     /// Our SSRC (from the OFFER).
     pub sender_ssrc: u32,
@@ -171,6 +179,18 @@ pub struct StreamParams {
     pub aes_key: [u8; 16],
     /// AES IV mask.
     pub aes_iv_mask: [u8; 16],
+}
+
+impl std::fmt::Debug for StreamParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamParams")
+            .field("sender_ssrc", &self.sender_ssrc)
+            .field("receiver_ssrc", &self.receiver_ssrc)
+            .field("payload_type", &self.payload_type)
+            .field("aes_key", &"<redacted>")
+            .field("aes_iv_mask", &"<redacted>")
+            .finish()
+    }
 }
 
 /// A session that is ready to stream. Keep it alive while streaming: dropping it closes the
@@ -323,7 +343,9 @@ pub async fn negotiate(cfg: &SessionConfig, video: &VideoOffer) -> Result<Negoti
                 Ok(AnswerMessage::Error {
                     seq_num,
                     description,
-                }) if seq_num == seq => Some(Err(CastError::OfferRejected(description))),
+                }) if seq_num == seq => Some(Err(CastError::OfferRejected(
+                    crate::error::sanitize_display(&description, 200),
+                ))),
                 Ok(_) => None,
                 Err(e) => Some(Err(e)),
             }
@@ -400,6 +422,24 @@ mod tests {
         assert_eq!(req, Some(2));
         assert_eq!(st.apps.len(), 1);
         assert_eq!(st.apps[0].transport_id, "t-1");
+        assert!(st.applications_listed);
+        let (_, st) =
+            parse_receiver_status(r#"{"type":"RECEIVER_STATUS","status":{"volume":{}}}"#).unwrap();
+        assert!(!st.applications_listed);
+        let (_, st) =
+            parse_receiver_status(r#"{"type":"RECEIVER_STATUS","status":{"applications":[]}}"#)
+                .unwrap();
+        assert!(st.applications_listed && st.apps.is_empty());
+        // Debug output never contains key material.
+        let p = StreamParams {
+            sender_ssrc: 1,
+            receiver_ssrc: 2,
+            payload_type: 101,
+            aes_key: [0xab; 16],
+            aes_iv_mask: [0xcd; 16],
+        };
+        let d = format!("{p:?}");
+        assert!(d.contains("redacted") && !d.contains("171") && !d.contains("ab"));
         assert!(parse_receiver_status(r#"{"type":"PONG"}"#).is_none());
     }
 
@@ -423,6 +463,11 @@ mod tests {
         assert_eq!(
             launch_reply(MIRRORING_APP_ID, &err),
             Some(LaunchReply::Error("NOT_FOUND".into()))
+        );
+        let evil = status(r#"{"type":"LAUNCH_ERROR","reason":"X\u001b[2J\nY"}"#);
+        assert_eq!(
+            launch_reply(MIRRORING_APP_ID, &evil),
+            Some(LaunchReply::Error("X\\u{1b}[2J\\u{a}Y".into()))
         );
         let bad = status(r#"{"type":"INVALID_REQUEST","reason":"INVALID_COMMAND"}"#);
         assert_eq!(

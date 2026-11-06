@@ -26,6 +26,7 @@ use cc_cast::streamer::VideoStreamer;
 use prost::Message;
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, Issuer, KeyPair,
+    KeyUsagePurpose,
 };
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde_json::{Value, json};
@@ -97,6 +98,7 @@ fn build_pki() -> Pki {
     let mut root_params = CertificateParams::new(Vec::<String>::new()).unwrap();
     root_params.distinguished_name = dn("Fake Test Root (not a Cast root)");
     root_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    root_params.key_usages = vec![KeyUsagePurpose::KeyCertSign];
     root_params.not_before = now - TimeDuration::days(1);
     root_params.not_after = now + TimeDuration::days(365);
     let root_cert = root_params.self_signed(&root_key).unwrap();
@@ -106,6 +108,7 @@ fn build_pki() -> Pki {
     let device_key = KeyPair::try_from(device_key_der()).unwrap();
     let mut dev_params = CertificateParams::new(Vec::<String>::new()).unwrap();
     dev_params.distinguished_name = dn("Fake Test Device");
+    dev_params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
     dev_params.not_before = now - TimeDuration::days(1);
     dev_params.not_after = now + TimeDuration::days(30);
     let dev_cert = dev_params.signed_by(&device_key, &issuer).unwrap();
@@ -520,6 +523,93 @@ async fn device_auth_rejects_foreign_root_bad_signature_and_bad_nonce() {
     assert!(m.contains("nonce"), "{m}");
 }
 
+/// Regression test for the reviewer's probe: a chain `[forged, legit device leaf]` where the
+/// legit leaf is not a CA must not verify, although every signature in it is valid.
+#[test]
+fn device_auth_rejects_a_chain_signed_by_a_non_ca_device_leaf() {
+    use rsa::pkcs8::EncodePrivateKey;
+    let now = OffsetDateTime::now_utc();
+    let dn = |cn: &str| {
+        let mut d = DistinguishedName::new();
+        d.push(DnType::CommonName, cn);
+        d
+    };
+    let root_key = KeyPair::generate().unwrap();
+    let mut rp = CertificateParams::new(Vec::<String>::new()).unwrap();
+    rp.distinguished_name = dn("Probe Root");
+    rp.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    rp.key_usages = vec![KeyUsagePurpose::KeyCertSign];
+    rp.not_before = now - TimeDuration::days(1);
+    rp.not_after = now + TimeDuration::days(300);
+    let root = rp.self_signed(&root_key).unwrap();
+    let root_issuer = Issuer::new(rp, root_key);
+
+    // The legitimate device leaf (not a CA).
+    let leaf_key = KeyPair::try_from(device_key_der()).unwrap();
+    let mut lp = CertificateParams::new(Vec::<String>::new()).unwrap();
+    lp.distinguished_name = dn("Legit Device Leaf (not a CA)");
+    lp.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    lp.not_before = now - TimeDuration::days(1);
+    lp.not_after = now + TimeDuration::days(30);
+    let leaf = lp.clone().signed_by(&leaf_key, &root_issuer).unwrap();
+    let leaf_issuer = Issuer::new(lp, leaf_key);
+
+    // The attacker's certificate, "issued" by that leaf, with the attacker's own RSA key.
+    let atk = rsa::RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap();
+    let atk_der = atk.to_pkcs8_der().unwrap();
+    let atk_key = KeyPair::try_from(atk_der.as_bytes()).unwrap();
+    let mut ap = CertificateParams::new(Vec::<String>::new()).unwrap();
+    ap.distinguished_name = dn("Forged Device");
+    ap.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    ap.not_before = now - TimeDuration::days(1);
+    ap.not_after = now + TimeDuration::days(30);
+    let forged = ap.signed_by(&atk_key, &leaf_issuer).unwrap();
+
+    let pki = build_pki();
+    let nonce = [5u8; 16];
+    let mut signed = nonce.to_vec();
+    signed.extend_from_slice(&pki.tls_der);
+    let rk = ring::signature::RsaKeyPair::from_pkcs8(atk_der.as_bytes()).unwrap();
+    let mut sig = vec![0u8; rk.public().modulus_len()];
+    rk.sign(
+        &ring::signature::RSA_PKCS1_SHA256,
+        &ring::rand::SystemRandom::new(),
+        &signed,
+        &mut sig,
+    )
+    .unwrap();
+    let body = DeviceAuthMessage {
+        challenge: None,
+        response: Some(AuthResponse {
+            signature: sig,
+            client_auth_certificate: forged.der().to_vec(),
+            intermediate_certificate: vec![leaf.der().to_vec()],
+            signature_algorithm: None,
+            sender_nonce: Some(nonce.to_vec()),
+            hash_algorithm: Some(HashAlgorithm::Sha256 as i32),
+            crl: None,
+        }),
+        error: None,
+    };
+    let msg = CastMessage::binary(
+        "receiver-0",
+        "sender-0",
+        AUTH_NAMESPACE,
+        body.encode_to_vec(),
+    );
+    let r = cc_cast::device_auth::verify_response(
+        &msg,
+        &nonce,
+        &pki.tls_der,
+        &TrustAnchors(vec![root.der().to_vec()]),
+        now.unix_timestamp(),
+    );
+    let Err(CastError::DeviceAuth(m)) = r else {
+        panic!("forged chain was accepted: {r:?}")
+    };
+    assert!(m.contains("not a CA"), "{m}");
+}
+
 #[tokio::test]
 async fn insecure_skip_works_but_warns_loudly() {
     let fake = start_fake(Behavior {
@@ -637,6 +727,57 @@ async fn picture_loss_and_nacks_from_the_receiver_are_served() {
         }
     })
     .await;
+}
+
+#[tokio::test]
+async fn nack_flood_is_capped_deduplicated_and_foreign_senders_are_ignored() {
+    let mut fake = start_fake(Behavior::default()).await;
+    let v = video();
+    let neg = negotiate(&cfg(&fake, DeviceAuth::InsecureSkip), &v)
+        .await
+        .unwrap();
+    let mut streamer = VideoStreamer::new(neg.remote_udp, neg.stream.clone())
+        .await
+        .unwrap();
+    // One frame of 4000 bytes = 3 packets in the cache.
+    streamer
+        .send_frame(&vec![0xabu8; 4000], true, Duration::ZERO)
+        .await
+        .unwrap();
+    within(fake.frames.recv()).await.unwrap();
+
+    // One datagram with 255 "whole frame lost" entries (about 50000x amplification before).
+    let flood = Nack {
+        frame_id8: 0,
+        packet_id: ALL_PACKETS_LOST,
+        bit_vector: 0,
+    };
+    fake.udp_cmd
+        .send(rtp::feedback_packet(
+            RECEIVER_SSRC,
+            v.ssrc,
+            0,
+            &vec![flood; 255],
+        ))
+        .unwrap();
+    within(streamer.recv_rtcp()).await.unwrap();
+    let st = streamer.stats();
+    assert_eq!(st.resent_packets, 3, "each packet at most once: {st:?}");
+    assert!(st.resend_suppressed > 0);
+
+    // A datagram with the right SSRCs but from another source port is ignored.
+    let rogue = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let target = SocketAddr::new(
+        "127.0.0.1".parse().unwrap(),
+        streamer.local_addr().unwrap().port(),
+    );
+    rogue
+        .send_to(&rtp::picture_loss_packet(RECEIVER_SSRC, v.ssrc), target)
+        .await
+        .unwrap();
+    let ev = within(streamer.recv_rtcp()).await.unwrap();
+    assert!(ev.is_empty());
+    assert_eq!(streamer.stats().picture_loss, 0);
 }
 
 #[tokio::test]
