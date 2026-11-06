@@ -19,6 +19,7 @@ cd apps/web && npm ci && npm run dev
 - `npm run build` - production build into `dist/`
 - `npm run preview` - serve the production build (no signalling server; use the Rust server below)
 - `npm run e2e` - end-to-end test, see below (not part of `npm test`)
+- `npm run e2e:native` - interop test with the native Rust peers, see below
 
 ## Trying it
 
@@ -58,6 +59,14 @@ getDisplayMedia worked headless in the preinstalled Chromium with
 browser offers, not a real desktop). As a fallback there is a **TEST-ONLY** query flag `?testVideo=1`
 on the page: the sender then sends an animated canvas instead of the screen. Run
 `E2E_TEST_VIDEO=1 npm run e2e` to use it. Do not use it for anything else.
+
+## Interop test with the native Rust peers
+
+`npm run build && npm run e2e:native` starts the real server and the real `cometcast-cli`, then checks
+two directions in headless Chromium: (A) the web sender page sends to `cometcast-cli receive`, and the
+CLI's per-second packet counts must keep increasing; (B) `cometcast-cli send` sends a VP8 test pattern
+to the web receiver page, whose `<video>` must decode it (320x180) and advance. It uses the same Chromium
+flags as `npm run e2e`. See [../../docs/transport.md](../../docs/transport.md).
 
 ## Translations
 

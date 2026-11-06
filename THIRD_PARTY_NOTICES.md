@@ -13,7 +13,7 @@ Licence details marked **unchecked** were not verified and must be checked again
 | Open Screen Library | Reference for the Google Cast sender protocol (reading and possibly building the sender against it) | BSD | planned (reference) | |
 | hayro | PDF rendering (also as WASM) | not recorded in the plan | planned | Licence: unchecked |
 | office2pdf | Office to PDF on the sender | Apache-2.0 | planned | |
-| webrtc-rs (`webrtc` crate) | WebRTC transport | MIT / Apache-2.0 | planned | Licence as named in the plan; versions are pinned in the workspace once it exists |
+| webrtc-rs (`webrtc` and `rtc` crates, 0.21.1) | WebRTC transport (native peers, `cc-transport`) | MIT / Apache-2.0 (as stated on crates.io; unchecked against the licence texts) | in use (compiled in, nothing bundled yet) | Pinned in the workspace `Cargo.toml`. Its transitive crates (ring and others) are not reviewed yet |
 | mdns-sd | mDNS discovery on desktop | Apache-2.0 OR MIT | planned | |
 | hickory-resolver | DNS-SRV lookup | MIT OR Apache-2.0 | planned | |
 | lopdf | Writing annotations into PDFs | MIT | planned | |
