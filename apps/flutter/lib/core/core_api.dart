@@ -6,7 +6,14 @@
 
 import 'package:cometcast/src/rust/api.dart' as rust;
 import 'package:cometcast/src/rust/api.dart'
-    show ReceiverUiEvent, RoomCodeCheck, SenderUiEvent;
+    show
+        CaptureInfo,
+        ReceiverUiEvent,
+        RoomCodeCheck,
+        ScreenRequest,
+        SenderUiEvent,
+        ServerDefaults,
+        VideoFrame;
 
 // The event and result classes (generated) are re-exported for the screens and tests.
 export 'package:cometcast/src/rust/api.dart'
@@ -17,7 +24,11 @@ export 'package:cometcast/src/rust/api.dart'
         stopSender,
         checkRoomCode,
         roomCodeAlphabet,
-        roomCodeLength;
+        roomCodeLength,
+        takeFrame,
+        setVideoMaxSize,
+        captureInfo,
+        serverDefaults;
 
 abstract class CoreApi {
   /// Connect to [server], create a room and report events. The first event is the room code.
@@ -29,13 +40,29 @@ abstract class CoreApi {
 
   Future<void> stopReceiver();
 
-  /// Join the room [code] and send the built-in test video for [seconds] seconds.
+  /// The newest decoded picture (RGBA) that was not fetched yet, or null. Call it after a
+  /// `frameReady` event; fetching re-arms that event.
+  Future<VideoFrame?> takeFrame();
+
+  /// Size of the drawing area in physical pixels; the core scales pictures down to fit.
+  void setVideoMaxSize(int width, int height);
+
+  /// Join the room [code] and send the built-in test video for [seconds] seconds, or with
+  /// [screen] the screen of this computer (until stopped when [seconds] is null).
   Stream<SenderUiEvent> startSender({
     required String code,
     required String server,
     int? seconds,
     String? udpBind,
+    ScreenRequest? screen,
   });
+
+  /// Can this system share its screen, and which monitors exist? [display] forces an X11
+  /// display such as `:99` (development and tests).
+  Future<CaptureInfo> captureInfo({String? display});
+
+  /// Server addresses to pre-fill (from cc-discovery) and the development fallback.
+  ServerDefaults serverDefaults();
 
   Future<void> stopSender();
 
@@ -63,16 +90,32 @@ class RustCoreApi implements CoreApi {
   Future<void> stopReceiver() => rust.stopReceiver();
 
   @override
+  Future<VideoFrame?> takeFrame() => rust.takeFrame();
+
+  @override
+  void setVideoMaxSize(int width, int height) =>
+      rust.setVideoMaxSize(width: width, height: height);
+
+  @override
+  Future<CaptureInfo> captureInfo({String? display}) =>
+      rust.captureInfo(display: display);
+
+  @override
+  ServerDefaults serverDefaults() => rust.serverDefaults();
+
+  @override
   Stream<SenderUiEvent> startSender({
     required String code,
     required String server,
     int? seconds,
     String? udpBind,
+    ScreenRequest? screen,
   }) => rust.startSender(
     code: code,
     server: server,
     seconds: seconds,
     udpBind: udpBind,
+    screen: screen,
   );
 
   @override

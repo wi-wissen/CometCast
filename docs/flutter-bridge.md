@@ -24,12 +24,32 @@ cc-receiver (ReceiverCore) / cc-sender (SenderCore) / cc-proto (RoomCode)
 | --- | --- | --- |
 | `start_receiver(server, udp_bind, sink)` | `Stream<ReceiverUiEvent> startReceiver(...)` | Connect, create a room, report events |
 | `stop_receiver()` | `Future<void> stopReceiver()` | Stop and close the room |
-| `start_sender(code, server, seconds, udp_bind, sink)` | `Stream<SenderUiEvent> startSender(...)` | Join a room and send the built-in VP8 test stream |
+| `take_frame()` | `Future<VideoFrame?> takeFrame()` | The newest decoded picture (RGBA) the UI has not fetched yet |
+| `set_video_max_size(width, height)` | sync | Size of the picture area in physical pixels; pictures are scaled down to it (never up, at most 1920x1080) |
+| `start_sender(code, server, seconds, udp_bind, screen, sink)` | `Stream<SenderUiEvent> startSender(...)` | Join a room and send the built-in VP8 test stream, or with `screen` (`ScreenRequest`: display, monitor id, fps, kbit/s) the X11 screen as H.264 |
+| `capture_info(display)` | `Future<CaptureInfo> captureInfo(...)` | Can this system share its screen (`Supported`, `Wayland`, `NoDisplay`, `UnsupportedOs`, `Failed`) and which monitors exist (RandR, "root" = whole desktop) |
+| `server_defaults()` | sync | Server list of `cc-discovery` plus the development fallback `127.0.0.1:8443` |
 | `stop_sender()` | `Future<void> stopSender()` | Stop |
 | `check_room_code(input)` | `RoomCodeCheck checkRoomCode(...)` (sync) | Same rules as `cc_proto::RoomCode::parse` |
 | `room_code_length()` / `room_code_alphabet()` | sync | Constants from `cc-proto` |
 
-Events: `ReceiverUiEvent` = room code, peer joined, connection state, video track (MIME and codec), stats (packets, bytes, frames, key frames), peer left, error. `SenderUiEvent` = joined, connection state, streaming (frames sent), finished, peer left, error.
+Events: `ReceiverUiEvent` = room code, peer joined, connection state, video track (MIME and codec), stats (packets, bytes, frames, key frames), **frame ready**, **video stats** (decoded, delivered, dropped, dropped packets, decode errors, key frame requests, size, mean decode time, last error), peer left, error. `SenderUiEvent` = joined, connection state, streaming (frames sent), **screen stats** (looks, changed, encoded, key frames, bytes), finished, peer left, error.
+
+## The picture path (receiver)
+
+```
+WebRTC task --video_tap (RTP payloads, unbounded channel)--> decoder thread "cc-video-decode"
+   H264Assembler -> OpenH264 (cc-media, feature `h264` of cc-ffi, default on) -> RGB -> scale -> RGBA
+   -> mailbox with ONE slot (newest wins)  --FrameReady event-->  Dart --take_frame()--> ui.Image -> RawImage
+```
+
+Implemented in `crates/cc-ffi/src/video.rs`; no change to `cc-receiver` was needed (the session already had the packet tap and `request_keyframe`). Why it is a pull model: a `StreamSink` queues without limit, and a pushed 8 MB picture per frame would grow memory when Dart is slow. Instead only a tiny `FrameReady` event is pushed, and only while the previous one was not answered by `take_frame`. Bounds:
+
+- one picture waits in the mailbox; a newer one replaces it and is counted in `dropped` (the UI was too slow);
+- the decoder thread drops everything, waits for the next IDR frame and asks for a key frame if more than 2000 packets pile up (`dropped_packets`; placeholder value, not tuned); the same happens after a lost RTP packet or a decode error (`decode_errors`); key frame requests are rate limited to one per second and sent as PLI by the receiver task;
+- pictures are scaled (nearest neighbour) to the size the UI reports with `set_video_max_size`, at most 1920x1080; only H.264 is decoded (other codecs, such as the VP8 test video, are only counted).
+
+Without the feature `h264` the receiver builds without a decoder and the video stats carry an error text. UNCERTAIN: the H.264 patent/licence questions of OpenH264 are open (docs/capture.md, "H.264 licensing"); the default feature builds OpenH264 from source.
 
 Rules worth knowing:
 
@@ -37,13 +57,14 @@ Rules worth knowing:
 - **One receiver and one sender at a time.** Starting a new one stops the old one. `stop_*` also works while a start is still connecting: each start gets a generation number, and a start whose number is out of date after connecting closes its new core at once. Cancelling the Dart subscription alone does not stop the core immediately: the core notices at its next event (when `StreamSink::add` fails, at most about one second later while connected) and shuts down; the controllers therefore also call `stopReceiver()` / `stopSender()` explicitly. A panic inside a background task is caught and reported as an `error` event.
 - **Counters are `u64`**, which Dart sees as `BigInt`; the controllers convert with `toInt()`.
 - **Room-code validation is not duplicated** in Dart: the UI calls `checkRoomCode`. The Rust function reports a bad character before a wrong length so the UI can warn while someone is typing. The helper text under the code field gets length and alphabet from Rust through an ARB placeholder. The Dart test fake (`test/fake_core.dart`) has a small copy of the rule only for tests without the native library; `test/rust_core_test.dart` checks that it agrees with Rust.
+- **Screen sharing** needs the X11 capture path of `cc-sender`/`cc-capture` (docs/capture.md). `capture_info` runs the X11 connection on a blocking thread and decides "Wayland" from the environment (`XDG_SESSION_TYPE`, `WAYLAND_DISPLAY`) unless a display is forced. The Flutter app reads the forced display from `COMETCAST_CAPTURE_DISPLAY` (development and tests).
 - `udp_bind` (optional) is a development switch: bind WebRTC to one local address, for example `127.0.0.1:0` for tests on one machine. The app reads it from the environment variable `COMETCAST_UDP_BIND`. UNCERTAIN: whether the default (`0.0.0.0:0`) connects two peers on one machine was not tested; the smoke tests use `127.0.0.1:0`.
 
 ## Generated code: committed, deliberately
 
 `crates/cc-ffi/src/frb_generated.rs`, `apps/flutter/lib/src/rust/*.dart` (including `api.freezed.dart`) are **committed**. Reasons: builds do not need the code generator (or `build_runner`, which creates the `.freezed.dart` file), the build is reproducible, and reviewers see what an API change does. Cost: generated diffs in pull requests. The CI workflow regenerates the code and fails if the committed files differ. The Dart files are excluded from `flutter analyze` (`analysis_options.yaml`) and carry the generator's own header instead of an SPDX line; the license of the repository applies.
 
-Regenerate after editing `api.rs` (inside `apps/flutter`):
+Regenerate after editing `api.rs` (inside `apps/flutter`; keep type names in `video.rs` different from those in `api.rs`: the codegen warned when both had a struct called `Slot`):
 
 ```sh
 cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked   # once
@@ -72,12 +93,28 @@ The Linux runner also sets the window title and the window icon (`assets/icon.pn
 
 ## Verified
 
-On Linux with Flutter 3.47.9 / Dart 3.13.7 and Rust 1.97: `flutter analyze`, `flutter test` (widget tests with a fake core plus tests against the real library), `flutter build linux --debug`, and an integration test (`integration_test/receiver_smoke_test.dart`) run headless under `xvfb-run` against a real `cometcast-server` and the real `cometcast-cli`. Exact commands: `apps/flutter/README.md`.
+On Linux with Flutter 3.47.9 / Dart 3.13.7 and Rust 1.97: `flutter analyze`, `flutter test` (widget tests with a fake core plus tests against the real library), `flutter build linux --debug`, `flutter_rust_bridge_codegen generate` (no diff after the commit), `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and two integration tests run headless under `xvfb-run` against a real `cometcast-server` and the real `cometcast-cli`: `integration_test/receiver_smoke_test.dart` (counters) and `integration_test/screen_e2e_test.dart` (a real X11 screen as H.264 into the app and back out of the app into `cometcast-cli receive --decode`; the test reads the drawn pixels). Exact commands, output and numbers: `apps/flutter/README.md`.
+
+Commands (from the repository root unless noted):
+
+```sh
+export PATH=/opt/flutter/bin:$HOME/.cargo/bin:$PATH FLUTTER_ALLOW_ROOT=1 CI=true
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0        # only to keep target/ small on a small disk
+(cd apps/flutter && flutter_rust_bridge_codegen generate)   # then: git status shows no change
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo build -p cc-ffi -p cometcast-server -p cometcast-cli
+(cd apps/flutter && flutter analyze && flutter test && COMETCAST_CARGO_TARGET_DIR=$PWD/../../target flutter build linux --debug)
+(cd apps/flutter && integration_test/run_screen_e2e.sh)
+```
 
 ## Not done
 
-- No screen capture and no video decoding or rendering. The receiver only counts incoming RTP packets, bytes, frames and key frames; the sender sends a built-in VP8 test stream. The UI says so (translated notices).
+- Screen capture exists for Linux/X11 only (Wayland, Windows, macOS: the UI shows a translated "not supported yet" message). The picture view shows H.264 only; the VP8 test video is counted, not drawn. The picture is copied from Rust to Dart for every frame (no Flutter `Texture`); cost in README.md.
+- Full screen is implemented in the Linux (GTK) runner only (platform channel `de.cometcast/window`).
 - Not built or tried: Windows, macOS, iOS (no toolchains here). Android builds (cargo-ndk through Gradle, no cargokit) but was never run on a device: see [android.md](android.md). Packaging for the others is open; cargokit is the likely route.
 - The release build (`flutter build linux --release`) was not run.
-- The server address is a plain text field (default `127.0.0.1:8443`), kept in memory only. UNCERTAIN: the real default list comes from `cc-discovery` and is wired later.
+- The server address is pre-filled from `server_defaults()` (`cc-discovery`'s built-in list, whose host `relay.cometcast.de` does not exist yet, plus `127.0.0.1:8443` for development); the last used server is saved with `shared_preferences`. UNCERTAIN: the other steps of the discovery ladder (MDM, DNS SRV, display announcement) are not implemented, so only the built-in list is used.
+- `Cargo.toml` (workspace root) got `[profile.dev.package.cc-ffi] opt-level = 3`: the per-picture pixel loops were too slow at opt-level 0 (33.7 ms per 1280x720 picture before, 1.5 to 1.7 ms per 640x480 picture after; different picture sizes, so the two numbers are not a clean A/B).
 - UNCERTAIN: the GitHub workflow (`.github/workflows/flutter.yml`) has not run on GitHub.

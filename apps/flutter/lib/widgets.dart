@@ -143,7 +143,7 @@ class _ServerFieldState extends State<ServerField> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return TextField(
+    final field = TextField(
       key: const Key('serverField'),
       controller: _controller,
       focusNode: _focusNode,
@@ -160,6 +160,37 @@ class _ServerFieldState extends State<ServerField> {
       ),
       onChanged: (v) => widget.settings.serverAddress = v,
       onSubmitted: (_) => widget.onSubmitted?.call(),
+    );
+    final suggestions = widget.settings.serverSuggestions;
+    if (suggestions.isEmpty) return field;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        field,
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              t.serverSuggestionsLabel,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            for (final address in suggestions)
+              ActionChip(
+                key: Key('serverSuggestion:$address'),
+                label: Text(address),
+                onPressed: widget.enabled
+                    ? () {
+                        _controller.text = address;
+                        widget.settings.serverAddress = address;
+                      }
+                    : null,
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

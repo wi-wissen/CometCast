@@ -22,13 +22,17 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Load the Rust core (libcc_ffi) before the first screen.
   await initRustCore();
-  runApp(
-    CometCastApp(
-      core: const RustCoreApi(),
-      // Development only: bind WebRTC to one local address, e.g. COMETCAST_UDP_BIND=127.0.0.1:0.
-      settings: AppSettings(udpBind: _env('COMETCAST_UDP_BIND')),
-    ),
+  const core = RustCoreApi();
+  final settings = await AppSettings.load(
+    core: core,
+    // Development only: COMETCAST_SERVER=host:port overrides the saved server.
+    envServer: _env('COMETCAST_SERVER'),
+    // Development only: bind WebRTC to one local address, e.g. COMETCAST_UDP_BIND=127.0.0.1:0.
+    udpBind: _env('COMETCAST_UDP_BIND'),
+    // Development only: share another X11 display, e.g. COMETCAST_CAPTURE_DISPLAY=:99.
+    captureDisplay: _env('COMETCAST_CAPTURE_DISPLAY'),
   );
+  runApp(CometCastApp(core: core, settings: settings));
 }
 
 String? _env(String name) {
@@ -61,7 +65,7 @@ class CometCastApp extends StatelessWidget {
     this.locale,
     required this.core,
     AppSettings? settings,
-  }) : settings = settings ?? AppSettings();
+  }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   final Locale? locale;
 

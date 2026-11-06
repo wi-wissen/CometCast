@@ -74,4 +74,32 @@ void main() {
     expect(events, hasLength(1));
     expect(events.single, isA<SenderUiEvent_Error>());
   }, skip: skip);
+
+  test('server defaults come from cc-discovery', () {
+    const core = RustCoreApi();
+    final d = core.serverDefaults();
+    expect(d.servers, ['relay.cometcast.de:443']);
+    expect(d.devFallback, '127.0.0.1:8443');
+    // The Dart fake stays in line with the real values.
+    final fake = FakeCoreApi().serverDefaults();
+    expect(fake.servers, d.servers);
+    expect(fake.devFallback, d.devFallback);
+  }, skip: skip);
+
+  test('no picture is waiting before a receiver ran', () async {
+    const core = RustCoreApi();
+    expect(await core.takeFrame(), isNull);
+    core.setVideoMaxSize(640, 360); // must not throw
+  }, skip: skip);
+
+  test(
+    'capture check: an unreachable display is reported, not thrown',
+    () async {
+      const core = RustCoreApi();
+      final info = await core.captureInfo(display: ':9999');
+      expect(info.support, isA<CaptureSupport_Failed>());
+      expect(info.monitors, isEmpty);
+    },
+    skip: skip,
+  );
 }
