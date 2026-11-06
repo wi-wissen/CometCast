@@ -25,7 +25,7 @@ fn data(name: &str) -> Vec<u8> {
 }
 
 fn open(name: &str) -> Document {
-    Document::open(data(name)).unwrap_or_else(|e| panic!("{name}: {e}"))
+    open_pdf(data(name)).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
 fn dump(name: &str, page: usize, img: &RenderedPage) {
@@ -202,7 +202,7 @@ fn encrypted_with_empty_user_password_opens() {
 
 #[test]
 fn password_protected_file_is_refused_with_a_clear_error() {
-    let e = Document::open(data("encrypted_password.pdf")).unwrap_err();
+    let e = open_pdf(data("encrypted_password.pdf")).unwrap_err();
     assert_eq!(e, DocError::PasswordProtected);
     assert_eq!(e.to_string(), "the PDF is password protected");
 }
@@ -250,7 +250,7 @@ fn thumbnails_of_extreme_shapes_still_fit_the_box() {
         ("[0 0 100 100]", 1),
         ("[0 0 7 300]", 100),
     ] {
-        let d = Document::open(page_with(&format!("/MediaBox {media}"))).unwrap();
+        let d = open_pdf(page_with(&format!("/MediaBox {media}"))).unwrap();
         let t = d.thumbnail(0, max_side).unwrap();
         println!("{media} in {max_side}: {} x {}", t.width, t.height);
         assert!(t.width >= 1 && t.height >= 1);
@@ -270,7 +270,7 @@ fn thumbnails_of_extreme_shapes_still_fit_the_box() {
 /// points. Documented in `docs/documents.md` and `PageSize`.
 #[test]
 fn user_unit_is_not_applied() {
-    let d = Document::open(page_with("/MediaBox [0 0 100 100] /UserUnit 100")).unwrap();
+    let d = open_pdf(page_with("/MediaBox [0 0 100 100] /UserUnit 100")).unwrap();
     let s = d.page_size(0).unwrap();
     assert_eq!((s.width_pt, s.height_pt), (100.0, 100.0));
     assert_eq!(d.render_page(0, 200).unwrap().height, 200);
@@ -306,7 +306,7 @@ fn output_limits_are_enforced_before_rendering() {
         max_output_pixels: 300_000,
         ..Limits::default()
     };
-    let d = Document::open_with_limits(data("minimal.pdf"), limits).unwrap();
+    let d = open_pdf_limits(data("minimal.pdf"), limits).unwrap();
     // 1000 x 500 = 500 000 pixels > 300 000
     assert!(matches!(
         d.render_page(0, 1000),
@@ -376,4 +376,23 @@ fn session_drives_a_real_document() {
     );
     let img = d.render_page(s.current_index(), 200).unwrap();
     assert_eq!(img.width, 200);
+}
+
+/// Always the worker built for this test run, never discovery next to the test executable.
+fn explicit_worker() -> cc_docs::Isolation {
+    cc_docs::Isolation::Process(cc_docs::WorkerSpec::new(env!(
+        "CARGO_BIN_EXE_cc-docs-worker"
+    )))
+}
+
+#[allow(dead_code)]
+fn open_pdf(bytes: Vec<u8>) -> Result<cc_docs::Document, cc_docs::DocError> {
+    open_pdf_limits(bytes, cc_docs::Limits::default())
+}
+
+fn open_pdf_limits(
+    bytes: Vec<u8>,
+    limits: cc_docs::Limits,
+) -> Result<cc_docs::Document, cc_docs::DocError> {
+    cc_docs::Document::open_with_options(bytes, limits, explicit_worker())
 }

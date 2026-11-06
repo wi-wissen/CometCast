@@ -5,8 +5,6 @@
 
 use std::time::Instant;
 
-use cc_docs::Document;
-
 #[test]
 fn render_times_at_1920_px() {
     let files = [
@@ -30,7 +28,7 @@ fn render_times_at_1920_px() {
             .join(name);
         let bytes = std::fs::read(path).unwrap();
         let t = Instant::now();
-        let d = Document::open(bytes).unwrap();
+        let d = open_pdf(bytes).unwrap();
         let open = t.elapsed();
         for i in 0..d.page_count() {
             // First render includes font and cache set-up; then the median of 5 further renders.
@@ -56,4 +54,23 @@ fn render_times_at_1920_px() {
             );
         }
     }
+}
+
+/// Always the worker built for this test run, never discovery next to the test executable.
+fn explicit_worker() -> cc_docs::Isolation {
+    cc_docs::Isolation::Process(cc_docs::WorkerSpec::new(env!(
+        "CARGO_BIN_EXE_cc-docs-worker"
+    )))
+}
+
+#[allow(dead_code)]
+fn open_pdf(bytes: Vec<u8>) -> Result<cc_docs::Document, cc_docs::DocError> {
+    open_pdf_limits(bytes, cc_docs::Limits::default())
+}
+
+fn open_pdf_limits(
+    bytes: Vec<u8>,
+    limits: cc_docs::Limits,
+) -> Result<cc_docs::Document, cc_docs::DocError> {
+    cc_docs::Document::open_with_options(bytes, limits, explicit_worker())
 }

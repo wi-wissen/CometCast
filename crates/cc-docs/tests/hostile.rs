@@ -9,7 +9,7 @@
 
 use std::time::{Duration, Instant};
 
-use cc_docs::{DocError, Document, Limits};
+use cc_docs::{DocError, Limits};
 
 /// Tests run in parallel and start many workers; the default global cap (4) is for
 /// applications. (The cap itself is tested in `worker_cap.rs`.)
@@ -83,7 +83,7 @@ fn quick() -> Limits {
 /// Open and try to render all pages; returns which errors happened. Must not panic out.
 fn exercise(bytes: Vec<u8>) -> Vec<DocError> {
     let mut errors = Vec::new();
-    match Document::open_with_limits(bytes, quick()) {
+    match open_pdf_limits(bytes, quick()) {
         Ok(d) => {
             for i in 0..d.page_count().min(5) {
                 if let Err(e) = d.render_page(i, 160) {
@@ -131,17 +131,14 @@ const FILES: [&str; 5] = [
 
 #[test]
 fn before_parsing_checks() {
-    assert_eq!(Document::open(vec![]).unwrap_err(), DocError::Empty);
-    assert_eq!(
-        Document::open(b"hello".to_vec()).unwrap_err(),
-        DocError::NotPdf
-    );
+    assert_eq!(open_pdf(vec![]).unwrap_err(), DocError::Empty);
+    assert_eq!(open_pdf(b"hello".to_vec()).unwrap_err(), DocError::NotPdf);
     let big = Limits {
         max_file_bytes: 100,
         ..Limits::default()
     };
     assert!(matches!(
-        Document::open_with_limits(vec![b'%'; 101], big),
+        open_pdf_limits(vec![b'%'; 101], big),
         Err(DocError::TooLarge {
             size: 101,
             max: 100
@@ -150,7 +147,7 @@ fn before_parsing_checks() {
     // Not a PDF header in the first 1024 bytes: refused without parsing.
     let mut late = vec![b' '; 2000];
     late.extend(b"%PDF-1.4\n");
-    assert_eq!(Document::open(late).unwrap_err(), DocError::NotPdf);
+    assert_eq!(open_pdf(late).unwrap_err(), DocError::NotPdf);
 }
 
 #[test]
@@ -268,14 +265,14 @@ fn page_count_over_the_limit_is_refused() {
         ..Limits::default()
     };
     assert!(matches!(
-        Document::open_with_limits(bytes.clone(), small),
+        open_pdf_limits(bytes.clone(), small),
         // The raw pre-check stops counting as soon as the limit is passed.
         Err(DocError::TooManyPages {
             count: 101..=300,
             max: 100
         })
     ));
-    assert_eq!(Document::open(bytes).unwrap().page_count(), 300);
+    assert_eq!(open_pdf(bytes).unwrap().page_count(), 300);
 }
 
 #[test]
@@ -293,7 +290,7 @@ fn huge_media_box_does_not_allocate_a_huge_picture() {
             &[],
         );
         let t = Instant::now();
-        let d = Document::open_with_limits(bytes, quick()).unwrap();
+        let d = open_pdf_limits(bytes, quick()).unwrap();
         // Fits into the output limits by scaling (or is refused), never a 1e9 pixel buffer.
         match d.render_page(0, 1920) {
             Ok(img) => assert!(u64::from(img.width) * u64::from(img.height) <= 7680 * 4320),
@@ -361,4 +358,23 @@ fn garbage_bytes_after_a_valid_header() {
         let errors = exercise(b);
         assert_no_internal_failure("garbage", &errors);
     }
+}
+
+/// Always the worker built for this test run, never discovery next to the test executable.
+fn explicit_worker() -> cc_docs::Isolation {
+    cc_docs::Isolation::Process(cc_docs::WorkerSpec::new(env!(
+        "CARGO_BIN_EXE_cc-docs-worker"
+    )))
+}
+
+#[allow(dead_code)]
+fn open_pdf(bytes: Vec<u8>) -> Result<cc_docs::Document, cc_docs::DocError> {
+    open_pdf_limits(bytes, cc_docs::Limits::default())
+}
+
+fn open_pdf_limits(
+    bytes: Vec<u8>,
+    limits: cc_docs::Limits,
+) -> Result<cc_docs::Document, cc_docs::DocError> {
+    cc_docs::Document::open_with_options(bytes, limits, explicit_worker())
 }

@@ -76,7 +76,7 @@ fn quick() -> Limits {
 /// Open and try to render all pages; returns which errors happened. Must not panic out.
 fn exercise(bytes: Vec<u8>) -> Vec<DocError> {
     let mut errors = Vec::new();
-    match Document::open_with_limits(bytes, quick()) {
+    match open_pdf_limits(bytes, quick()) {
         Ok(d) => {
             for i in 0..d.page_count().min(5) {
                 if let Err(e) = d.render_page(i, 160) {
@@ -371,4 +371,23 @@ fn cancel_flag_stops_waiting() {
         }
         wait_idle();
     }
+}
+
+/// Always the worker built for this test run, never discovery next to the test executable.
+fn explicit_worker() -> cc_docs::Isolation {
+    cc_docs::Isolation::Process(cc_docs::WorkerSpec::new(env!(
+        "CARGO_BIN_EXE_cc-docs-worker"
+    )))
+}
+
+#[allow(dead_code)]
+fn open_pdf(bytes: Vec<u8>) -> Result<cc_docs::Document, cc_docs::DocError> {
+    open_pdf_limits(bytes, cc_docs::Limits::default())
+}
+
+fn open_pdf_limits(
+    bytes: Vec<u8>,
+    limits: cc_docs::Limits,
+) -> Result<cc_docs::Document, cc_docs::DocError> {
+    cc_docs::Document::open_with_options(bytes, limits, explicit_worker())
 }
