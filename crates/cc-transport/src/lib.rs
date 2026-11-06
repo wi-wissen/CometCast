@@ -14,6 +14,7 @@
 //! [`Session`] wrapper that sender and receiver cores build on. See docs/transport.md.
 
 pub mod altcha;
+mod control;
 mod error;
 pub mod ice;
 mod keyframe;
@@ -22,6 +23,10 @@ mod rtp;
 mod session;
 mod signaling;
 
+pub use control::{
+    CONTROL_INBOX_CAPACITY, CONTROL_LABEL, ControlChannel, ControlData, HIGH_WATER, LOW_WATER,
+    MAX_MESSAGE_BYTES, SEND_BUFFER_LIMIT,
+};
 pub use error::TransportError;
 pub use ice::IceServerConfig;
 pub use net::{ServerAddr, TlsTrust};

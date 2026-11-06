@@ -97,6 +97,7 @@ openh264 = { version = "0.9", default-features = false }
 cc-miracast = { path = "crates/cc-miracast" }
 cc-cast = { path = "crates/cc-cast", default-features = false }
 cc-docs = { path = "crates/cc-docs" }
+cc-files = { path = "crates/cc-files" }
 # PDF rendering (cc-docs). Pure Rust, Apache-2.0 OR MIT; needs Rust 1.92 (see rust-version above).
 hayro = "0.9"
 # Pure-Rust image encoders for rendered pages (cc-docs): PNG and lossless WebP. No C code.

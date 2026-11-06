@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 mod cast;
+mod content;
 mod discover;
 mod docs;
 
@@ -104,6 +105,7 @@ enum Command {
     Cast(cast::CastCmd),
     Discover(discover::DiscoverArgs),
     Docs(docs::DocsArgs),
+    Content(content::Cmd),
     /// Hidden: the render worker process of `cc-docs` (started by `docs`, see docs/documents.md).
     DocsWorker,
     AirplaySend(airplay_send::Sub),
@@ -215,6 +217,9 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "discover" => return Ok(discover::parse(args)?.map_or(Command::Help, Command::Discover)),
         "docs" => return Ok(docs::parse(args)?.map_or(Command::DocsHelp, Command::Docs)),
         "docs-worker" => return Ok(Command::DocsWorker),
+        "send-file" | "send-link" => {
+            return content::parse(cmd == "send-link", args).map(Command::Content);
+        }
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
     }
@@ -304,7 +309,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Help => {
-            println!("{USAGE}\n\n{}", airplay_send::USAGE);
+            println!("{USAGE}\n{}\n\n{}", content::USAGE, airplay_send::USAGE);
             ExitCode::SUCCESS
         }
         Command::DocsHelp => {
@@ -312,6 +317,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Docs(d) => docs::run(d),
+        Command::Content(c) => content::run(c).await,
         Command::DocsWorker => docs::worker(),
         Command::Airplay(a) => airplay(a).await,
         Command::AirplaySend(a) => airplay_send::run(a).await,
@@ -674,6 +680,13 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
     if let Some(b) = common.bind {
         opts.session.udp_bind = vec![b];
     }
+    opts.content = match content::options() {
+        Ok(o) => Some(o),
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut core = match ReceiverCore::start(opts).await {
         Ok(c) => c,
         Err(e) => {
@@ -681,6 +694,8 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let mut content_events = core.take_content_events();
+    let mut got_content = false;
     println!("Room code: {}", core.room_code());
     print_ice_servers(core.ice_servers());
     println!("Waiting for a sender (Ctrl-C to quit)...");
@@ -705,6 +720,18 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
                     c.push(&p);
                 }
             }
+            ev = async {
+                match content_events.as_mut() {
+                    Some(c) => c.next().await,
+                    None => std::future::pending().await,
+                }
+            } => match ev {
+                Some(ev) => {
+                    got_content = true;
+                    content::print_event(&ev);
+                }
+                None => content_events = None,
+            },
             ev = core.next_event() => match ev {
                 Some(ReceiverEvent::PeerJoined) => println!("Sender joined."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
@@ -728,7 +755,7 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
                 Some(ReceiverEvent::PeerLeft) => {
                     println!("Sender left.");
                     core.stop().await;
-                    return if got_video { ExitCode::SUCCESS } else { ExitCode::from(3) };
+                    return if got_video || got_content { ExitCode::SUCCESS } else { ExitCode::from(3) };
                 }
                 Some(ReceiverEvent::Error(e)) => {
                     eprintln!("error: {e}");

@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 cc-airplay.workspace = true
 cc-docs.workspace = true
+cc-files.workspace = true
 cc-cast.workspace = true
 cc-airplay-sender.workspace = true
 cc-miracast.workspace = true

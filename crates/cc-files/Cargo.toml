@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "cc-files"
-description = "File transfer"
+description = "Content transfer over the control data channel: images, links, PDF documents, page commands"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,11 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+cc-proto.workspace = true
+cc-docs.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# WHATWG URL parser, so that link validation agrees with the browser's `new URL()`.
+# Already in the dependency tree through the WebRTC stack. MIT OR Apache-2.0.
+url = "2"

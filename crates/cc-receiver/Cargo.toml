@@ -15,10 +15,12 @@ workspace = true
 [dependencies]
 cc-proto.workspace = true
 cc-transport.workspace = true
+cc-files.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+cc-docs.workspace = true
 cc-server.workspace = true
 # The tests decode with OpenH264 built from source (dev only, see docs/capture.md).
 cc-sender = { workspace = true, features = ["h264-source"] }
