@@ -15,7 +15,8 @@
 //!   ([`start_encoded_sender`]) H.264 access units that the host pushes with
 //!   [`push_encoded_frame`] (Android: `MediaCodec` output, see docs/android.md).
 //!   [`capture_info`] says whether screen capture works on this system and lists the monitors.
-//! * [`server_defaults`]: the server addresses the UI pre-fills.
+//! * [`server_defaults`]: the server addresses the UI pre-fills (policy file, built-in list);
+//!   [`discover_servers`] also asks DNS-SRV and display announcements.
 //!
 //! Only one receiver and one sender can run at a time. Starting a new one stops the old one.
 //!
@@ -944,26 +945,75 @@ fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
 /// Server addresses the UI offers when the person has not chosen one yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerDefaults {
-    /// The built-in list of `cc-discovery` (`DEFAULT_SERVERS`), in order.
+    /// The servers `cc-discovery` knows without asking the network, best first: the servers of
+    /// an MDM policy, then the built-in list (`DEFAULT_SERVERS`) unless the policy forbids it.
     pub servers: Vec<String>,
     /// Address for development on one machine (a local `cometcast-server`).
     pub dev_fallback: String,
 }
 
-/// The server addresses to pre-fill.
+/// The development fallback, always offered last.
+const DEV_FALLBACK: &str = "127.0.0.1:8443";
+
+fn server_defaults_with(opts: &cc_discovery::DiscoverOptions) -> ServerDefaults {
+    ServerDefaults {
+        servers: cc_discovery::discover_servers_offline(opts)
+            .servers
+            .into_iter()
+            .map(|s| s.address)
+            .collect(),
+        dev_fallback: DEV_FALLBACK.to_owned(),
+    }
+}
+
+/// The server addresses to pre-fill, found without network access (fast): the policy file of
+/// the operating system (MDM) first, then the built-in list. DNS-SRV and announcements need the
+/// network and are in [`discover_servers`].
 ///
-/// UNCERTAIN: `cc-discovery` only has the built-in list so far; the other steps of its lookup
-/// ladder (MDM policy, DNS SRV, display announcement) are not implemented, so this returns just
-/// the list. The host in the list (`relay.cometcast.de`) does not exist yet, which is why the
-/// UI also offers `dev_fallback`.
+/// UNCERTAIN: the host in the built-in list (`relay.cometcast.de`) does not exist yet, which is
+/// why the UI also offers `dev_fallback`. The UI does not yet hide `dev_fallback` or the text
+/// field when a policy forbids other servers (`ServerDiscovery::locked`).
 #[frb(sync)]
 pub fn server_defaults() -> ServerDefaults {
-    ServerDefaults {
-        servers: cc_discovery::DEFAULT_SERVERS
-            .iter()
-            .map(|s| (*s).to_owned())
+    server_defaults_with(&cc_discovery::DiscoverOptions::default())
+}
+
+/// One server found by [`discover_servers`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerCandidate {
+    /// `[scheme://]host:port`, as the server field wants it.
+    pub address: String,
+    /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
+    pub source: String,
+}
+
+/// The result of asking all sources for servers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerDiscovery {
+    /// Best first (MDM, DNS-SRV, announcement, built-in list).
+    pub servers: Vec<ServerCandidate>,
+    /// A policy forbids other servers, or the policy file is unusable.
+    pub locked: bool,
+    /// Notes about sources that failed. English text for logs, not for the UI.
+    pub warnings: Vec<String>,
+}
+
+/// Ask all sources for servers: policy file, DNS-SRV and announcements by display devices (it
+/// listens on the network for a moment, so this takes some seconds). Never fails; sources that
+/// do not work leave a warning.
+pub async fn discover_servers() -> ServerDiscovery {
+    let r = cc_discovery::discover_servers(&cc_discovery::DiscoverOptions::default()).await;
+    ServerDiscovery {
+        servers: r
+            .servers
+            .into_iter()
+            .map(|s| ServerCandidate {
+                address: s.address,
+                source: s.source.as_str().to_owned(),
+            })
             .collect(),
-        dev_fallback: "127.0.0.1:8443".to_owned(),
+        locked: r.locked,
+        warnings: r.warnings,
     }
 }
 
@@ -1083,9 +1133,38 @@ mod tests {
 
     #[test]
     fn server_defaults_come_from_cc_discovery() {
-        let d = server_defaults();
+        // Without a policy file: the built-in list. (Explicit empty location list, so that a
+        // policy file on the machine running the test does not matter.)
+        let opts = cc_discovery::DiscoverOptions {
+            policy_locations: Some(Vec::new()),
+            ..cc_discovery::DiscoverOptions::default()
+        };
+        let d = server_defaults_with(&opts);
         assert_eq!(d.servers, ["relay.cometcast.de:443"]);
         assert_eq!(d.dev_fallback, "127.0.0.1:8443");
+        assert_eq!(server_defaults().dev_fallback, "127.0.0.1:8443");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn server_defaults_put_the_policy_first() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let p = dir.path().join("policy.json");
+        std::fs::write(
+            &p,
+            br#"{"servers":["wss://mdm.example:443"],"forbid_default_list":true}"#,
+        )
+        .expect("write");
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+        let opts = cc_discovery::DiscoverOptions {
+            policy_locations: Some(vec![cc_discovery::policy::explicit_location(&p)]),
+            ..cc_discovery::DiscoverOptions::default()
+        };
+        assert_eq!(
+            server_defaults_with(&opts).servers,
+            ["wss://mdm.example:443"]
+        );
     }
 
     #[test]

@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 mod cast;
+mod discover;
 
 use cc_airplay::{AirplayConfig, AirplayEvent, AirplayStatus, Supervisor, SupervisorOptions};
 use cc_proto::RoomCode;
@@ -34,6 +35,7 @@ Usage:
   cometcast-cli cast send <DEVICE-NAME|IP[:PORT]> [--screen] [--display :N] [--fps N]
                     [--bitrate-kbps N] [--seconds N] [--trust-anchors PEM]
                     [--insecure-skip-device-auth]
+  cometcast-cli discover [--seconds N] [--policy-file PATH] [--announce HOST:PORT]
   cometcast-cli --version
 
 Options:
@@ -57,6 +59,10 @@ Options:
   --video-sink SINK   airplay: GStreamer video sink, e.g. fakesink for a headless test
   (--seconds N also works with airplay: stop after N seconds)
   --name NAME         miracast: receiver name shown on Windows senders (default: Comet Cast)
+
+discover prints the server list (policy, DNS-SRV, announcement, default list) with the source of each
+entry, and the receivers seen on the network. --announce advertises a server as a receiver would.
+See docs/discovery.md.
 
 Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was exchanged.
 
@@ -94,6 +100,7 @@ enum Command {
     },
     Airplay(AirplayArgs),
     Cast(cast::CastCmd),
+    Discover(discover::DiscoverArgs),
     AirplaySend(airplay_send::Sub),
     Miracast {
         name: Option<String>,
@@ -199,6 +206,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "airplay-send" => return airplay_send::parse(args).map(Command::AirplaySend),
         "miracast" => return parse_miracast(args),
         "cast" => return Ok(cast::parse(args)?.map_or(Command::Help, Command::Cast)),
+        "discover" => return Ok(discover::parse(args)?.map_or(Command::Help, Command::Discover)),
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
     }
@@ -295,6 +303,7 @@ async fn main() -> ExitCode {
         Command::AirplaySend(a) => airplay_send::run(a).await,
         Command::Miracast { name } => miracast(name).await,
         Command::Cast(c) => cast::run(c).await,
+        Command::Discover(d) => discover::run(d).await,
         Command::Receive { common, decode } => receive(common, decode).await,
         Command::Send {
             code,

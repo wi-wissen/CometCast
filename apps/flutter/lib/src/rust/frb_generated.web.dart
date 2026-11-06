@@ -79,6 +79,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -106,7 +109,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SenderUiEvent dco_decode_sender_ui_event(dynamic raw);
 
   @protected
+  ServerCandidate dco_decode_server_candidate(dynamic raw);
+
+  @protected
   ServerDefaults dco_decode_server_defaults(dynamic raw);
+
+  @protected
+  ServerDiscovery dco_decode_server_discovery(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -186,6 +195,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<ServerCandidate> sse_decode_list_server_candidate(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
@@ -217,7 +231,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SenderUiEvent sse_decode_sender_ui_event(SseDeserializer deserializer);
 
   @protected
+  ServerCandidate sse_decode_server_candidate(SseDeserializer deserializer);
+
+  @protected
   ServerDefaults sse_decode_server_defaults(SseDeserializer deserializer);
+
+  @protected
+  ServerDiscovery sse_decode_server_discovery(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -318,6 +338,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_server_candidate(
+    List<ServerCandidate> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
@@ -354,8 +380,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_sender_ui_event(SenderUiEvent self, SseSerializer serializer);
 
   @protected
+  void sse_encode_server_candidate(
+    ServerCandidate self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_server_defaults(
     ServerDefaults self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_server_discovery(
+    ServerDiscovery self,
     SseSerializer serializer,
   );
 

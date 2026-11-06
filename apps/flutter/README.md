@@ -180,9 +180,10 @@ Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
 
 ## Known uncertainties
 
-- Server address: pre-filled with the first entry of `cc-discovery`'s built-in list,
-  `relay.cometcast.de:443`, **a host that does not exist yet** (UNCERTAIN: planned name); only that
-  list is used, the MDM / DNS SRV / display-announcement steps of the lookup are not implemented.
+- Server address: pre-filled with the first entry of `cc-discovery`'s offline list: an MDM policy file
+  if present, otherwise the built-in `relay.cometcast.de:443`, **a host that does not exist yet**
+  (UNCERTAIN: planned name). The DNS SRV / display-announcement steps exist in the core
+  (`discover_servers()`) but the app does not use them yet (docs/discovery.md).
   `127.0.0.1:8443` is offered as a chip for development. The last used server is saved with
   `shared_preferences`; UNCERTAIN: only its Linux behaviour (a JSON file `shared_preferences.json` in the
   application support folder, normally `~/.local/share/<application id>/`) was read about in the package, not looked at on disk.

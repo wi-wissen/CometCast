@@ -18,6 +18,7 @@ cc-cast.workspace = true
 cc-airplay-sender.workspace = true
 cc-miracast.workspace = true
 cc-proto.workspace = true
+cc-discovery.workspace = true
 cc-receiver.workspace = true
 cc-sender.workspace = true
 cc-transport.workspace = true

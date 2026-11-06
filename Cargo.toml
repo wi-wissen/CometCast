@@ -71,11 +71,16 @@ rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"]
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 # Native clients: system trust store for wss:// / https:// (UNCERTAIN: not available on Android).
 rustls-native-certs = "0.8"
+# DNS-SRV lookup (cc-discovery). UNCERTAIN: 0.26.3 was the newest version found on crates.io
+# when this was written (2026-11); licence MIT OR Apache-2.0 (from the crate metadata).
+hickory-resolver = { version = "0.26.3", default-features = false, features = ["system-config", "tokio"] }
+mdns-sd = "0.21"
 # Our own crates, so they can refer to each other by name.
 cc-proto = { path = "crates/cc-proto" }
 cc-server = { path = "crates/cc-server" }
 cc-transport = { path = "crates/cc-transport" }
 cc-receiver = { path = "crates/cc-receiver" }
+cc-discovery = { path = "crates/cc-discovery" }
 # default-features = false: the H.264 build mode (OpenH264 from source or the prebuilt
 # library) is chosen by the program crate, see bins/cometcast-cli/Cargo.toml and docs/capture.md.
 cc-sender = { path = "crates/cc-sender", default-features = false }

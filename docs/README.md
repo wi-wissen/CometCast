@@ -15,6 +15,7 @@
 | [airplay-sender.md](airplay-sender.md) | AirPlay sender without FairPlay (`cc-airplay-sender`): discovery, pairing, media link, photo, the screen as an HLS stream; what was tested against UxPlay, what is unverified; real mirroring is not possible (FairPlay) |
 | [miracast.md](miracast.md) | Miracast receiving on Windows 11 through `MiracastReceiver` (`cc-miracast`): design, requirements, test checklist for a real machine; compile-checked only, never run |
 | [cast.md](cast.md) | Chromecast / Google Cast compatible sender (`cc-cast`, BETA): what is implemented from which Open Screen files, device-auth rules, what is unverified, fallbacks, legal notes |
+| [discovery.md](discovery.md) | How the app finds the server (`cc-discovery`): MDM policy file, DNS-SRV, display announcement over mDNS, built-in list; receiver discovery; trust rules; what is unverified |
 | [i18n.md](i18n.md) | How the bilingual (de/en) UI works |
 
 Other project files: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [CLA](../CLA.md), [SECURITY](../SECURITY.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md).

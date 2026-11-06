@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `begin`, `capture_info_blocking`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `spawn_guarded`, `stats_event`, `stop`, `store`, `video_stats_event`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `begin`, `capture_info_blocking`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -136,14 +136,21 @@ bool keyframeRequested() => RustLib.instance.api.crateApiKeyframeRequested();
 Future<CaptureInfo> captureInfo({String? display}) =>
     RustLib.instance.api.crateApiCaptureInfo(display: display);
 
-/// The server addresses to pre-fill.
+/// The server addresses to pre-fill, found without network access (fast): the policy file of
+/// the operating system (MDM) first, then the built-in list. DNS-SRV and announcements need the
+/// network and are in [`discover_servers`].
 ///
-/// UNCERTAIN: `cc-discovery` only has the built-in list so far; the other steps of its lookup
-/// ladder (MDM policy, DNS SRV, display announcement) are not implemented, so this returns just
-/// the list. The host in the list (`relay.cometcast.de`) does not exist yet, which is why the
-/// UI also offers `dev_fallback`.
+/// UNCERTAIN: the host in the built-in list (`relay.cometcast.de`) does not exist yet, which is
+/// why the UI also offers `dev_fallback`. The UI does not yet hide `dev_fallback` or the text
+/// field when a policy forbids other servers (`ServerDiscovery::locked`).
 ServerDefaults serverDefaults() =>
     RustLib.instance.api.crateApiServerDefaults();
+
+/// Ask all sources for servers: policy file, DNS-SRV and announcements by display devices (it
+/// listens on the network for a moment, so this takes some seconds). Never fails; sources that
+/// do not work leave a warning.
+Future<ServerDiscovery> discoverServers() =>
+    RustLib.instance.api.crateApiDiscoverServers();
 
 /// Answer of [`capture_info`].
 class CaptureInfo {
@@ -503,9 +510,32 @@ sealed class SenderUiEvent with _$SenderUiEvent {
   }) = SenderUiEvent_Error;
 }
 
+/// One server found by [`discover_servers`].
+class ServerCandidate {
+  /// `[scheme://]host:port`, as the server field wants it.
+  final String address;
+
+  /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
+  final String source;
+
+  const ServerCandidate({required this.address, required this.source});
+
+  @override
+  int get hashCode => address.hashCode ^ source.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ServerCandidate &&
+          runtimeType == other.runtimeType &&
+          address == other.address &&
+          source == other.source;
+}
+
 /// Server addresses the UI offers when the person has not chosen one yet.
 class ServerDefaults {
-  /// The built-in list of `cc-discovery` (`DEFAULT_SERVERS`), in order.
+  /// The servers `cc-discovery` knows without asking the network, best first: the servers of
+  /// an MDM policy, then the built-in list (`DEFAULT_SERVERS`) unless the policy forbids it.
   final List<String> servers;
 
   /// Address for development on one machine (a local `cometcast-server`).
@@ -523,6 +553,36 @@ class ServerDefaults {
           runtimeType == other.runtimeType &&
           servers == other.servers &&
           devFallback == other.devFallback;
+}
+
+/// The result of asking all sources for servers.
+class ServerDiscovery {
+  /// Best first (MDM, DNS-SRV, announcement, built-in list).
+  final List<ServerCandidate> servers;
+
+  /// A policy forbids other servers, or the policy file is unusable.
+  final bool locked;
+
+  /// Notes about sources that failed. English text for logs, not for the UI.
+  final List<String> warnings;
+
+  const ServerDiscovery({
+    required this.servers,
+    required this.locked,
+    required this.warnings,
+  });
+
+  @override
+  int get hashCode => servers.hashCode ^ locked.hashCode ^ warnings.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ServerDiscovery &&
+          runtimeType == other.runtimeType &&
+          servers == other.servers &&
+          locked == other.locked &&
+          warnings == other.warnings;
 }
 
 /// WebRTC connection state (a copy of the transport's enum so Dart gets its own type).

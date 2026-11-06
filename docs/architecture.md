@@ -68,6 +68,8 @@ Measured and extended during the beta ([A1](measurement-points.md#1-beta-assumpt
 3. Announcement from the display device
 4. Built-in default list
 
+Details, trust rules and what is unverified: [discovery.md](discovery.md).
+
 mDNS runs in parallel. Backends: `mdns-sd` on desktop, NWBrowser on Apple platforms, NsdManager on Android. **Uncertain:** parts of this are unchecked, see [A8](measurement-points.md#1-beta-assumptions-a1-to-a17).
 
 ## Decisions

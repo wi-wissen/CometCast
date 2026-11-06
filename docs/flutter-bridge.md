@@ -31,7 +31,8 @@ cc-receiver (ReceiverCore) / cc-sender (SenderCore) / cc-proto (RoomCode)
 | `start_encoded_sender(code, server, udp_bind, sink)` | `Stream<SenderUiEvent> startEncodedSender(...)` | Join a room and send the H.264 access units the host pushes (Android `MediaCodec`); see [android.md](android.md) |
 | `push_encoded_frame(data, is_key, pts_us)` | sync, returns `PushResult` | Hand one access unit (Annex B or AVCC) to the encoded sender. The bytes are **copied**, the call never blocks, the queue is bounded and drops are counted |
 | `push_codec_config(data)` / `keyframe_requested()` | sync | SPS/PPS (Annex B or `avcC`) / poll: true once per key frame request (the host should ask its encoder for a sync frame) |
-| `server_defaults()` | sync | Server list of `cc-discovery` plus the development fallback `127.0.0.1:8443` |
+| `server_defaults()` | sync | Server list of `cc-discovery` without network access (MDM policy file first, then the built-in list) plus the development fallback `127.0.0.1:8443` |
+| `discover_servers()` | async | All sources of `cc-discovery` (policy, DNS-SRV, display announcement, built-in list) with the source of each entry, `locked` and warnings; takes some seconds. The Dart app does not call it yet |
 | `stop_sender()` | `Future<void> stopSender()` | Stop |
 | `check_room_code(input)` | `RoomCodeCheck checkRoomCode(...)` (sync) | Same rules as `cc_proto::RoomCode::parse` |
 | `room_code_length()` / `room_code_alphabet()` | sync | Constants from `cc-proto` |
@@ -120,7 +121,7 @@ cargo build -p cc-ffi -p cometcast-server -p cometcast-cli
 - Full screen is implemented in the Linux (GTK) runner only (platform channel `de.cometcast/window`).
 - Not built or tried: Windows, macOS, iOS (no toolchains here). Android builds (cargo-ndk through Gradle, no cargokit) but was never run on a device: see [android.md](android.md). Packaging for the others is open; cargokit is the likely route.
 - The release build (`flutter build linux --release`) was not run.
-- The server address is pre-filled from `server_defaults()` (`cc-discovery`'s built-in list, whose host `relay.cometcast.de` does not exist yet, plus `127.0.0.1:8443` for development); the last used server is saved with `shared_preferences`. UNCERTAIN: the other steps of the discovery ladder (MDM, DNS SRV, display announcement) are not implemented, so only the built-in list is used.
+- The server address is pre-filled from `server_defaults()` (`cc-discovery`'s built-in list, whose host `relay.cometcast.de` does not exist yet, plus `127.0.0.1:8443` for development); the last used server is saved with `shared_preferences`. `server_defaults()` includes the MDM policy file when one exists; DNS-SRV and display announcements are only in `discover_servers()`, which the app does not use yet (see [discovery.md](discovery.md)). UNCERTAIN: the UI does not yet enforce a policy that forbids other servers.
 - `Cargo.toml` (workspace root) got `[profile.dev.package.cc-ffi] opt-level = 3`: the per-picture pixel loops were too slow at opt-level 0 (33.7 ms per 1280x720 picture before, 1.5 to 1.7 ms per 640x480 picture after; different picture sizes, so the two numbers are not a clean A/B).
 - UNCERTAIN: the GitHub workflow (`.github/workflows/flutter.yml`) has not run on GitHub.
 

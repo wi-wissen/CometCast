@@ -12,3 +12,17 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+async-trait.workspace = true
+hickory-resolver.workspace = true
+mdns-sd.workspace = true
+# Reads the macOS managed-preferences file (a property list).
+plist = "1"
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
