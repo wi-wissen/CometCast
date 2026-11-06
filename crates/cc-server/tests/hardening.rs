@@ -501,7 +501,7 @@ fn turn_config() -> TurnConfig {
     TurnConfig {
         urls: vec!["turn:relay.example.org:3478?transport=udp".into()],
         stun_urls: vec!["stun:relay.example.org:3478".into()],
-        secret: Secret("test-secret".into()),
+        secret: Secret("test-secret-0123456789".into()),
         ttl: Duration::from_secs(3600),
     }
 }
@@ -531,7 +531,7 @@ async fn ice_servers_endpoint_issues_verifiable_credentials() {
     assert!(!id.is_empty());
     assert_eq!(
         turn["credential"].as_str().unwrap(),
-        credential_for("test-secret", username)
+        credential_for("test-secret-0123456789", username)
     );
     assert_eq!(turn["ttl"], 3600);
     // Two requests get different users.
@@ -720,4 +720,321 @@ async fn missing_certificate_file_is_a_clear_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let err = run(listener, c, std::future::pending()).await.unwrap_err();
     assert!(err.to_string().contains("cert.pem"), "{err}");
+}
+
+// ---------- broken X-Forwarded-For from a trusted proxy ----------
+
+/// Send raw request bytes and return the status code.
+async fn raw_status(addr: SocketAddr, request: &[u8]) -> u16 {
+    let mut tcp = TcpStream::connect(addr).await.unwrap();
+    tcp.write_all(request).await.unwrap();
+    let mut raw = Vec::new();
+    tcp.read_to_end(&mut raw).await.ok();
+    String::from_utf8_lossy(&raw)
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
+}
+
+fn xff_request(header_value: &[u8]) -> Vec<u8> {
+    let mut r =
+        b"GET /altcha/challenge HTTP/1.1\r\nHost: x\r\nConnection: close\r\nX-Forwarded-For: "
+            .to_vec();
+    r.extend_from_slice(header_value);
+    r.extend_from_slice(b"\r\n\r\n");
+    r
+}
+
+#[tokio::test]
+async fn broken_forwarded_for_never_falls_back_to_the_proxy() {
+    let mut c = ServerConfig::default();
+    c.network.trusted_proxies = nets(&["127.0.0.0/8"]);
+    c.network.deny = nets(&["203.0.113.9/32"]);
+    let addr = start(c).await;
+    // The two headers that got past the deny list before the fix.
+    assert_eq!(
+        raw_status(addr, &xff_request(b"\xff, 203.0.113.9")).await,
+        400
+    );
+    assert_eq!(
+        raw_status(addr, &xff_request(b"203.0.113.9:5555")).await,
+        403
+    );
+    // Other broken forms: refused, never guessed.
+    assert_eq!(raw_status(addr, &xff_request(b"")).await, 400);
+    assert_eq!(raw_status(addr, &xff_request(b"unknown")).await, 400);
+    assert_eq!(raw_status(addr, &xff_request(b"1.2.3.4, ")).await, 400);
+    assert_eq!(raw_status(addr, &xff_request(b"[2001:db8::1")).await, 400);
+    // Bracketed IPv6 with port is understood.
+    assert_eq!(
+        raw_status(addr, &xff_request(b"[2001:db8::1]:443")).await,
+        200
+    );
+    // No header at all: the proxy's own address is the client.
+    assert_eq!(
+        raw_status(
+            addr,
+            b"GET /altcha/challenge HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
+        )
+        .await,
+        200
+    );
+}
+
+// ---------- liveness, lifetimes, per-address caps ----------
+
+/// Receiver with a room, plus a joined sender.
+async fn paired(addr: SocketAddr) -> (Ws, Ws, String) {
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    send(&mut r, json!({"type":"create_room"})).await;
+    let code = recv(&mut r).await["code"].as_str().unwrap().to_string();
+    let mut s = connect(addr).await;
+    hello(&mut s, "sender").await;
+    send(&mut s, json!({"type":"join_room","code":code})).await;
+    assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
+    assert_eq!(recv(&mut r).await, json!({"type":"peer_joined"}));
+    (r, s, code)
+}
+
+#[tokio::test]
+async fn silent_connection_is_closed_by_ping_timeout() {
+    let mut c = ServerConfig::default();
+    c.limits.ping_interval = Duration::from_secs(1);
+    c.limits.pong_timeout = Duration::from_secs(1);
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    send(&mut r, json!({"type":"create_room"})).await;
+    recv(&mut r).await;
+    // The client does not read, so it answers no ping. Wait past interval + timeout.
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    expect_closed(&mut r).await;
+}
+
+#[tokio::test]
+async fn answering_connection_stays_open_past_the_ping_timeout() {
+    let mut c = ServerConfig::default();
+    c.limits.ping_interval = Duration::from_secs(1);
+    c.limits.pong_timeout = Duration::from_secs(1);
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    send(&mut r, json!({"type":"create_room"})).await;
+    recv(&mut r).await;
+    // Keep reading (the library answers pings) for 3 seconds.
+    let until = tokio::time::Instant::now() + Duration::from_secs(3);
+    while tokio::time::Instant::now() < until {
+        let _ = tokio::time::timeout(Duration::from_millis(200), r.next()).await;
+    }
+    send(&mut r, json!({"type":"nonsense"})).await;
+    assert_eq!(error_code(&recv(&mut r).await), "bad_message");
+}
+
+#[tokio::test]
+async fn quiet_paired_room_is_closed() {
+    let mut c = ServerConfig::default();
+    c.limits.paired_idle = Duration::from_secs(1);
+    let addr = start(c).await;
+    let (mut r, s, _) = paired(addr).await;
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    // The receiver (and with it the room) ends. The sender stays connected and may be
+    // told `peer_left`; it can open another room on the same connection.
+    expect_closed(&mut r).await;
+    drop(s);
+}
+
+#[tokio::test]
+async fn busy_paired_room_is_not_closed_for_idleness() {
+    let mut c = ServerConfig::default();
+    c.limits.paired_idle = Duration::from_secs(2);
+    let addr = start(c).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    for _ in 0..4 {
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        send(&mut s, json!({"type":"control","cmd":"stop"})).await;
+        assert_eq!(recv(&mut r).await["type"], "control");
+    }
+}
+
+#[tokio::test]
+async fn room_has_a_maximum_lifetime() {
+    let mut c = ServerConfig::default();
+    c.limits.max_room_lifetime = Duration::from_secs(1);
+    let addr = start(c).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    // Busy or not, the room ends.
+    for _ in 0..3 {
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        let _ = s
+            .send(Message::text(
+                json!({"type":"control","cmd":"stop"}).to_string(),
+            ))
+            .await;
+    }
+    expect_closed(&mut r).await;
+    drop(s);
+}
+
+#[tokio::test]
+async fn rooms_per_address_are_capped_and_freed() {
+    let mut c = ServerConfig::default();
+    c.limits.max_rooms_per_ip = 1;
+    let addr = start(c).await;
+    let mut a = connect(addr).await;
+    hello(&mut a, "receiver").await;
+    send(&mut a, json!({"type":"create_room"})).await;
+    assert_eq!(recv(&mut a).await["type"], "room_created");
+    let mut b = connect(addr).await;
+    hello(&mut b, "receiver").await;
+    send(&mut b, json!({"type":"create_room"})).await;
+    let e = recv(&mut b).await;
+    assert_eq!(error_code(&e), "rate_limited");
+    assert!(e["message"].as_str().unwrap().contains("address"));
+    // When the first room is gone, the address may make another one.
+    drop(a);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    send(&mut b, json!({"type":"create_room"})).await;
+    assert_eq!(recv(&mut b).await["type"], "room_created");
+}
+
+#[tokio::test]
+async fn concurrent_connections_per_address_are_capped() {
+    let mut c = ServerConfig::default();
+    c.limits.max_connections_per_ip = 2;
+    let addr = start(c).await;
+    let _a = connect(addr).await;
+    let _b = connect(addr).await;
+    assert_eq!(connect_with(addr, &[]).await.err(), Some(429));
+}
+
+// ---------- per-connection budgets and spam ----------
+
+#[tokio::test]
+async fn message_flood_closes_the_connection() {
+    let mut c = ServerConfig::default();
+    c.limits.msg_burst = 5;
+    c.limits.msg_rate_per_sec = 1;
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    for _ in 0..8 {
+        let _ = r
+            .send(Message::text(json!({"type":"nonsense"}).to_string()))
+            .await;
+    }
+    // Some bad_message answers, then rate_limited and a close.
+    let mut saw_limit = false;
+    for _ in 0..12 {
+        match tokio::time::timeout(Duration::from_secs(5), r.next()).await {
+            Ok(Some(Ok(Message::Text(t)))) => {
+                if t.as_str().contains("rate_limited") {
+                    saw_limit = true;
+                }
+            }
+            _ => break,
+        }
+    }
+    assert!(saw_limit);
+    expect_closed(&mut r).await;
+}
+
+#[tokio::test]
+async fn flooding_leads_to_a_ban_when_the_threshold_is_reached() {
+    let mut c = ServerConfig::default();
+    c.limits.msg_burst = 3;
+    c.limits.msg_rate_per_sec = 1;
+    c.limits.ban_after_failed_joins = 1;
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    for _ in 0..6 {
+        let _ = r
+            .send(Message::text(
+                json!({"type":"hello","proto_version":1,"role":"receiver"}).to_string(),
+            ))
+            .await;
+    }
+    expect_closed(&mut r).await;
+    assert_eq!(connect_with(addr, &[]).await.err(), Some(403));
+}
+
+#[tokio::test]
+async fn byte_budget_stops_big_messages() {
+    let mut c = ServerConfig::default();
+    c.limits.bytes_burst = c.max_message_bytes as u32; // smallest allowed burst
+    c.limits.bytes_per_sec = 1;
+    let addr = start(c).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    let big = "x".repeat(40 * 1024);
+    send(&mut s, json!({"type":"offer","sdp":big})).await;
+    assert_eq!(recv(&mut r).await["type"], "offer");
+    send(&mut s, json!({"type":"offer","sdp":big})).await; // 80 KiB > 64 KiB burst
+    assert_eq!(error_code(&recv(&mut s).await), "rate_limited");
+    expect_closed(&mut s).await;
+}
+
+#[tokio::test]
+async fn room_relay_volume_is_capped() {
+    let mut c = ServerConfig::default();
+    c.limits.max_room_relay_bytes = 1000;
+    let addr = start(c).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    let sdp = "y".repeat(600);
+    send(&mut s, json!({"type":"offer","sdp":sdp})).await;
+    assert_eq!(recv(&mut r).await["type"], "offer");
+    send(&mut s, json!({"type":"offer","sdp":sdp})).await;
+    assert_eq!(error_code(&recv(&mut s).await), "rate_limited");
+    expect_closed(&mut s).await;
+}
+
+#[tokio::test]
+async fn bad_message_spam_closes_the_connection() {
+    let mut c = ServerConfig::default();
+    c.limits.max_bad_messages = 3;
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    for _ in 0..3 {
+        send(&mut r, json!({"type":"nonsense"})).await;
+        assert_eq!(error_code(&recv(&mut r).await), "bad_message");
+    }
+    assert_eq!(error_code(&recv(&mut r).await), "rate_limited");
+    expect_closed(&mut r).await;
+}
+
+#[tokio::test]
+async fn wrong_role_spam_counts_toward_a_ban() {
+    let mut c = ServerConfig::default();
+    c.limits.ban_after_failed_joins = 2;
+    let addr = start(c).await;
+    let mut s = connect(addr).await;
+    hello(&mut s, "sender").await;
+    send(&mut s, json!({"type":"create_room"})).await;
+    assert_eq!(error_code(&recv(&mut s).await), "wrong_role");
+    send(&mut s, json!({"type":"create_room"})).await;
+    assert_eq!(error_code(&recv(&mut s).await), "wrong_role");
+    assert_eq!(error_code(&recv(&mut s).await), "banned");
+    expect_closed(&mut s).await;
+    assert_eq!(connect_with(addr, &[]).await.err(), Some(403));
+}
+
+// ---------- startup checks ----------
+
+#[tokio::test]
+async fn unreadable_key_file_gives_a_helpful_error() {
+    let dir = temp_dir("nokey");
+    let ck = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let cert_file = dir.join("fullchain.pem");
+    std::fs::write(&cert_file, ck.cert.pem()).unwrap();
+    let mut c = ServerConfig::default();
+    c.tls.cert_file = Some(cert_file);
+    c.tls.key_file = Some(dir.join("missing-privkey.pem"));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let err = run(listener, c, std::future::pending()).await.unwrap_err();
+    let text = err.to_string();
+    assert!(text.contains("missing-privkey.pem"), "{text}");
+    assert!(text.contains("tls.key_file"), "{text}");
+    std::fs::remove_dir_all(dir).ok();
 }

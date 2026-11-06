@@ -86,6 +86,19 @@ struct FileLimits {
     failed_join_window_secs: Option<u64>,
     ban_secs: Option<Vec<u64>>,
     ban_memory_secs: Option<u64>,
+    max_connections_per_ip: Option<usize>,
+    max_rooms_per_ip: Option<usize>,
+    ping_interval_secs: Option<u64>,
+    pong_timeout_secs: Option<u64>,
+    paired_idle_secs: Option<u64>,
+    max_room_lifetime_secs: Option<u64>,
+    msg_rate_per_sec: Option<u32>,
+    msg_burst: Option<u32>,
+    bytes_per_sec: Option<u32>,
+    bytes_burst: Option<u32>,
+    max_room_relay_bytes: Option<u64>,
+    max_bad_messages: Option<u32>,
+    global_failed_joins_per_min: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -244,6 +257,45 @@ impl FileConfig {
             if let Some(v) = l.ban_memory_secs {
                 d.ban_memory = secs(v);
             }
+            if let Some(v) = l.max_connections_per_ip {
+                d.max_connections_per_ip = v;
+            }
+            if let Some(v) = l.max_rooms_per_ip {
+                d.max_rooms_per_ip = v;
+            }
+            if let Some(v) = l.ping_interval_secs {
+                d.ping_interval = secs(v);
+            }
+            if let Some(v) = l.pong_timeout_secs {
+                d.pong_timeout = secs(v);
+            }
+            if let Some(v) = l.paired_idle_secs {
+                d.paired_idle = secs(v);
+            }
+            if let Some(v) = l.max_room_lifetime_secs {
+                d.max_room_lifetime = secs(v);
+            }
+            if let Some(v) = l.msg_rate_per_sec {
+                d.msg_rate_per_sec = v;
+            }
+            if let Some(v) = l.msg_burst {
+                d.msg_burst = v;
+            }
+            if let Some(v) = l.bytes_per_sec {
+                d.bytes_per_sec = v;
+            }
+            if let Some(v) = l.bytes_burst {
+                d.bytes_burst = v;
+            }
+            if let Some(v) = l.max_room_relay_bytes {
+                d.max_room_relay_bytes = v;
+            }
+            if let Some(v) = l.max_bad_messages {
+                d.max_bad_messages = v;
+            }
+            if let Some(v) = l.global_failed_joins_per_min {
+                d.global_failed_joins_per_min = v;
+            }
         }
         if let Some(a) = self.altcha {
             let d = &mut c.altcha;
@@ -312,7 +364,14 @@ pub fn apply_override(table: &mut toml::Table, key: &str, value: &str) -> Result
             .as_table_mut()
             .ok_or_else(|| ConfigError::new(format!("{key:?}: {p:?} is not a section")))?;
     }
-    cur.insert((*last).to_string(), parse_override_value(value));
+    // Secrets are always text: a secret like 1234567890123456 must not turn into a number,
+    // and a type error must not print it.
+    let val = if last.contains("secret") {
+        toml::Value::String(value.into())
+    } else {
+        parse_override_value(value)
+    };
+    cur.insert((*last).to_string(), val);
     Ok(())
 }
 
@@ -341,6 +400,26 @@ pub fn overrides_from_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(
     out
 }
 
+/// Replace every secret value inside `text` with `<hidden>`.
+fn redact(text: &str, secrets: &[String]) -> String {
+    let mut out = text.to_string();
+    for s in secrets.iter().filter(|s| !s.is_empty()) {
+        out = out.replace(s.as_str(), "<hidden>");
+    }
+    out
+}
+
+/// Collect the values of all keys named `*secret*` of a TOML table (one level of sections).
+fn collect_file_secrets(table: &toml::Table, out: &mut Vec<String>) {
+    for (k, v) in table {
+        match v {
+            toml::Value::String(s) if k.contains("secret") => out.push(s.clone()),
+            toml::Value::Table(t) => collect_file_secrets(t, out),
+            _ => {}
+        }
+    }
+}
+
 /// Build the final configuration: file (if any), then `overrides` in order.
 pub fn load_config(
     file: Option<&Path>,
@@ -356,13 +435,21 @@ pub fn load_config(
         }
         None => toml::Table::new(),
     };
+    // Secret values (from `--set` / environment, or the file) are removed from error texts.
+    let mut secrets: Vec<String> = overrides
+        .iter()
+        .filter(|(k, _)| k.contains("secret"))
+        .map(|(_, v)| v.clone())
+        .collect();
+    collect_file_secrets(&table, &mut secrets);
+    let hide = |e: ConfigError| ConfigError::new(redact(&e.0, &secrets));
     for (k, v) in overrides {
-        apply_override(&mut table, k, v)?;
+        apply_override(&mut table, k, v).map_err(hide)?;
     }
     let file_config: FileConfig = table
         .try_into()
-        .map_err(|e| ConfigError::new(format!("configuration: {e}")))?;
-    file_config.into_server_config()
+        .map_err(|e| hide(ConfigError::new(format!("configuration: {e}"))))?;
+    file_config.into_server_config().map_err(hide)
 }
 
 #[cfg(test)]
@@ -465,7 +552,7 @@ mod tests {
             None,
             &[
                 ("turn.urls".into(), "turn:relay.example.org:3478".into()),
-                ("turn.secret".into(), "abc".into()),
+                ("turn.secret".into(), "abcdefghijklmnopqrstuvwxyz".into()),
             ],
         )
         .unwrap();
@@ -477,15 +564,58 @@ mod tests {
     }
 
     #[test]
+    fn secrets_are_always_text_and_never_echoed() {
+        // A numeric-looking secret stays a string (and is long enough).
+        let c = load_config(
+            None,
+            &[
+                ("turn.urls".into(), "turn:x:3478".into()),
+                ("turn.secret".into(), "1234567890123456".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(c.turn.unwrap().secret.0, "1234567890123456");
+        // Too short: refused, and the value is not in the message.
+        let err = load_config(
+            None,
+            &[
+                ("turn.urls".into(), "turn:x:3478".into()),
+                ("turn.secret".into(), "short-secret".into()),
+            ],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("at least"), "{err}");
+        assert!(!err.contains("short-secret"), "{err}");
+        let err = load_config(None, &[("altcha.secret".into(), "tiny".into())])
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("tiny"), "{err}");
+        // The empty secret is refused as well.
+        assert!(load_config(None, &[("altcha.secret".into(), "".into())]).is_err());
+        // A secret in a place where a list is expected is not echoed either.
+        let err = load_config(
+            None,
+            &[(
+                "network.allow.secret".into(),
+                "hunter2hunter2hunter2".into(),
+            )],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(!err.contains("hunter2"), "{err}");
+    }
+
+    #[test]
     fn secrets_are_hidden_in_debug_output() {
         let c = load_config(
             None,
             &[
                 ("turn.urls".into(), "turn:x:3478".into()),
-                ("turn.secret".into(), "very-secret".into()),
+                ("turn.secret".into(), "very-secret-very-secret".into()),
             ],
         )
         .unwrap();
-        assert!(!format!("{c:?}").contains("very-secret"));
+        assert!(!format!("{c:?}").contains("very-secret-very-secret"));
     }
 }

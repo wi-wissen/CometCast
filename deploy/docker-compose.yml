@@ -10,7 +10,14 @@
 #   1. cp config/cometcast-server.example.toml config/cometcast-server.toml   (edit it)
 #   2. mkdir -p secrets certs
 #      openssl rand -hex 32 > secrets/turn_secret       (the shared TURN secret)
+#      openssl rand -hex 32 > secrets/altcha_secret     (signs ALTCHA puzzles)
+#      chmod 640 secrets/*   and make them readable for UID 65532 (the server user), e.g.
+#      sudo chown :65532 secrets/*   UNCERTAIN: not tested
 #   3. put fullchain.pem and privkey.pem into certs/    (never commit them)
+#      The server runs as UID 65532 and must be able to READ privkey.pem and the folders
+#      above it. certbot makes keys readable by root only (0600): copy the key and give it
+#      to that user (chown 65532 / group + chmod 640). If it cannot read the key, the server
+#      stops at start with a message that says so.
 #   4. cp .env.example .env                              (edit it)
 #   5. ./coturn/render.sh                                (makes coturn/turnserver.conf)
 #   6. docker compose up -d --build
@@ -31,6 +38,7 @@ services:
       - ./certs:/etc/cometcast/certs:ro
     secrets:
       - turn_secret
+      - altcha_secret
     # The container does not need to write anything or gain any rights.
     read_only: true
     cap_drop: [ALL]
@@ -58,3 +66,5 @@ services:
 secrets:
   turn_secret:
     file: ./secrets/turn_secret
+  altcha_secret:
+    file: ./secrets/altcha_secret
