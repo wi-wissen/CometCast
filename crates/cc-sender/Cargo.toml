@@ -17,3 +17,5 @@ cc-transport.workspace = true
 tokio.workspace = true
 bytes.workspace = true
 thiserror.workspace = true
+cc-capture.workspace = true
+cc-media.workspace = true

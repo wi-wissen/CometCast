@@ -16,6 +16,7 @@
 pub mod altcha;
 mod error;
 pub mod ice;
+mod keyframe;
 pub mod net;
 mod rtp;
 mod session;
@@ -25,7 +26,9 @@ pub use error::TransportError;
 pub use ice::IceServerConfig;
 pub use net::{ServerAddr, TlsTrust};
 pub use rtp::{MediaSnapshot, MediaStats, VideoCodec, starts_key_frame};
-pub use session::{ConnectionState, Session, SessionConfig, SessionEvent, VideoSender};
+pub use session::{
+    ConnectionState, Session, SessionConfig, SessionEvent, VideoPacket, VideoSender,
+};
 pub use signaling::{SignalingClient, ws_url};
 
 /// The ways a sender can reach a receiver.

@@ -1,15 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Sender core: joins a room, creates the offer and sends a synthetic video stream.
+//! Sender core: joins a room, creates the offer and sends video.
 //!
-//! This is the M1 slice. There is no screen capture and no video encoder yet (no GPL
-//! encoders are allowed in this project). For tests the sender replays a few pre-made VP8
-//! key frames from `assets/test-frames.ivf` (made by `tools/gen-test-frames.py`).
-//! Every frame is a key frame, which is valid VP8 but not efficient.
+//! Two modes:
+//!
+//! * Test pattern (default): the sender replays a few pre-made VP8 key frames from
+//!   `assets/test-frames.ivf` (made by `tools/gen-test-frames.py`). Every frame is a key
+//!   frame, which is valid VP8 but not efficient.
+//! * Screen ([`SenderOptions::screen`]): the screen is captured (`cc-capture`, X11 only),
+//!   unchanged pictures are skipped, changed ones are encoded as H.264 (`cc-media`, OpenH264)
+//!   and sent as RTP. See [`screen`] for the rules (one frame in flight, key frame on request,
+//!   static refresh) and docs/capture.md.
 //!
 //! Use: [`SenderCore::start`] -> loop on [`SenderCore::next_event`].
 
+mod screen;
+
+pub use screen::{ScreenOptions, ScreenStats};
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use std::sync::atomic::Ordering;
 
 use bytes::Bytes;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
@@ -88,7 +99,9 @@ pub struct SenderOptions {
     pub code: RoomCode,
     /// Stop sending after this long. `None` means until stopped.
     pub duration: Option<Duration>,
-    /// WebRTC settings. The codec list is forced to VP8.
+    /// Send the screen instead of the test pattern (H.264). `None` = test pattern (VP8).
+    pub screen: Option<ScreenOptions>,
+    /// WebRTC settings. The codec list is forced to VP8 (test pattern) or H.264 (screen).
     /// If `session.ice_servers` is empty the core asks the server for its STUN/TURN list.
     pub session: SessionConfig,
     /// Extra trusted certificates for `wss://` / `https://` (default: system store only).
@@ -102,6 +115,7 @@ impl SenderOptions {
             server: server.into(),
             code,
             duration: None,
+            screen: None,
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
         }
@@ -132,6 +146,7 @@ pub enum SenderEvent {
 /// A running sender.
 pub struct SenderCore {
     ice_servers: Vec<IceServerConfig>,
+    counters: Arc<screen::Counters>,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
@@ -163,7 +178,22 @@ impl SenderCore {
         .await
         .map_err(|_| TransportError::Timeout("waiting for joined"))??;
 
-        options.session.video_codecs = Some(vec![VideoCodec::Vp8]);
+        let counters = Arc::new(screen::Counters::default());
+        // Open the screen and the encoder before anything is negotiated, so a missing
+        // display or encoder is an error of `start`.
+        let prepared = match options.screen.take() {
+            Some(screen_options) => Some(
+                screen::prepare(screen_options, Arc::clone(&counters))
+                    .map_err(TransportError::Invalid)?,
+            ),
+            None => None,
+        };
+        let codec = if prepared.is_some() {
+            VideoCodec::H264
+        } else {
+            VideoCodec::Vp8
+        };
+        options.session.video_codecs = Some(vec![codec]);
         if options.session.ice_servers.is_empty() {
             // Best effort: no list (404, or a failed request) means no STUN/TURN.
             options.session.ice_servers =
@@ -171,7 +201,7 @@ impl SenderCore {
         }
         let ice_servers = options.session.ice_servers.clone();
         let (session, session_events) = Session::new(options.session).await?;
-        let video = session.add_video_track(VideoCodec::Vp8).await?;
+        let video = Arc::new(session.add_video_track(codec).await?);
         let offer = session.create_offer().await?;
         // The offer goes out first; candidates found meanwhile follow from the event channel.
         sig.send(ClientMsg::Offer { sdp: offer }).await?;
@@ -182,6 +212,7 @@ impl SenderCore {
             sig,
             Arc::new(session),
             video,
+            prepared,
             session_events,
             events_tx,
             stop_rx,
@@ -189,6 +220,7 @@ impl SenderCore {
         ));
         Ok(Self {
             ice_servers,
+            counters,
             events: events_rx,
             stop: Some(stop_tx),
             task,
@@ -199,6 +231,11 @@ impl SenderCore {
     /// caller configured). Empty = none.
     pub fn ice_servers(&self) -> &[IceServerConfig] {
         &self.ice_servers
+    }
+
+    /// Counters of the screen pipeline (all zero in test pattern mode).
+    pub fn screen_stats(&self) -> ScreenStats {
+        self.counters.snapshot()
     }
 
     /// Next event, or `None` after the core has stopped and all events were read.
@@ -225,10 +262,27 @@ impl Drop for SenderCore {
     }
 }
 
+/// The running screen pipeline and the tasks around it.
+struct ScreenRun {
+    pipeline: screen::Pipeline,
+    frames: mpsc::UnboundedReceiver<screen::Unit>,
+    ended: mpsc::UnboundedReceiver<screen::Ended>,
+    /// When the previous frame was written; the RTP time step of the next one.
+    last_sent: Option<Instant>,
+    frame_time: Duration,
+}
+
+enum ScreenMsg {
+    Frame(Option<screen::Unit>),
+    Ended(Option<screen::Ended>),
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run(
     mut sig: SignalingClient,
     session: Arc<Session>,
-    video: VideoSender,
+    video: Arc<VideoSender>,
+    mut prepared: Option<screen::Prepared>,
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<SenderEvent>,
     mut stop: oneshot::Receiver<()>,
@@ -238,13 +292,27 @@ async fn run(
         let _ = out.send(e);
     };
     let test = builtin_test_frames();
+    let test_mode = prepared.is_none();
     let frame_time = Duration::from_secs(1) / test.fps;
     let mut frame_tick = tokio::time::interval(frame_time);
     frame_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut report_tick = tokio::time::interval(Duration::from_secs(1));
     let mut streaming_since: Option<Instant> = None;
     let mut frames_sent: u64 = 0;
+    let mut screen_run: Option<ScreenRun> = None;
+    let mut keyframe_task: Option<tokio::task::JoinHandle<()>> = None;
     loop {
+        // The channels of the screen pipeline only exist once it runs; until then these
+        // futures never complete.
+        let screen_msg = async {
+            match screen_run.as_mut() {
+                Some(r) => tokio::select! {
+                    unit = r.frames.recv() => ScreenMsg::Frame(unit),
+                    ended = r.ended.recv() => ScreenMsg::Ended(ended),
+                },
+                None => std::future::pending().await,
+            }
+        };
         tokio::select! {
             _ = &mut stop => break,
             msg = sig.recv() => match msg {
@@ -280,6 +348,31 @@ async fn run(
                 Some(SessionEvent::State(s)) => {
                     if s == ConnectionState::Connected && streaming_since.is_none() {
                         streaming_since = Some(Instant::now());
+                        // A new peer starts the screen pipeline, whose first frame is a key
+                        // frame; later key frames come from the peer's picture loss requests.
+                        if let Some(p) = prepared.take() {
+                            let (frames_tx, frames_rx) = mpsc::unbounded_channel();
+                            let (ended_tx, ended_rx) = mpsc::unbounded_channel();
+                            let fps = p.options.fps.max(1);
+                            let p_counters = Arc::clone(&p.counters);
+                            let pipeline = screen::spawn(p, frames_tx, ended_tx);
+                            let flag = pipeline.keyframe_flag();
+                            let v = Arc::clone(&video);
+                            let counters = Arc::clone(&p_counters);
+                            keyframe_task = Some(tokio::spawn(async move {
+                                while v.next_keyframe_request().await {
+                                    counters.keyframe_requests.fetch_add(1, Ordering::Relaxed);
+                                    flag.store(true, Ordering::Relaxed);
+                                }
+                            }));
+                            screen_run = Some(ScreenRun {
+                                pipeline,
+                                frames: frames_rx,
+                                ended: ended_rx,
+                                last_sent: None,
+                                frame_time: Duration::from_secs(1) / fps,
+                            });
+                        }
                     }
                     if s == ConnectionState::Failed {
                         emit(SenderEvent::State(s));
@@ -290,7 +383,7 @@ async fn run(
                 }
                 Some(SessionEvent::VideoTrack { .. }) => {}
             },
-            _ = frame_tick.tick(), if streaming_since.is_some() => {
+            _ = frame_tick.tick(), if test_mode && streaming_since.is_some() => {
                 let Some(since) = streaming_since else { continue };
                 if duration.is_some_and(|d| since.elapsed() >= d) {
                     emit(SenderEvent::Finished { frames_sent });
@@ -303,10 +396,54 @@ async fn run(
                 }
                 frames_sent += 1;
             },
+            msg = screen_msg => match msg {
+            ScreenMsg::Frame(unit) => {
+                let (Some(unit), Some(r)) = (unit, screen_run.as_mut()) else { continue };
+                // The RTP time advances by the real time since the previous frame, so that
+                // pauses on a static screen do not make the picture play too fast later.
+                let now = Instant::now();
+                let step = r.last_sent.map_or(r.frame_time, |t| now - t);
+                r.last_sent = Some(now);
+                let step = step.max(Duration::from_millis(1));
+                if let Err(e) = video.send_frame(Bytes::from(unit.data), step).await {
+                    emit(SenderEvent::Error(format!("cannot send frame: {e}")));
+                    break;
+                }
+                frames_sent += 1;
+                // The transport has the frame: the pipeline may look at the screen again.
+                r.pipeline.frame_taken();
+            },
+            ScreenMsg::Ended(ended) => {
+                match ended {
+                    Some(screen::Ended::Failed(e)) => {
+                        emit(SenderEvent::Error(format!("screen capture failed: {e}")));
+                    }
+                    Some(screen::Ended::SourceEnded) => {
+                        emit(SenderEvent::Error("screen capture ended".into()));
+                    }
+                    Some(screen::Ended::Stopped) | None => {}
+                }
+                break;
+            }
+            },
             _ = report_tick.tick(), if streaming_since.is_some() => {
+                // In test pattern mode the frame tick ends the run; the screen mode ends here.
+                if let (Some(since), false) = (streaming_since, test_mode)
+                    && duration.is_some_and(|d| since.elapsed() >= d)
+                {
+                    emit(SenderEvent::Finished { frames_sent });
+                    break;
+                }
                 emit(SenderEvent::Streaming { frames_sent });
             }
         }
+    }
+    if let Some(t) = keyframe_task {
+        t.abort();
+    }
+    if let Some(mut r) = screen_run {
+        // Joining waits for a capture call that may be sleeping up to one frame time.
+        let _ = tokio::task::spawn_blocking(move || r.pipeline.stop()).await;
     }
     let _ = session.close().await;
 }
@@ -335,3 +472,6 @@ mod tests {
         assert!(parse_ivf(&cut).is_err());
     }
 }
+
+#[cfg(test)]
+mod screen_tests;
