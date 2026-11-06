@@ -21,6 +21,12 @@ class FakeCoreApi implements CoreApi {
   /// the real mailbox).
   final frames = <VideoFrame>[];
   int takeFrameCalls = 0;
+
+  /// If set, the next takeFrame picks its picture at once but answers only after this.
+  Completer<void>? takeFrameGate;
+
+  /// Number of upcoming takeFrame calls that throw.
+  int takeFrameFailures = 0;
   final maxSizes = <(int, int)>[];
 
   /// What captureInfo answers (default: X11 works, whole desktop plus one monitor).
@@ -63,9 +69,15 @@ class FakeCoreApi implements CoreApi {
   @override
   Future<VideoFrame?> takeFrame() async {
     takeFrameCalls++;
-    if (frames.isEmpty) return null;
-    final newest = frames.last;
+    if (takeFrameFailures > 0) {
+      takeFrameFailures--;
+      throw StateError('takeFrame failed');
+    }
+    final newest = frames.isEmpty ? null : frames.last;
     frames.clear();
+    final gate = takeFrameGate;
+    takeFrameGate = null;
+    if (gate != null) await gate.future;
     return newest;
   }
 

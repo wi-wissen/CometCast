@@ -317,6 +317,14 @@
   "@fullscreenExit": {
     "description": "Tooltip of the button that leaves full screen."
   },
+  "videoViewLabel": "Shared screen of the sender",
+  "@videoViewLabel": {
+    "description": "Screen reader label of the received picture of the sender's screen."
+  },
+  "videoStatsLabel": "Video statistics",
+  "@videoStatsLabel": {
+    "description": "Screen reader label of the statistics shown over the received picture."
+  },
   "videoStatsShow": "Show statistics (I)",
   "@videoStatsShow": {
     "description": "Tooltip of the button that shows the statistics over the picture."

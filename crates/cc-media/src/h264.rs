@@ -35,6 +35,14 @@ pub enum MediaError {
     /// The picture does not fit what was promised (size, buffer length).
     #[error("invalid picture: {0}")]
     InvalidPicture(&'static str),
+    /// The decoded picture is larger than [`MAX_DECODED_PIXELS`] allows.
+    #[error("decoded picture too large: {width} x {height}")]
+    PictureTooLarge {
+        /// Width in pixels.
+        width: usize,
+        /// Height in pixels.
+        height: usize,
+    },
     /// The requested way to get OpenH264 was not compiled in.
     #[error("OpenH264 backend not available: {0}")]
     BackendUnavailable(&'static str),
@@ -43,6 +51,18 @@ pub enum MediaError {
 impl From<openh264::Error> for MediaError {
     fn from(e: openh264::Error) -> Self {
         Self::OpenH264(e.to_string())
+    }
+}
+
+/// Most pixels of a decoded picture that [`H264Decoder`] converts to RGB (4096 x 2304 is about
+/// 9.4 million pixels, 28 MB of RGB). Protects against a stream that announces a huge size.
+/// UNCERTAIN: placeholder; OpenH264 has its own limits, this one is ours.
+pub const MAX_DECODED_PIXELS: usize = 4096 * 2304;
+
+fn check_picture_size(width: usize, height: usize) -> Result<(), MediaError> {
+    match width.checked_mul(height) {
+        Some(n) if n <= MAX_DECODED_PIXELS => Ok(()),
+        _ => Err(MediaError::PictureTooLarge { width, height }),
     }
 }
 
@@ -291,6 +311,7 @@ impl H264Decoder {
             return Ok(None);
         };
         let (w, h) = openh264::formats::YUVSource::dimensions(&yuv);
+        check_picture_size(w, h)?;
         let mut rgb = vec![0u8; w * h * 3];
         yuv.write_rgb8(&mut rgb);
         Ok(Some(DecodedFrame {
@@ -346,6 +367,18 @@ mod tests {
             backend: backend(),
             ..H264Config::default()
         }
+    }
+
+    #[test]
+    fn oversized_pictures_are_rejected_before_allocating() {
+        assert!(check_picture_size(4096, 2304).is_ok());
+        assert!(check_picture_size(1920, 1080).is_ok());
+        assert!(matches!(
+            check_picture_size(4096, 2305),
+            Err(MediaError::PictureTooLarge { .. })
+        ));
+        assert!(check_picture_size(usize::MAX, 2).is_err(), "overflow");
+        assert!(check_picture_size(0, 0).is_ok());
     }
 
     #[test]

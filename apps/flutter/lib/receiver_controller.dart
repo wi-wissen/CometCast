@@ -55,11 +55,17 @@ class ReceiverController extends ChangeNotifier {
     required this.core,
     this.udpBind,
     SetFullscreen? setFullscreen,
+    this.fetchTimeout = const Duration(seconds: 5),
   }) : _setFullscreen = setFullscreen ?? setWindowFullscreen;
 
   final CoreApi core;
   final String? udpBind;
   final SetFullscreen _setFullscreen;
+
+  /// How long one picture fetch (core call plus image creation) may take before it is given
+  /// up, so that a stuck call cannot block all later pictures.
+  /// UNCERTAIN: 5 s is a placeholder.
+  final Duration fetchTimeout;
 
   StreamSubscription<ReceiverUiEvent>? _sub;
 
@@ -100,6 +106,9 @@ class ReceiverController extends ChangeNotifier {
   /// Technical error text in English (shown after a translated "Error:" prefix).
   String? error;
 
+  /// Bumped by [start] and [stop]; a fetch that began in an older session drops its result.
+  int _session = 0;
+  Timer? _retryTimer;
   bool _fetching = false;
   bool _refetch = false;
   bool _disposed = false;
@@ -117,6 +126,7 @@ class ReceiverController extends ChangeNotifier {
   /// Create a room on [server] and start listening.
   void start(String server) {
     _cancel();
+    _newSession();
     _clearImage();
     phase = ReceiverPhase.starting;
     roomCode = null;
@@ -227,47 +237,84 @@ class ReceiverController extends ChangeNotifier {
     unawaited(_fetchLoop());
   }
 
+  /// A new session invalidates fetches in flight and frees the fetch slot for the new one.
+  void _newSession() {
+    _session++;
+    _fetching = false;
+    _refetch = false;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+  }
+
   Future<void> _fetchLoop() async {
+    final session = _session;
     _fetching = true;
     try {
       do {
         _refetch = false;
         final t0 = _clock.elapsedMicroseconds;
-        final frame = await core.takeFrame();
-        if (_disposed) return;
+        final frame = await core.takeFrame().timeout(fetchTimeout);
+        if (_disposed || session != _session) return;
         if (frame == null) continue;
         final t1 = _clock.elapsedMicroseconds;
-        final img = await _toImage(frame);
+        final img = await _toImage(frame, fetchTimeout);
+        if (_disposed || session != _session || !isActive) {
+          img.dispose();
+          return;
+        }
         final t2 = _clock.elapsedMicroseconds;
         _fetched++;
         _fetchUsTotal += t1 - t0;
         _imageUsTotal += t2 - t1;
         avgFetchUs = _fetchUsTotal ~/ _fetched;
         avgImageUs = _imageUsTotal ~/ _fetched;
-        if (_disposed || !isActive) {
-          img.dispose();
-          return;
-        }
         _swapImage(img);
       } while (_refetch);
     } catch (e) {
-      // A bad picture must not stop the stream; the next one replaces it.
+      // A bad picture must not stop the stream. The core sends a new "frame ready" only
+      // after a fetch reached it, so ask again a little later in case this one did not.
       debugPrint('cometcast: cannot show a picture: $e');
+      if (!_disposed && session == _session) {
+        _retryTimer?.cancel();
+        _retryTimer = Timer(const Duration(milliseconds: 500), () {
+          if (!_disposed && session == _session && isActive && !_fetching) {
+            unawaited(_fetchLoop());
+          }
+        });
+      }
     } finally {
-      _fetching = false;
+      // A newer session owns the flag now.
+      if (session == _session) _fetching = false;
     }
   }
 
-  static Future<ui.Image> _toImage(VideoFrame f) {
+  static Future<ui.Image> _toImage(VideoFrame f, Duration timeout) {
     final completer = Completer<ui.Image>();
+    var abandoned = false;
     ui.decodeImageFromPixels(
       f.rgba,
       f.width,
       f.height,
       ui.PixelFormat.rgba8888,
-      completer.complete,
+      (img) {
+        // Too late: nobody waits for it any more.
+        if (abandoned) {
+          img.dispose();
+        } else {
+          completer.complete(img);
+        }
+      },
     );
-    return completer.future;
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        abandoned = true;
+        throw TimeoutException(
+          'decodeImageFromPixels did not complete',
+          timeout,
+        );
+      },
+    );
   }
 
   void _swapImage(ui.Image img) {
@@ -322,6 +369,7 @@ class ReceiverController extends ChangeNotifier {
   /// Stop receiving. The room code disappears (the room is gone).
   Future<void> stop() async {
     _cancel();
+    _newSession();
     phase = ReceiverPhase.idle;
     roomCode = null;
     _clearImage();
@@ -341,6 +389,7 @@ class ReceiverController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _retryTimer?.cancel();
     _cancel();
     _clearImage();
     // Fire and forget: the screen is gone, the core must not keep a room open.

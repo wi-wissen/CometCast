@@ -389,6 +389,22 @@ void videoTests() {
     expect(find.byTooltip('Statistik anzeigen (I)'), findsOneWidget);
   });
 
+  testWidgets('the picture and the statistics have screen reader labels', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final core = await startAndConnect(tester);
+    await deliverFrame(tester, core, solidFrame(8, 6, [255, 0, 0]));
+    expect(
+      find.bySemanticsLabel('Shared screen of the sender'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('statsButton')));
+    await tester.pump();
+    expect(find.bySemanticsLabel(RegExp('^Video statistics')), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('the server is remembered when receiving starts', (tester) async {
     final core = FakeCoreApi();
     final store = MemorySettingsStore();

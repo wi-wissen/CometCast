@@ -110,12 +110,16 @@ class _ReceivePageState extends State<ReceivePage> {
                     child: AspectRatio(
                       aspectRatio: image.width / image.height,
                       // The boundary is exactly the picture (tests read its pixels).
-                      child: RepaintBoundary(
-                        key: const Key('videoView'),
-                        child: RawImage(
-                          image: image,
-                          fit: BoxFit.fill,
-                          filterQuality: FilterQuality.low,
+                      child: Semantics(
+                        image: true,
+                        label: t.videoViewLabel,
+                        child: RepaintBoundary(
+                          key: const Key('videoView'),
+                          child: RawImage(
+                            image: image,
+                            fit: BoxFit.fill,
+                            filterQuality: FilterQuality.low,
+                          ),
                         ),
                       ),
                     ),
@@ -426,19 +430,23 @@ class _VideoStatsOverlay extends StatelessWidget {
       t.videoStatsUiTime(ms(c.avgFetchUs), ms(c.avgImageUs)),
       if (v.error != null) t.videoStatsError(v.error!),
     ];
-    return Container(
-      key: const Key('videoStats'),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        lines.join('\n'),
-        style: const TextStyle(
-          color: Colors.white,
-          fontFamily: 'monospace',
-          fontSize: 12,
+    return Semantics(
+      container: true,
+      label: t.videoStatsLabel,
+      child: Container(
+        key: const Key('videoStats'),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          lines.join('\n'),
+          style: const TextStyle(
+            color: Colors.white,
+            fontFamily: 'monospace',
+            fontSize: 12,
+          ),
         ),
       ),
     );
