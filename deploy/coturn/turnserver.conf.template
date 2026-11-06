@@ -80,6 +80,12 @@ denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=::1
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+# UNCERTAIN: added after a second review: Teredo 2001::/32, discard-only 100::/64, local-use
+# NAT64 64:ff9b:1::/48 and the deprecated 6to4 relay anycast 192.88.99.0/24. Not tested with coturn.
+denied-peer-ip=2001::-2001:0:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=100::-100::ffff:ffff:ffff:ffff
+denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=192.88.99.0-192.88.99.255
 # EXCEPTION (important): the server's own relay address must stay reachable, otherwise
 # two devices in the SAME private network cannot relay to each other, because the relay
 # addresses are themselves private. Everything else private stays denied.
