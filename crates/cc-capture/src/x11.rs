@@ -11,6 +11,11 @@
 //! forbids); the mouse pointer is not in the picture; only 24/32-bit TrueColor little-endian
 //! BGRX roots are handled; windows that use compositing tricks or other screens of a
 //! multi-screen (Zaphod) setup are not considered.
+//!
+//! Layout changes (RandR): the root window follows its size on every frame. A monitor source
+//! (`monitor:N`) listens for RandR screen change events and looks its geometry up again; if
+//! `GetImage` fails (the old region no longer exists) it looks it up once more and retries
+//! once. A monitor that has disappeared ends with [`CaptureError::NoSuchSource`].
 
 use std::time::{Duration, Instant};
 
@@ -54,6 +59,8 @@ pub struct X11Source {
     root: xproto::Window,
     options: X11Options,
     running: Option<Running>,
+    /// A RandR screen change was seen since the geometry of the source was looked up.
+    layout_changed: bool,
 }
 
 impl std::fmt::Debug for X11Source {
@@ -86,6 +93,7 @@ impl X11Source {
             root,
             options,
             running: None,
+            layout_changed: false,
         })
     }
 
@@ -158,15 +166,77 @@ impl X11Source {
         Some(id)
     }
 
-    /// Drain pending events; true if a damage notification was among them.
-    fn damage_seen(&self) -> Result<bool, CaptureError> {
+    /// Ask for RandR screen change events (monitor layout or size changed).
+    fn watch_layout(&self) {
+        if self.has_extension(randr::X11_EXTENSION_NAME)
+            && let Ok(cookie) = self
+                .conn
+                .randr_select_input(self.root, randr::NotifyMask::SCREEN_CHANGE)
+        {
+            let _ = cookie.check();
+        }
+    }
+
+    /// Drain pending events; true if a damage notification was among them. A RandR screen
+    /// change sets `layout_changed`.
+    fn damage_seen(&mut self) -> Result<bool, CaptureError> {
         let mut seen = false;
         while let Some(ev) = self.conn.poll_for_event().map_err(disp)? {
-            if matches!(ev, Event::DamageNotify(_)) {
-                seen = true;
+            match ev {
+                Event::DamageNotify(_) => seen = true,
+                Event::RandrScreenChangeNotify(_) => self.layout_changed = true,
+                _ => {}
             }
         }
         Ok(seen)
+    }
+
+    /// Look the geometry of the running source up again. Fails with `NoSuchSource` if a
+    /// monitor of that id no longer exists.
+    fn refresh_geometry(&mut self) -> Result<CaptureSource, CaptureError> {
+        let id = self
+            .running
+            .as_ref()
+            .ok_or(CaptureError::NotStarted)?
+            .source
+            .id
+            .clone();
+        let known = self
+            .list_sources()?
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or(CaptureError::NoSuchSource(id))?;
+        if let Some(run) = self.running.as_mut() {
+            run.source = known.clone();
+        }
+        self.layout_changed = false;
+        Ok(known)
+    }
+
+    /// Read the picture of `source` with `GetImage`.
+    fn get_image(&self, source: &CaptureSource) -> Result<Vec<u8>, CaptureError> {
+        let reply = self
+            .conn
+            .get_image(
+                ImageFormat::Z_PIXMAP,
+                self.root,
+                i16::try_from(source.x).map_err(disp)?,
+                i16::try_from(source.y).map_err(disp)?,
+                u16::try_from(source.width).map_err(disp)?,
+                u16::try_from(source.height).map_err(disp)?,
+                !0,
+            )
+            .map_err(disp)?
+            .reply()
+            .map_err(disp)?;
+        let expected = source.width as usize * source.height as usize * 4;
+        if reply.data.len() != expected {
+            return Err(CaptureError::PixelFormat(format!(
+                "GetImage returned {} bytes, expected {expected}",
+                reply.data.len()
+            )));
+        }
+        Ok(reply.data)
     }
 }
 
@@ -227,6 +297,8 @@ impl ScreenSource for X11Source {
             .find(|s| s.id == source.id)
             .ok_or_else(|| CaptureError::NoSuchSource(source.id.clone()))?;
         let damage = self.start_damage();
+        self.watch_layout();
+        self.layout_changed = false;
         self.running = Some(Running {
             source: known,
             detector: ChangeDetector::new(),
@@ -256,7 +328,7 @@ impl ScreenSource for X11Source {
             (run.damage, run.first, run.source.clone())
         };
 
-        let damaged = self.damage_seen()?;
+        let damaged = self.damage_seen()? || self.layout_changed;
         if damage_id.is_some() && !first && !damaged {
             // The server says nothing changed: no pixels are read.
             return Ok(Capture::Unchanged);
@@ -270,34 +342,31 @@ impl ScreenSource for X11Source {
 
         if source.id == ROOT_SOURCE_ID {
             // The root can change size (RandR); follow it.
+            self.layout_changed = false;
             let (x, y, w, h) = self.root_geometry()?;
             source.x = x;
             source.y = y;
             source.width = w;
             source.height = h;
         }
-        let reply = self
-            .conn
-            .get_image(
-                ImageFormat::Z_PIXMAP,
-                self.root,
-                i16::try_from(source.x).map_err(disp)?,
-                i16::try_from(source.y).map_err(disp)?,
-                u16::try_from(source.width).map_err(disp)?,
-                u16::try_from(source.height).map_err(disp)?,
-                !0,
-            )
-            .map_err(disp)?
-            .reply()
-            .map_err(disp)?;
-        let expected = source.width as usize * source.height as usize * 4;
-        if reply.data.len() != expected {
-            return Err(CaptureError::PixelFormat(format!(
-                "GetImage returned {} bytes, expected {expected}",
-                reply.data.len()
-            )));
+        if source.id != ROOT_SOURCE_ID && self.layout_changed {
+            // The monitor layout changed: the old rectangle may be wrong or gone.
+            source = self.refresh_geometry()?;
         }
-        let mut bgra = reply.data;
+        let mut bgra = match self.get_image(&source) {
+            Ok(data) => data,
+            Err(first_error) if source.id != ROOT_SOURCE_ID => {
+                // Maybe the geometry changed without us noticing yet: look it up once more
+                // and try once more. A monitor that is gone ends the capture clearly.
+                let fresh = self.refresh_geometry()?;
+                if fresh == source {
+                    return Err(first_error);
+                }
+                source = fresh;
+                self.get_image(&source)?
+            }
+            Err(e) => return Err(e),
+        };
         // The fourth byte is padding with unspecified content; make it opaque.
         for px in bgra.chunks_exact_mut(4) {
             px[3] = 255;
@@ -408,6 +477,106 @@ mod tests {
         assert_eq!(pixel_at(&f, 150, 80), [20, 160, 220]);
         assert_eq!(src.next_frame().unwrap(), Capture::Unchanged);
         src.stop();
+    }
+
+    /// Give the first CRT controller a new mode of `w` x `h` at the origin, through a second
+    /// connection (what `xrandr --output ... --mode` does). Returns false if this Xvfb does not
+    /// allow it (the test then skips with a note).
+    fn change_first_monitor(display: &str, w: u16, h: u16) -> bool {
+        let Ok((conn, num)) = x11rb::connect(Some(display)) else {
+            return false;
+        };
+        let root = conn.setup().roots[num].root;
+        let Ok(res) = conn
+            .randr_get_screen_resources(root)
+            .map_err(disp)
+            .and_then(|c| c.reply().map_err(disp))
+        else {
+            return false;
+        };
+        let (Some(&crtc), Some(&output)) = (res.crtcs.first(), res.outputs.first()) else {
+            return false;
+        };
+        let name = format!("{w}x{h}");
+        let info = randr::ModeInfo {
+            id: 0,
+            width: w,
+            height: h,
+            dot_clock: 60_000_000,
+            hsync_start: w + 8,
+            hsync_end: w + 16,
+            htotal: w + 32,
+            hskew: 0,
+            vsync_start: h + 4,
+            vsync_end: h + 8,
+            vtotal: h + 16,
+            name_len: name.len() as u16,
+            mode_flags: randr::ModeFlag::from(0u8),
+        };
+        let Ok(mode) = conn
+            .randr_create_mode(root, info, name.as_bytes())
+            .map_err(disp)
+            .and_then(|c| c.reply().map_err(disp))
+        else {
+            return false;
+        };
+        let ok = conn
+            .randr_add_output_mode(output, mode.mode)
+            .map_err(disp)
+            .and_then(|c| c.check().map_err(disp))
+            .is_ok()
+            && conn
+                .randr_set_crtc_config(
+                    crtc,
+                    x11rb::CURRENT_TIME,
+                    res.config_timestamp,
+                    0,
+                    0,
+                    mode.mode,
+                    randr::Rotation::ROTATE0,
+                    &[output],
+                )
+                .map_err(disp)
+                .and_then(|c| c.reply().map_err(disp))
+                .is_ok_and(|r| r.status == randr::SetConfig::SUCCESS);
+        let _ = conn.flush();
+        ok
+    }
+
+    #[test]
+    fn a_monitor_source_follows_a_randr_change() {
+        let Some(server) = TestXServer::start(640, 480) else {
+            return;
+        };
+        let mut src = X11Source::connect(Some(&server.display), X11Options { fps: 50 }).unwrap();
+        let list = src.list_sources().unwrap();
+        let Some(monitor) = list.iter().find(|s| s.id == "monitor:0").cloned() else {
+            eprintln!("NOTE: SKIPPING, this X server lists no RandR monitor");
+            return;
+        };
+        assert_eq!((monitor.width, monitor.height), (640, 480));
+        src.start(&monitor).unwrap();
+        let Capture::Frame(first) = src.next_frame().unwrap() else {
+            panic!("first call must deliver a frame");
+        };
+        assert_eq!((first.width, first.height), (640, 480));
+        if !change_first_monitor(&server.display, 400, 300) {
+            eprintln!("NOTE: SKIPPING the second half, this Xvfb refused the RandR mode change");
+            return;
+        }
+        let mut got = None;
+        for _ in 0..40 {
+            match src.next_frame() {
+                Ok(Capture::Frame(f)) => {
+                    got = Some(f);
+                    break;
+                }
+                Ok(_) => {}
+                Err(e) => panic!("capture failed after the RandR change: {e}"),
+            }
+        }
+        let f = got.expect("a frame at the new size");
+        assert_eq!((f.width, f.height), (400, 300));
     }
 
     #[test]
