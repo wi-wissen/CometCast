@@ -112,6 +112,19 @@ pub enum ControlCmd {
     Stop,
 }
 
+/// Error codes added with server hardening (milestone M8). They are additive: older
+/// clients treat an unknown code like any other error. See docs/protocol.md.
+pub mod error_codes {
+    /// `create_room` needs a solved ALTCHA payload and none was sent.
+    pub const ALTCHA_REQUIRED: &str = "altcha_required";
+    /// The ALTCHA payload is wrong, expired or was already used.
+    pub const ALTCHA_INVALID: &str = "altcha_invalid";
+    /// Too many requests from this address, or the server is full. Try again later.
+    pub const RATE_LIMITED: &str = "rate_limited";
+    /// This address is temporarily banned (too many failed joins). The connection is closed.
+    pub const BANNED: &str = "banned";
+}
+
 /// Messages from a client (sender or receiver) to the server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -124,7 +137,14 @@ pub enum ClientMsg {
         role: Role,
     },
     /// Receiver only: ask the server for a new room.
-    CreateRoom,
+    CreateRoom {
+        /// Solved ALTCHA proof-of-work payload (base64 of the JSON that the ALTCHA
+        /// widget or library produces; see docs/server.md). Optional on the wire:
+        /// servers in internal mode do not need it, open servers answer
+        /// `altcha_required` without it. Not sent when `None`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        altcha: Option<String>,
+    },
     /// Sender only: join the room with this code.
     JoinRoom {
         /// Room code.
@@ -195,7 +215,8 @@ pub enum ServerMsg {
     },
     /// Something went wrong.
     Error {
-        /// Short machine-readable code, e.g. `room_not_found`.
+        /// Short machine-readable code, e.g. `room_not_found`. The codes added for
+        /// server hardening are in [`error_codes`].
         code: String,
         /// Human-readable text.
         message: String,
@@ -249,7 +270,10 @@ mod tests {
                 proto_version: PROTO_VERSION,
                 role: Role::Sender,
             },
-            ClientMsg::CreateRoom,
+            ClientMsg::CreateRoom { altcha: None },
+            ClientMsg::CreateRoom {
+                altcha: Some("eyJ9".into()),
+            },
             ClientMsg::JoinRoom {
                 code: RoomCode::parse("k7m2qx").unwrap(),
             },
@@ -288,6 +312,10 @@ mod tests {
                 code: "room_not_found".into(),
                 message: "No such room".into(),
             },
+            ServerMsg::Error {
+                code: error_codes::ALTCHA_REQUIRED.into(),
+                message: "solve the puzzle first".into(),
+            },
         ];
         for m in msgs {
             let json = serde_json::to_string(&m).unwrap();
@@ -316,8 +344,15 @@ mod tests {
     #[test]
     fn new_messages_wire_format() {
         assert_eq!(
-            serde_json::to_string(&ClientMsg::CreateRoom).unwrap(),
+            serde_json::to_string(&ClientMsg::CreateRoom { altcha: None }).unwrap(),
             r#"{"type":"create_room"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ClientMsg::CreateRoom {
+                altcha: Some("e30=".into())
+            })
+            .unwrap(),
+            r#"{"type":"create_room","altcha":"e30="}"#
         );
         let created = ServerMsg::RoomCreated {
             code: RoomCode::parse("K7M2QX").unwrap(),
@@ -339,7 +374,26 @@ mod tests {
             r#"{"type":"peer_left"}"#
         );
         let m: ClientMsg = serde_json::from_str(r#"{"type":"create_room"}"#).unwrap();
-        assert_eq!(m, ClientMsg::CreateRoom);
+        assert_eq!(m, ClientMsg::CreateRoom { altcha: None });
+        // Old clients send no `altcha` field; a null is accepted too.
+        let m: ClientMsg = serde_json::from_str(r#"{"type":"create_room","altcha":null}"#).unwrap();
+        assert_eq!(m, ClientMsg::CreateRoom { altcha: None });
+        let m: ClientMsg =
+            serde_json::from_str(r#"{"type":"create_room","altcha":"e30="}"#).unwrap();
+        assert_eq!(
+            m,
+            ClientMsg::CreateRoom {
+                altcha: Some("e30=".into())
+            }
+        );
+    }
+
+    #[test]
+    fn new_error_codes_are_stable() {
+        assert_eq!(error_codes::ALTCHA_REQUIRED, "altcha_required");
+        assert_eq!(error_codes::ALTCHA_INVALID, "altcha_invalid");
+        assert_eq!(error_codes::RATE_LIMITED, "rate_limited");
+        assert_eq!(error_codes::BANNED, "banned");
     }
 
     #[test]

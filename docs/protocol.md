@@ -11,11 +11,18 @@ It never stores or forwards media, images or files. Code: `crates/cc-proto`
 - Each message is an object with a `"type"` field in `snake_case`.
 - One receiver and one sender per room in v0.1.
 - `GET /healthz` returns `200` with body `ok`.
+- `GET /altcha/challenge` returns an ALTCHA puzzle (JSON); `GET /ice-servers` returns
+  short-lived TURN credentials when the server has TURN configured (otherwise `404`).
+  Both are described in [server.md](server.md). Any HTTP request can be answered with
+  `403` (address not allowed or banned), `429` (rate limit, with `Retry-After`) or
+  `503` (server full); the WebSocket upgrade can be refused the same way.
 - With `--web-dir <path>` the server also serves that directory as static files
   from the same address, so the web app and `/ws` share one origin.
-- No TLS yet. HTTPS/WSS via rustls is a later step. UNCERTAIN: browsers are
-  generally said to require a secure context (HTTPS) for screen capture, with
-  `localhost` treated as secure; to be verified in the target browsers before relying on it.
+- TLS is optional: with a certificate configured the same paths are served as HTTPS and
+  `wss://` (see [server.md](server.md)); without it the server speaks plain HTTP and `ws://`.
+  UNCERTAIN: browsers are generally said to require a secure context (HTTPS) for screen
+  capture, with `localhost` treated as secure; to be verified in the target browsers
+  before relying on it.
 
 ## Messages
 
@@ -24,7 +31,7 @@ Client to server:
 | type | fields | who | meaning |
 |---|---|---|---|
 | `hello` | `proto_version`, `role` (`sender`/`receiver`) | both | Must be the first message. |
-| `create_room` | - | receiver | Ask for a new room. |
+| `create_room` | optional `altcha` (string) | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. |
 | `join_room` | `code` | sender | Join the room with this code (case-insensitive, 6 characters). |
 | `offer` | `sdp` | both | WebRTC offer, relayed to the peer. |
 | `answer` | `sdp` | both | WebRTC answer, relayed to the peer. |
@@ -101,8 +108,8 @@ goes peer to peer is the design goal; it is not checked by this server.)
 - If the receiver leaves, the sender's connection stays open and may create/join
   another room on the same connection (it gets `peer_left` first).
 - Rooms are in memory only; a server restart drops all rooms.
-- There is no limit on the number of rooms yet (rate limiting for `Mode::Open`
-  is milestone M8 / measurement point 8).
+- The number of rooms is capped (`limits.max_rooms`, see [server.md](server.md));
+  `create_room` beyond the cap gets `rate_limited`.
 
 ## Error codes
 
@@ -117,12 +124,16 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 | `room_not_found` | `join_room` with a code that has no room. A code that is syntactically invalid (wrong length or characters) is treated the same way. A `code` that is not a string is `bad_message`. | no |
 | `room_full` | `join_room` for a room that already has a sender. | no |
 | `not_in_room` | A relay message while not in a room or while the peer is not there. | no |
+| `altcha_required` | `create_room` without `altcha` on a server that requires it (always the case in open mode). Added in M8; clients that do not know the code should treat it like any error. | no |
+| `altcha_invalid` | `create_room` with an `altcha` payload that is malformed, wrongly signed, expired, not solved or already used. | no |
+| `rate_limited` | Too many `create_room` / `join_room` messages from this address, or the server has reached its maximum number of rooms. The message text says which. Try again later. | no |
+| `banned` | Too many failed joins: the address is banned for a while. | yes |
 | `bad_message` | Unparsable JSON, unknown type, binary frame, second `hello`, or `create_room`/`join_room` while already in a room. | no |
 
 A message larger than the size limit makes the connection fail and close
 without an `error` message.
 
-## Limits (all configurable in `ServerConfig`)
+## Limits (all configurable, see [server.md](server.md); rate limits and bans are described there)
 
 | limit | default | status |
 |---|---|---|
@@ -136,5 +147,6 @@ The hello deadline is fixed at connect time; WebSocket pings do not extend it.
 
 ## Not done yet
 
-TLS, rate limiting and bot protection for open servers (M8), authentication
-for internal servers, and more than one sender per room.
+Authentication for internal servers, ALTCHA when joining a room (only `create_room`
+needs it today), and more than one sender per room. See [server.md](server.md) for
+what is built for open servers and what is still open.

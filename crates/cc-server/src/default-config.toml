@@ -1,0 +1,74 @@
+# Comet Cast server: default configuration (internal mode).
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Every line is optional; a missing line keeps the value shown here. Printed by
+# `cometcast-server --print-default-config`. Settings can also be given as
+# environment variables (COMETCAST__LIMITS__MAX_ROOMS=500) or on the command line
+# (--set limits.max_rooms=500). Order: file, then environment, then command line.
+#
+# UNCERTAIN: every number in this file is a placeholder that has not been measured.
+# Open mode ("open") uses stricter limits and always requires ALTCHA; see docs/server.md.
+
+# "internal" = for the devices of one organisation. "open" = public, mediation only.
+mode = "internal"
+# 127.0.0.1 = only this computer. UNCERTAIN: the default port 8443 is not decided.
+listen = "127.0.0.1:8443"
+# Serve the web app (a directory) from the same address. Not set = no web files.
+# web_dir = "/srv/cometcast/web"
+
+# Time limits in seconds.
+idle_room_secs = 1800      # room without sender is removed after this
+hello_secs = 5             # a connection must say hello within this
+no_room_secs = 60          # a connection must be in a room within this
+max_message_bytes = 65536  # largest WebSocket message
+outgoing_queue_len = 256   # messages waiting for one slow client
+
+# HTTPS / WSS. Without any of these lines the server speaks plain HTTP.
+[tls]
+# cert_file = "/etc/cometcast/fullchain.pem"
+# key_file = "/etc/cometcast/privkey.pem"
+# DEVELOPMENT ONLY: make a new self-signed certificate at every start (loud warning).
+self_signed = false
+self_signed_names = ["localhost", "127.0.0.1", "::1"]
+# Write the generated public certificate here (for `curl --cacert`).
+# self_signed_cert_out = "/tmp/cometcast-dev-cert.pem"
+
+[network]
+# Reverse proxies whose X-Forwarded-For header is believed (CIDR). Empty = ignore the header.
+trusted_proxies = []
+# Only these networks may connect (empty = everybody).
+allow = []
+# These networks are refused (wins over allow).
+deny = []
+
+# Limits per client address (IPv4 address or IPv6 /64).
+[limits]
+connections_per_min = 300
+create_room_per_min = 60
+join_attempts_per_min = 120
+failed_join_weight = 2          # a failed join counts like this many attempts
+http_per_min = 300              # /altcha/challenge and /ice-servers
+max_rooms = 100000              # whole server
+max_connections = 20000         # whole server
+ban_after_failed_joins = 30     # within failed_join_window_secs
+failed_join_window_secs = 600
+ban_secs = [60, 300, 1800]      # 1st, 2nd, 3rd+ ban
+ban_memory_secs = 3600          # history forgotten after this
+
+# Proof-of-work (ALTCHA) for creating a room.
+[altcha]
+# "always" = required (forced in open mode). "optional" = checked only when sent.
+mode = "optional"
+# secret = "..."          # or secret_file = "/run/secrets/altcha"; without it a random one is made at start
+cost = 1000               # PBKDF2 iterations per attempt
+base_counter = 1000       # size of the search; doubles per pressure level
+max_difficulty_factor = 8
+ttl_secs = 300
+
+# Short-lived TURN credentials at GET /ice-servers (internal mode only).
+# Remove the leading "#" and fill in to switch on. coturn runs separately.
+# [turn]
+# urls = ["turn:relay.example.org:3478?transport=udp", "turns:relay.example.org:5349?transport=tcp"]
+# stun_urls = ["stun:relay.example.org:3478"]
+# secret = "..."          # same value as static-auth-secret in coturn; or secret_file = "..."
+# ttl_secs = 3600

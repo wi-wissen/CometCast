@@ -1,0 +1,6 @@
+# Never commit secrets, certificates or filled-in configuration.
+secrets/
+certs/
+.env
+coturn/turnserver.conf
+config/cometcast-server.toml

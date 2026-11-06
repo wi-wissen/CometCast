@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Comet Cast server + coturn (TURN relay) on one machine.
+#
+# UNCERTAIN: NOT tested. The machine this was written on has no Docker daemon, so
+# neither `docker compose up` nor the images were run. `docker compose config` was
+# only used for a syntax check, if at all (see docs/server.md).
+#
+# Before the first start (all paths relative to this folder):
+#   1. cp config/cometcast-server.example.toml config/cometcast-server.toml   (edit it)
+#   2. mkdir -p secrets certs
+#      openssl rand -hex 32 > secrets/turn_secret       (the shared TURN secret)
+#   3. put fullchain.pem and privkey.pem into certs/    (never commit them)
+#   4. cp .env.example .env                              (edit it)
+#   5. ./coturn/render.sh                                (makes coturn/turnserver.conf)
+#   6. docker compose up -d --build
+#
+# Run with the repository root as build context (the Dockerfile needs the whole workspace).
+
+services:
+  cometcast-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: cometcast-server:local
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./config/cometcast-server.toml:/etc/cometcast/server.toml:ro
+      - ./certs:/etc/cometcast/certs:ro
+    secrets:
+      - turn_secret
+    # The container does not need to write anything or gain any rights.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # UNCERTAIN: no health check here. The image has no shell and no curl; a check would
+    # need a small flag in the server (not built).
+
+  coturn:
+    # UNCERTAIN: the planning page names coturn 4.18. That tag was not checked against
+    # Docker Hub. Set COTURN_VERSION in .env to a tag that exists.
+    image: coturn/coturn:${COTURN_VERSION:?set COTURN_VERSION in .env}
+    restart: unless-stopped
+    # coturn uses a whole range of UDP ports for relaying. Host networking avoids mapping
+    # hundreds of ports through Docker. UNCERTAIN: host networking only works on Linux hosts.
+    network_mode: host
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./certs:/etc/coturn/certs:ro
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  turn_secret:
+    file: ./secrets/turn_secret
