@@ -118,3 +118,11 @@ cargo build -p cc-ffi -p cometcast-server -p cometcast-cli
 - The server address is pre-filled from `server_defaults()` (`cc-discovery`'s built-in list, whose host `relay.cometcast.de` does not exist yet, plus `127.0.0.1:8443` for development); the last used server is saved with `shared_preferences`. UNCERTAIN: the other steps of the discovery ladder (MDM, DNS SRV, display announcement) are not implemented, so only the built-in list is used.
 - `Cargo.toml` (workspace root) got `[profile.dev.package.cc-ffi] opt-level = 3`: the per-picture pixel loops were too slow at opt-level 0 (33.7 ms per 1280x720 picture before, 1.5 to 1.7 ms per 640x480 picture after; different picture sizes, so the two numbers are not a clean A/B).
 - UNCERTAIN: the GitHub workflow (`.github/workflows/flutter.yml`) has not run on GitHub.
+
+## H.264 build variants
+
+`cc-ffi` forwards the OpenH264 build mode of `cc-media`: the default feature `h264-source` builds
+OpenH264 from source and is meant for development and CI only. For release builds use
+`--no-default-features --features h264-libloading`, which loads Cisco's prebuilt library at run time
+(`COMETCAST_OPENH264_LIB`). UNCERTAIN: the patent and licence situation is not clarified, see
+docs/capture.md. The Linux CMake step builds the default variant.

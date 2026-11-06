@@ -320,8 +320,10 @@ pub(crate) fn rgb_to_rgba_scaled(rgb: &[u8], w: u32, h: u32, dw: u32, dh: u32) -
 pub(crate) fn spawn_decoder(
     generation: u64,
     notify: impl Fn() + Send + 'static,
-) -> Option<tokio::sync::mpsc::UnboundedSender<cc_transport::VideoPacket>> {
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+) -> Option<cc_transport::VideoTap> {
+    // Bounded tap: when the decoder is too slow, packets are dropped and counted in the tap
+    // (the decoder then waits for the next IDR frame). UNCERTAIN: capacity is a placeholder.
+    let (tx, rx) = cc_transport::VideoTap::channel(4096);
     std::thread::Builder::new()
         .name("cc-video-decode".into())
         .spawn(move || run_decoder(rx, generation, notify))
@@ -334,14 +336,14 @@ pub(crate) fn spawn_decoder(
 pub(crate) fn spawn_decoder(
     _generation: u64,
     _notify: impl Fn() + Send + 'static,
-) -> Option<tokio::sync::mpsc::UnboundedSender<cc_transport::VideoPacket>> {
+) -> Option<cc_transport::VideoTap> {
     VIDEO.record_error("this build has no H.264 decoder (feature `h264` is off)".into());
     None
 }
 
 #[cfg(feature = "h264")]
 fn run_decoder(
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<cc_transport::VideoPacket>,
+    mut rx: tokio::sync::mpsc::Receiver<cc_transport::VideoPacket>,
     generation: u64,
     notify: impl Fn(),
 ) {
