@@ -40,10 +40,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  ScreenRequest dco_decode_box_autoadd_screen_request(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
+  VideoFrame dco_decode_box_autoadd_video_frame(dynamic raw);
+
+  @protected
+  CaptureInfo dco_decode_capture_info(dynamic raw);
+
+  @protected
+  CaptureMonitor dco_decode_capture_monitor(dynamic raw);
+
+  @protected
+  CaptureSupport dco_decode_capture_support(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<CaptureMonitor> dco_decode_list_capture_monitor(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -52,7 +73,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
+  ScreenRequest? dco_decode_opt_box_autoadd_screen_request(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  VideoFrame? dco_decode_opt_box_autoadd_video_frame(dynamic raw);
 
   @protected
   ReceiverUiEvent dco_decode_receiver_ui_event(dynamic raw);
@@ -61,7 +88,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RoomCodeCheck dco_decode_room_code_check(dynamic raw);
 
   @protected
+  ScreenRequest dco_decode_screen_request(dynamic raw);
+
+  @protected
   SenderUiEvent dco_decode_sender_ui_event(dynamic raw);
+
+  @protected
+  ServerDefaults dco_decode_server_defaults(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -77,6 +110,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void dco_decode_unit(dynamic raw);
+
+  @protected
+  VideoFrame dco_decode_video_frame(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -95,10 +131,35 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  ScreenRequest sse_decode_box_autoadd_screen_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  VideoFrame sse_decode_box_autoadd_video_frame(SseDeserializer deserializer);
+
+  @protected
+  CaptureInfo sse_decode_capture_info(SseDeserializer deserializer);
+
+  @protected
+  CaptureMonitor sse_decode_capture_monitor(SseDeserializer deserializer);
+
+  @protected
+  CaptureSupport sse_decode_capture_support(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<CaptureMonitor> sse_decode_list_capture_monitor(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -107,7 +168,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  ScreenRequest? sse_decode_opt_box_autoadd_screen_request(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  VideoFrame? sse_decode_opt_box_autoadd_video_frame(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ReceiverUiEvent sse_decode_receiver_ui_event(SseDeserializer deserializer);
@@ -116,7 +187,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RoomCodeCheck sse_decode_room_code_check(SseDeserializer deserializer);
 
   @protected
+  ScreenRequest sse_decode_screen_request(SseDeserializer deserializer);
+
+  @protected
   SenderUiEvent sse_decode_sender_ui_event(SseDeserializer deserializer);
+
+  @protected
+  ServerDefaults sse_decode_server_defaults(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -134,6 +211,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
+
+  @protected
+  VideoFrame sse_decode_video_frame(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
@@ -160,10 +240,46 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_screen_request(
+    ScreenRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_video_frame(
+    VideoFrame self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_capture_info(CaptureInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_capture_monitor(
+    CaptureMonitor self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_capture_support(
+    CaptureSupport self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_capture_monitor(
+    List<CaptureMonitor> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -175,7 +291,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_screen_request(
+    ScreenRequest? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_video_frame(
+    VideoFrame? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_receiver_ui_event(
@@ -187,7 +315,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_room_code_check(RoomCodeCheck self, SseSerializer serializer);
 
   @protected
+  void sse_encode_screen_request(ScreenRequest self, SseSerializer serializer);
+
+  @protected
   void sse_encode_sender_ui_event(SenderUiEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_server_defaults(
+    ServerDefaults self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
@@ -206,6 +343,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_video_frame(VideoFrame self, SseSerializer serializer);
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);

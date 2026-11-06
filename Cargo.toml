@@ -110,3 +110,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.cc-media]
 opt-level = 3
+# cc-ffi scales and converts every received picture (pixel loops); at opt-level 0 that took
+# most of the time per frame in the Flutter debug build.
+[profile.dev.package.cc-ffi]
+opt-level = 3

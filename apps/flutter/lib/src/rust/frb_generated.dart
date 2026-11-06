@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -2137677716;
+  int get rustContentHash => 1937907326;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -81,6 +81,8 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<CaptureInfo> crateApiCaptureInfo({String? display});
+
   RoomCodeCheck crateApiCheckRoomCode({required String input});
 
   Future<void> crateApiInitApp();
@@ -88,6 +90,10 @@ abstract class RustLibApi extends BaseApi {
   String crateApiRoomCodeAlphabet();
 
   int crateApiRoomCodeLength();
+
+  ServerDefaults crateApiServerDefaults();
+
+  void crateApiSetVideoMaxSize({required int width, required int height});
 
   Stream<ReceiverUiEvent> crateApiStartReceiver({
     required String server,
@@ -99,11 +105,14 @@ abstract class RustLibApi extends BaseApi {
     required String server,
     int? seconds,
     String? udpBind,
+    ScreenRequest? screen,
   });
 
   Future<void> crateApiStopReceiver();
 
   Future<void> crateApiStopSender();
+
+  Future<VideoFrame?> crateApiTakeFrame();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -115,13 +124,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<CaptureInfo> crateApiCaptureInfo({String? display}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(display, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_capture_info,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCaptureInfoConstMeta,
+        argValues: [display],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCaptureInfoConstMeta =>
+      const TaskConstMeta(debugName: "capture_info", argNames: ["display"]);
+
+  @override
   RoomCodeCheck crateApiCheckRoomCode({required String input}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(input, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_room_code_check,
@@ -146,7 +183,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 3,
             port: port_,
           );
         },
@@ -170,7 +207,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -192,7 +229,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_32,
@@ -207,6 +244,54 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiRoomCodeLengthConstMeta =>
       const TaskConstMeta(debugName: "room_code_length", argNames: []);
+
+  @override
+  ServerDefaults crateApiServerDefaults() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_server_defaults,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiServerDefaultsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiServerDefaultsConstMeta =>
+      const TaskConstMeta(debugName: "server_defaults", argNames: []);
+
+  @override
+  void crateApiSetVideoMaxSize({required int width, required int height}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(width, serializer);
+          sse_encode_u_32(height, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSetVideoMaxSizeConstMeta,
+        argValues: [width, height],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetVideoMaxSizeConstMeta => const TaskConstMeta(
+    debugName: "set_video_max_size",
+    argNames: ["width", "height"],
+  );
 
   @override
   Stream<ReceiverUiEvent> crateApiStartReceiver({
@@ -225,7 +310,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 5,
+              funcId: 8,
               port: port_,
             );
           },
@@ -253,6 +338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String server,
     int? seconds,
     String? udpBind,
+    ScreenRequest? screen,
   }) {
     final events = RustStreamSink<SenderUiEvent>();
     unawaited(
@@ -264,11 +350,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             sse_encode_String(server, serializer);
             sse_encode_opt_box_autoadd_u_32(seconds, serializer);
             sse_encode_opt_String(udpBind, serializer);
+            sse_encode_opt_box_autoadd_screen_request(screen, serializer);
             sse_encode_StreamSink_sender_ui_event_Sse(events, serializer);
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 6,
+              funcId: 9,
               port: port_,
             );
           },
@@ -277,7 +364,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             decodeErrorData: null,
           ),
           constMeta: kCrateApiStartSenderConstMeta,
-          argValues: [code, server, seconds, udpBind, events],
+          argValues: [code, server, seconds, udpBind, screen, events],
           apiImpl: this,
         ),
       ),
@@ -287,7 +374,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiStartSenderConstMeta => const TaskConstMeta(
     debugName: "start_sender",
-    argNames: ["code", "server", "seconds", "udpBind", "events"],
+    argNames: ["code", "server", "seconds", "udpBind", "screen", "events"],
   );
 
   @override
@@ -299,7 +386,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 10,
             port: port_,
           );
         },
@@ -326,7 +413,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 11,
             port: port_,
           );
         },
@@ -343,6 +430,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiStopSenderConstMeta =>
       const TaskConstMeta(debugName: "stop_sender", argNames: []);
+
+  @override
+  Future<VideoFrame?> crateApiTakeFrame() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_video_frame,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTakeFrameConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTakeFrameConstMeta =>
+      const TaskConstMeta(debugName: "take_frame", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -373,15 +487,87 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScreenRequest dco_decode_box_autoadd_screen_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_screen_request(raw);
+  }
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
   }
 
   @protected
+  VideoFrame dco_decode_box_autoadd_video_frame(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_video_frame(raw);
+  }
+
+  @protected
+  CaptureInfo dco_decode_capture_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return CaptureInfo(
+      support: dco_decode_capture_support(arr[0]),
+      display: dco_decode_opt_String(arr[1]),
+      monitors: dco_decode_list_capture_monitor(arr[2]),
+    );
+  }
+
+  @protected
+  CaptureMonitor dco_decode_capture_monitor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return CaptureMonitor(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+      x: dco_decode_i_32(arr[2]),
+      y: dco_decode_i_32(arr[3]),
+      width: dco_decode_u_32(arr[4]),
+      height: dco_decode_u_32(arr[5]),
+    );
+  }
+
+  @protected
+  CaptureSupport dco_decode_capture_support(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return CaptureSupport_Supported();
+      case 1:
+        return CaptureSupport_Wayland();
+      case 2:
+        return CaptureSupport_NoDisplay();
+      case 3:
+        return CaptureSupport_UnsupportedOs();
+      case 4:
+        return CaptureSupport_Failed(message: dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<CaptureMonitor> dco_decode_list_capture_monitor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_capture_monitor).toList();
   }
 
   @protected
@@ -397,9 +583,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScreenRequest? dco_decode_opt_box_autoadd_screen_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_screen_request(raw);
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  VideoFrame? dco_decode_opt_box_autoadd_video_frame(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_video_frame(raw);
   }
 
   @protected
@@ -427,8 +625,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           keyframes: dco_decode_u_64(raw[4]),
         );
       case 5:
-        return ReceiverUiEvent_PeerLeft();
+        return ReceiverUiEvent_FrameReady();
       case 6:
+        return ReceiverUiEvent_VideoStats(
+          decoded: dco_decode_u_64(raw[1]),
+          delivered: dco_decode_u_64(raw[2]),
+          dropped: dco_decode_u_64(raw[3]),
+          droppedPackets: dco_decode_u_64(raw[4]),
+          decodeErrors: dco_decode_u_64(raw[5]),
+          keyframeRequests: dco_decode_u_64(raw[6]),
+          width: dco_decode_u_32(raw[7]),
+          height: dco_decode_u_32(raw[8]),
+          avgDecodeUs: dco_decode_u_64(raw[9]),
+          error: dco_decode_opt_String(raw[10]),
+        );
+      case 7:
+        return ReceiverUiEvent_PeerLeft();
+      case 8:
         return ReceiverUiEvent_Error(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
@@ -451,6 +664,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScreenRequest dco_decode_screen_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return ScreenRequest(
+      display: dco_decode_opt_String(arr[0]),
+      monitorId: dco_decode_opt_String(arr[1]),
+      fps: dco_decode_u_32(arr[2]),
+      bitrateKbps: dco_decode_u_32(arr[3]),
+    );
+  }
+
+  @protected
   SenderUiEvent dco_decode_sender_ui_event(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
@@ -463,14 +690,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 2:
         return SenderUiEvent_Streaming(framesSent: dco_decode_u_64(raw[1]));
       case 3:
-        return SenderUiEvent_Finished(framesSent: dco_decode_u_64(raw[1]));
+        return SenderUiEvent_ScreenStats(
+          polls: dco_decode_u_64(raw[1]),
+          changed: dco_decode_u_64(raw[2]),
+          encoded: dco_decode_u_64(raw[3]),
+          keyframes: dco_decode_u_64(raw[4]),
+          encodedBytes: dco_decode_u_64(raw[5]),
+        );
       case 4:
-        return SenderUiEvent_PeerLeft();
+        return SenderUiEvent_Finished(framesSent: dco_decode_u_64(raw[1]));
       case 5:
+        return SenderUiEvent_PeerLeft();
+      case 6:
         return SenderUiEvent_Error(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
+  }
+
+  @protected
+  ServerDefaults dco_decode_server_defaults(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return ServerDefaults(
+      servers: dco_decode_list_String(arr[0]),
+      devFallback: dco_decode_String(arr[1]),
+    );
   }
 
   @protected
@@ -504,6 +751,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VideoFrame dco_decode_video_frame(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return VideoFrame(
+      seq: dco_decode_u_64(arr[0]),
+      width: dco_decode_u_32(arr[1]),
+      height: dco_decode_u_32(arr[2]),
+      rgba: dco_decode_list_prim_u_8_strict(arr[3]),
+    );
+  }
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_String(deserializer);
@@ -534,15 +795,109 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScreenRequest sse_decode_box_autoadd_screen_request(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_screen_request(deserializer));
+  }
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_u_32(deserializer));
   }
 
   @protected
+  VideoFrame sse_decode_box_autoadd_video_frame(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_video_frame(deserializer));
+  }
+
+  @protected
+  CaptureInfo sse_decode_capture_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_support = sse_decode_capture_support(deserializer);
+    var var_display = sse_decode_opt_String(deserializer);
+    var var_monitors = sse_decode_list_capture_monitor(deserializer);
+    return CaptureInfo(
+      support: var_support,
+      display: var_display,
+      monitors: var_monitors,
+    );
+  }
+
+  @protected
+  CaptureMonitor sse_decode_capture_monitor(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_x = sse_decode_i_32(deserializer);
+    var var_y = sse_decode_i_32(deserializer);
+    var var_width = sse_decode_u_32(deserializer);
+    var var_height = sse_decode_u_32(deserializer);
+    return CaptureMonitor(
+      id: var_id,
+      name: var_name,
+      x: var_x,
+      y: var_y,
+      width: var_width,
+      height: var_height,
+    );
+  }
+
+  @protected
+  CaptureSupport sse_decode_capture_support(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return CaptureSupport_Supported();
+      case 1:
+        return CaptureSupport_Wayland();
+      case 2:
+        return CaptureSupport_NoDisplay();
+      case 3:
+        return CaptureSupport_UnsupportedOs();
+      case 4:
+        var var_message = sse_decode_String(deserializer);
+        return CaptureSupport_Failed(message: var_message);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <String>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<CaptureMonitor> sse_decode_list_capture_monitor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <CaptureMonitor>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_capture_monitor(deserializer));
+    }
+    return ans_;
   }
 
   @protected
@@ -564,11 +919,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScreenRequest? sse_decode_opt_box_autoadd_screen_request(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_screen_request(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  VideoFrame? sse_decode_opt_box_autoadd_video_frame(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_video_frame(deserializer));
     } else {
       return null;
     }
@@ -604,8 +985,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           keyframes: var_keyframes,
         );
       case 5:
-        return ReceiverUiEvent_PeerLeft();
+        return ReceiverUiEvent_FrameReady();
       case 6:
+        var var_decoded = sse_decode_u_64(deserializer);
+        var var_delivered = sse_decode_u_64(deserializer);
+        var var_dropped = sse_decode_u_64(deserializer);
+        var var_droppedPackets = sse_decode_u_64(deserializer);
+        var var_decodeErrors = sse_decode_u_64(deserializer);
+        var var_keyframeRequests = sse_decode_u_64(deserializer);
+        var var_width = sse_decode_u_32(deserializer);
+        var var_height = sse_decode_u_32(deserializer);
+        var var_avgDecodeUs = sse_decode_u_64(deserializer);
+        var var_error = sse_decode_opt_String(deserializer);
+        return ReceiverUiEvent_VideoStats(
+          decoded: var_decoded,
+          delivered: var_delivered,
+          dropped: var_dropped,
+          droppedPackets: var_droppedPackets,
+          decodeErrors: var_decodeErrors,
+          keyframeRequests: var_keyframeRequests,
+          width: var_width,
+          height: var_height,
+          avgDecodeUs: var_avgDecodeUs,
+          error: var_error,
+        );
+      case 7:
+        return ReceiverUiEvent_PeerLeft();
+      case 8:
         var var_message = sse_decode_String(deserializer);
         return ReceiverUiEvent_Error(message: var_message);
       default:
@@ -633,6 +1039,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScreenRequest sse_decode_screen_request(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_display = sse_decode_opt_String(deserializer);
+    var var_monitorId = sse_decode_opt_String(deserializer);
+    var var_fps = sse_decode_u_32(deserializer);
+    var var_bitrateKbps = sse_decode_u_32(deserializer);
+    return ScreenRequest(
+      display: var_display,
+      monitorId: var_monitorId,
+      fps: var_fps,
+      bitrateKbps: var_bitrateKbps,
+    );
+  }
+
+  @protected
   SenderUiEvent sse_decode_sender_ui_event(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -647,16 +1068,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_framesSent = sse_decode_u_64(deserializer);
         return SenderUiEvent_Streaming(framesSent: var_framesSent);
       case 3:
+        var var_polls = sse_decode_u_64(deserializer);
+        var var_changed = sse_decode_u_64(deserializer);
+        var var_encoded = sse_decode_u_64(deserializer);
+        var var_keyframes = sse_decode_u_64(deserializer);
+        var var_encodedBytes = sse_decode_u_64(deserializer);
+        return SenderUiEvent_ScreenStats(
+          polls: var_polls,
+          changed: var_changed,
+          encoded: var_encoded,
+          keyframes: var_keyframes,
+          encodedBytes: var_encodedBytes,
+        );
+      case 4:
         var var_framesSent = sse_decode_u_64(deserializer);
         return SenderUiEvent_Finished(framesSent: var_framesSent);
-      case 4:
-        return SenderUiEvent_PeerLeft();
       case 5:
+        return SenderUiEvent_PeerLeft();
+      case 6:
         var var_message = sse_decode_String(deserializer);
         return SenderUiEvent_Error(message: var_message);
       default:
         throw UnimplementedError('');
     }
+  }
+
+  @protected
+  ServerDefaults sse_decode_server_defaults(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_servers = sse_decode_list_String(deserializer);
+    var var_devFallback = sse_decode_String(deserializer);
+    return ServerDefaults(servers: var_servers, devFallback: var_devFallback);
   }
 
   @protected
@@ -689,6 +1131,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_decode_unit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  VideoFrame sse_decode_video_frame(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_seq = sse_decode_u_64(deserializer);
+    var var_width = sse_decode_u_32(deserializer);
+    var var_height = sse_decode_u_32(deserializer);
+    var var_rgba = sse_decode_list_prim_u_8_strict(deserializer);
+    return VideoFrame(
+      seq: var_seq,
+      width: var_width,
+      height: var_height,
+      rgba: var_rgba,
+    );
   }
 
   @protected
@@ -747,15 +1204,97 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_screen_request(
+    ScreenRequest self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_screen_request(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
   }
 
   @protected
+  void sse_encode_box_autoadd_video_frame(
+    VideoFrame self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_video_frame(self, serializer);
+  }
+
+  @protected
+  void sse_encode_capture_info(CaptureInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_capture_support(self.support, serializer);
+    sse_encode_opt_String(self.display, serializer);
+    sse_encode_list_capture_monitor(self.monitors, serializer);
+  }
+
+  @protected
+  void sse_encode_capture_monitor(
+    CaptureMonitor self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_i_32(self.x, serializer);
+    sse_encode_i_32(self.y, serializer);
+    sse_encode_u_32(self.width, serializer);
+    sse_encode_u_32(self.height, serializer);
+  }
+
+  @protected
+  void sse_encode_capture_support(
+    CaptureSupport self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case CaptureSupport_Supported():
+        sse_encode_i_32(0, serializer);
+      case CaptureSupport_Wayland():
+        sse_encode_i_32(1, serializer);
+      case CaptureSupport_NoDisplay():
+        sse_encode_i_32(2, serializer);
+      case CaptureSupport_UnsupportedOs():
+        sse_encode_i_32(3, serializer);
+      case CaptureSupport_Failed(message: final message):
+        sse_encode_i_32(4, serializer);
+        sse_encode_String(message, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_capture_monitor(
+    List<CaptureMonitor> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_capture_monitor(item, serializer);
+    }
   }
 
   @protected
@@ -779,12 +1318,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_screen_request(
+    ScreenRequest? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_screen_request(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_video_frame(
+    VideoFrame? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_video_frame(self, serializer);
     }
   }
 
@@ -818,10 +1383,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_u_64(bytes, serializer);
         sse_encode_u_64(frames, serializer);
         sse_encode_u_64(keyframes, serializer);
-      case ReceiverUiEvent_PeerLeft():
+      case ReceiverUiEvent_FrameReady():
         sse_encode_i_32(5, serializer);
-      case ReceiverUiEvent_Error(message: final message):
+      case ReceiverUiEvent_VideoStats(
+        decoded: final decoded,
+        delivered: final delivered,
+        dropped: final dropped,
+        droppedPackets: final droppedPackets,
+        decodeErrors: final decodeErrors,
+        keyframeRequests: final keyframeRequests,
+        width: final width,
+        height: final height,
+        avgDecodeUs: final avgDecodeUs,
+        error: final error,
+      ):
         sse_encode_i_32(6, serializer);
+        sse_encode_u_64(decoded, serializer);
+        sse_encode_u_64(delivered, serializer);
+        sse_encode_u_64(dropped, serializer);
+        sse_encode_u_64(droppedPackets, serializer);
+        sse_encode_u_64(decodeErrors, serializer);
+        sse_encode_u_64(keyframeRequests, serializer);
+        sse_encode_u_32(width, serializer);
+        sse_encode_u_32(height, serializer);
+        sse_encode_u_64(avgDecodeUs, serializer);
+        sse_encode_opt_String(error, serializer);
+      case ReceiverUiEvent_PeerLeft():
+        sse_encode_i_32(7, serializer);
+      case ReceiverUiEvent_Error(message: final message):
+        sse_encode_i_32(8, serializer);
         sse_encode_String(message, serializer);
     }
   }
@@ -845,6 +1435,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_screen_request(ScreenRequest self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_String(self.display, serializer);
+    sse_encode_opt_String(self.monitorId, serializer);
+    sse_encode_u_32(self.fps, serializer);
+    sse_encode_u_32(self.bitrateKbps, serializer);
+  }
+
+  @protected
   void sse_encode_sender_ui_event(
     SenderUiEvent self,
     SseSerializer serializer,
@@ -859,15 +1458,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case SenderUiEvent_Streaming(framesSent: final framesSent):
         sse_encode_i_32(2, serializer);
         sse_encode_u_64(framesSent, serializer);
-      case SenderUiEvent_Finished(framesSent: final framesSent):
+      case SenderUiEvent_ScreenStats(
+        polls: final polls,
+        changed: final changed,
+        encoded: final encoded,
+        keyframes: final keyframes,
+        encodedBytes: final encodedBytes,
+      ):
         sse_encode_i_32(3, serializer);
+        sse_encode_u_64(polls, serializer);
+        sse_encode_u_64(changed, serializer);
+        sse_encode_u_64(encoded, serializer);
+        sse_encode_u_64(keyframes, serializer);
+        sse_encode_u_64(encodedBytes, serializer);
+      case SenderUiEvent_Finished(framesSent: final framesSent):
+        sse_encode_i_32(4, serializer);
         sse_encode_u_64(framesSent, serializer);
       case SenderUiEvent_PeerLeft():
-        sse_encode_i_32(4, serializer);
-      case SenderUiEvent_Error(message: final message):
         sse_encode_i_32(5, serializer);
+      case SenderUiEvent_Error(message: final message):
+        sse_encode_i_32(6, serializer);
         sse_encode_String(message, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_server_defaults(
+    ServerDefaults self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_String(self.servers, serializer);
+    sse_encode_String(self.devFallback, serializer);
   }
 
   @protected
@@ -900,6 +1522,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  void sse_encode_video_frame(VideoFrame self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.seq, serializer);
+    sse_encode_u_32(self.width, serializer);
+    sse_encode_u_32(self.height, serializer);
+    sse_encode_list_prim_u_8_strict(self.rgba, serializer);
   }
 
   @protected
