@@ -20,5 +20,5 @@ portable-pty = "0.9"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", default-features = false, features = ["signal"] }
 
-[dev-dependencies]
+[target.'cfg(unix)'.dev-dependencies]
 nix = { version = "0.31", default-features = false, features = ["signal", "process"] }

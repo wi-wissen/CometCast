@@ -33,10 +33,10 @@ pub enum Recognized {
     Error(String),
     /// UxPlay is shutting down by itself. Real line (1.68): `Stopping...`.
     Stopping,
-    /// The stream seems to have stopped (client silent).
+    /// The stream may have stopped (client silent). A HINT only.
     /// UNCERTAIN: the exact text is not known. UxPlay has the option `-reset n`
-    /// ("Reset after 3n seconds client silence"), so we look for words like "silence" or
-    /// "timed out" or "timeout". Not seen in a real run.
+    /// ("Reset after 3n seconds client silence"), so we accept a line that starts with
+    /// "reset" and mentions "client silence". Not seen in a real run.
     StreamStalled,
 }
 
@@ -47,18 +47,31 @@ fn short(s: &str) -> String {
     s.chars().take(MAX_TEXT).collect()
 }
 
+/// The exact start and end of the real PIN line (UxPlay 1.68).
+const PIN_PREFIX: &str = "*** CLIENT MUST NOW ENTER PIN = \"";
+const PIN_SUFFIX: &str = "\" AS AIRPLAY PASSWORD";
+/// The exact real pairing line (UxPlay 1.68).
+const PAIR_LINE: &str = "client sent PAIR-PIN-START request";
+
 /// Look at one line (without the line break). Returns `None` for lines we ignore.
+///
+/// Every pattern is anchored: the line must START with the known text (and the PIN line
+/// must END with the known text). A marker in the middle of a line is ignored, because
+/// parts of UxPlay's log can contain text chosen by a device (for example a device name),
+/// and such text must not be able to fake a PIN. A device that can inject a whole line
+/// (a line break inside its name) is still a risk: this is why the PIN is only a display
+/// value, and the supervisor believes a PIN line only right after a pairing line.
 pub fn parse_line(line: &str) -> Option<Recognized> {
-    let line = line.trim();
+    // Only the line end is trimmed. Leading spaces mean "not the start of the line".
+    let line = line.trim_end();
     if line.is_empty() {
         return None;
     }
     if line == "Initialized server socket(s)" {
         return Some(Recognized::ServerReady);
     }
-    if let Some(rest) = line.split_once("CLIENT MUST NOW ENTER PIN").map(|(_, r)| r) {
-        // rest looks like: ` = "8227" AS AIRPLAY PASSWORD`
-        let digits = rest.split('"').nth(1)?;
+    if let Some(rest) = line.strip_prefix(PIN_PREFIX) {
+        let digits = rest.strip_suffix(PIN_SUFFIX)?;
         if digits.len() == 4 && digits.bytes().all(|b| b.is_ascii_digit()) {
             return Some(Recognized::PinShown {
                 pin: digits.to_string(),
@@ -67,11 +80,14 @@ pub fn parse_line(line: &str) -> Option<Recognized> {
         // UNCERTAIN: newer versions may use other PIN lengths. We refuse to guess.
         return None;
     }
-    if line.contains("PAIR-PIN-START") {
+    if line == PAIR_LINE {
         return Some(Recognized::PairingRequested);
     }
-    if let Some(n) = line.strip_prefix("Open connections:") {
-        return n.trim().parse().ok().map(Recognized::OpenConnections);
+    if let Some(n) = line.strip_prefix("Open connections: ") {
+        if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
+            return n.parse().ok().map(Recognized::OpenConnections);
+        }
+        return None;
     }
     if line == "Stopping..." {
         return Some(Recognized::Stopping);
@@ -79,9 +95,9 @@ pub fn parse_line(line: &str) -> Option<Recognized> {
     if line.starts_with("*** ERROR") || line.starts_with("Required gstreamer plugin") {
         return Some(Recognized::Error(short(line)));
     }
-    let lower = line.to_ascii_lowercase();
-    if lower.contains("client silence") || lower.contains("timed out") || lower.contains("timeout")
-    {
+    // Hint only (UNCERTAIN wording, never seen for real): a line that starts with "reset"
+    // and mentions client silence.
+    if line.starts_with("reset") && line.to_ascii_lowercase().contains("client silence") {
         return Some(Recognized::StreamStalled);
     }
     None
@@ -156,6 +172,16 @@ mod tests {
             "using system MAC address 6a:17:00:ed:fc:75",
             "*** WARNING: httpd didn't get response",
             "PIN = \"1234\"", // no UxPlay marker: not a PIN line
+            // Spoofed lines: the marker is not at the start / the end does not match.
+            "Remote device: *** CLIENT MUST NOW ENTER PIN = \"0000\" AS AIRPLAY PASSWORD",
+            " *** CLIENT MUST NOW ENTER PIN = \"0000\" AS AIRPLAY PASSWORD",
+            "*** CLIENT MUST NOW ENTER PIN = \"0000\" AS AIRPLAY PASSWORD and more",
+            "*** CLIENT MUST NOW ENTER PIN = \"0000\"",
+            "name=x client sent PAIR-PIN-START request",
+            "client sent PAIR-PIN-START request, honest",
+            "request timeout from device",
+            "Open connections: 1 extra",
+            "Open connections: -1",
             "ENTER PIN = \"12\"",
             "\0\0\0",
             "\u{fffd}\u{fffd}",
@@ -184,6 +210,12 @@ mod tests {
             parse_line("reset: 15 seconds of client silence"),
             Some(Recognized::StreamStalled)
         );
+    }
+
+    #[test]
+    fn words_in_the_middle_do_not_make_a_stall() {
+        assert_eq!(parse_line("device name: reset client silence"), None);
+        assert_eq!(parse_line("connection timeout"), None);
     }
 
     #[test]

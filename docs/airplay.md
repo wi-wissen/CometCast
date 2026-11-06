@@ -43,7 +43,7 @@ Checked on 2026-11-06 in a Linux container with the Ubuntu package `uxplay 1.68.
 | Does a pseudo-terminal (PTY) fix it? | Yes. With the PTY the supervisor saw the PIN 4 ms after the (simulated) pairing request. `stdbuf -oL` in front of the program also works (tested through a pipe), but needs a Unix `stdbuf`. |
 | How does the PIN line look? | `*** CLIENT MUST NOW ENTER PIN = "8227" AS AIRPLAY PASSWORD`, followed by a big ASCII-art picture of the digits (without the PIN in plain text on those lines). |
 | Which flags does 1.68 know? | `-n`, `-nh`, `-pin[xxxx]`, `-reg`, `-fs`, `-p`, `-vs`, `-as`, `-nohold`, `-restrict`, `-reset`. **Not** `-h265`, `-vrtp`, `-artp`, `-pw` (the full help text is a fixture). |
-| Is SIGTERM handled? | Yes: it prints `Stopping...` and exits with code 0. |
+| Is SIGTERM handled? | Results differed between two runs: with SIGTERM to the process only, the supervisor saw exit code 0; with SIGTERM to the process group (current code), it saw death by the signal ("Terminated"). **UNCERTAIN** why. Either way UxPlay ended within milliseconds and was reaped. The supervisor reports a signal death as a signal name, never as an exit code. |
 
 The "iPhone" in this test was one hand-written request (`POST /pair-pin-start`) sent to port 7000. A real device will send much more; the lines for a real connection, a started mirroring, a stall or a disconnect were **not observed**.
 
@@ -56,16 +56,18 @@ The "iPhone" in this test was one hand-written request (`POST /pair-pin-start`) 
 
 ## Events and status
 
-Events (`AirplayEvent`): `Starting`, `ServerStarted`, `PairingRequested`, `PinShown{pin}`, `ClientConnected`, `ClientDisconnected`, `Error`, `StreamStalled`, `Denied`, `ProcessExited`, `Restarting`, `Failed`, `Stopped`.
+Events (`AirplayEvent`): `Starting`, `ServerStarted`, `PairingRequested`, `PinShown{pin}`, `ClientConnected`, `ClientDisconnected`, `Error`, `StreamStalled`, `Denied`, `DenyIgnored`, `SessionChanged`, `ProcessExited{code, signal, pid, expected}`, `Restarting`, `Failed`, `Stopped`.
 
-Status for the UI (`AirplayStatus`): `Off`, `Starting`, `Waiting`, `PinShown`, `Connected`, `Restarting`, `Failed`. `status_after()` folds events into the status.
+Status for the UI (`AirplayStatus`): `Off`, `Starting`, `Waiting`, `PinShown`, `Connected`, `Restarting`, `Failed`. `status_after()` folds events into the status. `Connected` is set only by `SessionChanged{active: true}`, which the **app** sends with `Supervisor::set_session_active(true)` (UxPlay's output has no line we trust for "a screen is mirrored"). A `PinShown` event while the status is `Connected` does not change it.
 
 Honest limits of the events:
 
 - `ClientConnected` and `ClientDisconnected` come from UxPlay's line `Open connections: N`. That counts every TCP connection, including short probes (the real log shows `1` then `0` for one probe). It does **not** prove that a screen is being mirrored. **UNCERTAIN:** a line that marks the start of real mirroring was not observed.
 - `StreamStalled` is matched by words ("client silence", "timed out", "timeout"). **UNCERTAIN:** UxPlay's real text is unknown. Treat the event as a hint.
-- The parser ignores unknown lines. A PIN is accepted only as exactly 4 ASCII digits behind the UxPlay marker text. Newer versions may differ (**UNCERTAIN**).
-- **Output is never trusted for a security decision.** The PIN is shown to people; whether a device may connect is decided by UxPlay's own PIN check. Our policy uses events only for display and for stopping the service.
+- The parser ignores unknown lines. Every pattern is anchored to the start of the line. The PIN line must be exactly `*** CLIENT MUST NOW ENTER PIN = "dddd" AS AIRPLAY PASSWORD` (4 ASCII digits, nothing before or after); the pairing line must be exactly `client sent PAIR-PIN-START request`. A marker in the middle of a line (for example inside a device name) is ignored; tests cover spoofed lines. Newer UxPlay versions may use other texts (**UNCERTAIN**).
+- The supervisor emits `PinShown` only when a pairing line came right before it. A device that can put a line break into text that UxPlay logs could still fake both lines (**UNCERTAIN**: which logged texts a device controls was not checked). **The UI must never show or trust a PIN that did not come from a `PinShown` event, and no access decision may rest on it.** The PIN is shown to people; whether a device may connect is decided by UxPlay's own PIN check. Our policy uses events only for display and for stopping the service.
+- `ClientConnected` needs the line `Open connections: N`. In the real non-debug run (the PIN fixture) that line did **not** appear; it appeared only with UxPlay's `-d` (debug) option, which `AirplayConfig` does not pass. So by default `ClientConnected` and `ClientDisconnected` never fire; they do not drive the status.
+- `StreamStalled` is a hint only (see above).
 
 ## Comet Cast side policy (`policy.rs`)
 
@@ -75,17 +77,20 @@ Honest limits of the events:
 | Active AirPlay sessions at the same time | 1 (`MAX_ACTIVE_SESSIONS`) | UNCERTAIN: planning decision |
 | After the window | New devices are rejected, a running mirroring continues, the service stops when it ends (`service_action`) | decision in the plan |
 | Switch turned off during a running mirroring | The picture is kept (our choice, the plan does not say) | UNCERTAIN |
-| Confirmation dialog | `ConfirmHook` trait, the app implements it (shows the PIN, answers `Accept` or `Deny`). `Deny` restarts UxPlay, which drops the pairing | UNCERTAIN: the output does not name the device, so one device cannot be blocked individually |
+| Confirmation dialog | `ConfirmHook` trait, the app implements it (shows the PIN, answers `Accept` or `Deny`). `Deny` restarts UxPlay, which drops the pairing. Only one dialog is open at a time; a PIN that appears while a dialog is open gets no dialog (dropped, not queued). While the app says a session is active (`set_session_active(true)`), no dialog is opened and a late `Deny` is ignored (`DenyIgnored`), so a running picture is never cut | UNCERTAIN: the output does not name the device, so one device cannot be blocked individually |
+
+The supervisor enforces none of these rules by itself. With the default `confirm: None` there is no dialog, and every device that knows the PIN is accepted by UxPlay. The window, the session count and the call to `set_session_active` are the **app's job**.
 
 The policy functions only decide. Connecting them to the real switch, timer and UxPlay (counting active sessions, stopping the service) is left to the app. The window start time and the session count are inputs of `PolicyState`.
 
 ## Process handling
 
 - `Supervisor::start(config, options)` returns the supervisor and a `std::sync::mpsc::Receiver<AirplayEvent>`.
-- Restart: wait 1 s, then 2 s, 4 s ... up to 30 s; a run longer than 30 s resets the wait; after 10 failures in a row it gives up (`Failed`). All values UNCERTAIN (placeholders, not tuned on real hardware).
+- Restart: wait 1 s, then 2 s, 4 s ... up to 30 s; a run longer than 30 s resets the wait; the 10th failure in a row gives up (`Failed`). `Restarting{attempt}` is the number of failures in a row (1 = first); planned restarts (`restart()`, denial) do not count and reset the wait. All values UNCERTAIN (placeholders, not tuned on real hardware).
 - If the program cannot be started at all (not installed), it reports `Failed` once and does not retry.
-- Stop: SIGTERM, wait up to `stop_timeout` (5 s, UNCERTAIN), then SIGKILL to the process group, then the process is collected (`wait`). The tests check with `waitpid` and `/proc` that no zombie is left.
-- Windows: `portable-pty` supports ConPTY, and the code has a non-Unix path (`kill`), but **nothing was compiled or run on Windows or macOS**. UxPlay on Windows is a separate topic in the plan (MSYS2 build).
+- Stop: SIGTERM to the whole process group, wait up to `stop_timeout` (5 s, UNCERTAIN), then SIGKILL to the group, then the process is collected (`wait`). After the leader has ended (also when it died by itself), the rest of its group gets SIGKILL, so helper processes do not survive. The tests check with `waitpid` and `/proc` that no zombie is left, and that a backgrounded helper of the fake is dead after a stop and after a crash. A helper that leaves the group (its own `setsid`) is not caught (**UNCERTAIN**: not known whether UxPlay or GStreamer start such helpers); its output thread then stays blocked, but its events are dropped by a run-number check.
+- Commands that pile up during a stop are dropped (except a stop).
+- Platforms: everything is written and tested on **Linux only**. The signal and process-group code is `#[cfg(unix)]` (macOS should compile it, **unverified**). On other systems the code falls back to `portable-pty`'s `kill()`, which means no graceful SIGTERM, no group cleanup, and the supervisor tests are Unix-only. Nothing was compiled or run on Windows or macOS; `portable-pty` claims ConPTY support there (**unverified**). The `nix` dependency is Unix-only. UxPlay on Windows is a separate topic in the plan (MSYS2 build).
 
 ## Tests
 
