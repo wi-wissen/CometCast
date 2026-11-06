@@ -18,3 +18,7 @@ x11rb.workspace = true
 [features]
 # Helpers that start Xvfb and draw test windows; used by tests of other crates.
 test-support = []
+
+[[example]]
+name = "xanim"
+required-features = ["test-support"]

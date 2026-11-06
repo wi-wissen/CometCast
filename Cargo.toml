@@ -98,3 +98,13 @@ lto = true
 opt-level = "s"
 strip = true
 codegen-units = 1
+
+# The H.264 code is C++ that would be very slow at opt-level 0 (tests, debug runs).
+[profile.dev.package.openh264-sys2]
+opt-level = 3
+[profile.dev.package.openh264]
+opt-level = 3
+[profile.dev.package.cc-capture]
+opt-level = 3
+[profile.dev.package.cc-media]
+opt-level = 3

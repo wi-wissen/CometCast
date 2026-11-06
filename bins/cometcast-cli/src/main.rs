@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Comet Cast command line tool (developer tooling for now).
 //!
-//! `receive` creates a room and prints packet statistics of the incoming video.
-//! `send <CODE>` joins a room and sends a synthetic VP8 test stream.
+//! `receive` creates a room and prints packet statistics of the incoming video
+//! (`--decode` also decodes H.264 and prints the picture size and mean colour).
+//! `send <CODE>` joins a room and sends a synthetic VP8 test stream, or with `--screen` the
+//! real screen (X11 only) as H.264.
 //!
 //! Note: the output text of this tool is English only. It is a developer tool, not a user
 //! interface, so it is not translated (the i18n rules in docs/i18n.md are for the apps).
@@ -13,13 +15,14 @@ use std::time::Duration;
 use cc_airplay::{AirplayConfig, AirplayEvent, AirplayStatus, Supervisor, SupervisorOptions};
 use cc_proto::RoomCode;
 use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
-use cc_sender::{SenderCore, SenderEvent, SenderOptions};
+use cc_sender::{ScreenOptions, SenderCore, SenderEvent, SenderOptions};
 use cc_transport::{IceServerConfig, TlsTrust};
 
 const USAGE: &str = "\
 Usage:
-  cometcast-cli receive [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
+  cometcast-cli receive [--server HOST:PORT] [--bind ADDR] [--ca-file PEM] [--decode]
   cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR] [--ca-file PEM]
+                    [--screen [--display :N] [--fps N] [--bitrate-kbps N]]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
   cometcast-cli --version
 
@@ -31,6 +34,12 @@ Options:
   --ca-file PEM       Also trust the certificate(s) in this PEM file for wss:// / https://
                       (for a self-signed test server; the system store is always used too)
   --seconds N         send: stop after N seconds (default: until Ctrl-C)
+  --screen            send: send the screen (X11 only) as H.264 instead of the test pattern
+  --display NAME      send --screen: X11 display such as :99 (default: $DISPLAY)
+  --fps N             send --screen: how often the screen is looked at (default 15)
+  --bitrate-kbps N    send --screen: encoder target bit rate (default 2000)
+  --decode            receive: decode H.264 video with OpenH264 and print the picture size and
+                      mean colour once per second (proof that the stream decodes; no display)
   --bind ADDR         Local UDP address for WebRTC (default 0.0.0.0:0; use 127.0.0.1:0 for same-machine tests)
 
   --name NAME         airplay: receiver name shown on iPhone, iPad and Mac (default: Comet Cast)
@@ -44,16 +53,21 @@ airplay starts UxPlay (a separate GPL program that must be installed) and prints
 reports: server ready, the PIN of each connection, connects, errors. See docs/airplay.md.
 
 receive prints the room code, then one 'stats' line per second. It exits when the sender
-leaves or on Ctrl-C. send streams a built-in VP8 test pattern (no screen capture yet).";
+leaves or on Ctrl-C. send streams a built-in VP8 test pattern, or with --screen the real screen as H.264 (no
+mouse pointer, no audio, no Wayland; see docs/capture.md).";
 
 const DEFAULT_SERVER: &str = "127.0.0.1:8443";
 
 enum Command {
-    Receive(Common),
+    Receive {
+        common: Common,
+        decode: bool,
+    },
     Send {
         code: RoomCode,
         seconds: Option<u64>,
         common: Common,
+        screen: Option<ScreenArgs>,
     },
     Airplay(AirplayArgs),
     Version,
@@ -97,6 +111,12 @@ fn parse_airplay(mut args: impl Iterator<Item = String>) -> Result<Command, Stri
     Ok(Command::Airplay(out))
 }
 
+struct ScreenArgs {
+    display: Option<String>,
+    fps: u32,
+    bitrate_kbps: u32,
+}
+
 struct Common {
     server: String,
     bind: Option<String>,
@@ -127,6 +147,11 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
     };
     let mut seconds = None;
     let mut positional = Vec::new();
+    let mut screen = false;
+    let mut decode = false;
+    let mut display = None;
+    let mut fps = None;
+    let mut bitrate_kbps = None;
     match cmd.as_str() {
         "--version" | "-V" => return Ok(Command::Version),
         "--help" | "-h" | "help" => return Ok(Command::Help),
@@ -149,16 +174,45 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
                 }
                 seconds = Some(n);
             }
+            "--screen" => screen = true,
+            "--decode" => decode = true,
+            "--display" => display = Some(args.next().ok_or("--display needs a value")?),
+            "--fps" => {
+                let v = args.next().ok_or("--fps needs a value")?;
+                match v.parse::<u32>() {
+                    Ok(n) if (1..=60).contains(&n) => fps = Some(n),
+                    _ => return Err(format!("bad --fps value {v:?} (1 to 60)")),
+                }
+            }
+            "--bitrate-kbps" => {
+                let v = args.next().ok_or("--bitrate-kbps needs a value")?;
+                match v.parse::<u32>() {
+                    Ok(n) if (50..=100_000).contains(&n) => bitrate_kbps = Some(n),
+                    _ => return Err(format!("bad --bitrate-kbps value {v:?} (50 to 100000)")),
+                }
+            }
             "--help" | "-h" => return Ok(Command::Help),
             s if s.starts_with("--") => return Err(format!("unknown option {s:?}")),
             _ => positional.push(a),
         }
     }
     if cmd == "receive" {
-        if !positional.is_empty() || seconds.is_some() {
-            return Err("receive takes only --server, --bind and --ca-file".into());
+        if !positional.is_empty()
+            || seconds.is_some()
+            || screen
+            || display.is_some()
+            || fps.is_some()
+            || bitrate_kbps.is_some()
+        {
+            return Err("receive takes only --server, --bind, --ca-file and --decode".into());
         }
-        return Ok(Command::Receive(common));
+        return Ok(Command::Receive { common, decode });
+    }
+    if decode {
+        return Err("--decode belongs to receive".into());
+    }
+    if !screen && (display.is_some() || fps.is_some() || bitrate_kbps.is_some()) {
+        return Err("--display, --fps and --bitrate-kbps need --screen".into());
     }
     let [code] = positional.as_slice() else {
         return Err("send needs exactly one room code".into());
@@ -168,6 +222,11 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         code,
         seconds,
         common,
+        screen: screen.then(|| ScreenArgs {
+            display,
+            fps: fps.unwrap_or(15),
+            bitrate_kbps: bitrate_kbps.unwrap_or(2000),
+        }),
     })
 }
 
@@ -190,12 +249,13 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Airplay(a) => airplay(a).await,
-        Command::Receive(common) => receive(common).await,
+        Command::Receive { common, decode } => receive(common, decode).await,
         Command::Send {
             code,
             seconds,
             common,
-        } => send(code, seconds, common).await,
+            screen,
+        } => send(code, seconds, common, screen).await,
     }
 }
 
@@ -339,8 +399,75 @@ fn print_ice_servers(list: &[IceServerConfig]) {
     );
 }
 
-async fn receive(common: Common) -> ExitCode {
+/// Decodes tapped H.264 packets and prints what came out (`receive --decode`).
+struct DecodeCheck {
+    assembler: cc_media::rtp::H264Assembler,
+    decoder: cc_media::H264Decoder,
+    units: u64,
+    pictures: u64,
+    last: Option<cc_media::DecodedFrame>,
+}
+
+impl DecodeCheck {
+    fn new() -> Result<Self, String> {
+        let decoder = cc_media::H264Decoder::new(&cc_media::H264Backend::from_env())
+            .map_err(|e| format!("cannot start the H.264 decoder: {e}"))?;
+        Ok(Self {
+            assembler: cc_media::rtp::H264Assembler::new(),
+            decoder,
+            units: 0,
+            pictures: 0,
+            last: None,
+        })
+    }
+
+    fn push(&mut self, p: &cc_transport::VideoPacket) {
+        let Some(au) = self
+            .assembler
+            .push(&p.payload, p.marker, p.timestamp, p.sequence)
+        else {
+            return;
+        };
+        self.units += 1;
+        if let Ok(Some(pic)) = self.decoder.decode(&au.data) {
+            self.pictures += 1;
+            self.last = Some(pic);
+        }
+    }
+
+    fn report(&self) -> String {
+        match &self.last {
+            Some(p) => {
+                let m = p.mean_rgb();
+                format!(
+                    "decoded units={} pictures={} last={}x{} mean_rgb=({:.0},{:.0},{:.0})",
+                    self.units, self.pictures, p.width, p.height, m[0], m[1], m[2]
+                )
+            }
+            None => format!(
+                "decoded units={} pictures={} (no picture yet)",
+                self.units, self.pictures
+            ),
+        }
+    }
+}
+
+async fn receive(common: Common, decode: bool) -> ExitCode {
     let mut opts = ReceiverOptions::new(common.server);
+    let mut checker = None;
+    let mut tap_rx = None;
+    if decode {
+        match DecodeCheck::new() {
+            Ok(c) => checker = Some(c),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        opts.session.video_tap = Some(tx);
+        tap_rx = Some(rx);
+    }
     opts.trust = match load_trust(common.ca_file.as_deref()) {
         Ok(t) => t,
         Err(e) => {
@@ -372,6 +499,16 @@ async fn receive(common: Common) -> ExitCode {
                 core.stop().await;
                 return ExitCode::SUCCESS;
             }
+            Some(p) = async {
+                match tap_rx.as_mut() {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                if let Some(c) = checker.as_mut() {
+                    c.push(&p);
+                }
+            }
             ev = core.next_event() => match ev {
                 Some(ReceiverEvent::PeerJoined) => println!("Sender joined."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
@@ -385,6 +522,9 @@ async fn receive(common: Common) -> ExitCode {
                         s.packets, s.bytes, s.frames, s.keyframes, s.packets - last_packets
                     );
                     last_packets = s.packets;
+                    if let Some(c) = checker.as_ref() {
+                        println!("{}", c.report());
+                    }
                 }
                 Some(ReceiverEvent::PeerLeft) => {
                     println!("Sender left.");
@@ -402,8 +542,28 @@ async fn receive(common: Common) -> ExitCode {
     }
 }
 
-async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode {
+async fn send(
+    code: RoomCode,
+    seconds: Option<u64>,
+    common: Common,
+    screen: Option<ScreenArgs>,
+) -> ExitCode {
     let mut opts = SenderOptions::new(common.server, code);
+    let opts_screen_note = screen.as_ref().map(|a| {
+        format!(
+            "Sending the screen of display {} as H.264 ({} fps, {} kbit/s).",
+            a.display.as_deref().unwrap_or("$DISPLAY"),
+            a.fps,
+            a.bitrate_kbps
+        )
+    });
+    let screen_mode = screen.is_some();
+    opts.screen = screen.map(|a| ScreenOptions {
+        display: a.display,
+        fps: a.fps,
+        bitrate_bps: a.bitrate_kbps.saturating_mul(1000),
+        ..ScreenOptions::default()
+    });
     opts.duration = seconds.map(Duration::from_secs);
     opts.trust = match load_trust(common.ca_file.as_deref()) {
         Ok(t) => t,
@@ -423,6 +583,9 @@ async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode 
         }
     };
     println!("Joined the room, offer sent.");
+    if let Some(s) = opts_screen_note {
+        println!("{s}");
+    }
     print_ice_servers(core.ice_servers());
     let mut connected = false;
     let ctrl_c = tokio::signal::ctrl_c();
@@ -439,7 +602,17 @@ async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode 
                     connected |= s == cc_transport::ConnectionState::Connected;
                     println!("Connection: {s:?}");
                 }
-                Some(SenderEvent::Streaming { frames_sent }) => println!("sent frames={frames_sent}"),
+                Some(SenderEvent::Streaming { frames_sent }) => {
+                    if screen_mode {
+                        let st = core.screen_stats();
+                        println!(
+                            "sent frames={frames_sent} polls={} changed={} unchanged={} refreshes={} keyframes={} key_requests={} bytes={}",
+                            st.polls, st.changed, st.unchanged, st.refreshes, st.keyframes, st.keyframe_requests, st.encoded_bytes
+                        );
+                    } else {
+                        println!("sent frames={frames_sent}");
+                    }
+                }
                 Some(SenderEvent::Finished { frames_sent }) => {
                     println!("Done, sent {frames_sent} frames.");
                     core.stop().await;
@@ -473,7 +646,7 @@ mod tests {
     fn parses_receive_and_send() {
         assert!(matches!(
             parse("receive --server a:1"),
-            Ok(Command::Receive(c)) if c.server == "a:1"
+            Ok(Command::Receive { common: c, .. }) if c.server == "a:1"
         ));
         let Ok(Command::Send { code, seconds, .. }) = parse("send k7m2qx --seconds 5") else {
             panic!("send did not parse");
@@ -483,10 +656,34 @@ mod tests {
     }
 
     #[test]
+    fn parses_screen_and_decode() {
+        let Ok(Command::Send { screen, .. }) =
+            parse("send k7m2qx --screen --display :99 --fps 10 --bitrate-kbps 800")
+        else {
+            panic!("send --screen did not parse");
+        };
+        let screen = screen.expect("screen mode");
+        assert_eq!(screen.display.as_deref(), Some(":99"));
+        assert_eq!((screen.fps, screen.bitrate_kbps), (10, 800));
+        let Ok(Command::Send { screen, .. }) = parse("send k7m2qx --screen") else {
+            panic!("send --screen did not parse");
+        };
+        let screen = screen.unwrap();
+        assert_eq!(
+            (screen.display, screen.fps, screen.bitrate_kbps),
+            (None, 15, 2000)
+        );
+        assert!(matches!(
+            parse("receive --decode"),
+            Ok(Command::Receive { decode: true, .. })
+        ));
+    }
+
+    #[test]
     fn parses_ca_file() {
         assert!(matches!(
             parse("receive --server https://h --ca-file /x/ca.pem"),
-            Ok(Command::Receive(c)) if c.ca_file.as_deref() == Some("/x/ca.pem")
+            Ok(Command::Receive { common: c, .. }) if c.ca_file.as_deref() == Some("/x/ca.pem")
         ));
         assert!(parse("receive --ca-file").is_err());
         assert!(load_trust(Some("/nonexistent/ca.pem")).is_err());
@@ -516,5 +713,11 @@ mod tests {
         assert!(parse("receive extra").is_err());
         assert!(parse("receive --nope").is_err());
         assert!(parse("dance").is_err());
+        assert!(parse("receive --screen").is_err());
+        assert!(parse("send K7M2QX --decode").is_err());
+        assert!(parse("send K7M2QX --display :1").is_err());
+        assert!(parse("send K7M2QX --screen --fps 0").is_err());
+        assert!(parse("send K7M2QX --screen --fps 61").is_err());
+        assert!(parse("send K7M2QX --screen --bitrate-kbps 1").is_err());
     }
 }

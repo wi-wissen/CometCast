@@ -18,3 +18,8 @@ cc-receiver.workspace = true
 cc-sender.workspace = true
 cc-transport.workspace = true
 tokio.workspace = true
+cc-media.workspace = true
+
+[features]
+# Load Cisco's prebuilt OpenH264 library (COMETCAST_OPENH264_LIB) in addition to the built-in source build.
+h264-libloading = ["cc-media/h264-libloading"]

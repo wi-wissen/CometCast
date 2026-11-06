@@ -109,7 +109,7 @@ pub(crate) struct Unit {
 #[derive(Debug)]
 pub(crate) enum Ended {
     /// The capture source says it is over.
-    SourceEnded,
+    SourceGone,
     /// Capture or encoding failed.
     Failed(String),
     /// Asked to stop.
@@ -284,7 +284,7 @@ fn run(
         };
         let want_key = keyframe.load(Ordering::Relaxed);
         match capture {
-            Capture::Ended => return Ended::SourceEnded,
+            Capture::Ended => return Ended::SourceGone,
             Capture::Frame(frame) => {
                 c.changed.fetch_add(1, Ordering::Relaxed);
                 let key = keyframe.swap(false, Ordering::Relaxed);

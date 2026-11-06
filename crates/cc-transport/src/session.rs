@@ -126,8 +126,11 @@ pub struct Session {
     stats: Arc<MediaStats>,
     ice: Mutex<IceQueue>,
     /// The incoming video track and its SSRC, once it exists (for key frame requests).
-    remote_video: Arc<Mutex<Option<(Arc<dyn TrackRemote>, u32)>>>,
+    remote_video: RemoteVideo,
 }
+
+/// The incoming video track and its SSRC, once it exists.
+type RemoteVideo = Arc<Mutex<Option<(Arc<dyn TrackRemote>, u32)>>>;
 
 /// Remote candidates may arrive before the remote description; they wait here.
 #[derive(Default)]
@@ -449,7 +452,7 @@ fn codec_parameters(codec: VideoCodec) -> Result<RTCRtpCodecParameters, Transpor
 
 /// Library callbacks -> events and counters.
 struct Handler {
-    remote_video: Arc<Mutex<Option<(Arc<dyn TrackRemote>, u32)>>>,
+    remote_video: RemoteVideo,
     events: mpsc::UnboundedSender<SessionEvent>,
     stats: Arc<MediaStats>,
     tap: Option<mpsc::UnboundedSender<VideoPacket>>,

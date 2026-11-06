@@ -106,6 +106,18 @@ impl TestWindow {
         Ok(Self { conn, window })
     }
 
+    /// Move the window.
+    pub fn move_to(&self, x: i16, y: i16) -> Result<(), Box<dyn std::error::Error>> {
+        self.conn.configure_window(
+            self.window,
+            &xproto::ConfigureWindowAux::new()
+                .x(i32::from(x))
+                .y(i32::from(y)),
+        )?;
+        self.conn.sync()?;
+        Ok(())
+    }
+
     /// Repaint the whole window in another colour.
     pub fn set_colour(&self, rgb: [u8; 3]) -> Result<(), Box<dyn std::error::Error>> {
         self.conn.change_window_attributes(

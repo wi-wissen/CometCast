@@ -76,7 +76,8 @@ impl H264Backend {
                 "built without the h264-source feature",
             )),
             #[cfg(feature = "h264-libloading")]
-            Self::Library(path) => Ok(openh264::OpenH264API::from_blob_path(path)?),
+            Self::Library(path) => openh264::OpenH264API::from_blob_path(path)
+                .map_err(|e| MediaError::OpenH264(e.to_string())),
             #[cfg(not(feature = "h264-libloading"))]
             Self::Library(_) => Err(MediaError::BackendUnavailable(
                 "built without the h264-libloading feature",
@@ -94,6 +95,9 @@ pub struct H264Config {
     pub bitrate_bps: u32,
     /// Maximum frame rate in Hz (the encoder's rate control uses it).
     pub fps: f32,
+    /// Let the encoder drop pictures to hold the bit rate. With `false`, every picture
+    /// produces output but OpenH264 then does not control the bit rate (it says so in its log).
+    pub allow_frame_skip: bool,
 }
 
 impl Default for H264Config {
@@ -103,6 +107,7 @@ impl Default for H264Config {
             backend: H264Backend::from_env(),
             bitrate_bps: 2_000_000,
             fps: 15.0,
+            allow_frame_skip: true,
         }
     }
 }
@@ -140,7 +145,7 @@ impl H264Encoder {
             .usage_type(UsageType::ScreenContentRealTime)
             .rate_control_mode(RateControlMode::Bitrate)
             .profile(Profile::Baseline)
-            .skip_frames(true)
+            .skip_frames(config.allow_frame_skip)
             .intra_frame_period(IntraFramePeriod::from_num_frames(0));
         let inner = Encoder::with_api_config(api, enc_config)?;
         Ok(Self {
@@ -325,9 +330,18 @@ mod tests {
         v
     }
 
+    /// Source build when compiled in, otherwise the Cisco library named by the environment.
+    fn backend() -> H264Backend {
+        if cfg!(feature = "h264-source") {
+            H264Backend::Source
+        } else {
+            H264Backend::from_env()
+        }
+    }
+
     fn cfg() -> H264Config {
         H264Config {
-            backend: H264Backend::Source,
+            backend: backend(),
             ..H264Config::default()
         }
     }
@@ -345,7 +359,7 @@ mod tests {
     fn round_trip_keeps_the_colour() {
         let (w, h) = (320, 240);
         let mut enc = H264Encoder::new(&cfg()).unwrap();
-        let mut dec = H264Decoder::new(&H264Backend::Source).unwrap();
+        let mut dec = H264Decoder::new(&backend()).unwrap();
         for (r, g, b) in [(200u8, 30u8, 40u8), (20, 160, 220), (240, 240, 20)] {
             // A new colour is a big change; force an IDR so each round trip is self-contained.
             enc.force_keyframe();
@@ -385,7 +399,7 @@ mod tests {
         let (w, h) = (101, 75);
         let px = solid(w, h, 10, 200, 10);
         let mut enc = H264Encoder::new(&cfg()).unwrap();
-        let mut dec = H264Decoder::new(&H264Backend::Source).unwrap();
+        let mut dec = H264Decoder::new(&backend()).unwrap();
         let frame = BgraFrame {
             width: w,
             height: h,
@@ -402,6 +416,108 @@ mod tests {
         assert_eq!((pic.width, pic.height), (100, 74));
     }
 
+    /// Returns (profile_idc, constraint flags byte, level_idc) of the first SPS.
+    fn sps_profile(annexb: &[u8]) -> (u8, u8, u8) {
+        let i = annexb
+            .windows(4)
+            .position(|w| w == [0, 0, 0, 1] || w[..3] == [0, 0, 1] && w[3] & 0x1f == 7)
+            .expect("start code");
+        let start = if annexb[i + 2] == 1 { i + 3 } else { i + 4 };
+        assert_eq!(annexb[start] & 0x1f, 7, "not an SPS");
+        (annexb[start + 1], annexb[start + 2], annexb[start + 3])
+    }
+
+    #[test]
+    fn the_stream_is_baseline_profile() {
+        for (w, h) in [(1280, 720), (1920, 1080)] {
+            let px = solid(w, h, 10, 20, 30);
+            let mut enc = H264Encoder::new(&cfg()).unwrap();
+            let f = enc
+                .encode_bgra(
+                    BgraFrame {
+                        width: w,
+                        height: h,
+                        bgra: &px,
+                    },
+                    0,
+                )
+                .unwrap()
+                .unwrap();
+            let (profile, constraints, level) = sps_profile(&f.data);
+            eprintln!(
+                "SPS {w}x{h}: profile_idc={profile} constraint_flags={constraints:#04x} level_idc={level}"
+            );
+            // Baseline family: profile_idc 66. UNCERTAIN: browsers match on the
+            // profile-level-id of the SDP (42e01f); the level the encoder writes is only
+            // printed here.
+            assert_eq!(profile, 66);
+        }
+    }
+
+    /// Experiment, not a guarantee: does encoding the same picture again make it closer to the
+    /// original? Prints the PSNR (dB, over RGB bytes) after each repeat at a low bit rate.
+    #[test]
+    fn repeated_encoding_of_a_still_picture_is_measured() {
+        let (w, h) = (640u32, 360u32);
+        // Text-like content: dark 6x10 "glyph" blocks with pseudo-random pixels on light grey.
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        let mut seed = 12345u32;
+        for y in 0..h {
+            for x in 0..w {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let glyph = (x / 6 + (y / 10) * 7) % 3 != 0;
+                let on = glyph && (seed >> 24) % 5 < 2;
+                let v = if on { 20 } else { 235 };
+                let i = ((y * w + x) * 4) as usize;
+                px[i..i + 4].copy_from_slice(&[v, v, v, 255]);
+            }
+        }
+        for (bitrate_bps, allow_frame_skip) in [
+            (300_000, true),
+            (300_000, false),
+            (2_000_000, true),
+            (2_000_000, false),
+        ] {
+            let c = H264Config {
+                bitrate_bps,
+                allow_frame_skip,
+                ..cfg()
+            };
+            let mut enc = H264Encoder::new(&c).unwrap();
+            let mut dec = H264Decoder::new(&backend()).unwrap();
+            let frame = BgraFrame {
+                width: w,
+                height: h,
+                bgra: &px,
+            };
+            let mut psnrs = Vec::new();
+            let mut sizes = Vec::new();
+            for n in 0..6u64 {
+                if n >= 3 {
+                    // Second half of the run: ask for an IDR frame each time.
+                    enc.force_keyframe();
+                }
+                let Some(f) = enc.encode_bgra(frame, n * 100_000).unwrap() else {
+                    sizes.push(0);
+                    continue;
+                };
+                sizes.push(f.data.len());
+                let pic = dec.decode(&f.data).unwrap().unwrap();
+                let mut se = 0f64;
+                for (i, d) in pic.rgb.chunks_exact(3).enumerate() {
+                    let want = px[i * 4 + 2];
+                    se += (f64::from(d[0]) - f64::from(want)).powi(2);
+                }
+                let mse = se / (pic.rgb.len() / 3) as f64;
+                psnrs.push(10.0 * (255.0f64 * 255.0 / mse.max(1e-9)).log10());
+            }
+            eprintln!(
+                "still picture, {bitrate_bps} bit/s, frame skip {allow_frame_skip}: sizes {sizes:?} (IDR requested for the last three), PSNR(dB) of the pictures that came out {psnrs:.1?}"
+            );
+            assert!(!psnrs.is_empty());
+        }
+    }
+
     #[test]
     fn bad_buffers_are_rejected() {
         let mut enc = H264Encoder::new(&cfg()).unwrap();
@@ -414,6 +530,46 @@ mod tests {
             0,
         );
         assert!(matches!(err, Err(MediaError::InvalidPicture(_))));
+    }
+
+    /// With `--no-default-features --features h264-libloading` and the Cisco library given in
+    /// COMETCAST_OPENH264_LIB, the same round trip works through the prebuilt binary.
+    #[cfg(feature = "h264-libloading")]
+    #[test]
+    fn prebuilt_library_round_trip() {
+        let Some(path) = std::env::var_os(H264Backend::LIBRARY_ENV) else {
+            eprintln!("NOTE: SKIPPING, set COMETCAST_OPENH264_LIB to Cisco's libopenh264 .so");
+            return;
+        };
+        let backend = H264Backend::Library(path.into());
+        let c = H264Config {
+            backend: backend.clone(),
+            ..H264Config::default()
+        };
+        let mut enc = H264Encoder::new(&c).unwrap();
+        let mut dec = H264Decoder::new(&backend).unwrap();
+        let px = solid(320, 240, 200, 30, 40);
+        let f = enc
+            .encode_bgra(
+                BgraFrame {
+                    width: 320,
+                    height: 240,
+                    bgra: &px,
+                },
+                0,
+            )
+            .unwrap()
+            .unwrap();
+        let pic = dec.decode(&f.data).unwrap().unwrap();
+        assert!(pic.share_near([200, 30, 40], 20) > 0.95);
+        // A file that is not a known Cisco build is refused.
+        assert!(
+            H264Encoder::new(&H264Config {
+                backend: H264Backend::Library("/bin/ls".into()),
+                ..H264Config::default()
+            })
+            .is_err()
+        );
     }
 
     #[cfg(not(feature = "h264-libloading"))]

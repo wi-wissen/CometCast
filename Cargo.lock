@@ -648,6 +648,7 @@ name = "cometcast-cli"
 version = "0.1.0"
 dependencies = [
  "cc-airplay",
+ "cc-media",
  "cc-proto",
  "cc-receiver",
  "cc-sender",

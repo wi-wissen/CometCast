@@ -418,7 +418,7 @@ async fn run(
                     Some(screen::Ended::Failed(e)) => {
                         emit(SenderEvent::Error(format!("screen capture failed: {e}")));
                     }
-                    Some(screen::Ended::SourceEnded) => {
+                    Some(screen::Ended::SourceGone) => {
                         emit(SenderEvent::Error("screen capture ended".into()));
                     }
                     Some(screen::Ended::Stopped) | None => {}
