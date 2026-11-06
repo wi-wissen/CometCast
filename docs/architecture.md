@@ -98,7 +98,7 @@ The full list with reasons is in the planning document (German, kept outside thi
 - [ ] **M4** Cast mirroring sender (Rust rebuild after Open Screen). *Not started on purpose: it needs a real Chromecast to verify, and the project rule says no Cast material is taken over. Waiting for a decision (see the open questions).*
 - [ ] **M5** Miracast receiving on Windows. *Partly done: `cc-miracast` (policy, status, Windows backend over the documented WinRT API) is compile-checked only and has never run on Windows. No video surface in the app.*
 - [ ] **M6** iOS broadcast extension and Android capture
-- [ ] **M7** AirPlay sender for the desktop, without FairPlay ("M7 light"): discovery, pairing, playing a media link and showing photos on Apple TV and AirPlay TVs. Screen mirroring needs the FairPlay handshake, which the project rules forbid taking over; it stays behind an interface with no implementation. *Not started yet, queued.*
+- [ ] **M7** AirPlay sender for the desktop, without FairPlay ("M7 light"): discovery, pairing, playing a media link, showing photos, and showing the screen as a live video stream (HLS served by the sender and played by the Apple TV like any video link; latency of a few seconds, UNCERTAIN: not tested on a real Apple TV). Real screen mirroring needs the FairPlay handshake, which the project rules forbid taking over; it stays behind an interface with no implementation. *Not started yet, queued.*
 - [ ] **M8** Internal and open server. *Server side built and tested (TLS, limits, bans, ALTCHA, TURN credentials). Not built or run: Docker image, coturn. The default host `relay.cometcast.de` does not exist yet.*
 
 Effort figures are estimates. Order of use is given by the milestones; the first content of 0.1 is M1 to M3.
