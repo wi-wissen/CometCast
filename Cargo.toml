@@ -19,6 +19,7 @@ members = [
     "crates/cc-server",
     "crates/cc-sfu",
     "crates/cc-airplay",
+    "crates/cc-airplay-sender",
     "crates/cc-miracast",
     "bins/cometcast-server",
     "bins/cometcast-cli",
@@ -79,6 +80,7 @@ cc-receiver = { path = "crates/cc-receiver" }
 # library) is chosen by the program crate, see bins/cometcast-cli/Cargo.toml and docs/capture.md.
 cc-sender = { path = "crates/cc-sender", default-features = false }
 cc-airplay = { path = "crates/cc-airplay" }
+cc-airplay-sender = { path = "crates/cc-airplay-sender", default-features = false }
 cc-capture = { path = "crates/cc-capture" }
 cc-media = { path = "crates/cc-media", default-features = false }
 # Screen capture on X11: pure-Rust protocol implementation (no libxcb, no unsafe in our code).

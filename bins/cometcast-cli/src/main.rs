@@ -9,6 +9,8 @@
 //! Note: the output text of this tool is English only. It is a developer tool, not a user
 //! interface, so it is not translated (the i18n rules in docs/i18n.md are for the apps).
 
+mod airplay_send;
+
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -26,6 +28,7 @@ Usage:
   cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR] [--ca-file PEM]
                     [--screen [--display :N] [--fps N] [--bitrate-kbps N]]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
+  cometcast-cli airplay-send list | pair | play | photo | screen (details at the end)
   cometcast-cli miracast [--name NAME]
   cometcast-cli cast list [--seconds N]
   cometcast-cli cast send <DEVICE-NAME|IP[:PORT]> [--screen] [--display :N] [--fps N]
@@ -64,6 +67,8 @@ cast (BETA, never tried on a real device) finds Chromecast / Google Cast devices
 mirrors the X11 screen to one as H.264 (`cast send`). The device certificate chain is checked against
 the roots in --trust-anchors PEM (this program embeds none); --insecure-skip-device-auth skips that
 check, prints a warning and lets anybody who answers at the address receive the screen. See docs/cast.md.
+airplay-send is the AirPlay sender without FairPlay (discovery, pairing, media link, photo, the
+screen as an HLS stream). Its commands are listed below; see docs/airplay-sender.md.
 
 miracast (Windows 11 only; compile-checked, never run) listens through the Windows
 MiracastReceiver API and prints events. A connection request is answered on stdin: type y or
@@ -89,6 +94,7 @@ enum Command {
     },
     Airplay(AirplayArgs),
     Cast(cast::CastCmd),
+    AirplaySend(airplay_send::Sub),
     Miracast {
         name: Option<String>,
     },
@@ -190,6 +196,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "--version" | "-V" => return Ok(Command::Version),
         "--help" | "-h" | "help" => return Ok(Command::Help),
         "airplay" => return parse_airplay(args),
+        "airplay-send" => return airplay_send::parse(args).map(Command::AirplaySend),
         "miracast" => return parse_miracast(args),
         "cast" => return Ok(cast::parse(args)?.map_or(Command::Help, Command::Cast)),
         "receive" | "send" => {}
@@ -281,10 +288,11 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Help => {
-            println!("{USAGE}");
+            println!("{USAGE}\n\n{}", airplay_send::USAGE);
             ExitCode::SUCCESS
         }
         Command::Airplay(a) => airplay(a).await,
+        Command::AirplaySend(a) => airplay_send::run(a).await,
         Command::Miracast { name } => miracast(name).await,
         Command::Cast(c) => cast::run(c).await,
         Command::Receive { common, decode } => receive(common, decode).await,
