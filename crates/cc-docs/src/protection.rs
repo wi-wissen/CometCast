@@ -81,6 +81,7 @@ impl Protection {
 pub(crate) struct Mask(pub u64);
 
 impl Mask {
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn with(mut self, p: Protection) -> Self {
         self.0 |= p.bit();
         self

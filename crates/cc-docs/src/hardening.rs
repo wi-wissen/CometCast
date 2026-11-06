@@ -106,7 +106,7 @@ pub(crate) fn apply(plan: Plan) -> Result<Mask, DocError> {
             "Landlock and seccomp are required but not both available",
         ));
     }
-    let _ = plan.memory_bytes;
+    let _ = (plan.memory_bytes, plan.cpu_secs);
     Ok(mask)
 }
 

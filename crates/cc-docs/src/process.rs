@@ -156,6 +156,7 @@ impl Drop for Slot {
 /// behind.
 struct ChildGuard {
     child: Option<Child>,
+    #[cfg_attr(not(unix), allow(dead_code))]
     pid: u32,
 }
 

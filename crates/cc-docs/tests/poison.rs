@@ -68,7 +68,15 @@ fn good() -> Vec<u8> {
     .unwrap()
 }
 
+/// Tests run in parallel and start many workers; the default global cap (4) is for
+/// applications. (The cap itself is tested in `worker_cap.rs`.)
+fn lift_cap() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| cc_docs::set_max_concurrent_workers(64));
+}
+
 fn limits() -> Limits {
+    lift_cap();
     Limits {
         open_timeout: Duration::from_millis(800),
         render_timeout: Duration::from_millis(800),

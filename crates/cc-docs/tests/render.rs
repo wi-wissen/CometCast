@@ -9,7 +9,15 @@ use cc_docs::{
 };
 use cc_proto::ControlCmd;
 
+/// Tests run in parallel and start many workers; the default global cap (4) is for
+/// applications. (The cap itself is tested in `worker_cap.rs`.)
+fn lift_cap() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| cc_docs::set_max_concurrent_workers(64));
+}
+
 fn data(name: &str) -> Vec<u8> {
+    lift_cap();
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data")
         .join(name);

@@ -146,28 +146,63 @@ fn open(file: &Path) -> Result<(Document, usize), String> {
     Ok((doc, size))
 }
 
-/// Write the output file: a new file only, unless `force`; with `force` an existing regular
-/// file is replaced, a symbolic link never is (it would write somewhere else).
+/// Write the output file: a new file only (`O_EXCL`, which never follows a symbolic link),
+/// unless `force`. With `force` the data goes to a **new temporary file in the same
+/// directory** and is renamed over the target, so a symbolic link that appears at the target
+/// between the check and the write is replaced as a link and never written through, and a
+/// reader never sees half a file. An existing symbolic link is refused up front anyway.
 fn write_output(path: &Path, data: &[u8], force: bool) -> Result<(), String> {
     let err = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true);
-    if force {
-        if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
-            return Err(err(&"is a symbolic link, not overwritten"));
-        }
-        opts.create(true).truncate(true);
-    } else {
-        opts.create_new(true);
+    if !force {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    err(&"already exists (use --force to replace it)")
+                } else {
+                    err(&e)
+                }
+            })?;
+        return f.write_all(data).map_err(|e| err(&e));
     }
-    let mut f = opts.open(path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::AlreadyExists {
-            err(&"already exists (use --force to replace it)")
-        } else {
-            err(&e)
-        }
-    })?;
-    f.write_all(data).map_err(|e| err(&e))
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(err(&"is a symbolic link, not overwritten"));
+    }
+    replace_file(path, data).map_err(|e| err(&e))
+}
+
+/// Temporary file next to `path`, then `rename` over it.
+fn replace_file(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    let dir = match path.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "no file name"))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(name);
+    tmp_name.push(format!(".tmp-{}-{nanos}", std::process::id()));
+    let tmp = dir.join(tmp_name);
+    let result = (|| {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        f.write_all(data)?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// The hidden `docs-worker` command: the render worker process of `cc-docs`. It reads one
@@ -321,6 +356,37 @@ mod tests {
         assert!(write_output(&link, b"x", false).is_err());
         assert!(write_output(&link, b"x", true).is_err());
         assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    /// The race the review found: the target becomes a symbolic link after the check. The
+    /// rename replaces the link itself; the file it pointed to is not touched.
+    #[cfg(unix)]
+    #[test]
+    fn forced_replacement_swaps_a_late_symbolic_link_instead_of_writing_through_it() {
+        let d = scratch("late-link");
+        let victim = d.join("victim.txt");
+        std::fs::write(&victim, b"precious").unwrap();
+        let target = d.join("o.png");
+        std::os::unix::fs::symlink(&victim, &target).unwrap();
+        // `replace_file` is what runs after the symlink check.
+        replace_file(&target, b"new picture").unwrap();
+        assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        assert_eq!(std::fs::read(&target).unwrap(), b"new picture");
+        assert!(
+            !std::fs::symlink_metadata(&target)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        // No temporary file is left behind, also not after a failure.
+        assert!(replace_file(&d.join("no-such-dir").join("o.png"), b"x").is_err());
+        let left: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.contains(".tmp-"))
+            .collect();
+        assert!(left.is_empty(), "{left:?}");
         std::fs::remove_dir_all(&d).unwrap();
     }
 

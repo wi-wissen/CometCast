@@ -2,8 +2,11 @@
 
 # Documents: PDF rendering (`cc-docs`)
 
-Status: PDF part implemented and tested on generated files only. Rendering runs in a **child
-process with memory and CPU limits** (since the security review, see "Limits and safety").
+Status: PDF part implemented and tested on generated files only. Rendering runs in a
+**resource-limited child process** that, on Linux, also restricts itself with Landlock and
+seccomp where the kernel allows it (since the security reviews, see "Limits and safety"). It is
+**not a sandbox in the full sense**: read "What this protects and what it does not" before
+relying on it.
 Office conversion, the WASM build, speaker notes and the Flutter UI are **not** done.
 
 ## Idea (from the plan)
@@ -21,7 +24,9 @@ implemented**.
 | Item | Purpose |
 | --- | --- |
 | `Document::open(bytes)` / `open_with_limits` / `open_with_options(bytes, limits, Isolation)` | Checks limits **before** parsing, then parses in a child process (`Isolation::Auto`, the default; `Process(WorkerSpec)` to name the worker; `InProcess` for the weak thread engine) |
-| `is_sandboxed()`, `last_worker_peak_kib()` | Which engine is used; highest memory the parent saw from the last worker (diagnostics) |
+| `is_isolated()`, `protections()`, `last_worker_peak_kib()` | Which engine is used; **which protections were really in place** around the last worker (`Protection`: process-group kill, clean environment, memory limit, CPU limit, no core dumps, no file writes, fd limit, Landlock, Landlock network, seccomp, memory watchdog); highest memory the parent saw (diagnostics) |
+| `Limits::require_os_sandbox` | `false` by default: a worker on a system without Landlock/seccomp still runs with its resource limits. `true`: the worker refuses to parse unless **both** are active (`DocError::SandboxUnavailable`) |
+| `set_max_concurrent_workers(n)`, `active_workers()` | Global cap on running worker processes (default 4). A call waits for a free place (at most its own timeout, never more than 5 s), then fails with `DocError::TooManyWorkers` |
 | `worker_main()`, `WorkerSpec`, `WORKER_ENV` | The worker side and how the parent finds it (see "The worker process") |
 | `page_count()`, `page_size(i)` | Pages (at least 1) and size in points after rotation and crop box. Indices are 0-based |
 | `render_page(i, width_px)` | RGBA picture on opaque white; height follows the page shape. `render_page_with` adds a timeout override and a cancel flag |
@@ -40,42 +45,136 @@ cometcast-cli docs render <file.pdf> [--page N] [--width PX] --out <out.png|out.
 
 `--page` starts at 1, `--width` defaults to 1920. WebP output is lossless. The input must be a
 regular file of at most 100 MiB (a device such as `/dev/zero` is refused; it used to be read
-until memory ran out). The output file is created new; an existing file is only replaced with
-`--force`, and a symbolic link is never followed or replaced. The program renders by starting
-itself as `cometcast-cli docs-worker` (hidden command, not for users), or the program named in
-`COMETCAST_DOCS_WORKER`.
+until memory ran out). The output file is created new (`O_EXCL`); an existing file is only
+replaced with `--force`, and then **atomically**: the picture is written to a new temporary file
+in the same directory and renamed over the target, so a symbolic link that appears there after
+the check is replaced as a link and never written through (an existing link is refused up
+front). The program renders by starting itself as `cometcast-cli docs-worker` (hidden command,
+not for users), or the program named in `COMETCAST_DOCS_WORKER` (only if it passes the trust
+check below).
 
 ## Limits and safety
 
 A PDF comes from a remote sender and is **hostile input**. hayro cannot be interrupted, and a
 failed allocation aborts the whole process (`abort`, not a panic), so no in-process limit can
-protect the receiver. The boundary is therefore a **child process**.
+protect the receiver. The boundary is therefore a **child process with resource limits**.
+
+### What this protects and what it does not
+
+Be exact about the words: the worker is a **resource-limited child process**. By itself it is
+**not a sandbox**.
+
+- What the child process alone gives: a memory bomb, an endless loop or a crash in the renderer
+  ends the child, not the application (address-space limit, CPU limit, wall-clock kill of the
+  whole process group, no core dump).
+- What it does **not** give: the child runs as the **same user** as the application. Without
+  Landlock and seccomp (see the table below) it can read every file the user can read, write
+  where the user can write (the size limit `RLIMIT_FSIZE = 0` stops writing data, not creating
+  or deleting files), open network connections and start programs. On Windows, macOS, Android,
+  and on Linux kernels or containers without Landlock/seccomp, that is the whole picture.
+- **A code-execution exploit in hayro (or in a library it uses) is equal to a compromise of the
+  user's session on every system where `protections()` does not list `Landlock` and `Seccomp`.**
+  Where both are active, an exploit starts inside a process that can only compute, read the
+  request from stdin and write the reply to stdout; it still shares the kernel (kernel bugs,
+  and everything seccomp allows, such as `mmap`, `futex`, `clone` of threads, are reachable), so
+  this lowers the risk and does not remove it. hayro calls itself experimental and has seen no
+  security audit that we know of.
+- **Policy** (decided, not accidental): the resource limits are **mandatory and fail closed**;
+  if the worker cannot set one it reports `WorkerFailed` and never parses. Landlock and seccomp
+  are **best effort** by default: if they are unavailable the worker still runs with its limits
+  and `Document::protections()` shows what is missing, so an application can warn or refuse. An
+  application that must not render without them sets `Limits::require_os_sandbox = true`
+  (error `SandboxUnavailable`, nothing parsed). The CLI keeps the default (best effort).
+- Applications with a stronger need should additionally run the whole application, or a
+  dedicated render service, in the platform's own sandbox (sandboxed app container, container
+  or VM without network, separate user), or render PDFs on the sender or a server.
 
 ### The worker process
 
 `Document::open` and `render_page` start `cc-docs-worker` (or any program that calls
 `cc_docs::worker_main()`) once per call: the PDF goes to its stdin, one framed reply comes back
 on stdout (`crates/cc-docs/src/wire.rs`: a fixed head, then page sizes or RGBA). The parent
-checks every size in the reply against what it asked for before it allocates. Nothing is
-abandoned: on timeout, cancel, memory excess or any error the parent calls `Child::kill()` and
-`wait()`, which closes the pipes and ends the two helper threads.
+checks every size in the reply against what it asked for before it allocates.
 
-| Platform | Memory | CPU / time |
-| --- | --- | --- |
-| Linux, Android | `sh -c 'ulimit -c 0; ulimit -t N; ulimit -v KiB \|\| exit 97; exec worker'` (address space); the parent also reads `VmHWM` from `/proc/PID/status` every 10 ms and kills above the cap | `ulimit -t` (timeout + 2 s) and the parent's wall-clock deadline |
-| macOS and other Unix | `RLIMIT_AS` is not enforced on macOS, so only the parent watchdog: `ps -o rss= -p PID` every 100 ms, kill above the cap. A fast allocation can overshoot between two polls | `ulimit -t`, wall-clock deadline |
-| Windows | No job object (that needs `unsafe`, forbidden here). Only the watchdog (`tasklist` every 250 ms) and the wall-clock kill. **Weaker, untested**: compile-checked with `cargo check --target x86_64-pc-windows-gnu`, never run | wall-clock kill |
-| iOS, tvOS | No child processes. In-process thread engine only: **the weakest platform** (see below) | thread, abandoned on timeout |
-| `wasm32` | No threads or processes. Inline engine, no time limit. Recommendation below | none |
+**Parent side** (`process.rs`):
 
-`Limits.max_worker_memory_bytes` (default **1 GiB**) is both the `ulimit -v` value and the
-watchdog cap. UNCERTAIN: the macOS, Windows and Android code paths were not run; `ulimit -v` and
-`/proc` were tested on one Linux machine (`sh` is dash there).
+- The worker is started **directly**, with no shell, from an **absolute path** that was fixed
+  when the `WorkerSpec` was made (a bare name such as `sleep` is looked up once in `PATH`;
+  the directory is canonicalised, the file name is kept so that multi-call binaries still
+  work). There is no `PATH` search at spawn time, so what `discover` found is what runs.
+- **Empty environment** (`env_clear`; on Windows only `SystemRoot`), working directory `/`,
+  `stderr` to `/dev/null`. File descriptors: only stdin and stdout (pipes) and stderr exist in
+  the child. The Rust standard library opens every file and socket close-on-exec, so nothing of
+  the application's own is inherited. A descriptor that other code in the same program opened
+  **without** close-on-exec would leak into the child; the worker lowers `RLIMIT_NOFILE` to 16
+  but cannot close what it did not open. Applications must open descriptors close-on-exec
+  (tested with a worker that lists its descriptors, environment and directory).
+- The worker runs in its **own process group** (Unix). On timeout, cancel, memory excess, any
+  error, and also when the leader exits normally, the parent sends `SIGKILL` to the **whole
+  group** and reaps the child. A worker that forks, or a grandchild that holds the pipes, cannot
+  keep the call open or survive it (tests with `sh -c 'sleep 30 & exit 0'`, `sleep 600` and the
+  reviewer's `fork.sh`, `forkalive.sh`, `stall.sh`). Windows has no process group here: the
+  descendants of a worker are not killed (UNCERTAIN, not run).
+- The two pipe threads are **detached** and report over a channel; the parent never joins a
+  thread that might be blocked on a pipe, so a call returns within its deadline plus a few
+  milliseconds whatever the worker does. (The old text "nothing is abandoned" was wrong for a
+  worker with children.)
+- If the parent itself dies, its worker is not killed by the parent (no `PR_SET_PDEATHSIG`: that
+  signal follows the *thread* that started the child and would kill workers whose starting
+  thread ended, for example a pool thread). The worker then finds its stdin closed and ends, and
+  `RLIMIT_CPU` bounds a stuck one.
+- A **global cap** on running workers (default 4, `set_max_concurrent_workers`) bounds what a
+  flood of documents can start.
+
+**Worker side** (`hardening.rs`), applied right after the fixed-size request head and **before
+the PDF is read**:
+
+| Protection | Linux | Android | macOS, other Unix | Windows |
+| --- | --- | --- | --- | --- |
+| `RLIMIT_AS` = `max_worker_memory_bytes` (fail closed) | yes | yes | not enforced by the kernel: parent watchdog (`ps -o rss=` every 100 ms; a fast allocation can overshoot between polls) | no: watchdog (`tasklist` every 250 ms) |
+| `RLIMIT_CPU` = timeout + 2 s, `RLIMIT_CORE` 0, `RLIMIT_FSIZE` 0, `RLIMIT_NOFILE` 16 (all fail closed) | yes | yes | yes | no |
+| Landlock: no file system access at all, no TCP bind/connect (ABI 4+), no abstract Unix sockets or signals out (ABI 6+) | Linux 5.13+ when enabled; **tested** | not tried | no | no |
+| seccomp-bpf allowlist | x86_64 and aarch64; **tested on x86_64** | not tried (apps already run under the zygote filter) | no | no |
+| Parent kills the process group | yes | yes (UNCERTAIN) | yes | no |
+| iOS, tvOS | no child processes: in-process thread engine only, **the weakest platform** (see below) | | | |
+| `wasm32` | no threads or processes; inline engine, no time limit; recommendation below | | | |
+
+The seccomp allowlist (written from `strace` of renders of the test PDFs): `brk`, `mmap`,
+`munmap`, `mremap`, `mprotect`, `madvise`; `futex`, `set_robust_list`, `rseq`, `sched_yield`,
+`sched_getaffinity`, `gettid`, `getpid`, `set_tid_address`, `exit`, `exit_group`, `arch_prctl`
+(x86_64); `clone` **only with the thread flags** (`CLONE_VM|FS|FILES|SIGHAND|THREAD|SYSVSEM`) and
+no namespace flag; signal setup (`rt_sigaction`, `rt_sigprocmask`, `rt_sigreturn`,
+`sigaltstack`); `clock_gettime`, `clock_nanosleep`, `nanosleep`, `gettimeofday`, `getrandom`;
+`read`, `pread64`, `lseek`, `close`; `write` and `writev` only to descriptors 1 and 2; `prctl`
+only `PR_SET_NAME`. Everything else (`open*`, `socket`, `connect`, `fork`, `vfork`, `execve`,
+`kill`, `ptrace` ...) fails with `ENOSYS`. `ENOSYS` rather than `EPERM`, because glibc falls back
+from `clone3` (whose flags a filter cannot inspect) to `clone` only on `ENOSYS`. Running the
+renders under `strace -f` showed two denied calls and no crash: `clone3` (fallback works) and one
+`open` of `/proc/sys/vm/overcommit_memory` by the allocator (falls back). The peak memory
+(`VmHWM`) is read from a `/proc/self/status` handle opened before Landlock is applied.
+
+No `unsafe` code was needed in `cc-docs` (it keeps `unsafe_code = forbid`): `rlimit`, `landlock`,
+`seccompiler` and `rustix` (safe `killpg`, `getuid`) contain the system calls. The tests check
+the sandbox from the inside: a child copy of the test program applies exactly the worker's
+function and then tries to open a file, list `/`, create a file, connect and listen on TCP,
+bind UDP, fork-exec a program (all fail), and to start a thread and allocate 32 MiB (both
+work). They skip with a note where the kernel lacks Landlock or seccomp.
+
+`Limits.max_worker_memory_bytes` (default **1 GiB**) is both the `RLIMIT_AS` value and the
+watchdog cap. UNCERTAIN: the macOS, Windows and Android code paths were not run; the Linux
+paths were run on one machine (kernel 6.18, Landlock ABI 7, x86_64, a Firecracker VM).
 
 How the parent finds the worker (`Isolation::Auto` uses `WorkerSpec::discover`):
 
 1. `Isolation::Process(WorkerSpec)` given by the application (explicit path; always wins);
-2. the environment variable `COMETCAST_DOCS_WORKER` (path of a program that calls `worker_main`);
+2. the environment variable `COMETCAST_DOCS_WORKER` (path of a program that calls `worker_main`),
+   **honoured only if the path is absolute, a regular file, owned by the current user or by
+   root, not writable by group or others, and in a directory that others cannot write to**
+   (unless sticky). Decision: honoured in **every** build, release too; if the variable is set
+   and fails the check, `open` fails with the reason (`WorkerUnavailable`) and nothing else is
+   tried. Reason: whoever controls the environment of the application can already do worse, but
+   a worker that another user could have swapped must not run. UNCERTAIN: no owner check on
+   Windows (only "absolute and a regular file"); a directory further up the path is not checked;
 3. a file `cc-docs-worker` next to the running executable (or one level up from a `deps`
    directory, the Cargo test layout).
 
@@ -93,14 +192,17 @@ it at all.
 | --- | --- | --- |
 | File size | 100 MiB | before parsing |
 | `%PDF-` header | within the first 1024 bytes | before parsing |
-| Pages | 5000 | raw-byte pre-check of `/Count N` and `/Type /Page` before any parser runs, and again after the page tree is parsed in the worker |
-| Nesting of `<<` and `[` | 256 | raw-byte lexer before parsing (skips strings, comments and stream bodies) |
+| Pages | 5000 | raw-byte pre-check before any parser runs: counts **distinct page objects** (`N G obj` followed by `/Type /Page`; the same object number in several revisions of an incremental update counts once; `/Count` is not used because outlines carry one too and it can lie), and again after the page tree is parsed in the worker. Pages in compressed object streams are only caught by the second check |
+| Nesting of `<<` and `[` | 256 | raw-byte lexer before parsing (skips strings, comments and stream bodies; a `stream` word only starts a body when it follows a dictionary that closed at depth 0, so a fake `stream` token cannot hide nesting; the lexer ends a body at `endstream`, hayro trusts `/Length`, so a file that makes the two disagree can still place nesting where this check does not look: hayro's own limit of 512 and the worker limits are the backstop) |
 | Output side | 8192 px (hard cap 65535, hayro's `u16`) | before rendering |
 | Output area | 7680 x 4320 px | before rendering |
-| Open time, render time | 10 s each | wall clock in the parent (kill) and `ulimit -t` |
-| Worker memory | 1 GiB | `ulimit -v` and watchdog |
+| Open time, render time | 10 s each | wall clock in the parent (kill) and `RLIMIT_CPU` (timeout + 2 s, fail closed) |
+| Worker memory | 1 GiB | `RLIMIT_AS` set by the worker (fail closed) and watchdog |
+| Running workers | 4 | global cap, `TooManyWorkers` |
 | Worker thread stack | 16 MiB (the in-process engine keeps 64 MiB) | worker process |
-| Image area (`Width * Height`) | 64 Mpx (8000 x 8000) | pre-scan in the worker |
+| Image area (`Width * Height`) | 64 Mpx (8000 x 8000) | pre-scan in the worker. A `Width` or `Height` that is not a readable non-negative number (above `u32::MAX`, negative, huge real) counts as **too large**, not as 0 (it used to be 0 and bypassed the check) |
+| Image bytes (area x components x bits) | 4 x `max_image_pixels` = 256 MiB | pre-scan: gray 1, RGB 3 and any other colour space 4 components, `BitsPerComponent` (default 8, at most 16), image masks 1 bit. A 16 bit CMYK 8000 x 8000 image (512 MiB) is refused; 8 bit CMYK is exactly at the limit |
+| Inline images (`BI /W n /H n ... ID`) | same area limit | rough scan of the first 8 MiB of each non-image stream (64 MiB in total) when the pre-scan inflates; an inline image later in a long stream is not seen, the memory limit catches it |
 | One `FlateDecode` stream inflated | 256 MiB | pre-scan (the review suggested 128 MiB; an 8-bit CMYK image of 64 Mpx is exactly 256 MiB, so 128 MiB would reject images the area cap allows) |
 | All streams inflated together | 1 GiB | pre-scan |
 | Objects | 2 000 000 | pre-scan |
@@ -123,14 +225,14 @@ produced.
 
 | What | Result |
 | --- | --- |
-| Lowest working `ulimit -v`, 16 MiB stack | `classroom.pdf` at 1920 px: 96 MiB works, 64 MiB fails. `minimal.pdf` at 3840 px: 128 MiB works, 96 MiB fails. 7680 x 4320-class output (33 Mpx): 384 MiB works, 256 MiB fails (resident peak 248 MiB). `classroom.pdf` at 3840 px (20.8 Mpx): 384 MiB works, 256 MiB fails (resident peak 182 MiB). The review had found 128 and 256 MiB failing with the old 64 MiB stack |
+| Lowest working `RLIMIT_AS` (set by the worker itself, with Landlock and seccomp active; bisection in steps of 4 MiB, debug build, second review) | `minimal.pdf` at 1 px (open only plus a tiny render): **47 MiB** (fails at 43). `classroom.pdf` at 1920 px: **91 MiB** (fails at 87). `minimal.pdf` at 3840 px: **107 MiB** (fails at 103). `classroom.pdf` at 3840 px (20.8 Mpx): **270 MiB** (fails at 266). `minimal.pdf` at 7680 px (7680 x 3840, 29 Mpx): **338 MiB** (fails at 334). Earlier coarse numbers with `sh -c ulimit -v` (96, 128, 384, 384 MiB) were upper bounds from a coarser search and are replaced by these. The 1 GiB default stays: about 3 times the largest of these, 2.5 times the worst case measured for the largest image the caps allow |
 | Largest image the caps allow: 8000 x 8000 RGB (192 MB decoded), square page | At 3840 x 3840: resident peak 272 MiB, 14 s (debug). At 5760 x 5760 (the output cap): peak 396 MiB, 26 s (debug, measured once by hand). So 1 GiB is about 2.5 times the worst case measured |
 | Flate bomb, 2 GiB of zeros in a 2.1 MB content stream, process limit only (pre-scan off, 512 MiB) | `WorkerFailed` after 4.8 s; resident peak seen by the parent 303 MiB; the test process stayed far below 600 MiB. With the pre-scan on: `Rejected` after 0.7 s |
 | Image declared 2e9 x 2e9 (tiny body), process limit only | `WorkerFailed` after 68 ms (peak seen 45 MiB). Pre-scan on: `Rejected` after 5 ms |
 | Image 20000 x 20000 RGB (1.2 GB decoded, 1.2 MB file), process limit only | `WorkerFailed` after 4.8 s (peak seen 300 MiB). Pre-scan on: `Rejected` after 55 ms |
 | 1 000 000 tiny pages (105 MB file) | Used to take 12 s and 900 MB. Now refused on the raw bytes in 30 ms (`TooManyPages`), also when `/Count` lies |
 | 100 000-level nested dictionary | Walking it in the pre-scan took 12 s (debug); now refused by the raw nesting check before parsing |
-| Cost of the process | Open 4.5 ms (was 0.2 to 1 ms). Render of a 1920 px page: debug minimal.pdf 67 ms (was 51), classroom p1 272 ms (was 234); release minimal 17 ms (was 7.7), classroom p1 46 ms (was 25) |
+| Cost of the process | Open 4.5 ms (was 0.2 to 1 ms) with `sh`; **5.6 ms** (median of 15, debug) now that the worker restricts itself with Landlock and seccomp and no shell is started. Render of a 1920 px page: debug minimal.pdf 66 ms now (67 before, 51 in process), classroom p1 272 ms (was 234); release minimal 17 ms (was 7.7), classroom p1 46 ms (was 25; release numbers not re-measured after the sandbox) |
 
 "Peak seen" values are read by the parent every 10 ms, so they are lower bounds when the worker
 dies in between; the hard limit is the kernel's.
@@ -165,7 +267,9 @@ dies in between; the hard limit is the kernel's.
 
 ### Platform statements
 
-- **Linux / Android**: sandboxed as above; the strongest case and the only one tested (Linux).
+- **Linux**: resource limits, process-group kill, and Landlock plus seccomp where the kernel offers
+  them (tested on x86_64, kernel 6.18); the only platform run. **Android**: the same code paths
+  without Landlock/seccomp attempted in practice (UNCERTAIN, not run).
 - **macOS**: watchdog only. A hostile file can use memory for up to the polling gap (100 ms)
   before the kill. UNCERTAIN, not tested here.
 - **Windows**: watchdog via `tasklist` (250 ms) and wall-clock kill, no job object. Weaker than
@@ -199,8 +303,8 @@ dies in between; the hard limit is the kernel's.
   default (process) path; an exponential form blow-up with a 150 ms limit in both engines (process:
   `Timeout`, nothing abandoned; in process: poisoned, reopen refused, the abandoned counter returns
   to 0); `Duration::MAX` timeouts; cancel flag in both engines.
-- `tests/sandbox.rs` (**the regression tests for the review**, all THROUGH THE CHILD PATH, skipped
-  with a note where `sh`/`ulimit -v` are missing): 2 GiB flate bomb, 2e9 x 2e9 image and 20000 x
+- `tests/sandbox.rs` (**the regression tests for the first review**, all THROUGH THE CHILD PATH,
+  skipped with a note where the address-space limit is not enforced): 2 GiB flate bomb, 2e9 x 2e9 image and 20000 x
   20000 RGB image against a 512 MiB limit with the pre-scan off (each returns an error, the worker
   peak stays inside the limit, this process stays small, a good render afterwards works); the same
   files with the pre-scan on (`Rejected`, fast); the largest allowed image (64 Mpx) renders; a
@@ -209,21 +313,41 @@ dies in between; the hard limit is the kernel's.
   the page count, crash or do not exist give errors. The bombs are generated at test time (a 2 GiB
   zero stream becomes a 2 MB file in milliseconds); `tests/data/review_gen.py` and
   `review_gen2.py` are the reviewer's generators, kept for provenance and not run.
+- `tests/process_kill.rs` (second review, finding 1, 3, 4, 8): fake `sh -c` workers. A worker
+  that exits while a background `sleep` holds the pipes returns in under 1.5 s with `WorkerFailed`
+  and the `sleep` is dead; a worker and its child that both stay alive are killed together at a
+  400 ms deadline (call returns in under 1.4 s); `sleep 600` likewise; cancel; a worker script
+  that lists `/proc/self/fd`, `env`, `pwd` shows only descriptors 0 to 2 (plus the shell's own
+  directory handle), no `HOME`, `PATH` or `CARGO*`, and `/` as directory; `WorkerSpec::new` makes
+  bare and relative names absolute; `COMETCAST_DOCS_WORKER` is refused when relative, writable by
+  others or a directory, and accepted when it is a 0755 file of the current user.
+- `tests/hardening.rs`: the in-worker checks described above (child copy of the test program),
+  `Document::protections()`, `require_os_sandbox` against what the system offers, and that all
+  test PDFs still render under the filters.
+- `tests/worker_cap.rs` (own process): with the cap at 2, two sleeping workers hold the places, a
+  third call gets `TooManyWorkers` within its 300 ms timeout and starts nothing, the places come
+  back.
+- `tests/prescan_review.rs`: incremental update with 12 `/Type /Page` tokens for 6 pages passes a
+  limit of 6 and shows the updated page size; a 100 000 `/Count` on an outline is no page claim; a
+  lying `/Count`; fake `stream` token in front of 1000 nested dictionaries is refused; Width over
+  `u32::MAX`, 4294967296, negative and huge real are refused; 16 bit CMYK 8000 x 8000 refused and
+  8 bit CMYK accepted; inline images with 100 000 x 100 000 in plain and in Flate content streams
+  refused, a small one accepted.
 - `tests/poison.rs` (own process): the 725 byte `pattern_self.pdf` six times through the child
   (never `Busy`, nothing abandoned) and in process (poisoned after the first timeout).
 - `tests/render.rs` also checks thumbnails of extreme page shapes and `/UserUnit`.
 - Unit tests: wire format round trip, page-claim and nesting pre-checks, timeout arithmetic.
 
 Findings from these tests (the two bomb rows describe the original problem that the worker
-process now contains; measured numbers with the sandbox are in "Memory actually measured"):
+process now contains; measured numbers with the process limit are in "Memory actually measured"):
 
 | What | Result |
 | --- | --- |
 | Deep nesting (content stream, objects, page tree) | No panic, no stack overflow in the 16 MiB worker stack (earlier also with 64 MiB). hayro has its own depth limit (`MAX_OBJECT_NESTING_DEPTH` is 512 in `hayro-syntax`) |
 | Page tree loops | Returned without hang |
 | 1e9 x 1e9 point media box | Rendered at 1920 px wide (the scale is derived from the box), no big buffer |
-| Flate bomb, 256 MiB in a content stream | **hayro decodes the whole stream into memory, no ratio limit** (before the sandbox: about 5 s, process peak 336 to 360 MiB; a 2 GiB bomb grew the process to 2.18 GiB) |
-| Image 2e9 x 2e9 | Before the sandbox: process peak about 2.7 GiB; the abandoned worker ended with `OutOfMemory(8000000000)` inside hayro (`image.rs:649`). hayro allocates `W * H` up front |
+| Flate bomb, 256 MiB in a content stream | **hayro decodes the whole stream into memory, no ratio limit** (before the process limit: about 5 s, process peak 336 to 360 MiB; a 2 GiB bomb grew the process to 2.18 GiB) |
+| Image 2e9 x 2e9 | Before the process limit: process peak about 2.7 GiB; the abandoned worker ended with `OutOfMemory(8000000000)` inside hayro (`image.rs:649`). hayro allocates `W * H` up front |
 | Form blow-up, 150 ms limit | `Timeout` after 150 ms; cancel flag returned after about 50 ms |
 
 Numbers measured on this machine (shared 4-core virtual machine, another job was using the

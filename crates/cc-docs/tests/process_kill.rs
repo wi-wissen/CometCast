@@ -4,6 +4,7 @@
 //! environment, `/` as working directory and no stray file descriptors.
 //!
 //! Fake workers are `sh -c` scripts; the tests need a Unix shell and `/proc`.
+#![cfg(unix)]
 
 use std::path::Path;
 use std::sync::Arc;

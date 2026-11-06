@@ -7,8 +7,10 @@
 //! (pure Rust, Apache-2.0 OR MIT). This crate is that renderer plus the limits around it.
 //!
 //! * [`Document::open`] checks hard limits **before** parsing, then parses and renders in a
-//!   **child process** with memory and CPU limits (see [`Limits`], [`Isolation`], and
-//!   `docs/documents.md`). A PDF comes from a remote sender and is treated as hostile; hayro
+//!   **resource-limited child process** (see [`Limits`], [`Isolation`], and
+//!   `docs/documents.md`). That is not a sandbox by itself (same user, no file system or network
+//!   isolation); on Linux the worker also applies Landlock and seccomp to itself where the
+//!   kernel allows it, and [`Document::protections`] reports what was really active. A PDF comes from a remote sender and is treated as hostile; hayro
 //!   cannot be interrupted and aborts the whole process on out-of-memory, so the process is
 //!   the boundary. iOS, tvOS and `wasm32` have no child processes and use a weaker in-process
 //!   engine.

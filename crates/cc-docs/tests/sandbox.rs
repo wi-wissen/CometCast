@@ -6,7 +6,7 @@
 //! three things: the call returns an error, the memory seen from the worker stays inside the
 //! limit (and this test process stays small), and a good render still works afterwards.
 //!
-//! The tests need `sh` and `ulimit -v` (Linux, Android). Where they are missing the tests
+//! The tests need the address-space limit (`RLIMIT_AS`, Linux and Android). Where it is missing the tests
 //! print a note and return; macOS relies on the memory watchdog (`ps`), which these tests do
 //! not exercise.
 
@@ -19,17 +19,25 @@ fn worker() -> Isolation {
     Isolation::Process(WorkerSpec::new(env!("CARGO_BIN_EXE_cc-docs-worker")))
 }
 
-/// `false` (with a note on stdout) where `sh` or `ulimit -v` is missing.
+/// `false` (with a note on stdout) where the address-space limit is not enforced.
 fn have_sandbox() -> bool {
     let ok =
         cfg!(any(target_os = "linux", target_os = "android")) && cc_docs::worker_limits_available();
     if !ok {
-        println!("NOTE: skipped, `sh` with `ulimit -v` is not available on this platform");
+        println!("NOTE: skipped, the address-space limit is not enforced on this platform");
     }
     ok
 }
 
+/// Tests run in parallel and start many workers; the default global cap (4) is for
+/// applications. (The cap itself is tested in `worker_cap.rs`.)
+fn lift_cap() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| cc_docs::set_max_concurrent_workers(64));
+}
+
 fn data(name: &str) -> Vec<u8> {
+    lift_cap();
     std::fs::read(format!("{}/tests/data/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }
 
@@ -189,7 +197,7 @@ fn run_bomb(name: &str, bytes: Vec<u8>, mem_mib: u64) {
         assert!(is_bounded_failure(&e), "{name}: {e:?}");
     }
     // The worker never went far over its limit (VmHWM is read every 10 ms; address space is
-    // capped by `ulimit -v`, so RSS cannot pass the limit).
+    // capped by `RLIMIT_AS`, so RSS cannot pass the limit).
     assert!(
         peak <= (mem_mib << 10) + (mem_mib << 10) / 4,
         "{name}: peak {peak} KiB"
@@ -234,7 +242,7 @@ fn consistent_20000_by_20000_rgb_image_is_stopped_by_the_memory_limit() {
 
 #[test]
 fn the_prescan_rejects_the_same_bombs_with_a_clear_error() {
-    // The default limits: the scan runs inside the worker (also needs `sh` for the limits).
+    // The default limits: the scan runs inside the worker.
     if !have_sandbox() {
         return;
     }

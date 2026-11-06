@@ -3,6 +3,7 @@
 //! macOS and other Unix, `tasklist` on Windows.
 
 /// `VmHWM` (peak resident set) in KiB from a `/proc/<pid>/status` style file.
+#[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
 pub(crate) fn read_vm_hwm_kib(path: &str) -> Option<u64> {
     let s = std::fs::read_to_string(path).ok()?;
     let line = s.lines().find(|l| l.starts_with("VmHWM:"))?;

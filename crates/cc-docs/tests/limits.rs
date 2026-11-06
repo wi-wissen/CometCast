@@ -57,7 +57,15 @@ fn one_page(page_extra: &str, resources: &str, content: &[u8], extra_objs: &[Vec
     build_pdf(&objs)
 }
 
+/// Tests run in parallel and start many workers; the default global cap (4) is for
+/// applications. (The cap itself is tested in `worker_cap.rs`.)
+fn lift_cap() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| cc_docs::set_max_concurrent_workers(64));
+}
+
 fn quick() -> Limits {
+    lift_cap();
     Limits {
         open_timeout: Duration::from_secs(5),
         render_timeout: Duration::from_secs(5),
@@ -204,6 +212,7 @@ fn image_with_huge_declared_size() {
 }
 
 fn worker() -> Isolation {
+    lift_cap();
     Isolation::Process(WorkerSpec::new(env!("CARGO_BIN_EXE_cc-docs-worker")))
 }
 
