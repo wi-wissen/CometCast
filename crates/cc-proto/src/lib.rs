@@ -123,7 +123,9 @@ pub enum ClientMsg {
         /// Sender or receiver.
         role: Role,
     },
-    /// Join the room with this code.
+    /// Receiver only: ask the server for a new room.
+    CreateRoom,
+    /// Sender only: join the room with this code.
     JoinRoom {
         /// Room code.
         code: RoomCode,
@@ -138,7 +140,8 @@ pub enum ClientMsg {
         /// SDP text.
         sdp: String,
     },
-    /// WebRTC ICE candidate (candidate line).
+    /// WebRTC ICE candidate. For browsers this string holds the JSON text of an
+    /// `RTCIceCandidateInit` (see docs/protocol.md).
     IceCandidate {
         /// Candidate text.
         candidate: String,
@@ -159,6 +162,17 @@ pub enum ServerMsg {
         /// Protocol version the server speaks.
         proto_version: u32,
     },
+    /// Sent to the receiver after `CreateRoom`: the code to show on screen.
+    RoomCreated {
+        /// The new room code.
+        code: RoomCode,
+    },
+    /// Sent to the sender after a successful `JoinRoom`.
+    Joined,
+    /// Sent to the receiver when a sender has joined its room.
+    PeerJoined,
+    /// Sent to the remaining peer when the other one disconnected.
+    PeerLeft,
     /// WebRTC offer forwarded from the peer.
     Offer {
         /// SDP text.
@@ -235,6 +249,7 @@ mod tests {
                 proto_version: PROTO_VERSION,
                 role: Role::Sender,
             },
+            ClientMsg::CreateRoom,
             ClientMsg::JoinRoom {
                 code: RoomCode::parse("k7m2qx").unwrap(),
             },
@@ -260,6 +275,12 @@ mod tests {
             ServerMsg::Hello {
                 proto_version: PROTO_VERSION,
             },
+            ServerMsg::RoomCreated {
+                code: RoomCode::parse("k7m2qx").unwrap(),
+            },
+            ServerMsg::Joined,
+            ServerMsg::PeerJoined,
+            ServerMsg::PeerLeft,
             ServerMsg::Control {
                 cmd: ControlCmd::NextPage,
             },
@@ -290,6 +311,35 @@ mod tests {
             panic!("wrong variant");
         };
         assert_eq!(code.as_str(), "K7M2QX");
+    }
+
+    #[test]
+    fn new_messages_wire_format() {
+        assert_eq!(
+            serde_json::to_string(&ClientMsg::CreateRoom).unwrap(),
+            r#"{"type":"create_room"}"#
+        );
+        let created = ServerMsg::RoomCreated {
+            code: RoomCode::parse("K7M2QX").unwrap(),
+        };
+        assert_eq!(
+            serde_json::to_string(&created).unwrap(),
+            r#"{"type":"room_created","code":"K7M2QX"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ServerMsg::Joined).unwrap(),
+            r#"{"type":"joined"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ServerMsg::PeerJoined).unwrap(),
+            r#"{"type":"peer_joined"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ServerMsg::PeerLeft).unwrap(),
+            r#"{"type":"peer_left"}"#
+        );
+        let m: ClientMsg = serde_json::from_str(r#"{"type":"create_room"}"#).unwrap();
+        assert_eq!(m, ClientMsg::CreateRoom);
     }
 
     #[test]

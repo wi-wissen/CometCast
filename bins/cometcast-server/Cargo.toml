@@ -13,3 +13,4 @@ workspace = true
 
 [dependencies]
 cc-server.workspace = true
+tokio.workspace = true
