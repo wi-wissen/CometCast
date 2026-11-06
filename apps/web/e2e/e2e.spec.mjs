@@ -3,9 +3,9 @@
 // End-to-end test: real server binary + two real Chromium pages (receiver and sender).
 // Run: npm run build && npm run e2e   (needs a Rust toolchain and the playwright chromium browser)
 //
-// By default the sender uses the TEST-ONLY canvas stream (?testVideo=1) because getDisplayMedia
-// is not reliably grantable in headless Chromium. Set E2E_REAL_DISPLAY=1 to try the real
-// getDisplayMedia instead (see README for what was observed).
+// By default the sender uses the real getDisplayMedia (it worked headless in the preinstalled
+// Chromium with the launch flags below). Set E2E_TEST_VIDEO=1 to use the TEST-ONLY canvas stream
+// (?testVideo=1) instead, in case getDisplayMedia cannot be granted in another environment.
 import { createRequire } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +20,7 @@ const repo = resolve(here, '../../..')
 const webDir = resolve(here, '../dist')
 const port = Number(process.env.E2E_PORT ?? 18443 + Math.floor(Math.random() * 1000))
 const base = `http://127.0.0.1:${port}`
-const realDisplay = process.env.E2E_REAL_DISPLAY === '1'
+const realDisplay = process.env.E2E_TEST_VIDEO !== '1'
 
 function startServer() {
   const build = spawnSync('cargo', ['build', '-p', 'cometcast-server'], { cwd: repo, stdio: 'inherit' })

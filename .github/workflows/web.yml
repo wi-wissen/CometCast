@@ -27,3 +27,24 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # UNCERTAIN: this job has not been run on GitHub; it was only verified locally.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+        working-directory: apps/web
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run build
+        working-directory: apps/web
+      - run: npm run e2e
+        working-directory: apps/web
