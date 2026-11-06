@@ -30,8 +30,8 @@ use crate::error::{Result, SenderError};
 use crate::framed::Cipher;
 use crate::http::{Conn, Request, Response};
 use crate::srp::{Client, Group, KeyKind};
-use zeroize::Zeroizing;
 use crate::tlv::{self, Tlv};
+use zeroize::Zeroizing;
 
 /// The fixed PIN of transient pairing.
 pub const TRANSIENT_PIN: &str = "3939";
@@ -275,7 +275,8 @@ pub fn pair_verify<S: Read + Write>(conn: &mut Conn<S>, creds: &Credentials) -> 
     else {
         return Err(SenderError::Input("not HomeKit-style credentials".into()));
     };
-    let seed: Zeroizing<[u8; 32]> = Zeroizing::new(unhex(seed).ok_or_else(|| SenderError::Store("bad stored seed".into()))?);
+    let seed: Zeroizing<[u8; 32]> =
+        Zeroizing::new(unhex(seed).ok_or_else(|| SenderError::Store("bad stored seed".into()))?);
     let device_key: [u8; 32] =
         unhex(device_key).ok_or_else(|| SenderError::Store("bad stored device key".into()))?;
     let device_id = unhex_vec(device_id, 256)

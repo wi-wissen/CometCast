@@ -442,7 +442,10 @@ mod tests {
         assert!(c.process(&[1; 16], &above).is_err());
         // B = 1 and B = N - 1
         assert!(c.process(&[1; 16], &[1]).is_err());
-        assert!(c.process(&[1; 16], &(&group.n - 1u8).to_bytes_be()).is_err());
+        assert!(
+            c.process(&[1; 16], &(&group.n - 1u8).to_bytes_be())
+                .is_err()
+        );
         // B = N - 2 is an ordinary value
         assert!(c.process(&[1; 16], &(&group.n - 2u8).to_bytes_be()).is_ok());
         assert!(Client::<Sha1>::new(group, KeyKind::Plain, b"u", b"1", &[1; 4]).is_err());

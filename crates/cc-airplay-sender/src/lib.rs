@@ -18,8 +18,10 @@
 //! [`mirror::MirroringProvider`] is the empty socket for it and [`mirror::Unsupported`]
 //! says why. See `docs/airplay-sender.md` for what was tested and what is UNCERTAIN.
 //!
-//! Everything a receiver sends is untrusted: sizes are capped, waits have deadlines, nothing
-//! panics on bad input.
+//! Everything a receiver sends is untrusted: sizes are capped, waits have deadlines, property
+//! lists are checked for nesting and declared lengths before the `plist` crate sees them, and
+//! the code is written not to panic on bad input (tested for the paths in `docs/airplay-sender.md`,
+//! not proven for every dependency).
 
 pub mod client;
 pub mod creds;

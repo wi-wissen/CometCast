@@ -98,7 +98,9 @@ fn check_binary(data: &[u8]) -> Result<()> {
     if count == 0
         || top >= count
         || table < 9
-        || table.checked_add(table_len).is_none_or(|e| e > end_of_objects)
+        || table
+            .checked_add(table_len)
+            .is_none_or(|e| e > end_of_objects)
     {
         return Err(bad("bad offset table"));
     }

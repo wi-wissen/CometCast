@@ -26,7 +26,6 @@ pub const MAX_CONNECTIONS: usize = 16;
 /// Largest single segment we keep.
 pub const MAX_SEGMENT_BYTES: usize = 16 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_REQUESTS_PER_CONNECTION: usize = 200;
 
 struct Segment {
     seq: u64,
@@ -242,51 +241,113 @@ fn serve_connection(stream: TcpStream, store: &SegmentStore, stop: &AtomicBool) 
     stream.set_read_timeout(Some(REQUEST_TIMEOUT))?;
     stream.set_write_timeout(Some(REQUEST_TIMEOUT))?;
     let mut conn = Conn::new(stream);
-    for _ in 0..MAX_REQUESTS_PER_CONNECTION {
+    {
         if stop.load(Ordering::Relaxed) {
-            break;
+            return Ok(());
         }
         let req = conn.read_request(1024, REQUEST_TIMEOUT)?;
         let head = req.method == "HEAD";
         if req.method != "GET" && !head {
-            conn.write_response(405, &[("Allow", "GET, HEAD".into())], b"")?;
-            break;
+            conn.write_response(
+                405,
+                &[
+                    ("Allow", "GET, HEAD".into()),
+                    ("Connection", "close".into()),
+                ],
+                b"",
+            )?;
+            return Ok(());
         }
         let path = req.path.split('?').next().unwrap_or("");
-        let (status, ctype, cache, body): (u16, &str, &str, Vec<u8>) = if path == "/live.m3u8" {
-            (
-                200,
-                "application/vnd.apple.mpegurl",
-                "no-cache",
-                store.playlist().into_bytes(),
-            )
-        } else if let Some(seq) = path
-            .strip_prefix("/seg")
-            .and_then(|s| s.strip_suffix(".ts"))
-            .and_then(|s| s.parse::<u64>().ok())
-        {
-            match store.segment(seq) {
-                Some(data) => (200, "video/mp2t", "max-age=60", data.as_ref().clone()),
-                None => (404, "text/plain", "no-cache", b"gone".to_vec()),
+        let (mut status, ctype, cache, body): (u16, &str, &str, Arc<Vec<u8>>) =
+            if path == "/live.m3u8" {
+                (
+                    200,
+                    "application/vnd.apple.mpegurl",
+                    "no-cache",
+                    Arc::new(store.playlist().into_bytes()),
+                )
+            } else if let Some(seq) = path
+                .strip_prefix("/seg")
+                .and_then(|s| s.strip_suffix(".ts"))
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                // The segment is shared with the store: no copy per request.
+                match store.segment(seq) {
+                    Some(data) => (200, "video/mp2t", "max-age=60", data),
+                    None => (404, "text/plain", "no-cache", Arc::new(b"gone".to_vec())),
+                }
+            } else {
+                (
+                    404,
+                    "text/plain",
+                    "no-cache",
+                    Arc::new(b"not found".to_vec()),
+                )
+            };
+        // One `Range: bytes=...` on a segment is answered with 206 (receivers may ask).
+        let mut extra: Vec<(&str, String)> = Vec::new();
+        let mut slice: &[u8] = &body;
+        if status == 200 && ctype == "video/mp2t" {
+            extra.push(("Accept-Ranges", "bytes".into()));
+            if let Some(range) = req.get("Range") {
+                match parse_range(range, body.len()) {
+                    Some(Ok((a, b))) => {
+                        status = 206;
+                        slice = &body[a..=b];
+                        extra.push(("Content-Range", format!("bytes {a}-{b}/{}", body.len())));
+                    }
+                    Some(Err(())) => {
+                        status = 416;
+                        slice = b"";
+                        extra.push(("Content-Range", format!("bytes */{}", body.len())));
+                    }
+                    None => {}
+                }
             }
-        } else {
-            (404, "text/plain", "no-cache", b"not found".to_vec())
-        };
-        conn.write_response_with(
-            status,
-            &[
-                ("Content-Type", ctype.into()),
-                ("Cache-Control", cache.into()),
-                ("Access-Control-Allow-Origin", "*".into()),
-            ],
-            &body,
-            !head,
-        )?;
-        if conn.is_closed() {
-            break;
         }
+        // `Connection: close`: one request per connection, so that a client cannot hold a
+        // thread (and a segment) for long. No CORS header: nothing needs it.
+        let mut headers = vec![
+            ("Content-Type", ctype.to_owned()),
+            ("Cache-Control", cache.to_owned()),
+            ("Connection", "close".to_owned()),
+        ];
+        headers.extend(extra);
+        conn.write_response_with(status, &headers, slice, !head)?;
     }
     Ok(())
+}
+
+/// Parse a single `bytes=` range for a body of `len` bytes. `None`: ignore the header (not
+/// a byte range, or several ranges: the whole body is sent); `Some(Err)`: not satisfiable.
+fn parse_range(value: &str, len: usize) -> Option<std::result::Result<(usize, usize), ()>> {
+    let spec = value.trim().strip_prefix("bytes=")?;
+    if spec.contains(',') || len == 0 {
+        return None;
+    }
+    let (from, to) = spec.split_once('-')?;
+    let (from, to) = (from.trim(), to.trim());
+    let (a, b) = if from.is_empty() {
+        // Suffix: the last N bytes.
+        let n: usize = to.parse().ok()?;
+        if n == 0 {
+            return Some(Err(()));
+        }
+        (len.saturating_sub(n), len - 1)
+    } else {
+        let a: usize = from.parse().ok()?;
+        let b: usize = if to.is_empty() {
+            len - 1
+        } else {
+            to.parse::<usize>().ok()?.min(len - 1)
+        };
+        (a, b)
+    };
+    if a >= len || a > b {
+        return Some(Err(()));
+    }
+    Some(Ok((a, b)))
 }
 
 #[cfg(test)]
@@ -358,6 +419,57 @@ mod tests {
         let _ = s.read_to_end(&mut sink);
         assert_eq!(get(addr, "/live.m3u8").0, 200);
         server.stop();
+    }
+
+    #[test]
+    fn range_requests_close_and_no_cors() {
+        let store = SegmentStore::new(4);
+        store.push(1.0, (0..100u8).collect::<Vec<u8>>()).unwrap();
+        let mut server = HlsServer::start(
+            "127.0.0.1:0".parse().unwrap(),
+            Arc::clone(&store),
+            Some(vec!["127.0.0.1".parse().unwrap()]),
+        )
+        .unwrap();
+        let addr = server.local_addr();
+        let fetch = |range: Option<&str>| {
+            let s = TcpStream::connect(addr).unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut c = Conn::new(s);
+            let mut req = Request::new("GET", "/seg0.ts");
+            if let Some(r) = range {
+                req = req.header("Range", r);
+            }
+            c.exchange(&req).unwrap()
+        };
+        let r = fetch(None);
+        assert_eq!((r.status, r.body.len()), (200, 100));
+        assert_eq!(r.get("Connection"), Some("close"));
+        assert_eq!(r.get("Access-Control-Allow-Origin"), None);
+        let r = fetch(Some("bytes=10-19"));
+        assert_eq!(r.status, 206);
+        assert_eq!(r.body, (10..20u8).collect::<Vec<u8>>());
+        assert_eq!(r.get("Content-Range"), Some("bytes 10-19/100"));
+        let r = fetch(Some("bytes=-5"));
+        assert_eq!((r.status, r.body), (206, (95..100u8).collect::<Vec<u8>>()));
+        assert_eq!(fetch(Some("bytes=100-")).status, 416);
+        assert_eq!(fetch(Some("bytes=5-2")).status, 416);
+        // Several ranges, or garbage: the whole segment.
+        assert_eq!(fetch(Some("bytes=0-1,5-6")).body.len(), 100);
+        assert_eq!(fetch(Some("lines=1-2")).body.len(), 100);
+        server.stop();
+    }
+
+    #[test]
+    fn range_parsing_edges() {
+        assert_eq!(parse_range("bytes=0-0", 10), Some(Ok((0, 0))));
+        assert_eq!(parse_range("bytes=5-", 10), Some(Ok((5, 9))));
+        assert_eq!(parse_range("bytes=5-999", 10), Some(Ok((5, 9))));
+        assert_eq!(parse_range("bytes=-999", 10), Some(Ok((0, 9))));
+        assert_eq!(parse_range("bytes=-0", 10), Some(Err(())));
+        assert_eq!(parse_range("bytes=10-", 10), Some(Err(())));
+        assert_eq!(parse_range("bytes=a-b", 10), None);
+        assert_eq!(parse_range("bytes=0-1", 0), None);
     }
 
     #[test]
