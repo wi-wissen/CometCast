@@ -12,6 +12,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+cc-airplay.workspace = true
 cc-proto.workspace = true
 cc-receiver.workspace = true
 cc-sender.workspace = true
