@@ -41,6 +41,8 @@ class CaptureBridge(
     engine: FlutterEngine,
 ) : MethodChannel.MethodCallHandler {
     private var pendingResult: MethodChannel.Result? = null
+    private var consentShown = false
+    private var ignoreConsentResult = false
     private var pendingArgs: Map<*, *> = emptyMap<Any, Any>()
 
     init {
@@ -72,6 +74,7 @@ class CaptureBridge(
                 }
             }
             "stop" -> {
+                cancelPendingConsent()
                 activity.stopService(Intent(activity, ScreenCaptureService::class.java))
                 result.success(null)
             }
@@ -85,6 +88,21 @@ class CaptureBridge(
         }
     }
 
+    /**
+     * A `stop` while a permission or consent dialog is open: answer the pending `start` with
+     * `false`, close the consent dialog and remember that its result must be ignored, so the
+     * service is not started late with nobody to use it. UNCERTAIN: not run on a device.
+     */
+    private fun cancelPendingConsent() {
+        val result = pendingResult ?: return
+        pendingResult = null
+        if (consentShown) {
+            ignoreConsentResult = true
+            activity.finishActivity(REQUEST_CONSENT)
+        }
+        result.success(false)
+    }
+
     private fun needsNotificationPermission(): Boolean =
         Build.VERSION.SDK_INT >= 33 &&
             activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
@@ -93,6 +111,7 @@ class CaptureBridge(
     private fun launchConsent() {
         val manager = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         @Suppress("DEPRECATION")
+        consentShown = true
         activity.startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_CONSENT)
     }
 
@@ -114,6 +133,12 @@ class CaptureBridge(
         data: Intent?,
     ): Boolean {
         if (requestCode != REQUEST_CONSENT) return false
+        consentShown = false
+        if (ignoreConsentResult) {
+            // The dialog was cancelled by `stop`: whatever it answered, start nothing.
+            ignoreConsentResult = false
+            return true
+        }
         val result = pendingResult ?: return true
         pendingResult = null
         if (resultCode != Activity.RESULT_OK || data == null) {

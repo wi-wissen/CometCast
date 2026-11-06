@@ -571,6 +571,24 @@ pub async fn start_encoded_sender(
     run_sender(code, server, None, udp_bind, None, Some(input), events).await;
 }
 
+/// Parse the room code and only then install the encoded input (closing the previous one). An
+/// invalid code installs nothing and leaves no input from an earlier session behind either.
+fn accept_code_and_input(
+    code: &str,
+    external: Option<ExternalInput>,
+) -> Result<RoomCode, RoomCodeError> {
+    match RoomCode::parse(code) {
+        Ok(code) => {
+            encoded::replace(external);
+            Ok(code)
+        }
+        Err(e) => {
+            encoded::replace(None);
+            Err(e)
+        }
+    }
+}
+
 async fn run_sender(
     code: String,
     server: String,
@@ -581,9 +599,7 @@ async fn run_sender(
     events: StreamSink<SenderUiEvent>,
 ) {
     let generation = SENDER.begin();
-    // The previous encoded input (if any) is closed, so a late push cannot reach this session.
-    encoded::replace(external.clone());
-    let code = match RoomCode::parse(&code) {
+    let code = match accept_code_and_input(&code, external.clone()) {
         Ok(code) => code,
         Err(e) => {
             let _ = events.add(SenderUiEvent::Error {
@@ -967,6 +983,25 @@ mod tests {
         let g2 = slot.begin();
         let g3 = slot.begin();
         assert!(!slot.is_current(g2) && slot.is_current(g3));
+    }
+
+    #[test]
+    fn invalid_code_installs_no_encoded_input_and_clears_the_old_one() {
+        let old = ExternalInput::default();
+        encoded::replace(Some(old.clone()));
+        let new = ExternalInput::default();
+        assert!(accept_code_and_input("nope", Some(new.clone())).is_err());
+        assert!(encoded::current().is_none(), "nothing stale is left");
+        assert!(!new.same_as(&old));
+        assert_eq!(
+            new.push(&[0, 0, 0, 1, 0x65, 1], true, None),
+            cc_sender::PushOutcome::NotStreaming,
+            "the new input was not closed or installed by the failed start"
+        );
+        // A valid code installs the input.
+        assert!(accept_code_and_input("K7M2QX", Some(new.clone())).is_ok());
+        assert!(encoded::current().is_some_and(|c| c.same_as(&new)));
+        encoded::replace(None);
     }
 
     #[test]

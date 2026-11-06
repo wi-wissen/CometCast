@@ -14,6 +14,7 @@ import 'package:cometcast/capture_feeder.dart';
 import 'package:cometcast/core/android_capture.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/main.dart';
+import 'package:cometcast/sender_controller.dart';
 
 import 'fake_core.dart';
 
@@ -339,6 +340,57 @@ void main() {
       },
     );
 
+    test('stop while the consent dialog is open, then accepted: capture stopped, no timer, no frames', () async {
+      final core = FakeCoreApi();
+      final cap = FakeAndroidCapture();
+      final feeder = CaptureFeeder(
+        core: core,
+        capture: cap,
+        onStopped: (_) {},
+        onError: (_) {},
+        pollInterval: const Duration(milliseconds: 10),
+      );
+      const texts = CaptureNotificationTexts(
+        title: 'a',
+        text: 'b',
+        stopLabel: 'c',
+      );
+      final started = feeder.start(texts);
+      await feeder.stop(); // the dialog is still open
+      expect(cap.stopCalls, 1);
+      cap.consent.complete(CaptureStartResult.started); // accepted late
+      await started;
+      expect(cap.stopCalls, 2, reason: 'the late service is stopped again');
+      core.keyframeRequest = true;
+      cap.controller.add(
+        CaptureFrame(data: _idr, isKey: true, ptsUs: 1, dropped: 0),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(core.pushedFrames, isEmpty);
+      expect(cap.syncFrameCalls, 0, reason: 'no poll timer was created');
+    });
+
+    test(
+      'a feeder that lost the service to a newer session does not stop it',
+      () async {
+        final cap = FakeAndroidCapture()
+          ..consent.complete(CaptureStartResult.started);
+        var owns = false;
+        final feeder = CaptureFeeder(
+          core: FakeCoreApi(),
+          capture: cap,
+          onStopped: (_) {},
+          onError: (_) {},
+          ownsCapture: () => owns,
+        );
+        await feeder.start(
+          const CaptureNotificationTexts(title: 'a', text: 'b', stopLabel: 'c'),
+        );
+        await feeder.stop();
+        expect(cap.stopCalls, 0);
+      },
+    );
+
     test('a refused consent leaves nothing running', () async {
       final core = FakeCoreApi();
       final cap = FakeAndroidCapture()
@@ -424,6 +476,76 @@ void main() {
         expect(cap.stopCalls, 1);
         expect(core.stopSenderCalls, greaterThanOrEqualTo(1));
         await closePage(tester);
+      },
+    );
+
+    testWidgets(
+      'stop during the consent dialog, then accepted: service stopped, sender never started',
+      (tester) async {
+        final core = androidCore();
+        final cap = FakeAndroidCapture();
+        await openSend(tester, core, cap);
+        await startSharing(tester);
+        await settle(tester);
+        await tester.tap(find.byKey(const Key('stopButton')));
+        await settle(tester);
+        expect(cap.stopCalls, 1);
+        cap.consent.complete(CaptureStartResult.started);
+        await settle(tester);
+        cap.controller.add(
+          CaptureFrame(data: _idr, isKey: true, ptsUs: 1, dropped: 0),
+        );
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(cap.stopCalls, 2);
+        expect(core.startEncodedCalls, 0);
+        expect(core.pushedFrames, isEmpty);
+        await closePage(tester);
+      },
+    );
+
+    testWidgets(
+      'a second start releases the first feeder and keeps the new service',
+      (tester) async {
+        final core = androidCore();
+        final cap = FakeAndroidCapture();
+        final c = SenderController(core: core, capture: cap);
+        const texts = CaptureNotificationTexts(
+          title: 'a',
+          text: 'b',
+          stopLabel: 'c',
+        );
+        final first = Completer<CaptureStartResult>();
+        cap.consent = first;
+        final f1 = c.startCapture(
+          code: 'K7M2QX',
+          server: 's',
+          notification: texts,
+        );
+        await tester.pump(const Duration(milliseconds: 5));
+        final second = Completer<CaptureStartResult>();
+        cap.consent = second;
+        final f2 = c.startCapture(
+          code: 'K7M2QX',
+          server: 's',
+          notification: texts,
+        );
+        await tester.pump(const Duration(milliseconds: 5));
+        expect(cap.stopCalls, 1, reason: 'the old feeder was released');
+        second.complete(CaptureStartResult.started);
+        await tester.pump(const Duration(milliseconds: 5));
+        first.complete(
+          CaptureStartResult.started,
+        ); // the stale one answers late
+        await Future.wait([f1, f2]);
+        expect(
+          cap.stopCalls,
+          1,
+          reason: 'the stale feeder must not stop the newer service',
+        );
+        expect(core.startEncodedCalls, 1);
+        await c.stop();
+        c.dispose();
+        await tester.pump(const Duration(milliseconds: 5));
       },
     );
 

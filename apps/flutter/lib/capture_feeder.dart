@@ -21,7 +21,14 @@ class CaptureFeeder {
     required this.onStopped,
     required this.onError,
     this.pollInterval = const Duration(milliseconds: 100),
+    this.ownsCapture = _always,
   });
+
+  static bool _always() => true;
+
+  /// Asked before this feeder stops the (process-wide, singleton) capture service: false when
+  /// a newer session has taken the service over, so a stale feeder cannot stop it.
+  final bool Function() ownsCapture;
 
   final CoreApi core;
   final AndroidCapture capture;
@@ -68,6 +75,13 @@ class CaptureFeeder {
       _closeListeners();
       rethrow;
     }
+    if (_stopped) {
+      // [stop] was called while the consent dialog was open. It found no service to stop;
+      // if the person accepted anyway, the service exists now and must not keep running.
+      _closeListeners();
+      await _stopCapture();
+      return CaptureStartResult.denied;
+    }
     if (result != CaptureStartResult.started) {
       _closeListeners();
       return result;
@@ -81,6 +95,11 @@ class CaptureFeeder {
     if (_stopped) return;
     _stopped = true;
     _closeListeners();
+    await _stopCapture();
+  }
+
+  Future<void> _stopCapture() async {
+    if (!ownsCapture()) return;
     try {
       await capture.stop();
     } catch (_) {
