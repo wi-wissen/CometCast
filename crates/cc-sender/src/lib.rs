@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
-    ConnectionState, Session, SessionConfig, SessionEvent, SignalingClient, TransportError,
-    VideoCodec, VideoSender,
+    ConnectionState, IceServerConfig, ServerAddr, Session, SessionConfig, SessionEvent,
+    SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -89,7 +89,10 @@ pub struct SenderOptions {
     /// Stop sending after this long. `None` means until stopped.
     pub duration: Option<Duration>,
     /// WebRTC settings. The codec list is forced to VP8.
+    /// If `session.ice_servers` is empty the core asks the server for its STUN/TURN list.
     pub session: SessionConfig,
+    /// Extra trusted certificates for `wss://` / `https://` (default: system store only).
+    pub trust: TlsTrust,
 }
 
 impl SenderOptions {
@@ -100,6 +103,7 @@ impl SenderOptions {
             code,
             duration: None,
             session: SessionConfig::default(),
+            trust: TlsTrust::system(),
         }
     }
 }
@@ -127,6 +131,7 @@ pub enum SenderEvent {
 
 /// A running sender.
 pub struct SenderCore {
+    ice_servers: Vec<IceServerConfig>,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
@@ -136,7 +141,9 @@ impl SenderCore {
     /// Join the room, send the offer and start streaming once connected.
     /// Returns after the offer was sent; a wrong code fails here with `room_not_found`.
     pub async fn start(mut options: SenderOptions) -> Result<Self, TransportError> {
-        let mut sig = SignalingClient::connect(&options.server, Role::Sender).await?;
+        let addr = ServerAddr::parse(&options.server)?;
+        let mut sig =
+            SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
         sig.send(ClientMsg::JoinRoom {
             code: options.code.clone(),
         })
@@ -157,6 +164,12 @@ impl SenderCore {
         .map_err(|_| TransportError::Timeout("waiting for joined"))??;
 
         options.session.video_codecs = Some(vec![VideoCodec::Vp8]);
+        if options.session.ice_servers.is_empty() {
+            // Best effort: no list (404, or a failed request) means no STUN/TURN.
+            options.session.ice_servers =
+                ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
+        }
+        let ice_servers = options.session.ice_servers.clone();
         let (session, session_events) = Session::new(options.session).await?;
         let video = session.add_video_track(VideoCodec::Vp8).await?;
         let offer = session.create_offer().await?;
@@ -175,10 +188,17 @@ impl SenderCore {
             options.duration,
         ));
         Ok(Self {
+            ice_servers,
             events: events_rx,
             stop: Some(stop_tx),
             task,
         })
+    }
+
+    /// The STUN/TURN servers this sender uses (from the server's `/ice-servers`, or what the
+    /// caller configured). Empty = none.
+    pub fn ice_servers(&self) -> &[IceServerConfig] {
+        &self.ice_servers
     }
 
     /// Next event, or `None` after the core has stopped and all events were read.

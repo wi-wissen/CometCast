@@ -8,16 +8,22 @@
 //! UNCERTAIN: how often each route is needed in real networks is not measured yet
 //! (see docs/measurement-points.md). The order below is the plan's assumption.
 //!
-//! Today only [`Route::Direct`] is implemented (no STUN/TURN: M8 and measurement point 1).
+//! Today only [`Route::Direct`] is implemented as a route, but a [`Session`] can use the
+//! STUN/TURN servers the signalling server hands out (`/ice-servers`, see [`ice`]).
 //! This crate holds the signalling client ([`SignalingClient`]) and the WebRTC
 //! [`Session`] wrapper that sender and receiver cores build on. See docs/transport.md.
 
+pub mod altcha;
 mod error;
+pub mod ice;
+pub mod net;
 mod rtp;
 mod session;
 mod signaling;
 
 pub use error::TransportError;
+pub use ice::IceServerConfig;
+pub use net::{ServerAddr, TlsTrust};
 pub use rtp::{MediaSnapshot, MediaStats, VideoCodec, starts_key_frame};
 pub use session::{ConnectionState, Session, SessionConfig, SessionEvent, VideoSender};
 pub use signaling::{SignalingClient, ws_url};

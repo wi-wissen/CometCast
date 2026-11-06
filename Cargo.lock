@@ -553,14 +553,21 @@ version = "0.1.0"
 name = "cc-transport"
 version = "0.1.0"
 dependencies = [
+ "altcha",
  "async-trait",
+ "base64 0.23.1",
  "bytes",
  "cc-proto",
+ "cc-server",
  "futures-util",
  "rtc",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite",
  "webrtc",
 ]

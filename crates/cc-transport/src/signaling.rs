@@ -11,50 +11,22 @@ use cc_proto::{ClientMsg, PROTO_VERSION, Role, ServerMsg};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::error::TransportError;
+use crate::net::{ServerAddr, TlsTrust, connect_io};
 
 /// UNCERTAIN: 10 s is a placeholder for connect plus hello; not measured on slow networks.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Turn the user's server text into the WebSocket URL.
 ///
-/// Accepted: `host:port`, `host:port/ws`, `ws://host:port[/ws]` and `http://host:port`
-/// (treated as `ws://`). An empty path becomes `/ws`; any other path is kept.
-/// `wss://` and `https://` are rejected with a clear error: this build has no TLS yet
-/// (docs/protocol.md; the tokio-tungstenite TLS feature is not enabled).
+/// Accepted: `host:port`, `host:port/ws`, `ws://host:port[/ws]`, `wss://host[:port][/ws]`,
+/// and `http://` / `https://` (read as `ws://` / `wss://`). An empty path becomes `/ws`; any
+/// other path is kept. A missing port means 80 (`ws`) or 443 (`wss`).
 pub fn ws_url(server: &str) -> Result<String, TransportError> {
-    let server = server.trim();
-    let rest = if let Some(r) = server.strip_prefix("ws://") {
-        r
-    } else if let Some(r) = server.strip_prefix("http://") {
-        r
-    } else if server.starts_with("wss://") || server.starts_with("https://") {
-        return Err(TransportError::Unsupported(
-            "TLS (wss:// or https://) is not supported yet; use ws://host:port",
-        ));
-    } else if server.contains("://") {
-        return Err(TransportError::Invalid(format!(
-            "unknown URL scheme in {server:?}"
-        )));
-    } else {
-        server
-    };
-    let (host, path) = match rest.find('/') {
-        Some(i) => rest.split_at(i),
-        None => (rest, ""),
-    };
-    if host.is_empty() {
-        return Err(TransportError::Invalid("empty server address".into()));
-    }
-    let path = if path.is_empty() || path == "/" {
-        "/ws"
-    } else {
-        path
-    };
-    Ok(format!("ws://{host}{path}"))
+    Ok(ServerAddr::parse(server)?.ws_url())
 }
 
 /// A connected, handshaken signalling connection.
@@ -68,12 +40,25 @@ pub struct SignalingClient {
 impl SignalingClient {
     /// Connect, send `hello` with the given role and wait for the server's `hello`.
     ///
-    /// `server` is `host:port` or a full WebSocket URL. There is no TLS yet
-    /// (docs/protocol.md), so plain `ws://` is what works today.
+    /// `server` is `host:port` or a full WebSocket URL (`wss://` uses TLS with the system
+    /// trust store). Use [`SignalingClient::connect_with`] to trust more certificates.
     pub async fn connect(server: &str, role: Role) -> Result<Self, TransportError> {
-        let url = ws_url(server)?;
+        Self::connect_with(server, role, &TlsTrust::system()).await
+    }
+
+    /// Like [`SignalingClient::connect`] with explicit TLS trust (for example a self-signed
+    /// development server).
+    pub async fn connect_with(
+        server: &str,
+        role: Role,
+        trust: &TlsTrust,
+    ) -> Result<Self, TransportError> {
+        let addr = ServerAddr::parse(server)?;
+        let url = addr.ws_url();
         let handshake = async {
-            let (mut ws, _) = connect_async(&url)
+            let io = connect_io(&addr, trust).await?;
+            // The scheme in `url` is only used for the request line; TLS is already done.
+            let (mut ws, _) = client_async(url.as_str(), io)
                 .await
                 .map_err(|e| TransportError::Connect(e.to_string()))?;
             let hello = ClientMsg::Hello {
@@ -188,18 +173,12 @@ mod tests {
         assert_eq!(ok("ws://x:1/ws"), "ws://x:1/ws");
         assert_eq!(ok("http://x:1"), "ws://x:1/ws");
         assert_eq!(ok("ws://x:1/other"), "ws://x:1/other");
+        assert_eq!(ok("wss://x:9"), "wss://x:9/ws");
+        assert_eq!(ok("https://x"), "wss://x:443/ws");
     }
 
     #[test]
-    fn ws_url_rejects_tls_and_junk() {
-        assert!(matches!(
-            ws_url("wss://x"),
-            Err(TransportError::Unsupported(_))
-        ));
-        assert!(matches!(
-            ws_url("https://x"),
-            Err(TransportError::Unsupported(_))
-        ));
+    fn ws_url_rejects_junk() {
         assert!(ws_url("ftp://x").is_err());
         assert!(ws_url("").is_err());
     }

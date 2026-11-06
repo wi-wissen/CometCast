@@ -5,6 +5,9 @@
 //! or rendering yet: the core only counts RTP packets, bytes, frames and key frames. Later
 //! parts (queue, toolbar state, deletion rule) arrive with the apps.
 //!
+//! On a server that requires proof-of-work (open mode) the core fetches and solves the
+//! ALTCHA puzzle by itself when the server answers `altcha_required`.
+//!
 //! Use: [`ReceiverCore::start`] -> show [`ReceiverCore::room_code`] -> loop on
 //! [`ReceiverCore::next_event`].
 
@@ -13,8 +16,8 @@ use std::time::Duration;
 
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
-    ConnectionState, MediaSnapshot, Session, SessionConfig, SessionEvent, SignalingClient,
-    TransportError, VideoCodec,
+    ConnectionState, IceServerConfig, MediaSnapshot, ServerAddr, Session, SessionConfig,
+    SessionEvent, SignalingClient, TlsTrust, TransportError, VideoCodec, altcha, ice,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -30,10 +33,13 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Settings for [`ReceiverCore::start`].
 #[derive(Debug, Clone)]
 pub struct ReceiverOptions {
-    /// Signalling server as `host:port` (or a full `ws://` URL).
+    /// Signalling server as `host:port` or a `ws://`, `wss://`, `http://`, `https://` URL.
     pub server: String,
-    /// WebRTC settings (local bind address, codecs).
+    /// WebRTC settings (local bind address, codecs). If `session.ice_servers` is empty the
+    /// core asks the server for its STUN/TURN list (`/ice-servers`).
     pub session: SessionConfig,
+    /// Extra trusted certificates for `wss://` / `https://` (default: system store only).
+    pub trust: TlsTrust,
 }
 
 impl ReceiverOptions {
@@ -42,6 +48,7 @@ impl ReceiverOptions {
         Self {
             server: server.into(),
             session: SessionConfig::default(),
+            trust: TlsTrust::system(),
         }
     }
 }
@@ -69,9 +76,37 @@ pub enum ReceiverEvent {
     Error(String),
 }
 
+/// The server's answer to `create_room`.
+enum RoomReply {
+    Created(RoomCode),
+    AltchaRequired,
+}
+
+/// Wait for the answer to `create_room`.
+async fn next_room_reply(sig: &mut SignalingClient) -> Result<RoomReply, TransportError> {
+    tokio::time::timeout(ROOM_TIMEOUT, async {
+        match sig.recv().await {
+            Some(ServerMsg::RoomCreated { code }) => Ok(RoomReply::Created(code)),
+            Some(ServerMsg::Error { code, .. }) if code == "altcha_required" => {
+                Ok(RoomReply::AltchaRequired)
+            }
+            Some(ServerMsg::Error { code, message }) => {
+                Err(TransportError::Server { code, message })
+            }
+            Some(other) => Err(TransportError::Protocol(format!(
+                "expected room_created, got {other:?}"
+            ))),
+            None => Err(TransportError::Closed),
+        }
+    })
+    .await
+    .map_err(|_| TransportError::Timeout("waiting for room_created"))?
+}
+
 /// A running receiver.
 pub struct ReceiverCore {
     code: RoomCode,
+    ice_servers: Vec<IceServerConfig>,
     session: Arc<Session>,
     events: mpsc::UnboundedReceiver<ReceiverEvent>,
     stop: Option<oneshot::Sender<()>>,
@@ -81,24 +116,40 @@ pub struct ReceiverCore {
 impl ReceiverCore {
     /// Connect to the server, create a room and start answering. Returns once the room code is known.
     pub async fn start(options: ReceiverOptions) -> Result<Self, TransportError> {
-        let mut sig = SignalingClient::connect(&options.server, Role::Receiver).await?;
+        let addr = ServerAddr::parse(&options.server)?;
+        let mut sig =
+            SignalingClient::connect_with(&options.server, Role::Receiver, &options.trust).await?;
         sig.send(ClientMsg::CreateRoom { altcha: None }).await?;
-        let code = tokio::time::timeout(ROOM_TIMEOUT, async {
-            match sig.recv().await {
-                Some(ServerMsg::RoomCreated { code }) => Ok(code),
-                Some(ServerMsg::Error { code, message }) => {
-                    Err(TransportError::Server { code, message })
+        let code = match next_room_reply(&mut sig).await? {
+            RoomReply::Created(code) => code,
+            // Open servers always want a solved puzzle (docs/server.md). The connection
+            // stays open after `altcha_required`, so we ask again on the same one.
+            RoomReply::AltchaRequired => {
+                let payload = altcha::fetch_and_solve(&addr, &options.trust).await?;
+                sig.send(ClientMsg::CreateRoom {
+                    altcha: Some(payload),
+                })
+                .await?;
+                match next_room_reply(&mut sig).await? {
+                    RoomReply::Created(code) => code,
+                    RoomReply::AltchaRequired => {
+                        return Err(TransportError::Server {
+                            code: "altcha_required".into(),
+                            message: "the server still wants a puzzle solution".into(),
+                        });
+                    }
                 }
-                Some(other) => Err(TransportError::Protocol(format!(
-                    "expected room_created, got {other:?}"
-                ))),
-                None => Err(TransportError::Closed),
             }
-        })
-        .await
-        .map_err(|_| TransportError::Timeout("waiting for room_created"))??;
+        };
 
-        let (session, session_events) = Session::new(options.session).await?;
+        let mut session_config = options.session;
+        if session_config.ice_servers.is_empty() {
+            // Best effort: no list (404, or a failed request) means no STUN/TURN.
+            session_config.ice_servers =
+                ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
+        }
+        let ice_servers = session_config.ice_servers.clone();
+        let (session, session_events) = Session::new(session_config).await?;
         let session = Arc::new(session);
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
@@ -111,11 +162,18 @@ impl ReceiverCore {
         ));
         Ok(Self {
             code,
+            ice_servers,
             session,
             events: events_rx,
             stop: Some(stop_tx),
             task,
         })
+    }
+
+    /// The STUN/TURN servers this receiver uses (from the server's `/ice-servers`, or what the
+    /// caller configured). Empty = none.
+    pub fn ice_servers(&self) -> &[IceServerConfig] {
+        &self.ice_servers
     }
 
     /// The code the sender must enter.
