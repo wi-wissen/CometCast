@@ -111,6 +111,10 @@ codegen-units = 1
 opt-level = 3
 [profile.dev.package.openh264]
 opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
 [profile.dev.package.cc-capture]
 opt-level = 3
 [profile.dev.package.cc-media]

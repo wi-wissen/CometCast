@@ -34,39 +34,17 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
-/// A throw-away 2048-bit RSA private key made with `openssl genpkey` just for these tests. It
-/// stands in for the "device key" of the FAKE receiver (Cast device auth signs with RSA, and
-/// the `ring` backend of rcgen cannot generate RSA keys). It protects nothing, belongs to no
-/// product, and is not used outside this file. It is kept inline because `*.pem` and `*.key`
-/// files are git-ignored on purpose.
-const DEVICE_KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----\n\
-MIIEugIBADANBgkqhkiG9w0BAQEFAASCBKQwggSgAgEAAoIBAQCZTtETRXoqU9RF\n\
-p+T7AjmMFOkugWKhi33HQqWZkZAaHkjgIBmXu5XVEGZAOT6SYHb6RBQZe7lgM9Dh\n\
-AaBAxQCECSFyHGL9wfmNWvG92WR3/MLlZvs6fe+nqrS+kWeylQ4/lNTyMV19XKpN\n\
-xSXwQSXOQupBGd4tKMVC7zvR/mhKctpVWCWvARQ1wViaLFSXir2DsT74etkTZq0b\n\
-+npZJJB9pCT9LhJVkWHP8HmzN2Fz00U30rfpIJFycZVnf4ezrZO+KV2ToElnp2NB\n\
-voqOF2nreowlQdXojMqXP7OtjIeG4OEl0VkgLQHpT9kFzstS4lW6yyAlqMvBBvzj\n\
-kzHQL1ELAgMBAAECgf97RwpGUE7sTMWuGOZ2FgrCvqAxMv5BezLyUVxGRX2/guPy\n\
-em/Q3Jkxu5B9ghzzTp6m6YVAHT1hZ7b9OCzuMXwUHh7rfwytSk3Pgb+96hHgITwF\n\
-PBNbY1cuxV9tlTXyP+nsEi+8kWNS/Z6G6wFyVTnsxwa8d1nDiODNqQADuCIk3vey\n\
-52fAZEf10nFhqfNpH3F3ttxNY2qIEyBnL64jv8vHKs1Ncn/L/zxakCFzu0UG8uew\n\
-f0ElI3f4lOqLK6kgoFVyU9mZSmKqolYAuBsV+P4IlZtTDn0Z14gK8mBdGgnSXG6c\n\
-3ywVPCvMJr+dnL4yNbL/if3396EnholGvTgAfCkCgYEAyzoEBli4D+6vv3/icruM\n\
-/vdOc7n1hYymDIPeG5y/NyyAmwV2C5egv/yoP7hjLQxcupFGiLGuw+wiS1lEgQ2T\n\
-NFizv82IoKkWtQa2hZiuVTPEc+Y4zTbZib5SgNMUHN9dvSbBG7L3V/k3ltyVt2IH\n\
-HOa3pSQZqwyFJaeMaP39pf8CgYEAwR5UtBtg9aCn7OFOcX01taRZ277VQ/4PCvKu\n\
-TGM2Wbotp5Wy8Xmi9OL9AlrvBXK9J50qMF9IiNBUOekrq9onenye0ZAWnOUXhGZ8\n\
-9WPQYOx31H7gZ+YNbQyP8RcqoxDlx0sTtILo9N4bIfCisQxGH1fG7G3NGI8vQsi9\n\
-3QpYjPUCgYB9cH3zfOd/zhBk34bi0qkg531hKTNHD52es/ZwjLvqTmnDRgeq+Bic\n\
-6FLhoep1b9/8uJcU4LfC7wnsAFmsXrix4t5wUWk34abGbjJTG/7fUGi+MSh2Ypi7\n\
-0OIT6jXL7INrsXQYqMrLXmTVlapD2xoQ2MgaAsJlNgEpUNX2KHBb+QKBgCipYT5W\n\
-8XBmdlUbD3A34+IuC7mIEdFyIeq1NFvjG+OCnvBFRdswOE6FqK4hRWiJQyifH+31\n\
-cglUjBdxb/+MPHm+2ZXYV9qLJgt7pN3qOUrfH0//svJNbxBB7+Dcdt7ExQzUUv7T\n\
-/YbpaR8ZUrgilHUu/zRy3hdItrPCHq/26LQtAoGAH4e4WqhWwgcMPii5laweFBfv\n\
-e9Y6xnw5+mkDHXVYMs6VpfHs6p6KakMyMHhwClweEHmH14GiISPBjK3AUfivDMpI\n\
-0R1XtrLWFqQIB/2QpMO0P1BZOH1T91digx6zDmr9CbI9qBOgg6vai2LYZwtiaL66\n\
-n9X0+jssoJo+/jNco1I=\n\
------END PRIVATE KEY-----\n";
+/// PKCS#8 DER of the fake receiver's "device key": a 2048-bit RSA key generated once per test
+/// run (Cast device auth signs with RSA; ring cannot generate RSA keys). Nothing is stored.
+fn device_key_der() -> &'static [u8] {
+    use rsa::pkcs8::EncodePrivateKey;
+    static KEY: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| {
+        let k = rsa::RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap();
+        k.to_pkcs8_der().unwrap().as_bytes().to_vec()
+    })
+}
+
 const RECEIVER_SSRC: u32 = 77_777;
 
 /// AES key and IV mask taken from the OFFER.
@@ -125,7 +103,7 @@ fn build_pki() -> Pki {
     let issuer = Issuer::new(root_params, root_key);
 
     // The "device certificate" with the throw-away RSA test key.
-    let device_key = KeyPair::from_pem(DEVICE_KEY_PEM).unwrap();
+    let device_key = KeyPair::try_from(device_key_der()).unwrap();
     let mut dev_params = CertificateParams::new(Vec::<String>::new()).unwrap();
     dev_params.distinguished_name = dn("Fake Test Device");
     dev_params.not_before = now - TimeDuration::days(1);
@@ -284,8 +262,7 @@ async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
                 } else {
                     &pki.tls_der
                 });
-                let key =
-                    ring::signature::RsaKeyPair::from_pkcs8(&pem_to_der(DEVICE_KEY_PEM)).unwrap();
+                let key = ring::signature::RsaKeyPair::from_pkcs8(device_key_der()).unwrap();
                 let mut sig = vec![0u8; key.public().modulus_len()];
                 key.sign(
                     &ring::signature::RSA_PKCS1_SHA256,
@@ -390,14 +367,6 @@ async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
             }
         }
     }
-}
-
-fn pem_to_der(pem: &str) -> Vec<u8> {
-    use rustls::pki_types::pem::PemObject;
-    PrivatePkcs8KeyDer::from_pem_slice(pem.as_bytes())
-        .unwrap()
-        .secret_pkcs8_der()
-        .to_vec()
 }
 
 fn video() -> VideoOffer {
