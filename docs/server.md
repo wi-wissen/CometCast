@@ -386,7 +386,7 @@ each file before the first use.
 ### Where these files may live later
 
 The operational files in `deploy/` (Docker, compose, coturn, example configuration) may later move
-to a separate repository, planned name **`cometcast-relay`**. The server code
+to a separate repository, planned name **`CometCast-Relay`**. The server code
 (`crates/cc-server`, `bins/cometcast-server`) stays in this repository. Nothing about that
 repository exists yet.
 
