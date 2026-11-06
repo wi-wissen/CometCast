@@ -190,11 +190,22 @@ pub enum RtcpEvent {
     ReceiverReport,
 }
 
+/// At most this many NACK entries are taken from one cast feedback packet (the wire format
+/// allows 255). A receiver that really lost more asks again in its next report.
+pub const MAX_NACKS_PER_FEEDBACK: usize = 64;
+/// At most this many events are taken from one compound RTCP datagram.
+pub const MAX_RTCP_EVENTS: usize = 16;
+
 /// Parse a compound RTCP packet from the receiver for the stream `(receiver_ssrc, sender_ssrc)`.
-/// Returns `None` if the data is malformed. Unknown packet types are skipped.
+/// Returns `None` if the data is malformed. Unknown packet types are skipped. The amount of
+/// work a datagram can cause is bounded: [`MAX_RTCP_EVENTS`] events, and
+/// [`MAX_NACKS_PER_FEEDBACK`] NACK entries per feedback packet (the rest is dropped).
 pub fn parse_rtcp(mut data: &[u8], receiver_ssrc: u32, sender_ssrc: u32) -> Option<Vec<RtcpEvent>> {
     let mut events = Vec::new();
     while !data.is_empty() {
+        if events.len() >= MAX_RTCP_EVENTS {
+            break;
+        }
         if data.len() < 4 || data[0] >> 5 != 0b100 {
             return None;
         }
@@ -233,7 +244,7 @@ pub fn parse_rtcp(mut data: &[u8], receiver_ssrc: u32, sender_ssrc: u32) -> Opti
                 if payload.len() < 16 + 4 * loss_fields {
                     return None;
                 }
-                let nacks = (0..loss_fields)
+                let nacks = (0..loss_fields.min(MAX_NACKS_PER_FEEDBACK))
                     .map(|i| {
                         let o = 16 + 4 * i;
                         Nack {
@@ -507,6 +518,28 @@ mod tests {
         // Another stream's PLI is ignored.
         let ev = parse_rtcp(&picture_loss_packet(1, 2), 9, 7).unwrap();
         assert!(ev.is_empty());
+    }
+
+    #[test]
+    fn nack_entries_and_events_per_datagram_are_capped() {
+        let many = vec![
+            Nack {
+                frame_id8: 1,
+                packet_id: ALL_PACKETS_LOST,
+                bit_vector: 0,
+            };
+            255
+        ];
+        let ev = parse_rtcp(&feedback_packet(9, 7, 0, &many), 9, 7).unwrap();
+        let RtcpEvent::Feedback { nacks, .. } = &ev[0] else {
+            panic!()
+        };
+        assert_eq!(nacks.len(), MAX_NACKS_PER_FEEDBACK);
+        let mut data = Vec::new();
+        for _ in 0..100 {
+            data.extend(picture_loss_packet(9, 7));
+        }
+        assert_eq!(parse_rtcp(&data, 9, 7).unwrap().len(), MAX_RTCP_EVENTS);
     }
 
     #[test]

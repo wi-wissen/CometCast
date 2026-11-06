@@ -725,6 +725,57 @@ async fn picture_loss_and_nacks_from_the_receiver_are_served() {
 }
 
 #[tokio::test]
+async fn nack_flood_is_capped_deduplicated_and_foreign_senders_are_ignored() {
+    let mut fake = start_fake(Behavior::default()).await;
+    let v = video();
+    let neg = negotiate(&cfg(&fake, DeviceAuth::InsecureSkip), &v)
+        .await
+        .unwrap();
+    let mut streamer = VideoStreamer::new(neg.remote_udp, neg.stream.clone())
+        .await
+        .unwrap();
+    // One frame of 4000 bytes = 3 packets in the cache.
+    streamer
+        .send_frame(&vec![0xabu8; 4000], true, Duration::ZERO)
+        .await
+        .unwrap();
+    within(fake.frames.recv()).await.unwrap();
+
+    // One datagram with 255 "whole frame lost" entries (about 50000x amplification before).
+    let flood = Nack {
+        frame_id8: 0,
+        packet_id: ALL_PACKETS_LOST,
+        bit_vector: 0,
+    };
+    fake.udp_cmd
+        .send(rtp::feedback_packet(
+            RECEIVER_SSRC,
+            v.ssrc,
+            0,
+            &vec![flood; 255],
+        ))
+        .unwrap();
+    within(streamer.recv_rtcp()).await.unwrap();
+    let st = streamer.stats();
+    assert_eq!(st.resent_packets, 3, "each packet at most once: {st:?}");
+    assert!(st.resend_suppressed > 0);
+
+    // A datagram with the right SSRCs but from another source port is ignored.
+    let rogue = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let target = SocketAddr::new(
+        "127.0.0.1".parse().unwrap(),
+        streamer.local_addr().unwrap().port(),
+    );
+    rogue
+        .send_to(&rtp::picture_loss_packet(RECEIVER_SSRC, v.ssrc), target)
+        .await
+        .unwrap();
+    let ev = within(streamer.recv_rtcp()).await.unwrap();
+    assert!(ev.is_empty());
+    assert_eq!(streamer.stats().picture_loss, 0);
+}
+
+#[tokio::test]
 async fn run_stream_sends_queued_frames_and_ends_when_the_source_ends() {
     let mut fake = start_fake(Behavior::default()).await;
     let mut neg = negotiate(&cfg(&fake, DeviceAuth::InsecureSkip), &video())
