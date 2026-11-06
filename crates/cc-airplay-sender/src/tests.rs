@@ -283,6 +283,61 @@ fn hostile_receivers_give_errors_not_panics() {
 }
 
 #[test]
+fn receiver_proof_is_required_in_every_pairing() {
+    use crate::tlv::{self, Tlv};
+    let tlv_ok = |t: Tlv| http_ok(&t.encode());
+    let m2 = || {
+        tlv_ok(
+            Tlv::new()
+                .with(tlv::SEQ_NO, [2])
+                .with(tlv::SALT, [7u8; 16])
+                .with(tlv::PUBLIC_KEY, [2u8]),
+        )
+    };
+    // Transient pairing: M4 without a proof.
+    let m4 = tlv_ok(Tlv::new().with(tlv::SEQ_NO, [4]));
+    let dev = evil_server(vec![http_ok(b""), m2(), m4.clone()]);
+    let mut s = Session::connect_with(&dev, crate::client::Proto::Http).unwrap();
+    let e = hap::pair_transient(s.conn_mut()).unwrap_err();
+    assert!(e.to_string().contains("proof"), "{e}");
+    assert!(!s.conn_mut().framed_ref().is_encrypted());
+    // PIN pairing (HomeKit): M4 without a proof.
+    let dev = evil_server(vec![http_ok(b""), m2(), m4]);
+    let mut s = Session::connect_with(&dev, crate::client::Proto::Http).unwrap();
+    let pending = hap::setup_pin_start(s.conn_mut()).unwrap();
+    let e = hap::setup_pin_finish(s.conn_mut(), pending, "1234").unwrap_err();
+    assert!(e.to_string().contains("proof"), "{e}");
+    // Legacy PIN pairing: answer 2 without a proof.
+    let mut d1 = plist::Dictionary::new();
+    d1.insert("pk".into(), plist::Value::Data(vec![2]));
+    d1.insert("salt".into(), plist::Value::Data(vec![7; 16]));
+    let a1 = crate::plistx::encode(d1).unwrap();
+    let dev = evil_server(vec![http_ok(&a1), http_ok(b"")]);
+    let mut s = Session::connect_with(&dev, crate::client::Proto::Http).unwrap();
+    let e = legacy::pair_finish(s.conn_mut(), "1234").unwrap_err();
+    assert!(e.to_string().contains("proof"), "{e}");
+}
+
+#[test]
+fn receiver_text_in_playback_info_errors_is_cleaned() {
+    let mut err = plist::Dictionary::new();
+    err.insert("code".into(), plist::Value::Integer(7.into()));
+    err.insert(
+        "domain".into(),
+        plist::Value::String("Evil\u{1b}[2J\u{202E}\r\nDomain".into()),
+    );
+    let mut d = plist::Dictionary::new();
+    d.insert("error".into(), plist::Value::Dictionary(err));
+    let body = crate::plistx::encode(d).unwrap();
+    let dev = evil_server(vec![http_ok(&body)]);
+    let mut s = Session::connect_with(&dev, crate::client::Proto::Http).unwrap();
+    let info = s.playback_info().unwrap();
+    let text = info.error.unwrap();
+    assert!(text.contains("Evil"), "{text}");
+    assert!(!text.chars().any(|c| c.is_control() || c == '\u{202E}'));
+}
+
+#[test]
 fn silent_peer_times_out() {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = l.local_addr().unwrap();

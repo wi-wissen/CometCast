@@ -94,6 +94,9 @@ impl<S> Framed<S> {
 
     /// Switch to the encrypted framing. Call only between messages (nothing buffered).
     pub fn enable(&mut self, cipher: Cipher) {
+        self.raw.clear();
+        self.plain.clear();
+        self.plain_pos = 0;
         self.cipher = Some(cipher);
     }
 

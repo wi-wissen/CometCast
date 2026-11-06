@@ -6,7 +6,7 @@
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
-use crate::error::{Result, SenderError};
+use crate::error::{Result, SenderError, clean};
 use crate::framed::Framed;
 
 /// Largest request or response head (start line and headers).
@@ -148,6 +148,20 @@ impl<S: Read + Write> Conn<S> {
     /// Whether this connection speaks RTSP/1.0.
     pub fn is_rtsp(&self) -> bool {
         self.rtsp
+    }
+
+    /// Switch the connection to the encrypted framing. Fails when plaintext bytes that
+    /// followed the last message are still buffered: they would otherwise be taken for
+    /// authenticated data on the encrypted channel (an on-path attacker could forge
+    /// answers by appending bytes to the last plaintext response).
+    pub fn enable_encryption(&mut self, cipher: crate::framed::Cipher) -> Result<()> {
+        if !self.buf.is_empty() {
+            return Err(SenderError::Protocol(
+                "unexpected plaintext data after the last pairing answer".into(),
+            ));
+        }
+        self.io.enable(cipher);
+        Ok(())
     }
 
     /// Access the framing layer (to switch encryption on).
@@ -311,7 +325,7 @@ impl<S: Read + Write> Conn<S> {
             if !(version == "HTTP/1.1" || version == "HTTP/1.0" || version == "RTSP/1.0") {
                 return Err(SenderError::Protocol(format!(
                     "unexpected start line {:?}",
-                    start.chars().take(40).collect::<String>()
+                    clean(start, 40)
                 )));
             }
             let status: u16 = parts
@@ -470,6 +484,22 @@ mod tests {
 
     fn conn(data: &[u8]) -> Conn<Fixed> {
         Conn::new(Fixed(Cursor::new(data.to_vec())))
+    }
+
+    #[test]
+    fn encryption_is_refused_while_plaintext_is_buffered() {
+        use crate::framed::Cipher;
+        let cipher = || Cipher::new(&[1; 32], &[2; 32]);
+        // Bytes that follow the last plaintext answer must not become "encrypted" input.
+        let mut c = conn(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nFORGED");
+        c.read_response(false).unwrap();
+        assert!(c.enable_encryption(cipher()).is_err());
+        assert!(!c.framed_ref().is_encrypted());
+        // Nothing left over: fine.
+        let mut c = conn(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        c.read_response(false).unwrap();
+        c.enable_encryption(cipher()).unwrap();
+        assert!(c.framed_ref().is_encrypted());
     }
 
     #[test]

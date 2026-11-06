@@ -35,6 +35,7 @@ fn free_port() -> u16 {
 #[test]
 fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
     let Some(x) = TestXServer::start(640, 480) else {
+        eprintln!("NOTE: SKIPPING UXPLAY INTEROP TEST, `Xvfb` is not installed");
         return;
     };
     // UxPlay's -p N listens on TCP N (and uses N+1, N+2 and UDP ports N-1000+... for others).
@@ -62,14 +63,22 @@ fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
         return;
     };
     let _guard = Uxplay(child);
+    // Depending on the UxPlay build, `-p N` listens on N or on N+1 (observed: N+1 with 1.68.2
+    // from Ubuntu). Use whichever answers.
     let end = Instant::now() + Duration::from_secs(10);
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
+    let port = loop {
+        if let Some(p) = [port, port + 1]
+            .into_iter()
+            .find(|p| TcpStream::connect(("127.0.0.1", *p)).is_ok())
+        {
+            break p;
+        }
         if Instant::now() > end {
             eprintln!("NOTE: SKIPPING UXPLAY INTEROP TEST, uxplay did not open port {port}");
             return;
         }
         std::thread::sleep(Duration::from_millis(100));
-    }
+    };
 
     let dev = Device::from_address(&format!("127.0.0.1:{port}")).unwrap();
 
@@ -79,10 +88,12 @@ fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
     let wrong = legacy::pair_finish(s.conn_mut(), "0000");
     assert!(matches!(wrong, Err(SenderError::Auth(_))), "{wrong:?}");
 
+    drop(s);
     let mut s = Session::connect(&dev).unwrap();
     legacy::pair_pin_start(s.conn_mut()).unwrap();
     let creds = legacy::pair_finish(s.conn_mut(), "4711").unwrap();
 
+    drop(s);
     let mut s = Session::connect(&dev).unwrap();
     assert_eq!(
         s.authenticate(Some(&creds)).unwrap(),

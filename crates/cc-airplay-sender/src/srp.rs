@@ -28,6 +28,7 @@ use std::marker::PhantomData;
 
 use num_bigint::BigUint;
 use sha2::Digest;
+use zeroize::Zeroizing;
 
 use crate::error::{Result, SenderError};
 
@@ -161,22 +162,31 @@ impl<D: Digest> Common<D> {
 }
 
 /// What the client sends in step 2 and keeps.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ClientResult {
     /// Client proof `M1` to send to the receiver.
     pub proof: Vec<u8>,
-    /// Session key `K` (secret).
-    pub session_key: Vec<u8>,
+    /// Session key `K` (secret, wiped when dropped).
+    pub session_key: Zeroizing<Vec<u8>>,
+}
+
+impl std::fmt::Debug for ClientResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientResult")
+            .field("proof", &self.proof)
+            .field("session_key", &"<hidden>")
+            .finish()
+    }
 }
 
 /// Client side of SRP-6a.
 pub struct Client<D: Digest> {
     c: Common<D>,
     user: Vec<u8>,
-    password: Vec<u8>,
+    password: Zeroizing<Vec<u8>>,
     a: BigUint,
     a_pub: BigUint,
-    state: Option<(Vec<u8>, BigUint, Vec<u8>)>,
+    state: Option<(Vec<u8>, BigUint, Zeroizing<Vec<u8>>)>,
 }
 
 impl<D: Digest> Client<D> {
@@ -200,7 +210,7 @@ impl<D: Digest> Client<D> {
                 _d: PhantomData,
             },
             user: user.to_vec(),
-            password: password.to_vec(),
+            password: Zeroizing::new(password.to_vec()),
             a,
             a_pub,
             state: None,
@@ -226,7 +236,9 @@ impl<D: Digest> Client<D> {
         }
         let n = &self.c.group.n;
         let b = BigUint::from_bytes_be(b_pub);
-        if (&b % n) == BigUint::default() {
+        // 0 < B < N, and not 1 or N-1 (powers of those stay in {1, N-1}).
+        let one = BigUint::from(1u8);
+        if b >= *n || b <= one || b == n - &one {
             return Err(SenderError::Auth("SRP public value B is invalid".into()));
         }
         let u = self.c.u(&self.a_pub, &b);
@@ -243,6 +255,7 @@ impl<D: Digest> Client<D> {
         let s = base.modpow(&exp, n);
         let key = self.c.session_key(&s);
         let proof = self.c.m1(&self.user, salt, &self.a_pub, &b, &key);
+        let key = Zeroizing::new(key);
         self.state = Some((proof.clone(), b, key.clone()));
         Ok(ClientResult {
             proof,
@@ -369,9 +382,20 @@ mod tests {
         let mut client = Client::<D>::new(group, kind, b"user", b"4711", &[9u8; 32]).unwrap();
         let res = client.process(&salt, &server.public_key()).unwrap();
         let (m2, key) = server.verify(&client.public_key(), &res.proof).unwrap();
-        assert_eq!(key, res.session_key);
+        assert_eq!(key, *res.session_key);
         assert!(client.verify_server_proof(&m2));
         assert!(!client.verify_server_proof(&[0; 20]));
+    }
+
+    #[test]
+    fn debug_hides_the_session_key() {
+        let r = ClientResult {
+            proof: vec![1],
+            session_key: Zeroizing::new(vec![0xAB, 0xCD]),
+        };
+        let text = format!("{r:?}");
+        assert!(!text.contains("171") && !text.contains("205") && !text.contains("ab"));
+        assert!(text.contains("hidden"));
     }
 
     #[test]
@@ -412,8 +436,15 @@ mod tests {
         assert!(c.process(&[1; 16], &vec![1; 1000]).is_err());
         assert!(c.process(&[], &[1; 256]).is_err());
         assert!(c.process(&vec![1; 1000], &[1; 256]).is_err());
-        // B = N is zero mod N
+        // B = N is zero mod N, and B above N is out of range too
         assert!(c.process(&[1; 16], &group.n.to_bytes_be()).is_err());
+        let above = (&group.n + 5u8).to_bytes_be();
+        assert!(c.process(&[1; 16], &above).is_err());
+        // B = 1 and B = N - 1
+        assert!(c.process(&[1; 16], &[1]).is_err());
+        assert!(c.process(&[1; 16], &(&group.n - 1u8).to_bytes_be()).is_err());
+        // B = N - 2 is an ordinary value
+        assert!(c.process(&[1; 16], &(&group.n - 2u8).to_bytes_be()).is_ok());
         assert!(Client::<Sha1>::new(group, KeyKind::Plain, b"u", b"1", &[1; 4]).is_err());
     }
 }
