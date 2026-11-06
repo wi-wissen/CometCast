@@ -110,6 +110,36 @@ pub struct LimitsConfig {
     pub ban_durations: Vec<Duration>,
     /// A ban history is forgotten after this long without a new ban.
     pub ban_memory: Duration,
+    /// Most WebSocket connections open at the same time from one client address.
+    pub max_connections_per_ip: usize,
+    /// Most rooms one client address may own at the same time.
+    pub max_rooms_per_ip: usize,
+    /// The server pings every connection this often.
+    pub ping_interval: Duration,
+    /// A connection that sent nothing (no pong either) for `ping_interval + pong_timeout`
+    /// is closed.
+    pub pong_timeout: Duration,
+    /// A room with a sender in it is closed when nothing was relayed for this long.
+    /// Media goes peer to peer, so a quiet signalling channel is normal; if this is too
+    /// small, clients see `peer_left` although the video is still running.
+    pub paired_idle: Duration,
+    /// Longest life of any room, however busy.
+    pub max_room_lifetime: Duration,
+    /// Messages per second one connection may send (refill rate).
+    pub msg_rate_per_sec: u32,
+    /// Messages one connection may send in a burst.
+    pub msg_burst: u32,
+    /// Bytes per second one connection may send (refill rate).
+    pub bytes_per_sec: u32,
+    /// Bytes one connection may send in a burst (at least `max_message_bytes`).
+    pub bytes_burst: u32,
+    /// Most bytes relayed through one room over its whole life.
+    pub max_room_relay_bytes: u64,
+    /// A connection that sends this many bad messages (garbage, wrong role) is closed.
+    pub max_bad_messages: u32,
+    /// All failed joins of the whole server in one minute above this number
+    /// slow down every join attempt (emergency brake against distributed guessing).
+    pub global_failed_joins_per_min: u32,
 }
 
 impl LimitsConfig {
@@ -130,6 +160,19 @@ impl LimitsConfig {
                 failed_join_window: mins(10),
                 ban_durations: bans,
                 ban_memory: mins(60),
+                max_connections_per_ip: 20,
+                max_rooms_per_ip: 5,
+                ping_interval: Duration::from_secs(20),
+                pong_timeout: Duration::from_secs(20),
+                paired_idle: mins(60),
+                max_room_lifetime: mins(12 * 60),
+                msg_rate_per_sec: 20,
+                msg_burst: 100,
+                bytes_per_sec: 64 * 1024,
+                bytes_burst: 256 * 1024,
+                max_room_relay_bytes: 8 * 1024 * 1024,
+                max_bad_messages: 20,
+                global_failed_joins_per_min: 300,
             },
             Mode::Internal => Self {
                 connections_per_min: 300,
@@ -143,6 +186,19 @@ impl LimitsConfig {
                 failed_join_window: mins(10),
                 ban_durations: bans,
                 ban_memory: mins(60),
+                max_connections_per_ip: 500,
+                max_rooms_per_ip: 100,
+                ping_interval: Duration::from_secs(20),
+                pong_timeout: Duration::from_secs(20),
+                paired_idle: mins(4 * 60),
+                max_room_lifetime: mins(24 * 60),
+                msg_rate_per_sec: 50,
+                msg_burst: 200,
+                bytes_per_sec: 256 * 1024,
+                bytes_burst: 1024 * 1024,
+                max_room_relay_bytes: 64 * 1024 * 1024,
+                max_bad_messages: 50,
+                global_failed_joins_per_min: 1000,
             },
         }
     }
@@ -240,6 +296,10 @@ pub struct ServerConfig {
     pub turn: Option<TurnConfig>,
 }
 
+/// Shortest accepted secret (ALTCHA, TURN). UNCERTAIN: 16 is a placeholder; `openssl rand -hex 32`
+/// makes 64 characters.
+pub const MIN_SECRET_LEN: usize = 16;
+
 /// UNCERTAIN: 30 minutes is a placeholder. A good value needs real usage data
 /// (how long people wait with a code on screen), measured later.
 pub const DEFAULT_IDLE_ROOM_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -290,6 +350,15 @@ impl ServerConfig {
             ("limits.failed_join_weight", l.failed_join_weight),
             ("limits.http_per_min", l.http_per_min),
             ("limits.ban_after_failed_joins", l.ban_after_failed_joins),
+            ("limits.msg_rate_per_sec", l.msg_rate_per_sec),
+            ("limits.msg_burst", l.msg_burst),
+            ("limits.bytes_per_sec", l.bytes_per_sec),
+            ("limits.bytes_burst", l.bytes_burst),
+            ("limits.max_bad_messages", l.max_bad_messages),
+            (
+                "limits.global_failed_joins_per_min",
+                l.global_failed_joins_per_min,
+            ),
             ("altcha.cost", self.altcha.cost),
             ("altcha.base_counter", self.altcha.base_counter),
             (
@@ -307,6 +376,26 @@ impl ServerConfig {
                 "limits.max_rooms and limits.max_connections must be at least 1",
             ));
         }
+        if l.max_connections_per_ip == 0 || l.max_rooms_per_ip == 0 || l.max_room_relay_bytes == 0 {
+            return Err(ConfigError::new(
+                "limits.max_connections_per_ip, max_rooms_per_ip and max_room_relay_bytes must be at least 1",
+            ));
+        }
+        for (name, d) in [
+            ("limits.ping_interval_secs", l.ping_interval),
+            ("limits.pong_timeout_secs", l.pong_timeout),
+            ("limits.paired_idle_secs", l.paired_idle),
+            ("limits.max_room_lifetime_secs", l.max_room_lifetime),
+        ] {
+            if d.is_zero() {
+                return Err(ConfigError::new(format!("{name} must be at least 1")));
+            }
+        }
+        if (l.bytes_burst as usize) < self.max_message_bytes {
+            return Err(ConfigError::new(
+                "limits.bytes_burst must be at least max_message_bytes (or the largest message could never be sent)",
+            ));
+        }
         if l.ban_durations.is_empty() {
             return Err(ConfigError::new("limits.ban_secs must not be empty"));
         }
@@ -321,12 +410,21 @@ impl ServerConfig {
                 "[turn] is only available in internal mode (open servers only mediate)",
             ));
         }
+        if let Some(secret) = &self.altcha.secret
+            && secret.0.len() < MIN_SECRET_LEN
+        {
+            return Err(ConfigError::new(format!(
+                "altcha.secret must be at least {MIN_SECRET_LEN} characters (make one with: openssl rand -hex 32)"
+            )));
+        }
         if let Some(turn) = &self.turn {
             if turn.urls.is_empty() && turn.stun_urls.is_empty() {
                 return Err(ConfigError::new("turn needs at least one url or stun_url"));
             }
-            if turn.secret.0.is_empty() {
-                return Err(ConfigError::new("turn.secret must not be empty"));
+            if turn.secret.0.len() < MIN_SECRET_LEN {
+                return Err(ConfigError::new(format!(
+                    "turn.secret must be at least {MIN_SECRET_LEN} characters (make one with: openssl rand -hex 32)"
+                )));
             }
             if turn.ttl.is_zero() {
                 return Err(ConfigError::new("turn.ttl_secs must be at least 1"));

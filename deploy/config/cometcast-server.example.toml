@@ -25,8 +25,10 @@ key_file = "/etc/cometcast/certs/privkey.pem"
 # "optional": only checked when the client sends a solution.
 # Use "always" to require it for create_room.
 mode = "optional"
-# Fixed secret so puzzles survive a restart and work across several server instances:
-# secret_file = "/run/secrets/altcha_secret"
+# Fixed secret (docker-compose.yml provides /run/secrets/altcha_secret) so puzzles survive
+# a restart and work across several server instances. At least 16 characters.
+# Always use secret_file for secrets, not --set / environment variables.
+secret_file = "/run/secrets/altcha_secret"
 
 # TURN credentials at GET /ice-servers. Secret = same value as in coturn.
 [turn]

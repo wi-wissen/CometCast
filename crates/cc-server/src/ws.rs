@@ -18,10 +18,10 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 
 use crate::AppState;
-use crate::limits::{ConnSlot, Deny};
+use crate::limits::{ConnBudget, ConnSlot, Deny, limit_key};
 use crate::net::ClientIp;
 use crate::puzzle::PuzzleError;
-use crate::rooms::{Gone, JoinError, Outgoing, Tx};
+use crate::rooms::{CreateError, Gone, JoinError, Outgoing, Tx};
 
 /// Source of unique connection numbers.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -51,6 +51,10 @@ struct Conn {
     tx: Tx,
     role: Option<Role>,
     room: Option<RoomCode>,
+    /// Messages and bytes this connection may still send.
+    budget: ConnBudget,
+    /// Bad messages (garbage, wrong role) seen on this connection.
+    bad: u32,
 }
 
 enum Step {
@@ -96,6 +100,11 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
                         break;
                     }
                 }
+                Outgoing::Ping => {
+                    if sink.send(Message::Ping(Vec::new().into())).await.is_err() {
+                        break;
+                    }
+                }
                 Outgoing::Close(reason) => {
                     let frame = CloseFrame {
                         code: 1000,
@@ -114,6 +123,8 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
         tx,
         role: None,
         room: None,
+        budget: ConnBudget::new(state.guard.cfg(), StdInstant::now()),
+        bad: 0,
     };
     let mut writer_done = false;
     // Killed = our queue overflowed (client too slow); then we just drop the connection.
@@ -122,6 +133,17 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     let connected = Instant::now();
     let hello_deadline = connected + state.config.hello_timeout;
     let no_room_deadline = connected + state.config.no_room_timeout;
+
+    // Liveness: a timer ticks about once a second. It sends pings, closes connections
+    // that went silent, and closes rooms that are too old or have been quiet too long.
+    let limits = state.guard.cfg();
+    // The tick must be much shorter than the ping interval and the pong timeout.
+    let tick = (limits.ping_interval.min(limits.pong_timeout) / 4)
+        .clamp(Duration::from_millis(50), Duration::from_secs(1));
+    let mut ticker = tokio::time::interval(tick);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut last_seen = connected;
+    let mut last_ping = connected;
 
     loop {
         let waiting_for_hello = conn.role.is_none();
@@ -144,6 +166,13 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             r = next => r,
             _ = &mut writer => { writer_done = true; break; }
             _ = kill.notified() => { killed = true; break; }
+            _ = ticker.tick() => {
+                if let Some(reason) = tick_check(&conn, &state, last_seen, &mut last_ping) {
+                    conn.tx.send(Outgoing::Close(reason));
+                    break;
+                }
+                continue;
+            }
         };
         let msg = match received {
             Err(()) => {
@@ -158,14 +187,37 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             Ok(None) | Ok(Some(Err(_))) => break,
             Ok(Some(Ok(m))) => m,
         };
+        // Any frame (data, ping, pong) shows that the client is alive.
+        last_seen = Instant::now();
+        // One connection may not send faster than its budget, whatever it sends.
+        let data_len = match &msg {
+            Message::Text(t) => Some(t.len()),
+            Message::Binary(b) => Some(b.len()),
+            _ => None,
+        };
+        if let Some(len) = data_len
+            && !conn.budget.allow(len, StdInstant::now())
+        {
+            let banned = state.guard.record_failure(conn.ip, StdInstant::now());
+            if banned.is_some() {
+                conn.fail(error_codes::BANNED, "sending too fast; banned for a while");
+            } else {
+                conn.fail(error_codes::RATE_LIMITED, "sending too fast");
+            }
+            break;
+        }
         let step = match msg {
             Message::Text(text) => handle_text(&mut conn, &state, text.as_str()),
             Message::Binary(_) => {
                 if conn.role.is_none() {
                     conn.fail("bad_hello", "first message must be a hello text message")
                 } else {
-                    conn.error("bad_message", "binary messages are not supported");
-                    Step::Continue
+                    strike(
+                        &mut conn,
+                        &state,
+                        "bad_message",
+                        "binary messages are not supported",
+                    )
                 }
             }
             Message::Close(_) => Step::Close,
@@ -198,7 +250,61 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     }
 }
 
+/// The checks of the timer. Returns a close reason when the connection must end.
+fn tick_check(
+    conn: &Conn,
+    state: &AppState,
+    last_seen: Instant,
+    last_ping: &mut Instant,
+) -> Option<&'static str> {
+    let l = state.guard.cfg();
+    let now = Instant::now();
+    if now.duration_since(last_seen) > l.ping_interval + l.pong_timeout {
+        return Some("ping_timeout");
+    }
+    if now.duration_since(*last_ping) >= l.ping_interval {
+        *last_ping = now;
+        conn.tx.send(Outgoing::Ping);
+    }
+    let code = conn.room.as_ref()?;
+    let rooms = lock(state);
+    let (created, last_activity) = rooms.times(code)?;
+    if now.duration_since(created) > l.max_room_lifetime {
+        return Some("room_lifetime");
+    }
+    // Quiet for too long (nothing relayed, nobody joined). Both sides check this, so
+    // whichever tick comes first, the room ends.
+    if now.duration_since(last_activity) > l.paired_idle {
+        return Some("idle_timeout");
+    }
+    None
+}
+
+/// Answer a bad message and count it: against the address (ban) and against this
+/// connection (closed after `max_bad_messages`).
+fn strike(conn: &mut Conn, state: &AppState, code: &str, message: &str) -> Step {
+    conn.error(code, message);
+    conn.bad += 1;
+    if state
+        .guard
+        .record_failure(conn.ip, StdInstant::now())
+        .is_some()
+    {
+        conn.error(
+            error_codes::BANNED,
+            "too many bad requests; banned for a while",
+        );
+        conn.tx.send(Outgoing::Close("banned"));
+        return Step::Close;
+    }
+    if conn.bad >= state.guard.cfg().max_bad_messages {
+        return conn.fail(error_codes::RATE_LIMITED, "too many bad messages");
+    }
+    Step::Continue
+}
+
 fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
+    let len = text.len();
     let parsed = serde_json::from_str::<ClientMsg>(text);
 
     // Step 1: the first message must be a valid hello.
@@ -237,12 +343,16 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     }
                     return failed_join(conn, state, "room_not_found", "no room with this code");
                 } else {
-                    conn.error("wrong_role", "only a sender can join a room");
+                    return strike(conn, state, "wrong_role", "only a sender can join a room");
                 }
             } else {
-                conn.error("bad_message", "could not understand this message");
+                return strike(
+                    conn,
+                    state,
+                    "bad_message",
+                    "could not understand this message",
+                );
             }
-            return Step::Continue;
         }
     };
 
@@ -255,12 +365,19 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
     }
 
     match msg {
-        ClientMsg::Hello { .. } => conn.error("bad_message", "hello was already sent"),
+        ClientMsg::Hello { .. } => {
+            return strike(conn, state, "bad_message", "hello was already sent");
+        }
         ClientMsg::CreateRoom { altcha } => {
             if role != Role::Receiver {
-                conn.error("wrong_role", "only a receiver can create a room");
+                return strike(
+                    conn,
+                    state,
+                    "wrong_role",
+                    "only a receiver can create a room",
+                );
             } else if conn.room.is_some() {
-                conn.error("bad_message", "already in a room");
+                return strike(conn, state, "bad_message", "already in a room");
             } else if let Err(deny) = state.guard.check_create(conn.ip, StdInstant::now()) {
                 deny_error(conn, deny);
                 return after_deny(deny);
@@ -284,23 +401,34 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         return Step::Continue;
                     }
                 }
-                let max_rooms = state.guard.max_rooms();
-                let created = lock(state).create(conn.id, conn.tx.clone(), max_rooms);
+                let created = lock(state).create(
+                    conn.id,
+                    conn.tx.clone(),
+                    limit_key(conn.ip),
+                    state.guard.max_rooms(),
+                    state.guard.max_rooms_per_ip(),
+                );
                 match created {
-                    Some((code, cancel)) => {
+                    Ok((code, cancel)) => {
                         conn.room = Some(code.clone());
                         tokio::spawn(expire_when_idle(state.clone(), code.clone(), cancel));
                         conn.send(ServerMsg::RoomCreated { code });
                     }
-                    None => conn.error(error_codes::RATE_LIMITED, "the server has too many rooms"),
+                    Err(CreateError::ServerFull) => {
+                        conn.error(error_codes::RATE_LIMITED, "the server has too many rooms")
+                    }
+                    Err(CreateError::OwnerFull) => conn.error(
+                        error_codes::RATE_LIMITED,
+                        "you have too many rooms open (limit per address)",
+                    ),
                 }
             }
         }
         ClientMsg::JoinRoom { code } => {
             if role != Role::Sender {
-                conn.error("wrong_role", "only a sender can join a room");
+                return strike(conn, state, "wrong_role", "only a sender can join a room");
             } else if conn.room.is_some() {
-                conn.error("bad_message", "already in a room");
+                return strike(conn, state, "bad_message", "already in a room");
             } else if let Some(step) = join_precheck(conn, state) {
                 return step;
             } else {
@@ -331,12 +459,12 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
             }
         }
         // Everything below is relayed unchanged to the other side.
-        ClientMsg::Offer { sdp } => relay(conn, state, ServerMsg::Offer { sdp }),
-        ClientMsg::Answer { sdp } => relay(conn, state, ServerMsg::Answer { sdp }),
+        ClientMsg::Offer { sdp } => return relay(conn, state, ServerMsg::Offer { sdp }, len),
+        ClientMsg::Answer { sdp } => return relay(conn, state, ServerMsg::Answer { sdp }, len),
         ClientMsg::IceCandidate { candidate } => {
-            relay(conn, state, ServerMsg::IceCandidate { candidate });
+            return relay(conn, state, ServerMsg::IceCandidate { candidate }, len);
         }
-        ClientMsg::Control { cmd } => relay(conn, state, ServerMsg::Control { cmd }),
+        ClientMsg::Control { cmd } => return relay(conn, state, ServerMsg::Control { cmd }, len),
     }
     Step::Continue
 }
@@ -405,17 +533,28 @@ fn lock(state: &AppState) -> std::sync::MutexGuard<'_, crate::rooms::Rooms> {
     state.rooms.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn relay(conn: &Conn, state: &AppState, msg: ServerMsg) {
-    let peer = conn
-        .room
-        .as_ref()
-        .and_then(|code| lock(state).peer(code, conn.id));
+/// Pass a message to the other side. `len` is its size in bytes; a room may only relay
+/// `max_room_relay_bytes` in total.
+fn relay(conn: &Conn, state: &AppState, msg: ServerMsg, len: usize) -> Step {
+    let max = state.guard.cfg().max_room_relay_bytes;
+    let peer = conn.room.as_ref().and_then(|code| {
+        let mut rooms = lock(state);
+        let peer = rooms.peer(code, conn.id)?;
+        if rooms.add_relayed(code, len as u64, max) {
+            Some(Ok(peer))
+        } else {
+            Some(Err(()))
+        }
+    });
     match peer {
-        Some(peer) => {
-            peer.send(Outgoing::Msg(msg));
+        Some(Ok(peer)) => peer.send(Outgoing::Msg(msg)),
+        Some(Err(())) => {
+            state.guard.note_event(StdInstant::now());
+            return conn.fail(error_codes::RATE_LIMITED, "this room relayed too much data");
         }
         None => conn.error("not_in_room", "no peer in the room yet"),
     }
+    Step::Continue
 }
 
 /// Background task for one room: removes it when no sender joined in time.

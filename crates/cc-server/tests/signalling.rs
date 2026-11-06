@@ -389,10 +389,16 @@ async fn sender_can_join_another_room_after_receiver_left() {
 
 #[tokio::test]
 async fn slow_reader_is_disconnected() {
-    let config = ServerConfig {
+    let mut config = ServerConfig {
         outgoing_queue_len: 4,
         ..ServerConfig::default()
     };
+    // This test floods on purpose, so the per-connection and per-room budgets are lifted.
+    config.limits.msg_rate_per_sec = 1_000_000;
+    config.limits.msg_burst = 1_000_000;
+    config.limits.bytes_per_sec = u32::MAX;
+    config.limits.bytes_burst = u32::MAX;
+    config.limits.max_room_relay_bytes = u64::MAX;
     let addr = start(config).await;
     let (r, s, _) = paired(addr).await;
     // The sender never reads. The receiver floods it with big messages while

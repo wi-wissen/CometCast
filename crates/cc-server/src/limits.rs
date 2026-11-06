@@ -3,6 +3,8 @@
 //!
 //! Clients are counted per IPv4 address or per IPv6 /64 network (one home or
 //! school usually owns a whole /64, so counting single IPv6 addresses would be useless).
+//! Failures and bans are also counted per IPv6 /48, because an attacker who owns a /48
+//! can otherwise just move to the next /64.
 
 use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, Ipv6Addr};
@@ -30,11 +32,24 @@ pub(crate) enum Deny {
 
 /// The address a client is counted under: IPv4 as is, IPv6 reduced to its /64.
 pub(crate) fn limit_key(ip: IpAddr) -> IpAddr {
+    mask_v6(ip, 4)
+}
+
+/// IPv6 reduced to its /48 (None for IPv4).
+fn wide_key(ip: IpAddr) -> Option<IpAddr> {
+    match ip {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(_) => Some(mask_v6(ip, 3)),
+    }
+}
+
+/// Keep the first `keep` 16-bit groups of an IPv6 address, zero the rest.
+fn mask_v6(ip: IpAddr, keep: usize) -> IpAddr {
     match ip {
         IpAddr::V4(_) => ip,
         IpAddr::V6(v6) => {
             let mut seg = v6.segments();
-            for s in &mut seg[4..] {
+            for s in &mut seg[keep..] {
                 *s = 0;
             }
             IpAddr::V6(Ipv6Addr::from(seg))
@@ -42,10 +57,17 @@ pub(crate) fn limit_key(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// A /48 network has many more users than a /64, so its failure threshold is higher.
+/// UNCERTAIN: factor 4 is a placeholder.
+const WIDE_FACTOR: u32 = 4;
+
+/// Key of the failure table: (address or /64, is it the wide /48 entry?).
+type StateKey = (IpAddr, bool);
+
 /// What is remembered about one client address.
 #[derive(Debug, Default)]
 struct IpState {
-    /// Failed joins in the current window.
+    /// Failures in the current window.
     failures: u32,
     /// When the current failure window started.
     window_start: Option<Instant>,
@@ -57,10 +79,30 @@ struct IpState {
     last_ban: Option<Instant>,
 }
 
-/// Counts of recent bad events, for the adaptive ALTCHA difficulty.
+/// Counts of recent events within the last minute.
 #[derive(Default)]
 struct EventWindow {
     times: VecDeque<Instant>,
+}
+
+impl EventWindow {
+    fn push(&mut self, now: Instant) {
+        self.times.push_back(now);
+        while self.times.len() > EVENT_CAP {
+            self.times.pop_front();
+        }
+    }
+
+    fn count(&mut self, now: Instant) -> usize {
+        while self
+            .times
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > EVENT_WINDOW)
+        {
+            self.times.pop_front();
+        }
+        self.times.len()
+    }
 }
 
 /// All limit state of the server.
@@ -70,27 +112,50 @@ pub(crate) struct Guard {
     create: Keyed,
     join: Keyed,
     http: Keyed,
-    state: Mutex<HashMap<IpAddr, IpState>>,
+    state: Mutex<HashMap<StateKey, IpState>>,
+    per_ip_connections: Mutex<HashMap<IpAddr, usize>>,
+    /// All bad events (for the ALTCHA difficulty).
     events: Mutex<EventWindow>,
+    /// Failed joins and abuse of the whole server (for the global brake).
+    failures: Mutex<EventWindow>,
     open_connections: AtomicUsize,
     calls: AtomicU64,
+    /// Failures that could not be tracked because the table was full.
+    untracked: AtomicU64,
 }
 
 /// Held by a connection while it is open; frees its place when dropped.
-pub(crate) struct ConnSlot(Arc<Guard>);
+pub(crate) struct ConnSlot {
+    guard: Arc<Guard>,
+    key: IpAddr,
+}
 
 impl Drop for ConnSlot {
     fn drop(&mut self) {
-        self.0.open_connections.fetch_sub(1, Ordering::Relaxed);
+        self.guard.open_connections.fetch_sub(1, Ordering::Relaxed);
+        let mut map = self
+            .guard
+            .per_ip_connections
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = map.get_mut(&self.key) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                map.remove(&self.key);
+            }
+        }
     }
 }
 
 /// Entries older than this many are cleaned out when the table grows.
 const STATE_SOFT_LIMIT: usize = 50_000;
+/// The table never grows beyond this; further new addresses are not tracked.
+/// UNCERTAIN: placeholder.
+const STATE_HARD_LIMIT: usize = 200_000;
 /// How long a bad event counts as "recent" for the difficulty.
 const EVENT_WINDOW: Duration = Duration::from_secs(60);
 /// Remembered events are capped to keep memory small.
-const EVENT_CAP: usize = 1_000;
+const EVENT_CAP: usize = 10_000;
 
 fn per_minute(n: u32) -> Keyed {
     RateLimiter::keyed(Quota::per_minute(
@@ -112,13 +177,16 @@ impl Guard {
             http: per_minute(cfg.http_per_min),
             cfg,
             state: Mutex::new(HashMap::new()),
+            per_ip_connections: Mutex::new(HashMap::new()),
             events: Mutex::new(EventWindow::default()),
+            failures: Mutex::new(EventWindow::default()),
             open_connections: AtomicUsize::new(0),
             calls: AtomicU64::new(0),
+            untracked: AtomicU64::new(0),
         })
     }
 
-    fn lock_state(&self) -> std::sync::MutexGuard<'_, HashMap<IpAddr, IpState>> {
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, HashMap<StateKey, IpState>> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -152,29 +220,29 @@ impl Guard {
 
     /// Record that something bad happened (for the difficulty).
     pub(crate) fn note_event(&self, now: Instant) {
-        let mut ev = self.events.lock().unwrap_or_else(|e| e.into_inner());
-        ev.times.push_back(now);
-        while ev.times.len() > EVENT_CAP {
-            ev.times.pop_front();
-        }
+        self.events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(now);
     }
 
     /// Number of bad events in the last minute.
     pub(crate) fn recent_events(&self, now: Instant) -> usize {
-        let mut ev = self.events.lock().unwrap_or_else(|e| e.into_inner());
-        while ev
-            .times
-            .front()
-            .is_some_and(|t| now.duration_since(*t) > EVENT_WINDOW)
-        {
-            ev.times.pop_front();
-        }
-        ev.times.len()
+        self.events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .count(now)
     }
 
-    /// Does this client currently have failed joins in the window?
+    /// How many failures could not be tracked because the table was full (a metric).
+    #[cfg(test)]
+    pub(crate) fn untracked_failures(&self) -> u64 {
+        self.untracked.load(Ordering::Relaxed)
+    }
+
+    /// Does this client currently have failures in the window?
     pub(crate) fn has_recent_failures(&self, ip: IpAddr, now: Instant) -> bool {
-        let key = limit_key(ip);
+        let key = (limit_key(ip), false);
         self.lock_state().get(&key).is_some_and(|s| {
             s.failures > 0
                 && s.window_start
@@ -182,17 +250,20 @@ impl Guard {
         })
     }
 
-    /// Remaining ban time, if this client is banned.
+    /// Remaining ban time, if this client (or its IPv6 /48) is banned.
     pub(crate) fn banned_for(&self, ip: IpAddr, now: Instant) -> Option<Duration> {
-        let key = limit_key(ip);
-        self.lock_state()
-            .get(&key)
-            .and_then(|s| s.banned_until)
-            .and_then(|until| until.checked_duration_since(now))
-            .filter(|d| !d.is_zero())
+        let map = self.lock_state();
+        let left = |key: StateKey| {
+            map.get(&key)
+                .and_then(|s| s.banned_until)
+                .and_then(|until| until.checked_duration_since(now))
+        };
+        let narrow = left((limit_key(ip), false));
+        let wide = wide_key(ip).and_then(|w| left((w, true)));
+        narrow.max(wide).filter(|d| !d.is_zero())
     }
 
-    /// A new WebSocket connection: banned? too fast? server full?
+    /// A new WebSocket connection: banned? too fast? too many from this address? server full?
     /// On success returns a slot that must be kept while the connection is open.
     pub(crate) fn admit_connection(
         self: &Arc<Self>,
@@ -208,13 +279,33 @@ impl Guard {
             self.note_event(now);
             return Err(Deny::RateLimited(retry_after(self.cfg.connections_per_min)));
         }
+        {
+            let mut map = self
+                .per_ip_connections
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let n = map.entry(key).or_insert(0);
+            if *n >= self.cfg.max_connections_per_ip {
+                if *n == 0 {
+                    map.remove(&key);
+                }
+                self.note_event(now);
+                return Err(Deny::RateLimited(Duration::from_secs(5)));
+            }
+            *n += 1;
+        }
         // Reserve a place, undo if the server is full.
         let before = self.open_connections.fetch_add(1, Ordering::Relaxed);
+        let slot = ConnSlot {
+            guard: self.clone(),
+            key,
+        };
         if before >= self.cfg.max_connections {
-            self.open_connections.fetch_sub(1, Ordering::Relaxed);
+            // Dropping the slot gives both counters back.
+            drop(slot);
             return Err(Deny::Busy);
         }
-        Ok(ConnSlot(self.clone()))
+        Ok(slot)
     }
 
     /// Number of open connections (used by tests).
@@ -223,9 +314,12 @@ impl Guard {
         self.open_connections.load(Ordering::Relaxed)
     }
 
-    /// `create_room` from this client.
+    /// `create_room` from this client (banned? too many?).
     pub(crate) fn check_create(&self, ip: IpAddr, now: Instant) -> Result<(), Deny> {
         self.housekeeping();
+        if let Some(left) = self.banned_for(ip, now) {
+            return Err(Deny::Banned(left));
+        }
         if self.create.check_key(&limit_key(ip)).is_err() {
             self.note_event(now);
             return Err(Deny::RateLimited(retry_after(self.cfg.create_room_per_min)));
@@ -233,11 +327,20 @@ impl Guard {
         Ok(())
     }
 
-    /// `join_room` from this client (banned? too many attempts?).
+    /// `join_room` from this client (banned? too many attempts? global brake?).
     pub(crate) fn check_join(&self, ip: IpAddr, now: Instant) -> Result<(), Deny> {
         self.housekeeping();
         if let Some(left) = self.banned_for(ip, now) {
             return Err(Deny::Banned(left));
+        }
+        let global = self
+            .failures
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .count(now);
+        if global >= self.cfg.global_failed_joins_per_min as usize {
+            self.note_event(now);
+            return Err(Deny::RateLimited(Duration::from_secs(10)));
         }
         if self.join.check_key(&limit_key(ip)).is_err() {
             self.note_event(now);
@@ -265,15 +368,45 @@ impl Guard {
     /// the join limit and bans the client after too many. Returns `Some(duration)` when
     /// the client was banned just now.
     pub(crate) fn record_failed_join(&self, ip: IpAddr, now: Instant) -> Option<Duration> {
-        let key = limit_key(ip);
-        self.note_event(now);
         // The failed attempt costs `weight` attempts in total; one was already paid.
         // If not enough is left, nothing is taken, but the client is then nearly
         // blocked anyway.
         if let Some(extra) = NonZeroU32::new(self.cfg.failed_join_weight.saturating_sub(1)) {
-            let _ = self.join.check_key_n(&key, extra);
+            let _ = self.join.check_key_n(&limit_key(ip), extra);
         }
+        self.record_failure(ip, now)
+    }
+
+    /// Any kind of abuse (failed join, message spam, too fast sending). Counts toward a
+    /// ban of the address and of its IPv6 /48, and toward the global brake.
+    pub(crate) fn record_failure(&self, ip: IpAddr, now: Instant) -> Option<Duration> {
+        self.note_event(now);
+        self.failures
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(now);
+        let narrow = self.fail_one((limit_key(ip), false), self.cfg.ban_after_failed_joins, now);
+        let wide = wide_key(ip).and_then(|w| {
+            self.fail_one(
+                (w, true),
+                self.cfg.ban_after_failed_joins.saturating_mul(WIDE_FACTOR),
+                now,
+            )
+        });
+        narrow.or(wide)
+    }
+
+    /// Count one failure in one table entry; ban when `threshold` is reached.
+    fn fail_one(&self, key: StateKey, threshold: u32, now: Instant) -> Option<Duration> {
         let mut map = self.lock_state();
+        if !map.contains_key(&key) && map.len() >= STATE_HARD_LIMIT {
+            // Table full: drop entries that no longer matter, else do not track this one.
+            map.retain(|_, s| Self::still_relevant(&self.cfg, s, now));
+            if map.len() >= STATE_HARD_LIMIT {
+                self.untracked.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+        }
         let s = map.entry(key).or_default();
         let window = self.cfg.failed_join_window;
         if s.window_start
@@ -283,7 +416,7 @@ impl Guard {
             s.failures = 0;
         }
         s.failures += 1;
-        if s.failures < self.cfg.ban_after_failed_joins {
+        if s.failures < threshold {
             return None;
         }
         // Ban. Forget an old history first.
@@ -307,6 +440,71 @@ impl Guard {
     /// Server-wide cap on rooms (checked together with the room table).
     pub(crate) fn max_rooms(&self) -> usize {
         self.cfg.max_rooms
+    }
+
+    /// Per-address cap on rooms.
+    pub(crate) fn max_rooms_per_ip(&self) -> usize {
+        self.cfg.max_rooms_per_ip
+    }
+
+    /// The limits (timeouts etc.) for the connection loop.
+    pub(crate) fn cfg(&self) -> &LimitsConfig {
+        &self.cfg
+    }
+}
+
+/// A token bucket: `rate` tokens per second up to `capacity`.
+struct Bucket {
+    capacity: f64,
+    rate: f64,
+    tokens: f64,
+    last: Instant,
+}
+
+impl Bucket {
+    fn new(rate: u32, capacity: u32, now: Instant) -> Self {
+        Self {
+            capacity: f64::from(capacity),
+            rate: f64::from(rate),
+            tokens: f64::from(capacity),
+            last: now,
+        }
+    }
+
+    /// Take `n` tokens; false (and nothing taken) if not enough are left.
+    fn take(&mut self, n: f64, now: Instant) -> bool {
+        let dt = now.saturating_duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + dt * self.rate).min(self.capacity);
+        if self.tokens >= n {
+            self.tokens -= n;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// How much one connection may send: messages per second and bytes per second.
+pub(crate) struct ConnBudget {
+    msgs: Bucket,
+    bytes: Bucket,
+}
+
+impl ConnBudget {
+    pub(crate) fn new(cfg: &LimitsConfig, now: Instant) -> Self {
+        Self {
+            msgs: Bucket::new(cfg.msg_rate_per_sec, cfg.msg_burst, now),
+            bytes: Bucket::new(cfg.bytes_per_sec, cfg.bytes_burst, now),
+        }
+    }
+
+    /// May a message of `len` bytes pass now? Both buckets must have room.
+    pub(crate) fn allow(&mut self, len: usize, now: Instant) -> bool {
+        // Bytes are only taken if the message count also fits, and vice versa.
+        let m = self.msgs.take(1.0, now);
+        let b = self.bytes.take(len as f64, now);
+        m && b
     }
 }
 
@@ -332,11 +530,14 @@ mod tests {
             failed_join_window: Duration::from_secs(600),
             ban_durations: vec![Duration::from_secs(60), Duration::from_secs(300)],
             ban_memory: Duration::from_secs(3600),
+            max_connections_per_ip: 100,
+            global_failed_joins_per_min: 1000,
+            ..LimitsConfig::for_mode(Mode::Internal)
         }
     }
 
     #[test]
-    fn ipv6_is_counted_per_slash_64() {
+    fn ipv6_is_counted_per_slash_64_and_48() {
         assert_eq!(
             limit_key(ip("2001:db8:1:2:aaaa:bbbb:cccc:dddd")),
             ip("2001:db8:1:2::")
@@ -350,10 +551,12 @@ mod tests {
             limit_key(ip("2001:db8:1:3::1"))
         );
         assert_eq!(limit_key(ip("192.0.2.1")), ip("192.0.2.1"));
+        assert_eq!(wide_key(ip("2001:db8:1:2::1")), Some(ip("2001:db8:1::")));
+        assert_eq!(wide_key(ip("192.0.2.1")), None);
     }
 
     #[test]
-    fn create_room_rate_limit() {
+    fn create_room_rate_limit_and_ban_check() {
         let g = Guard::new(limits());
         let now = Instant::now();
         assert!(g.check_create(ip("192.0.2.1"), now).is_ok());
@@ -362,8 +565,15 @@ mod tests {
             g.check_create(ip("192.0.2.1"), now),
             Err(Deny::RateLimited(_))
         ));
-        // Another client is not affected.
         assert!(g.check_create(ip("192.0.2.2"), now).is_ok());
+        // A banned address cannot create rooms either.
+        for _ in 0..3 {
+            g.record_failure(ip("192.0.2.3"), now);
+        }
+        assert!(matches!(
+            g.check_create(ip("192.0.2.3"), now),
+            Err(Deny::Banned(_))
+        ));
     }
 
     #[test]
@@ -381,7 +591,6 @@ mod tests {
         let now = Instant::now();
         let a = g.admit_connection(ip("192.0.2.1"), now).unwrap();
         let b = g.admit_connection(ip("192.0.2.2"), now).unwrap();
-        // Global cap of 2 reached.
         assert_eq!(
             g.admit_connection(ip("192.0.2.3"), now).err(),
             Some(Deny::Busy)
@@ -391,7 +600,6 @@ mod tests {
         assert_eq!(g.open_connections(), 1);
         assert!(g.admit_connection(ip("192.0.2.3"), now).is_ok());
         drop(b);
-        // Per-IP rate: 3 per minute; the first client used one, two more are fine, the 4th is not.
         let g = Guard::new(LimitsConfig {
             max_connections: 100,
             ..limits()
@@ -408,8 +616,32 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_connections_per_ip_are_capped_and_freed() {
+        let g = Guard::new(LimitsConfig {
+            max_connections: 100,
+            connections_per_min: 1000,
+            max_connections_per_ip: 2,
+            ..limits()
+        });
+        let now = Instant::now();
+        let a = g.admit_connection(ip("192.0.2.1"), now).unwrap();
+        let _b = g.admit_connection(ip("192.0.2.1"), now).unwrap();
+        assert!(matches!(
+            g.admit_connection(ip("192.0.2.1"), now),
+            Err(Deny::RateLimited(_))
+        ));
+        // Another address is fine, and the whole /64 of an IPv6 client counts as one.
+        assert!(g.admit_connection(ip("192.0.2.2"), now).is_ok());
+        let _c = g.admit_connection(ip("2001:db8::1"), now).unwrap();
+        let _d = g.admit_connection(ip("2001:db8::2"), now).unwrap();
+        assert!(g.admit_connection(ip("2001:db8::3"), now).is_err());
+        // A closed connection frees its place.
+        drop(a);
+        assert!(g.admit_connection(ip("192.0.2.1"), now).is_ok());
+    }
+
+    #[test]
     fn failed_joins_count_harder_than_good_ones() {
-        // 6 attempts per minute, a failure costs 3: only two failures fit.
         let g = Guard::new(LimitsConfig {
             ban_after_failed_joins: 100,
             ..limits()
@@ -423,7 +655,6 @@ mod tests {
             assert!(allowed < 10, "must stop");
         }
         assert_eq!(allowed, 2);
-        // Good joins would have allowed 6 attempts.
         let g = Guard::new(limits());
         let good = (0..10).filter(|_| g.check_join(who, now).is_ok()).count();
         assert_eq!(good, 6);
@@ -439,17 +670,13 @@ mod tests {
         let who = ip("192.0.2.1");
         assert_eq!(g.record_failed_join(who, t0), None);
         assert_eq!(g.record_failed_join(who, t0), None);
-        // Third failure: first ban, 60 s.
         assert_eq!(g.record_failed_join(who, t0), Some(Duration::from_secs(60)));
         assert!(matches!(g.check_join(who, t0), Err(Deny::Banned(_))));
         assert!(g.admit_connection(who, t0).is_err());
         assert!(g.banned_for(who, t0 + Duration::from_secs(59)).is_some());
-        // Other clients are fine, and the same IPv6 /64 is one client.
         assert!(g.check_join(ip("192.0.2.2"), t0).is_ok());
-        // After the ban: free again.
         let t1 = t0 + Duration::from_secs(61);
         assert!(g.check_join(who, t1).is_ok());
-        // Second ban is longer (300 s), and it stays 300 s afterwards.
         for _ in 0..2 {
             assert_eq!(g.record_failed_join(who, t1), None);
         }
@@ -465,7 +692,6 @@ mod tests {
             g.record_failed_join(who, t2),
             Some(Duration::from_secs(300))
         );
-        // After a long quiet time the history is forgotten: back to 60 s.
         let t3 = t2 + Duration::from_secs(300 + 3601);
         for _ in 0..2 {
             g.record_failed_join(who, t3);
@@ -487,6 +713,49 @@ mod tests {
     }
 
     #[test]
+    fn moving_between_slash_64s_does_not_escape_the_ban() {
+        // Threshold 3 per /64, 12 per /48. Every failure comes from a new /64 of one /48.
+        let g = Guard::new(limits());
+        let t0 = Instant::now();
+        let mut banned = None;
+        for i in 0..12u16 {
+            let who: IpAddr = format!("2001:db8:1:{i}::1").parse().unwrap();
+            banned = g.record_failure(who, t0);
+        }
+        assert_eq!(banned, Some(Duration::from_secs(60)));
+        // The whole /48 is banned, including /64s that never failed.
+        assert!(g.banned_for(ip("2001:db8:1:ffff::5"), t0).is_some());
+        assert!(g.banned_for(ip("2001:db8:2::5"), t0).is_none());
+    }
+
+    #[test]
+    fn global_failed_join_brake_slows_everybody() {
+        let g = Guard::new(LimitsConfig {
+            global_failed_joins_per_min: 5,
+            ban_after_failed_joins: 1000,
+            join_attempts_per_min: 1000,
+            ..limits()
+        });
+        let now = Instant::now();
+        // Five different addresses fail once each.
+        for i in 1..=5 {
+            let a: IpAddr = format!("192.0.2.{i}").parse().unwrap();
+            assert!(g.check_join(a, now).is_ok());
+            g.record_failed_join(a, now);
+        }
+        // Now even a new, innocent address is slowed down.
+        assert!(matches!(
+            g.check_join(ip("192.0.2.99"), now),
+            Err(Deny::RateLimited(_))
+        ));
+        // A minute later it is over.
+        assert!(
+            g.check_join(ip("192.0.2.99"), now + Duration::from_secs(61))
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn event_window_forgets_old_events() {
         let g = Guard::new(LimitsConfig::for_mode(Mode::Open));
         let t0 = Instant::now();
@@ -494,5 +763,62 @@ mod tests {
         g.note_event(t0);
         assert_eq!(g.recent_events(t0), 2);
         assert_eq!(g.recent_events(t0 + Duration::from_secs(61)), 0);
+    }
+
+    #[test]
+    fn failure_table_has_a_hard_cap() {
+        let g = Guard::new(LimitsConfig {
+            failed_join_window: Duration::from_secs(600),
+            ..limits()
+        });
+        let now = Instant::now();
+        // Fill the table to its limit with live entries.
+        {
+            let mut map = g.lock_state();
+            for i in 0..STATE_HARD_LIMIT {
+                let ip = IpAddr::V6(Ipv6Addr::from((i as u128 + 1) << 64));
+                map.insert(
+                    (ip, false),
+                    IpState {
+                        failures: 1,
+                        window_start: Some(now),
+                        ..IpState::default()
+                    },
+                );
+            }
+        }
+        // A new address is not tracked (and counted in the metric) ...
+        assert_eq!(g.record_failure(ip("192.0.2.1"), now), None);
+        assert!(g.untracked_failures() >= 1);
+        assert_eq!(g.lock_state().len(), STATE_HARD_LIMIT);
+        // ... but once old entries expire, room is made again.
+        let later = now + Duration::from_secs(700);
+        g.record_failure(ip("192.0.2.1"), later);
+        assert!(g.lock_state().len() < STATE_HARD_LIMIT);
+    }
+
+    #[test]
+    fn connection_budget_limits_messages_and_bytes() {
+        let cfg = LimitsConfig {
+            msg_rate_per_sec: 2,
+            msg_burst: 3,
+            bytes_per_sec: 100,
+            bytes_burst: 250,
+            ..limits()
+        };
+        let t0 = Instant::now();
+        let mut b = ConnBudget::new(&cfg, t0);
+        // Burst of 3 small messages passes, the 4th does not.
+        assert!(b.allow(10, t0) && b.allow(10, t0) && b.allow(10, t0));
+        assert!(!b.allow(10, t0));
+        // After 1 s: 2 more messages are allowed.
+        let t1 = t0 + Duration::from_secs(1);
+        assert!(b.allow(10, t1) && b.allow(10, t1));
+        assert!(!b.allow(10, t1));
+        // Bytes: a big message uses the byte budget even when the count is fine.
+        let mut b = ConnBudget::new(&cfg, t0);
+        assert!(b.allow(200, t0));
+        assert!(!b.allow(200, t0), "only 50 bytes left");
+        assert!(b.allow(200, t0 + Duration::from_secs(2)), "refilled");
     }
 }

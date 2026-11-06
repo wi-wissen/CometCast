@@ -133,6 +133,12 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 A message larger than the size limit makes the connection fail and close
 without an `error` message.
 
+The server may also close a connection (close frame, text = reason, no `error` message) with
+reason `ping_timeout` (client did not answer pings), `idle_timeout` (nothing relayed in the
+room for too long), `room_lifetime` (room reached its maximum age), `room_expired` or
+`no_room_timeout` (see above). A connection that sends too fast, too much, or too many bad
+messages gets `rate_limited` (or `banned`) and is closed. See [server.md](server.md).
+
 ## Limits (all configurable, see [server.md](server.md); rate limits and bans are described there)
 
 | limit | default | status |

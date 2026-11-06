@@ -3,6 +3,7 @@
 //! `std::sync::Mutex` around it is fine (it is never held across an `.await`).
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 use cc_proto::{RoomCode, ServerMsg};
 use rand::Rng;
@@ -16,6 +17,8 @@ use tokio::time::Instant;
 pub(crate) enum Outgoing {
     /// Send this message as a JSON text frame.
     Msg(ServerMsg),
+    /// Send a WebSocket ping (liveness check).
+    Ping,
     /// Send a close frame with this reason text, then stop.
     Close(&'static str),
 }
@@ -62,11 +65,30 @@ struct Room {
     empty_since: Option<Instant>,
     /// Wakes the expiry task so it stops when the room is removed.
     cancel: Arc<Notify>,
+    /// Who made the room (client address, as counted by the limits).
+    owner: IpAddr,
+    /// When the room was made.
+    created: Instant,
+    /// When something was last relayed (or someone joined).
+    last_activity: Instant,
+    /// Bytes relayed through this room so far.
+    relayed: u64,
 }
 
 #[derive(Default)]
 pub(crate) struct Rooms {
     map: HashMap<RoomCode, Room>,
+    /// Rooms per owner address.
+    per_owner: HashMap<IpAddr, usize>,
+}
+
+/// Why a room could not be made.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CreateError {
+    /// The whole server has too many rooms.
+    ServerFull,
+    /// This client address owns too many rooms.
+    OwnerFull,
 }
 
 /// Why a join failed.
@@ -81,17 +103,34 @@ impl Rooms {
         self.map.len()
     }
 
+    /// Remove a room and fix the per-owner count.
+    fn remove(&mut self, code: &RoomCode) -> Option<Room> {
+        let room = self.map.remove(code)?;
+        if let Some(n) = self.per_owner.get_mut(&room.owner) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                self.per_owner.remove(&room.owner);
+            }
+        }
+        Some(room)
+    }
+
     /// Create a room with a fresh random code (retry on collision).
     /// Also returns a signal that fires when the room is removed.
-    /// Returns `None` when `max_rooms` rooms exist already.
+    /// Fails when `max_rooms` rooms exist already, or `owner` has `max_per_owner`.
     pub(crate) fn create(
         &mut self,
         receiver_id: u64,
         receiver: Tx,
+        owner: IpAddr,
         max_rooms: usize,
-    ) -> Option<(RoomCode, Arc<Notify>)> {
+        max_per_owner: usize,
+    ) -> Result<(RoomCode, Arc<Notify>), CreateError> {
         if self.map.len() >= max_rooms {
-            return None;
+            return Err(CreateError::ServerFull);
+        }
+        if self.per_owner.get(&owner).copied().unwrap_or(0) >= max_per_owner {
+            return Err(CreateError::OwnerFull);
         }
         let mut rng = rand::rng();
         loop {
@@ -115,9 +154,14 @@ impl Rooms {
                     sender: None,
                     empty_since: Some(Instant::now()),
                     cancel: cancel.clone(),
+                    owner,
+                    created: Instant::now(),
+                    last_activity: Instant::now(),
+                    relayed: 0,
                 },
             );
-            return Some((code, cancel));
+            *self.per_owner.entry(owner).or_insert(0) += 1;
+            return Ok((code, cancel));
         }
     }
 
@@ -129,7 +173,28 @@ impl Rooms {
         }
         room.sender = Some((id, tx));
         room.empty_since = None;
+        room.last_activity = Instant::now();
         Ok(room.receiver.clone())
+    }
+
+    /// When the room was made and when something was last relayed.
+    pub(crate) fn times(&self, code: &RoomCode) -> Option<(Instant, Instant)> {
+        self.map.get(code).map(|r| (r.created, r.last_activity))
+    }
+
+    /// Count `bytes` relayed through the room and mark it active.
+    /// Returns false when this would pass `max_bytes` (nothing should be relayed then).
+    pub(crate) fn add_relayed(&mut self, code: &RoomCode, bytes: u64, max_bytes: u64) -> bool {
+        let Some(room) = self.map.get_mut(code) else {
+            return true;
+        };
+        let total = room.relayed.saturating_add(bytes);
+        if total > max_bytes {
+            return false;
+        }
+        room.relayed = total;
+        room.last_activity = Instant::now();
+        true
     }
 
     /// Is this connection still part of this room?
@@ -156,7 +221,7 @@ impl Rooms {
         let room = self.map.get_mut(code)?;
         if room.receiver_id == id {
             // The room ends with its receiver.
-            let room = self.map.remove(code)?;
+            let room = self.remove(code)?;
             room.cancel.notify_one();
             room.sender.map(|(_, tx)| tx)
         } else if room.sender.as_ref().is_some_and(|(sid, _)| *sid == id) {
@@ -182,7 +247,7 @@ impl Rooms {
         };
         let remaining = (since + idle).saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            if let Some(room) = self.map.remove(code) {
+            if let Some(room) = self.remove(code) {
                 room.receiver.send(Outgoing::Close("room_expired"));
             }
             return Err(Gone);

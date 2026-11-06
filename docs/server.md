@@ -38,8 +38,12 @@ ignored). The file is optional; every key is optional.
 - Values given outside the file are read as TOML values where possible: numbers, `true`,
   and arrays like `["10.0.0.0/8"]`. Lists of networks may also be written as plain
   comma-separated text (`10.0.0.0/8, 192.168.0.0/16`).
-- Secrets (`turn.secret`, `altcha.secret`) can be given as `secret_file = "/path"`
-  instead (Docker secrets). They are never printed; the debug output shows `<hidden>`.
+- Secrets (`turn.secret`, `altcha.secret`) should be given as `secret_file = "/path"`
+  (for example a Docker secret). Do not use `--set` or environment variables for them: command
+  lines and environments are visible to other users of the machine. Values given anyway are
+  always read as text (never as numbers), must have at least 16 characters (UNCERTAIN:
+  placeholder minimum), are never printed, and are removed from error messages. The debug
+  output shows `<hidden>`.
 - The settings are checked at start; an invalid combination stops the server with an
   error message (exit code 2).
 
@@ -74,14 +78,24 @@ UNCERTAIN: every number is a placeholder.
 | `limits.failed_join_window_secs` | 600 | 600 | The window. |
 | `limits.ban_secs` | `[60, 300, 1800]` | same | 1st, 2nd, 3rd+ ban. The plan says 1, 5, 30 minutes. |
 | `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. |
+| `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because a school may sit behind one NAT address. |
+| `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address. |
+| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection silent for the sum is closed (close reason `ping_timeout`). |
+| `limits.paired_idle_secs` | 3600 | 14400 | A room where nothing was relayed for this long is closed (`idle_timeout`). See the warning below. |
+| `limits.max_room_lifetime_secs` | 43200 | 86400 | Longest life of any room (`room_lifetime`). |
+| `limits.msg_rate_per_sec` / `msg_burst` | 20 / 100 | 50 / 200 | Per connection: messages per second and burst. |
+| `limits.bytes_per_sec` / `bytes_burst` | 65536 / 262144 | 262144 / 1048576 | Per connection: bytes per second and burst (burst must be at least `max_message_bytes`). |
+| `limits.max_room_relay_bytes` | 8388608 | 67108864 | Total bytes relayed through one room. |
+| `limits.max_bad_messages` | 20 | 50 | Garbage or wrong-role messages before the connection is closed. |
+| `limits.global_failed_joins_per_min` | 300 | 1000 | Emergency brake: more failures than this in a minute (whole server) slow down every `join_room`. |
 | `altcha.mode` | `always` (forced) | `optional` | See ALTCHA. |
-| `altcha.secret` / `secret_file` | | random at start | HMAC secret for puzzles. |
+| `altcha.secret` / `secret_file` | | random at start | HMAC secret for puzzles, at least 16 characters. |
 | `altcha.cost` | 1000 | 1000 | PBKDF2 iterations per attempt. |
 | `altcha.base_counter` | 1000 | 1000 | Size of the search; doubles per pressure level. |
 | `altcha.max_difficulty_factor` | 8 | 8 | Upper limit of the multiplier. |
 | `altcha.ttl_secs` | 300 | 300 | Puzzle lifetime. |
 | `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. |
-| `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn. |
+| `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |
 | `turn.ttl_secs` | | 3600 | Credential lifetime. |
 
 ## Open and internal mode
@@ -145,8 +159,13 @@ All limits, bans and lists work on the **client address**:
 1. By default it is the address of the direct TCP peer.
 2. Only if that peer is in `network.trusted_proxies`, the `X-Forwarded-For` header is read
    **from the right**: the first address that is not itself a trusted proxy is the client.
-   Everything to its left is ignored (clients can write anything there). A header that
-   contains something that is not an address is not trusted at all.
+   Everything to its left is ignored (clients can write anything there). Accepted forms per
+   hop: `1.2.3.4`, `1.2.3.4:5555`, `2001:db8::1`, `[2001:db8::1]`, `[2001:db8::1]:5555`.
+   **If the peer is a trusted proxy and the header is present but broken** (not valid text,
+   empty, an empty hop, anything that is not an address) the request is **refused with
+   `400`**. The server never falls back to the proxy's address then. Only when the header is
+   missing altogether is the proxy itself the client. If every hop is a trusted proxy, the
+   left-most hop counts. From a peer that is not trusted the header is ignored completely.
 3. IPv4-in-IPv6 (`::ffff:1.2.3.4`) is treated as IPv4. For counting, an IPv6 address is
    reduced to its /64 network.
 
@@ -183,11 +202,36 @@ bucket per address; a quota of N per minute also allows a burst of N):
 - `/altcha/challenge` and `/ice-servers` (`http_per_min`).
 - Whole server: `max_connections` (`503`) and `max_rooms` (`create_room` gets `rate_limited`).
 
+**Per connection (after the upgrade):** a token bucket limits messages and bytes per
+second. A connection that exceeds it gets `rate_limited` and is closed, and that counts as a
+failure toward a ban. Every `bad_message` / `wrong_role` also counts as a failure, and
+`max_bad_messages` of them close the connection. A room may relay at most
+`max_room_relay_bytes` in total. Signalling messages are small, so the defaults should be far
+above normal use; UNCERTAIN: they are not measured.
+
+**Liveness and lifetime:** the server pings every `ping_interval_secs`; a client that does
+not answer (any frame counts) within the pong timeout is closed. A room in which nothing was
+relayed for `paired_idle_secs` is closed, and no room lives longer than
+`max_room_lifetime_secs`. **Warning:** media flows peer to peer, so a quiet signalling channel
+is normal during a long presentation. When the room is closed, clients get `peer_left` or a
+closed connection although the video may still be running. The defaults are therefore long
+(1 h open, 4 h internal), and what clients should do on `peer_left` is not decided. UNCERTAIN.
+When a receiver leaves, the sender's connection stays open (as before); it can create or
+join another room.
+
+**Per-address caps:** open connections (`max_connections_per_ip`) and rooms
+(`max_rooms_per_ip`) per client address.
+
 **Temporary bans:** `ban_after_failed_joins` failed joins within `failed_join_window_secs`
 ban the address. The sender gets `banned`, its connection is closed, and new connections,
 joins and HTTP requests from that address are refused. The first ban lasts `ban_secs[0]`,
 the next one `ban_secs[1]`, and so on (the last value repeats); the history is forgotten
-after `ban_memory_secs`. Bans and counters are in memory and are lost at a restart.
+after `ban_memory_secs`. Failures are counted per address (IPv6: /64) and also per IPv6 /48, where the threshold is
+four times higher (UNCERTAIN: factor), so moving to another /64 does not escape a ban.
+`create_room` is refused for banned addresses too. The failure table has a hard size cap
+(200 000 entries); when it is full and nothing can be dropped, new addresses are not tracked
+(a counter records this; no metrics endpoint exists yet). Bans and counters are in memory and
+are lost at a restart.
 
 This matters because room codes are short: a guesser is slowed down by these limits.
 A code has 32^6, about 1.07 billion, possible values (6 characters; the plan wants 8 characters
@@ -264,8 +308,13 @@ The coturn template is `deploy/coturn/turnserver.conf.template` (render it with
 `denied-peer-ip` for private and special ranges. Pitfall from the plan: if you deny all private
 ranges, relaying between two devices in the same private network breaks, because the TURN
 server's own relay address is private; therefore `allowed-peer-ip=<relay IP>` is set.
-**UNCERTAIN: coturn was not run and the template was not tested against any coturn
-version.** Every option marked UNCERTAIN in it needs checking, and the same-network case
+Further denied ranges were added after a security review: documentation ranges, `::`,
+IPv4-mapped `::ffff:0:0/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`, `fec0::/10`.
+**Host networking:** the compose file runs coturn with `network_mode: host`, so the
+`allowed-peer-ip` address is the host itself. A client with valid credentials can then
+send packets to whatever listens on that address. Use a relay address without other
+services, or firewall it. **UNCERTAIN: coturn was not run and the template was not tested
+against any coturn version.** Every option marked UNCERTAIN in it needs checking, and the same-network case
 needs a real test with two devices.
 
 ## Deployment
@@ -294,6 +343,15 @@ management side of anything (coturn's CLI is switched off).
   _cometcast._tcp.school.example.  3600 IN SRV 10 0 443 cast.school.example.
   ```
 
+### Key file permissions
+
+The server stops at start with a clear message if it cannot read the certificate or key
+file. Common traps: the Docker image runs as UID 65532, and certbot makes private keys
+readable by root only (mode 0600) in folders only root can enter. Give the server user read
+access to the key and the folders above it (a copy owned by that user, or a group). Do not
+make keys world-readable. Secrets for compose (`secrets/turn_secret`, `secrets/altcha_secret`)
+need the same care.
+
 ### Docker
 
 `deploy/` has a `Dockerfile` (multi-stage; Node builds the web app, Rust builds the server,
@@ -315,6 +373,7 @@ repository exists yet.
 
 - Docker images and compose were not built or run; coturn was not run (see above).
 - ACME (`instant-acme`) is out of scope; certificate reload without restart is not built.
+- A metrics endpoint (for example the number of untracked failures); sharing bans between several server instances;
 - ALTCHA for joining; ALTCHA in the web and native clients; CORS for other origins.
 - Image and file storage on internal servers, the SFU, authentication, a ban list that survives
   restarts or is editable at run time (the plan mentions run-time block lists), bandwidth limits.

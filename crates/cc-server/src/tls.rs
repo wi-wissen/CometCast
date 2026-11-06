@@ -18,6 +18,25 @@ fn other<E: std::fmt::Display>(what: &str, e: E) -> io::Error {
     io::Error::other(format!("{what}: {e}"))
 }
 
+/// Open a certificate or key file now, so a problem is reported clearly at start
+/// (not as a vague TLS error). Explains the usual permission traps.
+fn check_readable(path: &std::path::Path, setting: &str) -> io::Result<()> {
+    match std::fs::File::open(path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => Err(io::Error::other(format!(
+            "{setting}: cannot read {}: permission denied. The server may run as another user \
+             (in the Docker image: UID 65532), and tools such as certbot create private keys \
+             readable by root only (mode 0600). Give the server user read access to the key \
+             and to the folders above it, for example with a group or a copy owned by that user.",
+            path.display()
+        ))),
+        Err(e) => Err(io::Error::other(format!(
+            "{setting}: cannot read {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 /// Build the TLS settings for the listener. Call only when `cfg.enabled()`.
 pub(crate) fn build(cfg: &TlsConfig) -> io::Result<RustlsConfig> {
     let (certs, key) = if cfg.self_signed {
@@ -28,6 +47,8 @@ pub(crate) fn build(cfg: &TlsConfig) -> io::Result<RustlsConfig> {
                 "tls.cert_file and tls.key_file must be set together",
             ));
         };
+        check_readable(cert_file, "tls.cert_file")?;
+        check_readable(key_file, "tls.key_file")?;
         let certs = CertificateDer::pem_file_iter(cert_file)
             .map_err(|e| other(&format!("cannot read {}", cert_file.display()), e))?
             .collect::<Result<Vec<_>, _>>()

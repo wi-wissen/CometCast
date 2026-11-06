@@ -65,6 +65,18 @@ denied-peer-ip=192.168.0.0-192.168.255.255
 denied-peer-ip=192.0.0.0-192.0.0.255
 denied-peer-ip=198.18.0.0-198.19.255.255
 denied-peer-ip=240.0.0.0-255.255.255.255
+# UNCERTAIN: added after a security review (not on the planning page): documentation
+# ranges, and IPv6 forms that can reach IPv4 or internal targets (IPv4-mapped ::ffff:0:0/96,
+# NAT64 64:ff9b::/96, 6to4 2002::/16, old site-local fec0::/10, unspecified ::).
+# Ranges are written as "first-last"; whether coturn also accepts CIDR here was not checked.
+denied-peer-ip=192.0.2.0-192.0.2.255
+denied-peer-ip=198.51.100.0-198.51.100.255
+denied-peer-ip=203.0.113.0-203.0.113.255
+denied-peer-ip=::-::
+denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=::1
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
@@ -72,6 +84,13 @@ denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 # two devices in the SAME private network cannot relay to each other, because the relay
 # addresses are themselves private. Everything else private stays denied.
 # `allowed-peer-ip` only makes exceptions, it does not deny anything by itself.
+# WARNING (host networking): in docker-compose.yml coturn runs with network_mode: host, so it
+# sits directly in the host's network. allowed-peer-ip makes THIS address reachable for every
+# relayed client, and with host networking that address is the host itself: a client with valid
+# credentials can send packets to services on that address (for example the Comet Cast server
+# port or SSH if they listen on all addresses). Use a relay address that carries no other service
+# (a dedicated address or interface), or firewall everything except 3478/5349 and the relay
+# ports on it. UNCERTAIN: how coturn decides between allowed and denied was not tested.
 # UNCERTAIN: the planning page says to test this with two devices in one network.
 allowed-peer-ip=@TURN_RELAY_IP@
 
