@@ -22,6 +22,7 @@ Licence details marked **unchecked** were not verified and must be checked again
 | lopdf | Writing annotations into PDFs | MIT | planned | |
 | axum, tokio and other Rust crates | Server and core | mostly MIT / Apache-2.0 | planned | A full list will be generated from `Cargo.lock` once the workspace has dependencies |
 | Server hardening crates (`cc-server`): altcha 1.1.0, axum-server 0.8.0, governor 0.10.4, moka 0.12.16, ipnet, toml, rustls 0.23 (ring backend), rcgen 0.14, hmac, sha1, base64 | ALTCHA proof-of-work, HTTPS, rate limits, replay cache, config, TURN credentials | MIT, MIT OR Apache-2.0 (rustls: Apache-2.0 OR ISC OR MIT), as stated in the crates' `Cargo.toml` metadata | in use (compiled in, nothing bundled yet) | Licence fields read from `cargo metadata` on 2026-11-06; licence texts not checked. Transitive crates not reviewed |
+| `windows` crate 0.62.2 (Microsoft; with `windows-core`, `windows-future`, `windows-collections` and others) | Windows Runtime bindings for Miracast receiving (`cc-miracast`, Windows targets only) | MIT OR Apache-2.0 (as stated in the crate metadata; licence texts not checked) | in use (compiled in on Windows targets only; compile-checked, never run; nothing bundled) | Calls only the documented `Windows.Media.Miracast` API. Transitive crates not reviewed. Details: `docs/miracast.md` |
 | Flutter, Vue 3 and their packages | Apps and web app | not recorded in the plan | planned | A list will be generated from the lock files |
 
 ## Source of this list

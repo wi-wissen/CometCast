@@ -24,6 +24,7 @@ Usage:
   cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR] [--ca-file PEM]
                     [--screen [--display :N] [--fps N] [--bitrate-kbps N]]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
+  cometcast-cli miracast [--name NAME]
   cometcast-cli --version
 
 Options:
@@ -46,11 +47,17 @@ Options:
   --uxplay-path PATH  airplay: the uxplay program (default: uxplay from PATH)
   --video-sink SINK   airplay: GStreamer video sink, e.g. fakesink for a headless test
   (--seconds N also works with airplay: stop after N seconds)
+  --name NAME         miracast: receiver name shown on Windows senders (default: Comet Cast)
 
 Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was exchanged.
 
 airplay starts UxPlay (a separate GPL program that must be installed) and prints what it
 reports: server ready, the PIN of each connection, connects, errors. See docs/airplay.md.
+
+miracast (Windows 11 only; compile-checked, never run) listens through the Windows
+MiracastReceiver API and prints events. A connection request is answered on stdin: type y or
+n and Enter (no answer within 30 seconds = rejected). On other systems it prints a message
+and exits with code 2. See docs/miracast.md.
 
 receive prints the room code, then one 'stats' line per second. It exits when the sender
 leaves or on Ctrl-C. send streams a built-in VP8 test pattern, or with --screen the real screen as H.264 (no
@@ -70,6 +77,9 @@ enum Command {
         screen: Option<ScreenArgs>,
     },
     Airplay(AirplayArgs),
+    Miracast {
+        name: Option<String>,
+    },
     Version,
     Help,
 }
@@ -117,6 +127,18 @@ struct ScreenArgs {
     bitrate_kbps: u32,
 }
 
+fn parse_miracast(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
+    let mut name = None;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--name" => name = Some(args.next().ok_or("--name needs a value")?),
+            "--help" | "-h" => return Ok(Command::Help),
+            other => return Err(format!("unexpected argument {other:?} for miracast")),
+        }
+    }
+    Ok(Command::Miracast { name })
+}
+
 struct Common {
     server: String,
     bind: Option<String>,
@@ -156,6 +178,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "--version" | "-V" => return Ok(Command::Version),
         "--help" | "-h" | "help" => return Ok(Command::Help),
         "airplay" => return parse_airplay(args),
+        "miracast" => return parse_miracast(args),
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
     }
@@ -249,6 +272,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Airplay(a) => airplay(a).await,
+        Command::Miracast { name } => miracast(name).await,
         Command::Receive { common, decode } => receive(common, decode).await,
         Command::Send {
             code,
@@ -257,6 +281,113 @@ async fn main() -> ExitCode {
             screen,
         } => send(code, seconds, common, screen).await,
     }
+}
+
+/// Miracast receiving exists only on Windows.
+#[cfg(not(windows))]
+#[allow(clippy::unused_async)]
+async fn miracast(_name: Option<String>) -> ExitCode {
+    eprintln!(
+        "miracast: Windows only. Miracast receiving uses the Windows 11 MiracastReceiver API \
+         and is not available on this system. See docs/miracast.md."
+    );
+    ExitCode::from(2)
+}
+
+/// Run the Miracast receiver and print its events until Ctrl-C.
+/// COMPILE-CHECKED ONLY: never run on a real Windows machine.
+#[cfg(windows)]
+async fn miracast(name: Option<String>) -> ExitCode {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, mpsc};
+
+    use cc_miracast::{
+        ConnectionId, MiracastConfig, MiracastError, MiracastEvent, MiracastReceiver,
+        MiracastStatus, status_after,
+    };
+
+    let mut config = MiracastConfig::default();
+    if let Some(n) = name {
+        config.display_name = n;
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop2 = Arc::clone(&stop);
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        stop2.store(true, Ordering::SeqCst);
+    });
+    let join = tokio::task::spawn_blocking(move || {
+        let (receiver, events) = match MiracastReceiver::start(config) {
+            Ok(v) => v,
+            Err(MiracastError::Unsupported) => {
+                eprintln!("error: this Windows system reports no Miracast receiver support");
+                return ExitCode::from(2);
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        println!("Miracast receiver started (Ctrl-C to quit).");
+        // Answers to connection requests come from stdin lines.
+        let (line_tx, lines) = mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            while std::io::stdin().read_line(&mut buf).is_ok_and(|n| n > 0) {
+                if line_tx.send(buf.trim().to_string()).is_err() {
+                    break;
+                }
+                buf.clear();
+            }
+        });
+        let mut status = MiracastStatus::Starting;
+        let mut asking: Option<ConnectionId> = None;
+        while !stop.load(Ordering::SeqCst) {
+            if let Ok(line) = lines.try_recv()
+                && let Some(id) = asking.take()
+            {
+                let accept = matches!(line.to_ascii_lowercase().as_str(), "y" | "yes");
+                if let Err(e) = receiver.respond(id, accept) {
+                    println!("answer failed: {e}");
+                }
+            }
+            match events.recv_timeout(Duration::from_millis(200)) {
+                Ok(ev) => {
+                    match &ev {
+                        MiracastEvent::ConnectionRequested {
+                            id,
+                            device_name,
+                            pin,
+                        } => {
+                            asking = Some(*id);
+                            println!("event: connection requested by {device_name:?}");
+                            if let Some(pin) = pin {
+                                println!("PIN to show/enter: {pin}");
+                            }
+                            println!("Accept? [y/N] (rejected after 30 seconds)");
+                        }
+                        MiracastEvent::Disconnected { id } if asking == Some(*id) => asking = None,
+                        _ => println!("event: {ev:?}"),
+                    }
+                    let next = status_after(status, &ev);
+                    if next != status {
+                        println!("status: {next:?}");
+                        status = next;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        println!("Stopping.");
+        receiver.stop();
+        if status == MiracastStatus::Failed {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        }
+    });
+    join.await.unwrap_or(ExitCode::FAILURE)
 }
 
 /// Run UxPlay under the supervisor and print its events until Ctrl-C (or --seconds).
@@ -703,6 +834,20 @@ mod tests {
         assert!(parse("airplay --nope").is_err());
         assert!(parse("airplay --name").is_err());
         assert!(parse("airplay --seconds 0").is_err());
+    }
+
+    #[test]
+    fn parses_miracast() {
+        assert!(matches!(
+            parse("miracast --name Room1"),
+            Ok(Command::Miracast { name: Some(n) }) if n == "Room1"
+        ));
+        assert!(matches!(
+            parse("miracast"),
+            Ok(Command::Miracast { name: None })
+        ));
+        assert!(parse("miracast --name").is_err());
+        assert!(parse("miracast --nope").is_err());
     }
 
     #[test]

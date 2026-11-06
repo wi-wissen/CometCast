@@ -17,6 +17,7 @@ members = [
     "crates/cc-server",
     "crates/cc-sfu",
     "crates/cc-airplay",
+    "crates/cc-miracast",
     "bins/cometcast-server",
     "bins/cometcast-cli",
     "xtask",
@@ -81,6 +82,7 @@ x11rb = { version = "0.14", default-features = false, features = ["damage", "ran
 # H.264 (BSD-2-Clause bindings around Cisco's OpenH264). The build mode is chosen by the
 # cc-media features.
 openh264 = { version = "0.9", default-features = false }
+cc-miracast = { path = "crates/cc-miracast" }
 
 # Lints every crate inherits with `[lints] workspace = true`.
 [workspace.lints.rust]
