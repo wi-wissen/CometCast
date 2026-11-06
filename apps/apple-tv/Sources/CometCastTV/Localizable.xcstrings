@@ -1,0 +1,24 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "room_code_label" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Room code" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Raumcode" } }
+      }
+    },
+    "waiting_for_sender" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Waiting for a sender" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Warte auf einen Sender" } }
+      }
+    },
+    "preview_notice" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preview build (v0.1)" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Vorschau-Version (v0.1)" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XcodeGen spec: `xcodegen generate` creates CometCastTV.xcodeproj from this file.
+# UNCERTAIN: written without XcodeGen/Xcode; key names follow the XcodeGen docs
+# from memory. A Package.swift is not used because an executable tvOS app
+# needs an Xcode app target.
+name: CometCastTV
+options:
+  bundleIdPrefix: de.cometcast
+  deploymentTarget:
+    tvOS: "17.0"
+targets:
+  CometCastTV:
+    type: application
+    platform: tvOS
+    sources:
+      - Sources/CometCastTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.cometcast.tv
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES

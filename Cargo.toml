@@ -1,0 +1,59 @@
+# Comet Cast Rust workspace.
+# A workspace is a group of crates (Rust packages) built together with one Cargo.lock.
+[workspace]
+resolver = "3"
+members = [
+    "crates/cc-proto",
+    "crates/cc-discovery",
+    "crates/cc-transport",
+    "crates/cc-media",
+    "crates/cc-capture",
+    "crates/cc-docs",
+    "crates/cc-office",
+    "crates/cc-files",
+    "crates/cc-sender",
+    "crates/cc-receiver",
+    "crates/cc-ffi",
+    "crates/cc-server",
+    "crates/cc-sfu",
+    "bins/cometcast-server",
+    "bins/cometcast-cli",
+    "xtask",
+]
+
+# Values every crate can reuse with `version.workspace = true` etc.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# UNCERTAIN: 1.85 is the first release with edition 2024; the real minimum will be
+# raised when heavier dependencies (webrtc, axum, ...) are added and measured in CI.
+rust-version = "1.85"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/wi-wissen/CometCast"
+authors = ["Comet Cast contributors"]
+
+# Shared dependency versions. Crates opt in with `serde.workspace = true`.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# Our own crates, so they can refer to each other by name.
+cc-proto = { path = "crates/cc-proto" }
+cc-server = { path = "crates/cc-server" }
+
+# Lints every crate inherits with `[lints] workspace = true`.
+[workspace.lints.rust]
+# No `unsafe` code anywhere, except crates that opt out and say why (cc-ffi).
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+# Pedantic is intentionally not enabled.
+all = { level = "warn", priority = -1 }
+
+# Release build: small and fast binaries (mobile size matters).
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
+codegen-units = 1

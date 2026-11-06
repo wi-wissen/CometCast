@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# pubspec.yaml is Flutter's package.json: name, dependencies, assets.
+name: cometcast
+description: Comet Cast - one app that is sender and receiver for screen, documents, links and files.
+version: 0.1.0+1
+publish_to: none
+
+environment:
+  # UNCERTAIN: Dart 3.x range; adjust to the SDK that `flutter --version` reports.
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # UNCERTAIN: intl version must match what flutter_localizations pins; if
+  # `flutter pub get` complains, use `intl: any`.
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  # Generates the AppLocalizations class from lib/l10n/*.arb (see l10n.yaml).
+  generate: true
+  assets:
+    - assets/icon.png

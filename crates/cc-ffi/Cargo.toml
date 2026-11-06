@@ -1,0 +1,15 @@
+[package]
+name = "cc-ffi"
+description = "Stable facade for Swift and Flutter bindings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+# UNCERTAIN: UniFFI-generated code uses `unsafe`; once added, this crate needs its own
+# lint table instead of the workspace one. Until then it inherits the strict rules.

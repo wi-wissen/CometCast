@@ -1,0 +1,4 @@
+# Uses the newest stable Rust. rustfmt and clippy are needed for CI.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

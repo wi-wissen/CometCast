@@ -1,0 +1,14 @@
+{
+  "@@locale": "de",
+  "appTitle": "Comet Cast",
+  "homeSendScreen": "Bildschirm senden",
+  "homeSendScreenHint": "Zeige deinen Bildschirm auf einem anderen Gerät",
+  "homeSendFileOrLink": "Datei oder Link senden",
+  "homeSendFileOrLinkHint": "Dokumente, Dateien und Links",
+  "homeReceive": "Auf diesem Gerät empfangen",
+  "homeReceiveHint": "Andere können an dieses Gerät senden",
+  "languageLabel": "Sprache",
+  "previewNotice": "Vorschau-Version (v0.1)",
+  "roomCodeLabel": "Raumcode",
+  "comingSoon": "Demnächst verfügbar"
+}
