@@ -1,0 +1,24 @@
+[package]
+name = "cc-airplay"
+description = "Supervisor for the UxPlay AirPlay receiver (separate process)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+# Pseudo-terminal (PTY) so UxPlay prints its lines at once. See docs/airplay.md.
+portable-pty = "0.9"
+
+# Signals (SIGTERM) without `unsafe` code. Unix only.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", default-features = false, features = ["signal"] }
+
+[dev-dependencies]
+nix = { version = "0.31", default-features = false, features = ["signal", "process"] }

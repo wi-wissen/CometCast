@@ -1,0 +1,15 @@
+UxPlay 1.68: An Open-Source AirPlay mirroring and audio-streaming server.
+Required gstreamer plugin 'app' not found
+Missing plugin is contained in  '[GStreamer 1.x]-plugins-base'
+Required gstreamer plugin 'playback' not found
+Missing plugin is contained in  '[GStreamer 1.x]-plugins-base'
+Required gstreamer plugin 'autodetect' not found
+Missing plugin is contained in  '[GStreamer 1.x]-plugins-good'
+Required gstreamer plugin 'videoparsersbad' not found
+Missing plugin is contained in  '[GStreamer 1.x]-plugins-bad'
+
+if the plugin is installed, but not found, your gstreamer registry may have been corrupted.
+to rebuild it when gstreamer next starts, clear your gstreamer cache with:
+"rm -rf ~/.cache/gstreamer-1.0"
+
+*** ERROR: stopping

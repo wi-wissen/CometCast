@@ -16,6 +16,7 @@ members = [
     "crates/cc-ffi",
     "crates/cc-server",
     "crates/cc-sfu",
+    "crates/cc-airplay",
     "bins/cometcast-server",
     "bins/cometcast-cli",
     "xtask",
@@ -55,6 +56,7 @@ cc-server = { path = "crates/cc-server" }
 cc-transport = { path = "crates/cc-transport" }
 cc-receiver = { path = "crates/cc-receiver" }
 cc-sender = { path = "crates/cc-sender" }
+cc-airplay = { path = "crates/cc-airplay" }
 
 # Lints every crate inherits with `[lints] workspace = true`.
 [workspace.lints.rust]
