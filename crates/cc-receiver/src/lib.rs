@@ -23,6 +23,10 @@ use tokio::task::JoinHandle;
 /// UNCERTAIN: placeholder, not measured.
 const ROOM_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long after the sender's offer arrived the WebRTC connection may take to become connected.
+/// UNCERTAIN: 30 s is a placeholder; real values depend on networks and are not measured.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Settings for [`ReceiverCore::start`].
 #[derive(Debug, Clone)]
 pub struct ReceiverOptions {
@@ -140,7 +144,11 @@ impl ReceiverCore {
 
 impl Drop for ReceiverCore {
     fn drop(&mut self) {
-        self.task.abort();
+        // Ask the background task to finish: it closes the WebRTC session and the
+        // signalling connection itself. (It is not aborted, so the cleanup runs.)
+        if let Some(tx) = self.stop.take() {
+            let _ = tx.send(());
+        }
     }
 }
 
@@ -157,6 +165,8 @@ async fn run(
     };
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut have_track = false;
+    let mut offer_at: Option<tokio::time::Instant> = None;
+    let mut connected = false;
     loop {
         tokio::select! {
             _ = &mut stop => break,
@@ -167,6 +177,7 @@ async fn run(
                 }
                 Some(ServerMsg::PeerJoined) => emit(ReceiverEvent::PeerJoined),
                 Some(ServerMsg::Offer { sdp }) => {
+                    offer_at.get_or_insert_with(tokio::time::Instant::now);
                     let answer = match session.accept_offer(sdp).await {
                         Ok(a) => a,
                         Err(e) => {
@@ -199,13 +210,29 @@ async fn run(
                 Some(SessionEvent::LocalIceCandidate(c)) => {
                     let _ = sig.send(ClientMsg::IceCandidate { candidate: c }).await;
                 }
-                Some(SessionEvent::State(s)) => emit(ReceiverEvent::State(s)),
+                Some(SessionEvent::State(s)) => {
+                    emit(ReceiverEvent::State(s));
+                    if s == ConnectionState::Connected {
+                        connected = true;
+                    }
+                    if s == ConnectionState::Failed {
+                        emit(ReceiverEvent::Error("WebRTC connection failed".into()));
+                        break;
+                    }
+                }
                 Some(SessionEvent::VideoTrack { mime, codec }) => {
                     have_track = true;
                     emit(ReceiverEvent::VideoTrack { mime, codec });
                 }
             },
             _ = tick.tick() => {
+                if !connected && offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
+                    emit(ReceiverEvent::Error(format!(
+                        "no WebRTC connection {} s after the offer arrived",
+                        CONNECT_TIMEOUT.as_secs()
+                    )));
+                    break;
+                }
                 if have_track {
                     emit(ReceiverEvent::Stats(session.stats()));
                 }

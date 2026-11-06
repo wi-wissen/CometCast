@@ -15,4 +15,5 @@ workspace = true
 cc-proto.workspace = true
 cc-receiver.workspace = true
 cc-sender.workspace = true
+cc-transport.workspace = true
 tokio.workspace = true

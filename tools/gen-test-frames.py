@@ -8,6 +8,10 @@ key frame (the "VP8 " chunk), so we let Pillow's libwebp write the images once a
 copy the VP8 chunk into an IVF container. This is a dev-time tool only: the result is
 committed, nothing here runs at build or test time.
 
+Provenance of the committed file: generated with Python 3.13.18, Pillow 12.3.0 and its
+bundled libwebp 1.6.0. The frames are plain rectangles drawn by this script (no font, no
+third-party image), so the result is our own work; the lossy encoding was done by libwebp (BSD-3-Clause).
+
 Usage: python3 tools/gen-test-frames.py
 """
 import io
@@ -38,7 +42,8 @@ for i in range(N):
     hue = int(255 * i / N)
     d.rectangle([0, 0, W, H], fill=(hue, 90, 255 - hue))
     d.rectangle([10 + i * 20, 70, 70 + i * 20, 130], fill=(255, 255, 255))
-    d.text((10, 10), f"COMET CAST TEST {i}", fill=(255, 255, 255))
+    # No text is drawn on purpose: no font is used, so no font licence applies.
+    d.rectangle([10, 10, 10 + 10 * (i + 1), 25], fill=(255, 255, 255))  # progress bar
     buf = io.BytesIO()
     img.save(buf, "WEBP", lossless=False, quality=60, method=4)
     frames.append(vp8_chunk(buf.getvalue()))

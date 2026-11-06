@@ -101,3 +101,36 @@ async fn sender_with_wrong_code_gets_room_not_found() {
         .expect("must fail");
     assert!(err.to_string().contains("room_not_found"), "{err}");
 }
+
+#[tokio::test]
+async fn dropping_the_receiver_closes_its_connection() {
+    let server = start_server().await;
+    let mut ropts = ReceiverOptions::new(&server);
+    ropts.session = local_session();
+    let receiver = ReceiverCore::start(ropts).await.unwrap();
+    let code = receiver.room_code().clone();
+
+    // A sender joins; then the receiver is only dropped (no stop()).
+    let mut sig = cc_transport::SignalingClient::connect(&server, cc_proto::Role::Sender)
+        .await
+        .unwrap();
+    sig.send(cc_proto::ClientMsg::JoinRoom { code })
+        .await
+        .unwrap();
+    assert_eq!(sig.recv().await, Some(cc_proto::ServerMsg::Joined));
+    drop(receiver);
+
+    // The server must tell the sender that the receiver is gone.
+    let msg = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match sig.recv().await {
+                Some(cc_proto::ServerMsg::PeerLeft) => return true,
+                Some(_) => {}
+                None => return false,
+            }
+        }
+    })
+    .await
+    .expect("timeout: drop did not close the signalling connection");
+    assert!(msg);
+}

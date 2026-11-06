@@ -19,20 +19,50 @@ use crate::error::TransportError;
 /// UNCERTAIN: 10 s is a placeholder for connect plus hello; not measured on slow networks.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Turn `host:port` (or a full `ws://` / `wss://` URL) into the WebSocket URL of the server.
-pub fn ws_url(server: &str) -> String {
-    if server.starts_with("ws://") || server.starts_with("wss://") {
-        server.to_string()
+/// Turn the user's server text into the WebSocket URL.
+///
+/// Accepted: `host:port`, `host:port/ws`, `ws://host:port[/ws]` and `http://host:port`
+/// (treated as `ws://`). An empty path becomes `/ws`; any other path is kept.
+/// `wss://` and `https://` are rejected with a clear error: this build has no TLS yet
+/// (docs/protocol.md; the tokio-tungstenite TLS feature is not enabled).
+pub fn ws_url(server: &str) -> Result<String, TransportError> {
+    let server = server.trim();
+    let rest = if let Some(r) = server.strip_prefix("ws://") {
+        r
+    } else if let Some(r) = server.strip_prefix("http://") {
+        r
+    } else if server.starts_with("wss://") || server.starts_with("https://") {
+        return Err(TransportError::Unsupported(
+            "TLS (wss:// or https://) is not supported yet; use ws://host:port",
+        ));
+    } else if server.contains("://") {
+        return Err(TransportError::Invalid(format!(
+            "unknown URL scheme in {server:?}"
+        )));
     } else {
-        format!("ws://{}/ws", server.trim_end_matches('/'))
+        server
+    };
+    let (host, path) = match rest.find('/') {
+        Some(i) => rest.split_at(i),
+        None => (rest, ""),
+    };
+    if host.is_empty() {
+        return Err(TransportError::Invalid("empty server address".into()));
     }
+    let path = if path.is_empty() || path == "/" {
+        "/ws"
+    } else {
+        path
+    };
+    Ok(format!("ws://{host}{path}"))
 }
 
 /// A connected, handshaken signalling connection.
 pub struct SignalingClient {
     tx: mpsc::Sender<ClientMsg>,
     rx: mpsc::Receiver<ServerMsg>,
-    task: JoinHandle<()>,
+    // Kept only so the task handle lives here; the task ends by itself (see `connect`).
+    _task: JoinHandle<()>,
 }
 
 impl SignalingClient {
@@ -41,7 +71,7 @@ impl SignalingClient {
     /// `server` is `host:port` or a full WebSocket URL. There is no TLS yet
     /// (docs/protocol.md), so plain `ws://` is what works today.
     pub async fn connect(server: &str, role: Role) -> Result<Self, TransportError> {
-        let url = ws_url(server);
+        let url = ws_url(server)?;
         let handshake = async {
             let (mut ws, _) = connect_async(&url)
                 .await
@@ -91,11 +121,8 @@ impl SignalingClient {
                                 break;
                             }
                         }
-                        // The client was dropped: close politely.
-                        None => {
-                            let _ = ws.close(None).await;
-                            break;
-                        }
+                        // The client was dropped.
+                        None => break,
                     },
                     inc = ws.next() => match inc {
                         Some(Ok(Message::Text(t))) => {
@@ -115,12 +142,14 @@ impl SignalingClient {
                     },
                 }
             }
-            // Dropping `in_tx` makes `recv()` return None.
+            // Best effort: tell the server we are leaving. Then `in_tx` is dropped, which
+            // makes `recv()` return None.
+            let _ = ws.close(None).await;
         });
         Ok(Self {
             tx: out_tx,
             rx: in_rx,
-            task,
+            _task: task,
         })
     }
 
@@ -132,13 +161,6 @@ impl SignalingClient {
     /// Next message from the server, or `None` when the connection has ended.
     pub async fn recv(&mut self) -> Option<ServerMsg> {
         self.rx.recv().await
-    }
-}
-
-impl Drop for SignalingClient {
-    fn drop(&mut self) {
-        // The task would also stop once `tx` is dropped; abort makes it immediate.
-        self.task.abort();
     }
 }
 
@@ -157,9 +179,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ws_url_from_host_port_and_full_url() {
-        assert_eq!(ws_url("127.0.0.1:8443"), "ws://127.0.0.1:8443/ws");
-        assert_eq!(ws_url("example.org:1/"), "ws://example.org:1/ws");
-        assert_eq!(ws_url("ws://x:1/ws"), "ws://x:1/ws");
+    fn ws_url_forms() {
+        let ok = |i: &str| ws_url(i).unwrap();
+        assert_eq!(ok("127.0.0.1:8443"), "ws://127.0.0.1:8443/ws");
+        assert_eq!(ok("example.org:1/"), "ws://example.org:1/ws");
+        assert_eq!(ok("example.org:1/ws"), "ws://example.org:1/ws");
+        assert_eq!(ok("ws://x:1"), "ws://x:1/ws");
+        assert_eq!(ok("ws://x:1/ws"), "ws://x:1/ws");
+        assert_eq!(ok("http://x:1"), "ws://x:1/ws");
+        assert_eq!(ok("ws://x:1/other"), "ws://x:1/other");
+    }
+
+    #[test]
+    fn ws_url_rejects_tls_and_junk() {
+        assert!(matches!(
+            ws_url("wss://x"),
+            Err(TransportError::Unsupported(_))
+        ));
+        assert!(matches!(
+            ws_url("https://x"),
+            Err(TransportError::Unsupported(_))
+        ));
+        assert!(ws_url("ftp://x").is_err());
+        assert!(ws_url("").is_err());
     }
 }

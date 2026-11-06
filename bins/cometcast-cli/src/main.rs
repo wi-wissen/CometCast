@@ -25,6 +25,8 @@ Options:
   --seconds N         send: stop after N seconds (default: until Ctrl-C)
   --bind ADDR         Local UDP address for WebRTC (default 0.0.0.0:0; use 127.0.0.1:0 for same-machine tests)
 
+Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was exchanged.
+
 receive prints the room code, then one 'stats' line per second. It exits when the sender
 leaves or on Ctrl-C. send streams a built-in VP8 test pattern (no screen capture yet).";
 
@@ -69,10 +71,13 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
             "--bind" => common.bind = Some(args.next().ok_or("--bind needs a value")?),
             "--seconds" => {
                 let v = args.next().ok_or("--seconds needs a value")?;
-                seconds = Some(
-                    v.parse::<u64>()
-                        .map_err(|_| format!("bad --seconds value {v:?}"))?,
-                );
+                let n = v
+                    .parse::<u64>()
+                    .map_err(|_| format!("bad --seconds value {v:?}"))?;
+                if n == 0 {
+                    return Err("--seconds must be at least 1".into());
+                }
+                seconds = Some(n);
             }
             "--help" | "-h" => return Ok(Command::Help),
             s if s.starts_with("--") => return Err(format!("unknown option {s:?}")),
@@ -138,9 +143,12 @@ async fn receive(common: Common) -> ExitCode {
     println!("Room code: {}", core.room_code());
     println!("Waiting for a sender (Ctrl-C to quit)...");
     let mut last_packets = 0;
+    let mut got_video = false;
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
+            _ = &mut ctrl_c => {
                 println!("Interrupted, closing.");
                 core.stop().await;
                 return ExitCode::SUCCESS;
@@ -148,7 +156,10 @@ async fn receive(common: Common) -> ExitCode {
             ev = core.next_event() => match ev {
                 Some(ReceiverEvent::PeerJoined) => println!("Sender joined."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
-                Some(ReceiverEvent::VideoTrack { mime, .. }) => println!("Video track: {mime}"),
+                Some(ReceiverEvent::VideoTrack { mime, .. }) => {
+                    got_video = true;
+                    println!("Video track: {mime}");
+                }
                 Some(ReceiverEvent::Stats(s)) => {
                     println!(
                         "stats packets={} bytes={} frames={} keyframes={} (+{} packets/s)",
@@ -159,7 +170,7 @@ async fn receive(common: Common) -> ExitCode {
                 Some(ReceiverEvent::PeerLeft) => {
                     println!("Sender left.");
                     core.stop().await;
-                    return ExitCode::SUCCESS;
+                    return if got_video { ExitCode::SUCCESS } else { ExitCode::from(3) };
                 }
                 Some(ReceiverEvent::Error(e)) => {
                     eprintln!("error: {e}");
@@ -186,15 +197,21 @@ async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode 
         }
     };
     println!("Joined the room, offer sent.");
+    let mut connected = false;
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
+            _ = &mut ctrl_c => {
                 println!("Interrupted, closing.");
                 core.stop().await;
                 return ExitCode::SUCCESS;
             }
             ev = core.next_event() => match ev {
-                Some(SenderEvent::State(s)) => println!("Connection: {s:?}"),
+                Some(SenderEvent::State(s)) => {
+                    connected |= s == cc_transport::ConnectionState::Connected;
+                    println!("Connection: {s:?}");
+                }
                 Some(SenderEvent::Streaming { frames_sent }) => println!("sent frames={frames_sent}"),
                 Some(SenderEvent::Finished { frames_sent }) => {
                     println!("Done, sent {frames_sent} frames.");
@@ -204,7 +221,7 @@ async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode 
                 Some(SenderEvent::PeerLeft) => {
                     println!("Receiver left.");
                     core.stop().await;
-                    return ExitCode::SUCCESS;
+                    return if connected { ExitCode::SUCCESS } else { ExitCode::from(3) };
                 }
                 Some(SenderEvent::Error(e)) => {
                     eprintln!("error: {e}");
@@ -242,6 +259,7 @@ mod tests {
     fn rejects_bad_input() {
         assert!(parse("send").is_err());
         assert!(parse("send ABC").is_err());
+        assert!(parse("send K7M2QX --seconds 0").is_err());
         assert!(parse("receive extra").is_err());
         assert!(parse("receive --nope").is_err());
         assert!(parse("dance").is_err());

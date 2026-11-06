@@ -61,11 +61,11 @@ an `RTCIceCandidateInit` (no protocol change; see protocol.md).
 ## Synthetic sender
 
 There is no encoder (GPL encoders are excluded). The sender replays 12 VP8 key frames (320x180, 15 fps,
-about 9 KB in total) from `crates/cc-sender/assets/test-frames.ivf`. Every frame is a key frame; that is valid VP8 and
+about 5 KB in total) from `crates/cc-sender/assets/test-frames.ivf`. Every frame is a key frame; that is valid VP8 and
 Chromium decodes it, but it is not how a real encoder behaves. The file was generated once by
-`tools/gen-test-frames.py` (Pillow's libwebp writes lossy WebP files whose `VP8 ` chunk is a VP8 key frame;
+`tools/gen-test-frames.py` (Pillow's bundled libwebp (Pillow 12.3.0, libwebp 1.6.0) writes lossy WebP files whose `VP8 ` chunk is a VP8 key frame;
 the script copies those chunks into IVF). Nothing at build or test time needs Python, ffmpeg or libwebp.
-It is a dev-time tool whose output is committed.
+It is a dev-time tool whose output is committed. The frames contain only rectangles (no text, so no font), see THIRD_PARTY_NOTICES.md.
 
 ## Commands
 
@@ -77,7 +77,7 @@ cargo run -p cometcast-cli -- send <CODE> [--server HOST:PORT] [--seconds N] [--
 
 `receive` prints `Room code: XXXXXX`, then one line per second such as
 `stats packets=203 bytes=198354 frames=77 keyframes=2 (+61 packets/s)`. It exits with 0 when the sender
-leaves or on Ctrl-C. The default server is `127.0.0.1:8443`. `--bind` sets the local UDP address; the default
+leaves or on Ctrl-C. Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was exchanged. The default server is `127.0.0.1:8443`. `--bind` sets the local UDP address; the default
 `0.0.0.0:0` makes the library bind one socket per non-loopback interface.
 
 ## Tests and what they prove
@@ -101,8 +101,10 @@ first seconds (the Rust receiver sends a picture-loss request at the start).
 - Only Chromium was tested. Firefox and Safari are untested against the native peers.
 - One video m-line, no audio, no data channel, no control messages handled yet (the `control` messages are ignored by the cores).
 - One sender per `ReceiverCore`: after `peer_left` the core stops. A new sender needs a new core (and a new room code).
-- Candidates: native clients send `sdpMid` empty and `sdpMLineIndex` 0, which works for one bundled video line only.
-- No TLS on the signalling connection yet (plain `ws://`).
-- Disconnected state: the library may report `Disconnected` and recover; the cores only treat `Failed` and signalling loss as final.
+- Candidates: native clients leave `sdpMid` out (`null`) and set `sdpMLineIndex` to 0, which works for one bundled video line only.
+- No TLS on the signalling connection yet: `wss://` and `https://` server addresses are rejected with an error (the tokio-tungstenite TLS feature is not enabled). Accepted: `host:port`, `host:port/ws`, `ws://...`, `http://...` (read as `ws://`).
+- Disconnected state: the library may report `Disconnected` and recover; both cores treat `Failed` and signalling loss as final, `Disconnected` is not.
+  The receiver also gives up (error event) if no connection exists 30 s after the offer arrived (UNCERTAIN: placeholder value). The sender has no such timeout yet.
   UNCERTAIN: no reconnect or ICE restart logic.
 - The frame counter assumes one RTP marker per frame.
+- Dropping a `ReceiverCore` or `SenderCore` without calling `stop()` asks its background task to finish, which closes the WebRTC session and the signalling connection; `stop()` additionally waits for that.

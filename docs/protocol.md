@@ -46,7 +46,7 @@ Server to client:
 `ice_candidate.candidate` is an opaque string for the server. For browsers it
 carries the JSON text of an `RTCIceCandidateInit` (`candidate`, `sdpMid`,
 `sdpMLineIndex`). Native clients (`cc-transport`) send the same JSON, so no protocol
-change was needed; they leave `sdpMid` out and set `sdpMLineIndex` to 0 (one bundled
+change was needed; they send `sdpMid` as `null` and set `sdpMLineIndex` to 0 (one bundled
 transport). UNCERTAIN: this is verified only for one video m-line against Chromium;
 audio or data m-lines are not tested (see docs/transport.md).
 

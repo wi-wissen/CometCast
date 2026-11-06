@@ -10,6 +10,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import assert from 'node:assert/strict'
+import { createServer } from 'node:net'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -17,7 +18,18 @@ const { chromium } = require('playwright')
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = resolve(here, '../../..')
 const webDir = resolve(here, '../dist')
-const port = Number(process.env.E2E_PORT ?? 19443 + Math.floor(Math.random() * 1000))
+// Ask the OS for a free port by binding port 0, then release it for the server.
+// (Small race window between close and the server's bind; acceptable for a local test.)
+const freePort = () =>
+  new Promise((res, rej) => {
+    const srv = createServer()
+    srv.once('error', rej)
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address()
+      srv.close(() => res(port))
+    })
+  })
+const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await freePort()
 const base = `http://127.0.0.1:${port}`
 const targetDir = process.env.CARGO_TARGET_DIR ?? resolve(repo, 'target')
 

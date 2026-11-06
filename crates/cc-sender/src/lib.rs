@@ -197,7 +197,11 @@ impl SenderCore {
 
 impl Drop for SenderCore {
     fn drop(&mut self) {
-        self.task.abort();
+        // Ask the background task to finish: it closes the WebRTC session and the
+        // signalling connection itself. (It is not aborted, so the cleanup runs.)
+        if let Some(tx) = self.stop.take() {
+            let _ = tx.send(());
+        }
     }
 }
 
