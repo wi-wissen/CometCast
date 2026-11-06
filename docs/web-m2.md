@@ -84,3 +84,9 @@ example kiosks) is not decided; a policy or allow list may be needed later.
 
 What the e2e does not prove: other browsers, touch input on real devices, behaviour across networks
 (no STUN/TURN yet), very large files, and real fullscreen (the button is not exercised).
+
+## Chunk size rule
+
+Every binary chunk of an image must be exactly 16 KiB, except the last one. The receiver rejects
+smaller chunks (`bad_chunk`) to bound the number of messages it must hold in memory. Other senders
+must follow this rule. UNCERTAIN: the value is unmeasured; see the other limits above.
