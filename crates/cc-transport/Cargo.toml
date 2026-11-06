@@ -22,3 +22,12 @@ webrtc.workspace = true
 rtc.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
+serde.workspace = true
+altcha.workspace = true
+base64.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+rustls-native-certs.workspace = true
+
+[dev-dependencies]
+cc-server.workspace = true

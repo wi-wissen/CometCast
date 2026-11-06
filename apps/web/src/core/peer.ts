@@ -26,10 +26,12 @@ export interface Peer {
   close(): void
 }
 
-export type PeerFactory = (handlers: PeerHandlers) => Peer
+/** `config.iceServers` comes from the server's GET /ice-servers when it offers one (altchaClient.ts). */
+export type PeerFactory = (handlers: PeerHandlers, config?: RTCConfiguration) => Peer
 
-// UNCERTAIN: no STUN/TURN servers by default, so this only works for direct/LAN connections.
-// STUN/TURN comes with milestone M8 and measurement point 1 (docs/measurement-points.md).
+// Without a server-provided list there are no STUN/TURN servers, so this only works for
+// direct/LAN connections. UNCERTAIN: how well TURN works is not measured (measurement point 1,
+// docs/measurement-points.md).
 export const DEFAULT_RTC_CONFIG: RTCConfiguration = { iceServers: [] }
 
 export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DEFAULT_RTC_CONFIG): Peer {

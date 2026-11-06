@@ -14,16 +14,22 @@ use cc_airplay::{AirplayConfig, AirplayEvent, AirplayStatus, Supervisor, Supervi
 use cc_proto::RoomCode;
 use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
 use cc_sender::{SenderCore, SenderEvent, SenderOptions};
+use cc_transport::{IceServerConfig, TlsTrust};
 
 const USAGE: &str = "\
 Usage:
-  cometcast-cli receive [--server HOST:PORT] [--bind ADDR]
-  cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR]
+  cometcast-cli receive [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
+  cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR] [--ca-file PEM]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
   cometcast-cli --version
 
 Options:
-  --server HOST:PORT  Signalling server (default 127.0.0.1:8443, plain ws://, no TLS yet)
+  --server ADDRESS    Signalling server: HOST:PORT (plain ws://), or ws://, wss://, http://,
+                      https:// URL (default 127.0.0.1:8443). Servers that require proof-of-work
+                      (open mode) are handled automatically; STUN/TURN servers are fetched
+                      from the server when it offers them.
+  --ca-file PEM       Also trust the certificate(s) in this PEM file for wss:// / https://
+                      (for a self-signed test server; the system store is always used too)
   --seconds N         send: stop after N seconds (default: until Ctrl-C)
   --bind ADDR         Local UDP address for WebRTC (default 0.0.0.0:0; use 127.0.0.1:0 for same-machine tests)
 
@@ -94,6 +100,19 @@ fn parse_airplay(mut args: impl Iterator<Item = String>) -> Result<Command, Stri
 struct Common {
     server: String,
     bind: Option<String>,
+    ca_file: Option<String>,
+}
+
+/// Read the optional extra trusted certificates.
+fn load_trust(ca_file: Option<&str>) -> Result<TlsTrust, String> {
+    let mut trust = TlsTrust::system();
+    if let Some(path) = ca_file {
+        let pem = std::fs::read(path).map_err(|e| format!("cannot read --ca-file {path}: {e}"))?;
+        trust
+            .add_pem(&pem)
+            .map_err(|e| format!("--ca-file {path}: {e}"))?;
+    }
+    Ok(trust)
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
@@ -104,6 +123,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
     let mut common = Common {
         server: DEFAULT_SERVER.to_string(),
         bind: None,
+        ca_file: None,
     };
     let mut seconds = None;
     let mut positional = Vec::new();
@@ -118,6 +138,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         match a.as_str() {
             "--server" => common.server = args.next().ok_or("--server needs a value")?,
             "--bind" => common.bind = Some(args.next().ok_or("--bind needs a value")?),
+            "--ca-file" => common.ca_file = Some(args.next().ok_or("--ca-file needs a value")?),
             "--seconds" => {
                 let v = args.next().ok_or("--seconds needs a value")?;
                 let n = v
@@ -135,7 +156,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
     }
     if cmd == "receive" {
         if !positional.is_empty() || seconds.is_some() {
-            return Err("receive takes only --server and --bind".into());
+            return Err("receive takes only --server, --bind and --ca-file".into());
         }
         return Ok(Command::Receive(common));
     }
@@ -302,8 +323,31 @@ fn help_text(path: &std::path::Path) -> Option<String> {
     Some(text)
 }
 
+/// One line about the STUN/TURN servers the signalling server handed out (nothing if none).
+fn print_ice_servers(list: &[IceServerConfig]) {
+    if list.is_empty() {
+        return;
+    }
+    let turn = list
+        .iter()
+        .filter(|s| s.username.is_some() && s.credential.is_some())
+        .count();
+    println!(
+        "ICE servers from the server: {} ({} with TURN credentials)",
+        list.len(),
+        turn
+    );
+}
+
 async fn receive(common: Common) -> ExitCode {
     let mut opts = ReceiverOptions::new(common.server);
+    opts.trust = match load_trust(common.ca_file.as_deref()) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     if let Some(b) = common.bind {
         opts.session.udp_bind = vec![b];
     }
@@ -315,6 +359,7 @@ async fn receive(common: Common) -> ExitCode {
         }
     };
     println!("Room code: {}", core.room_code());
+    print_ice_servers(core.ice_servers());
     println!("Waiting for a sender (Ctrl-C to quit)...");
     let mut last_packets = 0;
     let mut got_video = false;
@@ -360,6 +405,13 @@ async fn receive(common: Common) -> ExitCode {
 async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode {
     let mut opts = SenderOptions::new(common.server, code);
     opts.duration = seconds.map(Duration::from_secs);
+    opts.trust = match load_trust(common.ca_file.as_deref()) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     if let Some(b) = common.bind {
         opts.session.udp_bind = vec![b];
     }
@@ -371,6 +423,7 @@ async fn send(code: RoomCode, seconds: Option<u64>, common: Common) -> ExitCode 
         }
     };
     println!("Joined the room, offer sent.");
+    print_ice_servers(core.ice_servers());
     let mut connected = false;
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
@@ -427,6 +480,17 @@ mod tests {
         };
         assert_eq!(code.as_str(), "K7M2QX");
         assert_eq!(seconds, Some(5));
+    }
+
+    #[test]
+    fn parses_ca_file() {
+        assert!(matches!(
+            parse("receive --server https://h --ca-file /x/ca.pem"),
+            Ok(Command::Receive(c)) if c.ca_file.as_deref() == Some("/x/ca.pem")
+        ));
+        assert!(parse("receive --ca-file").is_err());
+        assert!(load_trust(Some("/nonexistent/ca.pem")).is_err());
+        assert!(load_trust(None).is_ok());
     }
 
     #[test]

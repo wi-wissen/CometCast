@@ -26,12 +26,14 @@ use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
 use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
 use webrtc::peer_connection::{
     PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler, RTCConfigurationBuilder,
-    RTCIceCandidateInit, RTCPeerConnectionIceEvent, RTCPeerConnectionState, RTCSessionDescription,
+    RTCIceCandidateInit, RTCIceServer, RTCPeerConnectionIceEvent, RTCPeerConnectionState,
+    RTCSessionDescription,
 };
 use webrtc::rtp_transceiver::RtpSender;
 
 use crate::Route;
 use crate::error::TransportError;
+use crate::ice::IceServerConfig;
 use crate::rtp::{MediaSnapshot, MediaStats, VideoCodec, starts_key_frame};
 
 /// Settings for a [`Session`].
@@ -46,6 +48,10 @@ pub struct SessionConfig {
     /// (so the receiver can answer whatever a browser offers). `Some(vec![Vp8])` is what the
     /// synthetic sender uses.
     pub video_codecs: Option<Vec<VideoCodec>>,
+    /// STUN/TURN servers (from the signalling server's `/ice-servers`, see [`crate::ice`]).
+    /// Empty = host candidates only. Entries that are not usable (no URL, or `turn:` without
+    /// user name and credential) are skipped.
+    pub ice_servers: Vec<IceServerConfig>,
 }
 
 impl Default for SessionConfig {
@@ -54,6 +60,7 @@ impl Default for SessionConfig {
             route: Route::Direct,
             udp_bind: vec!["0.0.0.0:0".to_string()],
             video_codecs: None,
+            ice_servers: Vec::new(),
         }
     }
 }
@@ -128,9 +135,11 @@ impl Session {
         }
         let registry = register_default_interceptors(Registry::new(), &mut media_engine)?;
 
-        // UNCERTAIN: no STUN/TURN servers, so only direct / same-network connections work.
-        // STUN/TURN belongs to milestone M8 and measurement point 1 (docs/measurement-points.md).
-        let rtc_config = RTCConfigurationBuilder::new().build();
+        // UNCERTAIN: relaying through TURN was not tried against a real coturn; only that the
+        // list reaches the library configuration is tested (docs/transport.md).
+        let rtc_config = RTCConfigurationBuilder::new()
+            .with_ice_servers(to_rtc_ice_servers(&config.ice_servers))
+            .build();
 
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let stats = Arc::new(MediaStats::default());
@@ -307,6 +316,29 @@ impl VideoSender {
     }
 }
 
+/// Convert the server's list to the library type. Unusable entries are dropped: the library
+/// refuses the whole configuration for one bad entry, and a missing TURN server should not
+/// stop a connection that could work directly.
+fn to_rtc_ice_servers(list: &[IceServerConfig]) -> Vec<RTCIceServer> {
+    list.iter()
+        .filter(|s| !s.urls.is_empty())
+        .filter(|s| {
+            let needs_auth = s
+                .urls
+                .iter()
+                .any(|u| u.starts_with("turn:") || u.starts_with("turns:"));
+            !needs_auth
+                || (s.username.as_deref().is_some_and(|u| !u.is_empty())
+                    && s.credential.as_deref().is_some_and(|c| !c.is_empty()))
+        })
+        .map(|s| RTCIceServer {
+            urls: s.urls.clone(),
+            username: s.username.clone().unwrap_or_default(),
+            credential: s.credential.clone().unwrap_or_default(),
+        })
+        .collect()
+}
+
 fn rand_u32() -> u32 {
     // No `rand` dependency needed: the std hasher is randomly seeded per process.
     use std::hash::{BuildHasher, Hasher};
@@ -420,5 +452,58 @@ impl PeerConnectionEventHandler for Handler {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(urls: &[&str], user: Option<&str>, cred: Option<&str>) -> IceServerConfig {
+        IceServerConfig {
+            urls: urls.iter().map(|u| (*u).to_string()).collect(),
+            username: user.map(str::to_string),
+            credential: cred.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn ice_servers_are_converted_and_unusable_ones_dropped() {
+        let list = vec![
+            cfg(&["stun:s.example.org:3478"], None, None),
+            cfg(
+                &["turn:t.example.org:3478?transport=udp"],
+                Some("u"),
+                Some("c"),
+            ),
+            cfg(&["turn:no-auth.example.org"], None, None),
+            cfg(&[], Some("u"), Some("c")),
+        ];
+        let out = to_rtc_ice_servers(&list);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].username, "u");
+        assert_eq!(out[1].credential, "c");
+        assert_eq!(out[0].username, "");
+    }
+
+    #[tokio::test]
+    async fn session_accepts_turn_configuration() {
+        // The library validates TURN URLs and credentials when the connection is built.
+        let config = SessionConfig {
+            udp_bind: vec!["127.0.0.1:0".into()],
+            ice_servers: vec![
+                cfg(&["stun:127.0.0.1:3478"], None, None),
+                cfg(
+                    &["turn:127.0.0.1:3478?transport=udp"],
+                    Some("1:abc"),
+                    Some("secret"),
+                ),
+            ],
+            ..SessionConfig::default()
+        };
+        let (session, _events) = Session::new(config)
+            .await
+            .expect("session with TURN config");
+        session.close().await.unwrap();
     }
 }

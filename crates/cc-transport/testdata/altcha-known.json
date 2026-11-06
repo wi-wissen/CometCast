@@ -1,0 +1,19 @@
+{
+  "challenge": {
+    "parameters": {
+      "algorithm": "PBKDF2/SHA-256",
+      "cost": 1000,
+      "expiresAt": 4102444800,
+      "keyLength": 32,
+      "keyPrefix": "fdf7b2e5a7a69b9cef1841083a6766d2",
+      "keySignature": "72110798d7d357120e1201c744f94da0f2ffe90fa4ecbb040fc7a4a505495c20",
+      "nonce": "207dc692113e91b1df2b3f7b73f123a8",
+      "salt": "304be02c2e8411148cb15d5fca3345d3"
+    },
+    "signature": "732fc613d7d529366a0f816e70baf8f91e4b22fb578b9a15365d7ba5b7e6d7b7"
+  },
+  "counter": 777,
+  "derivedKey": "fdf7b2e5a7a69b9cef1841083a6766d25b17caa2ce2144bfa71a4bee43e17d36",
+  "key_secret": "fixture-secret-0123456789/key",
+  "secret": "fixture-secret-0123456789"
+}

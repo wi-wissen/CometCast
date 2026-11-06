@@ -31,7 +31,7 @@ Client to server:
 | type | fields | who | meaning |
 |---|---|---|---|
 | `hello` | `proto_version`, `role` (`sender`/`receiver`) | both | Must be the first message. |
-| `create_room` | optional `altcha` (string) | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. |
+| `create_room` | optional `altcha` (string) | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. The web app and the native clients first send `create_room` without the field; after `altcha_required` they fetch and solve a puzzle and send `create_room` again on the same connection (the connection stays open after `altcha_required`). Payload and solving scheme: [web README](../apps/web/README.md#open-servers-and-turn) and [transport.md](transport.md). |
 | `join_room` | `code` | sender | Join the room with this code (case-insensitive, 6 characters). |
 | `offer` | `sdp` | both | WebRTC offer, relayed to the peer. |
 | `answer` | `sdp` | both | WebRTC answer, relayed to the peer. |
@@ -154,5 +154,9 @@ The hello deadline is fixed at connect time; WebSocket pings do not extend it.
 ## Not done yet
 
 Authentication for internal servers, ALTCHA when joining a room (only `create_room`
-needs it today), and more than one sender per room. See [server.md](server.md) for
+needs it today), and more than one sender per room. The web app, the native cores and the CLI
+solve ALTCHA for `create_room` and use `GET /ice-servers` (see [transport.md](transport.md)); the
+`cc-ffi` and the Flutter apps were not changed here; `cc-ffi` still compiles (it uses
+`ReceiverOptions::new` / `SenderOptions::new`) and so gets ALTCHA solving and the TURN list from the Rust
+cores without changes. UNCERTAIN: the Flutter apps were not built or run against an open server. See [server.md](server.md) for
 what is built for open servers and what is still open.

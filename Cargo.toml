@@ -65,6 +65,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+# Native clients: system trust store for wss:// / https:// (UNCERTAIN: not available on Android).
+rustls-native-certs = "0.8"
 # Our own crates, so they can refer to each other by name.
 cc-proto = { path = "crates/cc-proto" }
 cc-server = { path = "crates/cc-server" }
