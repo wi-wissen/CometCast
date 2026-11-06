@@ -104,6 +104,8 @@ enum Command {
     Cast(cast::CastCmd),
     Discover(discover::DiscoverArgs),
     Docs(docs::DocsArgs),
+    /// Hidden: the render worker process of `cc-docs` (started by `docs`, see docs/documents.md).
+    DocsWorker,
     AirplaySend(airplay_send::Sub),
     Miracast {
         name: Option<String>,
@@ -212,6 +214,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "cast" => return Ok(cast::parse(args)?.map_or(Command::Help, Command::Cast)),
         "discover" => return Ok(discover::parse(args)?.map_or(Command::Help, Command::Discover)),
         "docs" => return Ok(docs::parse(args)?.map_or(Command::DocsHelp, Command::Docs)),
+        "docs-worker" => return Ok(Command::DocsWorker),
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
     }
@@ -309,6 +312,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Docs(d) => docs::run(d),
+        Command::DocsWorker => docs::worker(),
         Command::Airplay(a) => airplay(a).await,
         Command::AirplaySend(a) => airplay_send::run(a).await,
         Command::Miracast { name } => miracast(name).await,

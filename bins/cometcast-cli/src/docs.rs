@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! `cometcast-cli docs`: look at a PDF and render one page to a picture (docs/documents.md).
 
-use std::path::PathBuf;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use cc_docs::{Document, encode_png, encode_webp_lossless};
+use cc_docs::{
+    Document, Isolation, Limits, WORKER_ENV, WorkerSpec, encode_png, encode_webp_lossless,
+    worker_main,
+};
 
 /// Text for `--help` of this command (added to the main usage text).
 pub const USAGE: &str = "\
@@ -15,7 +19,10 @@ docs (see docs/documents.md):
     --page N     page number, first page is 1 (default 1)
     --width PX   picture width in pixels (default 1920); the height follows the page shape
     --out FILE   .png or .webp (lossless); required
-  Encrypted files that need a password are refused. Limits: docs/documents.md.";
+    --force      replace --out if it exists (never through a symbolic link)
+  The PDF is rendered in a child process of this program with memory and time limits
+  (a PDF from outside is treated as hostile). Encrypted files that need a password are
+  refused. Limits: docs/documents.md.";
 
 /// What `docs` was asked to do.
 pub enum DocsArgs {
@@ -27,6 +34,7 @@ pub enum DocsArgs {
         page: usize,
         width: u32,
         out: PathBuf,
+        force: bool,
     },
 }
 
@@ -52,6 +60,7 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<DocsArgs>,
             let mut page = 1usize;
             let mut width = 1920u32;
             let mut out = None;
+            let mut force = false;
             while let Some(a) = args.next() {
                 match a.as_str() {
                     "--help" | "-h" => return Ok(None),
@@ -72,6 +81,7 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<DocsArgs>,
                             .ok_or(format!("bad --width value {v:?} (1 or more)"))?;
                     }
                     "--out" => out = Some(args.next().ok_or("--out needs a value")?),
+                    "--force" => force = true,
                     other if other.starts_with('-') => {
                         return Err(format!("unknown argument {other:?} for docs render"));
                     }
@@ -87,17 +97,84 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<DocsArgs>,
                 page,
                 width,
                 out: out.ok_or("docs render needs --out FILE")?.into(),
+                force,
             }))
         }
         other => Err(format!("unknown docs subcommand {other:?}")),
     }
 }
 
-fn open(file: &PathBuf) -> Result<(Document, usize), String> {
-    let bytes = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+/// Where the renderer runs: the program named by `COMETCAST_DOCS_WORKER` if set, otherwise
+/// this program itself with the hidden argument `docs-worker`.
+fn isolation() -> Result<Isolation, String> {
+    if std::env::var_os(WORKER_ENV).is_some_and(|v| !v.is_empty()) {
+        return Ok(Isolation::Auto);
+    }
+    WorkerSpec::current_exe_with_arg("docs-worker")
+        .map(Isolation::Process)
+        .map_err(|e| format!("cannot find this program to start the render worker: {e}"))
+}
+
+/// Read a PDF without trusting the file system: only regular files, never more than the
+/// size limit (a device such as `/dev/zero` reports size 0 and never ends).
+fn read_limited(file: &Path, max: usize) -> Result<Vec<u8>, String> {
+    let err = |e: &dyn std::fmt::Display| format!("{}: {e}", file.display());
+    let f = std::fs::File::open(file).map_err(|e| err(&e))?;
+    let meta = f.metadata().map_err(|e| err(&e))?;
+    if !meta.is_file() {
+        return Err(err(&"not a regular file"));
+    }
+    if meta.len() > max as u64 {
+        return Err(err(&format!("too large (limit {max} bytes)")));
+    }
+    let mut bytes = Vec::new();
+    f.take(max as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| err(&e))?;
+    if bytes.len() > max {
+        return Err(err(&format!("too large (limit {max} bytes)")));
+    }
+    Ok(bytes)
+}
+
+fn open(file: &Path) -> Result<(Document, usize), String> {
+    let limits = Limits::default();
+    let bytes = read_limited(file, limits.max_file_bytes)?;
     let size = bytes.len();
-    let doc = Document::open(bytes).map_err(|e| format!("{}: {e}", file.display()))?;
+    let doc = Document::open_with_options(bytes, limits, isolation()?)
+        .map_err(|e| format!("{}: {e}", file.display()))?;
     Ok((doc, size))
+}
+
+/// Write the output file: a new file only, unless `force`; with `force` an existing regular
+/// file is replaced, a symbolic link never is (it would write somewhere else).
+fn write_output(path: &Path, data: &[u8], force: bool) -> Result<(), String> {
+    let err = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true);
+    if force {
+        if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(err(&"is a symbolic link, not overwritten"));
+        }
+        opts.create(true).truncate(true);
+    } else {
+        opts.create_new(true);
+    }
+    let mut f = opts.open(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            err(&"already exists (use --force to replace it)")
+        } else {
+            err(&e)
+        }
+    })?;
+    f.write_all(data).map_err(|e| err(&e))
+}
+
+/// The hidden `docs-worker` command: the render worker process of `cc-docs`. It reads one
+/// request on stdin and writes one reply on stdout; it is started by `docs info` and
+/// `docs render`, not by hand.
+pub fn worker() -> ExitCode {
+    ExitCode::from(u8::try_from(worker_main()).unwrap_or(1))
 }
 
 /// Run `docs`.
@@ -133,6 +210,7 @@ fn run_inner(a: DocsArgs) -> Result<(), String> {
             page,
             width,
             out,
+            force,
         } => {
             let ext = out
                 .extension()
@@ -140,6 +218,13 @@ fn run_inner(a: DocsArgs) -> Result<(), String> {
                 .map(str::to_ascii_lowercase);
             if !matches!(ext.as_deref(), Some("png" | "webp")) {
                 return Err("--out must end in .png or .webp".into());
+            }
+            // Fail on an existing output before the (slow) render, not after.
+            if !force && out.exists() {
+                return Err(format!(
+                    "{}: already exists (use --force to replace it)",
+                    out.display()
+                ));
             }
             let (doc, _) = open(&file)?;
             if page > doc.page_count() {
@@ -159,7 +244,7 @@ fn run_inner(a: DocsArgs) -> Result<(), String> {
                 encode_png(&img)
             }
             .map_err(|e| e.to_string())?;
-            std::fs::write(&out, &bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+            write_output(&out, &bytes, force)?;
             println!(
                 "page {page} of {}: {}x{} px in {:.1} ms, wrote {} ({} bytes)",
                 doc.page_count(),
@@ -198,9 +283,64 @@ mod tests {
         assert!(p(&["render", "a.pdf"]).is_err());
         assert!(p(&["render", "a.pdf", "--page", "0", "--out", "o.png"]).is_err());
         assert!(p(&["render", "a.pdf", "--width", "x", "--out", "o.png"]).is_err());
+        assert!(p(&["render", "a.pdf", "--out", "o.png", "--force"]).is_ok());
         assert!(p(&["info"]).is_err());
         assert!(p(&["info", "a", "b"]).is_err());
         assert!(p(&["bogus"]).is_err());
         assert!(matches!(p(&["--help"]), Ok(None)));
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("cc-docs-cli-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn output_is_never_overwritten_without_force() {
+        let d = scratch("out");
+        let f = d.join("o.png");
+        write_output(&f, b"one", false).unwrap();
+        let e = write_output(&f, b"two", false).unwrap_err();
+        assert!(e.contains("--force"), "{e}");
+        assert_eq!(std::fs::read(&f).unwrap(), b"one");
+        write_output(&f, b"three", true).unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), b"three");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_never_follows_a_symbolic_link() {
+        let d = scratch("link");
+        let victim = d.join("victim.txt");
+        std::fs::write(&victim, b"precious").unwrap();
+        let link = d.join("o.png");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        assert!(write_output(&link, b"x", false).is_err());
+        assert!(write_output(&link, b"x", true).is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn input_is_read_with_a_size_bound() {
+        let d = scratch("in");
+        let f = d.join("a.pdf");
+        std::fs::write(&f, vec![b'x'; 100]).unwrap();
+        assert_eq!(read_limited(&f, 100).unwrap().len(), 100);
+        assert!(read_limited(&f, 99).unwrap_err().contains("too large"));
+        assert!(read_limited(&d, 100).unwrap_err().contains("regular"));
+        assert!(read_limited(&d.join("missing"), 100).is_err());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn devices_are_refused_not_read() {
+        // `docs info /dev/zero` used to read until memory ran out.
+        let e = read_limited(Path::new("/dev/zero"), 1 << 20).unwrap_err();
+        assert!(e.contains("regular"), "{e}");
     }
 }
