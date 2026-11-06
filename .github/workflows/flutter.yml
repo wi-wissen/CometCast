@@ -99,3 +99,49 @@ jobs:
           xvfb-run -a flutter test integration_test/receiver_smoke_test.dart -d linux \
             --dart-define=COMETCAST_TEST_SERVER=127.0.0.1:18443 \
             --dart-define=COMETCAST_CLI=${{ github.workspace }}/target/debug/cometcast-cli
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/flutter
+    steps:
+      - uses: actions/checkout@v4
+      # UNCERTAIN: this job has NOT been run on GitHub. The same commands were run locally
+      # (Flutter 3.47.9, JDK 21, Android SDK platform 36, build-tools 36.0.0, NDK 28.2.13676358,
+      # cargo-ndk 4.1.2); see docs/android.md. The runner image's preinstalled Android SDK,
+      # the action versions and the sdkmanager call are untested.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.9'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+      # The NDK version must match flutter.ndkVersion of Flutter 3.47.9.
+      - name: Install Android SDK pieces
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - run: flutter pub get
+      - run: flutter gen-l10n
+      - run: flutter analyze
+      - run: flutter test
+      # Builds libcc_ffi.so for arm64-v8a and armeabi-v7a through cargo-ndk (Gradle task
+      # cargoNdkDebug in android/app/build.gradle.kts) and packs it into the APK.
+      - run: flutter build apk --debug --target-platform android-arm,android-arm64
+      - name: Check the APK contains the Rust library
+        run: |
+          unzip -l build/app/outputs/flutter-apk/app-debug.apk | tee apk-list.txt
+          grep -q 'lib/arm64-v8a/libcc_ffi.so' apk-list.txt
+          grep -q 'lib/armeabi-v7a/libcc_ffi.so' apk-list.txt
+          grep -q 'lib/arm64-v8a/libflutter.so' apk-list.txt

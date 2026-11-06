@@ -77,7 +77,7 @@ On Linux with Flutter 3.47.9 / Dart 3.13.7 and Rust 1.97: `flutter analyze`, `fl
 ## Not done
 
 - No screen capture and no video decoding or rendering. The receiver only counts incoming RTP packets, bytes, frames and key frames; the sender sends a built-in VP8 test stream. The UI says so (translated notices).
-- Not built or tried: Windows, macOS, Android, iOS (no toolchains here). Library loading and packaging for them are open; cargokit is the likely route.
+- Not built or tried: Windows, macOS, iOS (no toolchains here). Android builds (cargo-ndk through Gradle, no cargokit) but was never run on a device: see [android.md](android.md). Packaging for the others is open; cargokit is the likely route.
 - The release build (`flutter build linux --release`) was not run.
 - The server address is a plain text field (default `127.0.0.1:8443`), kept in memory only. UNCERTAIN: the real default list comes from `cc-discovery` and is wired later.
 - UNCERTAIN: the GitHub workflow (`.github/workflows/flutter.yml`) has not run on GitHub.

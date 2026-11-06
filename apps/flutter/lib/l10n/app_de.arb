@@ -47,5 +47,8 @@
   "sendJoined": "Dem Raum beigetreten. Die Verbindung wird eingerichtet …",
   "copyCode": "Code kopieren",
   "codeCopied": "Code kopiert",
-  "statusEnded": "Die Verbindung wurde beendet."
+  "statusEnded": "Die Verbindung wurde beendet.",
+  "captureNotificationTitle": "Ihr Bildschirm wird geteilt",
+  "captureNotificationText": "Comet Cast sendet Ihren Bildschirm.",
+  "captureNotificationStop": "Beenden"
 }
