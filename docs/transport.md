@@ -88,11 +88,24 @@ leaves or on Ctrl-C. Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left
 
 - **ALTCHA.** `ReceiverCore::start` sends `create_room` without a payload. If the server answers `altcha_required`
   (open mode always does), it fetches `GET /altcha/challenge` over HTTP(S), solves it with the `altcha` crate's
-  `solve_challenge` (on a blocking thread, 60 s give-up time, UNCERTAIN: placeholder, solving time on weak devices is
+  `solve_challenge` (on a blocking thread, 30 s give-up time, UNCERTAIN: placeholder, solving time on weak devices is
   not measured, measurement point 8) and sends `create_room` again with the `altcha` field on the same connection.
   `altcha_invalid`, `rate_limited` and `banned` arrive as `TransportError::Server { code, .. }`; refusals of the HTTP
   request (429, 403, 503) use the same codes (`rate_limited`, `banned` or `forbidden`, `server_full`). The sender needs
   no puzzle (`join_room`).
+- **Limits on server data.** The server is not trusted to be harmless. Before solving, the native client (and the web app
+  with the same limits) refuses a puzzle whose `cost` is above 10 000 (10 times the server default of 1000), whose
+  `keyLength` is above 64 bytes, whose `keyPrefix` is longer than the key, that uses memory-hard parameters, or whose
+  `expiresAt` has passed (UNCERTAIN: 10 000 and 64 are placeholders; the server itself has no maximum for the cost, so an
+  operator who sets a higher one locks native and web clients out). The `altcha` crate checks its timeout every 10
+  attempts, so the real limit is the give-up time plus 10 attempts at the maximum cost (well below a second); the
+  blocking thread cannot be cancelled and lives at most that long. The web app maps these refusals to the error codes
+  `altcha_too_hard` and `altcha_expired`, and gives up on the `/altcha/challenge` request after 8 s (UNCERTAIN:
+  placeholder). HTTP answers are parsed strictly: duplicate or non-numeric `Content-Length`, `Content-Length` together
+  with `Transfer-Encoding`, unknown transfer codings, bodies longer than declared and chunk sizes that are not plain
+  hex are errors; the decoded body is capped at 256 KiB. The `/ice-servers` list is cut to 16 entries with at most 8
+  URLs each (UNCERTAIN: placeholders), URLs must start with `stun:`, `stuns:`, `turn:` or `turns:`, and the debug output
+  of `IceServerConfig` hides the credential.
 - **STUN/TURN.** If `SessionConfig::ice_servers` is empty, both cores fetch `GET /ice-servers` before building the WebRTC
   session and pass the list to the library (`RTCConfiguration.ice_servers`). `404` or any failure means no list.
   `ReceiverCore::ice_servers()` / `SenderCore::ice_servers()` report what is used; the CLI prints one line

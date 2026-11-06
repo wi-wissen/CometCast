@@ -110,6 +110,8 @@
     "altcha_required": "Der Server verlangt eine kurze Browserprüfung, bevor er einen Raum anlegt. Bitte versuchen Sie es erneut.",
     "altcha_invalid": "Die Browserprüfung wurde nicht akzeptiert (möglicherweise ist sie abgelaufen). Bitte versuchen Sie es erneut.",
     "altcha_failed": "Die Browserprüfung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+    "altcha_too_hard": "Der Server verlangt eine Browserprüfung, die für dieses Gerät zu aufwendig ist, und sie wurde nicht gestartet. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Betreiber des Servers.",
+    "altcha_expired": "Die Browserprüfung des Servers war bereits abgelaufen. Bitte versuchen Sie es erneut; falls das wiederholt passiert, prüfen Sie Datum und Uhrzeit dieses Geräts.",
     "rate_limited": "Zu viele Anfragen aus diesem Netzwerk. Bitte warten Sie einen Moment und versuchen Sie es erneut.",
     "banned": "Dieses Netzwerk ist wegen zu vieler fehlgeschlagener Versuche für kurze Zeit gesperrt. Bitte versuchen Sie es später erneut.",
     "forbidden": "Dieses Netzwerk darf diesen Server nicht nutzen.",

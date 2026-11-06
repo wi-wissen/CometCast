@@ -5,6 +5,9 @@ import knownFixture from '../../../crates/cc-transport/testdata/altcha-known.jso
 import {
   AltchaError,
   buildPassword,
+  checkChallengeLimits,
+  MAX_COST,
+  MAX_KEY_LENGTH,
   bytesToHex,
   encodePayload,
   hexToBytes,
@@ -84,5 +87,36 @@ describe('ALTCHA solver', () => {
     expect(back.solution).toEqual({ counter: 777, derivedKey: fixture.derivedKey, time: s.time })
     // standard base64 (with padding), as the server's decoder expects
     expect(text).toMatch(/^[A-Za-z0-9+/]+=*$/)
+  })
+})
+
+describe('ALTCHA limits', () => {
+  const withParams = (patch: Record<string, unknown>): AltchaChallenge => {
+    const c = structuredClone(fixture.challenge)
+    Object.assign(c.parameters, patch)
+    return c
+  }
+  const failing = {
+    importKey: () => Promise.reject(new Error('must not be called')),
+    deriveBits: () => Promise.reject(new Error('must not be called')),
+  } as unknown as SubtleCrypto
+
+  it('refuses an oversized cost before any key derivation', async () => {
+    await expect(solveChallenge(withParams({ cost: 1_000_000_000 }), { subtle: failing })).rejects.toMatchObject({ reason: 'too_hard' })
+    await expect(solveChallenge(withParams({ cost: MAX_COST + 1 }), { subtle: failing })).rejects.toMatchObject({ reason: 'too_hard' })
+    expect(() => checkChallengeLimits(withParams({ cost: MAX_COST }))).not.toThrow()
+  })
+
+  it('refuses an oversized keyLength and a prefix longer than the key', async () => {
+    await expect(solveChallenge(withParams({ keyLength: 1_000_000 }), { subtle: failing })).rejects.toMatchObject({ reason: 'too_hard' })
+    await expect(solveChallenge(withParams({ keyLength: MAX_KEY_LENGTH + 1 }), { subtle: failing })).rejects.toMatchObject({ reason: 'too_hard' })
+    await expect(solveChallenge(withParams({ keyLength: 1, keyPrefix: '000000' }), { subtle: failing })).rejects.toMatchObject({ reason: 'bad_challenge' })
+  })
+
+  it('refuses an expired challenge and malformed expiresAt', async () => {
+    const past = Math.floor(Date.now() / 1000) - 1
+    await expect(solveChallenge(withParams({ expiresAt: past }), { subtle: failing })).rejects.toMatchObject({ reason: 'expired' })
+    expect(() => checkChallengeLimits(withParams({ expiresAt: 'soon' }))).toThrow(AltchaError)
+    expect(() => checkChallengeLimits(withParams({ expiresAt: Math.floor(Date.now() / 1000) + 60 }))).not.toThrow()
   })
 })

@@ -110,6 +110,8 @@
     "altcha_required": "The server wants a short browser check before it creates a room. Please try again.",
     "altcha_invalid": "The browser check was not accepted (it may have expired). Please try again.",
     "altcha_failed": "The browser check could not be completed. Please try again.",
+    "altcha_too_hard": "The server asked for a browser check that is too demanding for this device, so it was not started. Please try again later or contact the server operator.",
+    "altcha_expired": "The browser check from the server had already expired. Please try again; if it keeps happening, check that the date and time of this device are correct.",
     "rate_limited": "Too many requests from this network. Please wait a moment and try again.",
     "banned": "This network is blocked for a while because of too many failed attempts. Please try again later.",
     "forbidden": "This network is not allowed to use this server.",
