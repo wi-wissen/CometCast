@@ -207,6 +207,11 @@ pub struct SupervisorOptions {
     pub stop_timeout: Duration,
     /// Restart timing.
     pub backoff: Backoff,
+    /// How long, at most, the manager waits for the output thread of an ended run to
+    /// deliver its last lines (they are sent before the exit event). Normally the wait is
+    /// over at once; the limit only matters if a helper outside the process group still
+    /// holds the terminal, or if the machine is so loaded that the thread is late.
+    pub reader_grace: Duration,
     /// The confirmation dialog of the app. `None` = no dialog, and then nothing here
     /// enforces any policy: every device that knows the PIN is accepted by UxPlay.
     /// Only one dialog is open at a time; a PIN that appears while a dialog is open gets
@@ -219,6 +224,7 @@ impl Default for SupervisorOptions {
         Self {
             stop_timeout: Duration::from_secs(5),
             backoff: Backoff::default(),
+            reader_grace: Duration::from_secs(1),
             confirm: None,
         }
     }
@@ -585,8 +591,8 @@ fn terminate(run: &mut Running, timeout: Duration) -> ExitInfo {
 
 /// Wait (bounded) for the reader thread. If a helper outside our group still holds the
 /// terminal, the reader may live on; its events are dropped by the generation check.
-fn finish_reader(run: &Running) {
-    let _ = run.reader_done.recv_timeout(Duration::from_secs(1));
+fn finish_reader(run: &Running, grace: Duration) {
+    let _ = run.reader_done.recv_timeout(grace);
 }
 
 /// Why the inner loop of one run ended.
@@ -658,7 +664,7 @@ fn manage(
         match end {
             RunEnd::Asked { mut stop, denied } => {
                 let (code, signal) = terminate(&mut run, options.stop_timeout);
-                finish_reader(&run);
+                finish_reader(&run, options.reader_grace);
                 if denied {
                     send(AirplayEvent::Denied);
                 }
@@ -681,7 +687,7 @@ fn manage(
             }
             RunEnd::Died((code, signal)) => {
                 // Already reaped by try_wait. Clean up the output thread.
-                finish_reader(&run);
+                finish_reader(&run, options.reader_grace);
                 send(AirplayEvent::ProcessExited {
                     code,
                     signal,

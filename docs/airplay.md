@@ -102,6 +102,8 @@ DISPLAY=:99 COMETCAST_REAL_UXPLAY=1 cargo test -p cc-airplay real_uxplay -- --no
 
 It needs `uxplay`, the GStreamer plugin packages, Avahi and an X display (for example `Xvfb :99`). Fixtures from the real program are the files named `uxplay-1.68-real-*.txt`.
 
+Timing in the supervisor tests: they wait for events (`collect_until`) with a 60 s deadline instead of fixed sleeps, and the tests use a long `stop_timeout` / `reader_grace` where a short one would only make them depend on machine speed. The waits end as soon as the event arrives, so the generous deadline costs nothing when the machine is idle. Only the timeouts that are the subject of a test stay short (the kill of a process that ignores SIGTERM, the tiny backoff). `SupervisorOptions::reader_grace` (default 1 s, unchanged) is how long the manager waits for the output thread to deliver the last lines of an ended run before it sends the exit event; on a heavily loaded machine a 1 s limit could drop a late `Error` line, so the tests set it to 30 s. Under `cargo test --workspace` on a loaded machine these tests were reported to fail with the old fixed limits; this was not reproduced here (see the commit message), so the cause above is the likeliest one, not a proven one.
+
 ## Limits
 
 - Not tested with any Apple device. iOS 26.6 and 27 behaviour is taken from the plan (sources there), not from our tests.

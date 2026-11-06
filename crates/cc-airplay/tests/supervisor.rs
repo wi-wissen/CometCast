@@ -16,6 +16,11 @@ use cc_airplay::{
     SupervisorOptions,
 };
 
+/// Deadline for every wait on an event. Waiting is done on events, so it ends as soon as the
+/// event arrives; the deadline is only the point where a lost event becomes a failure. It is
+/// generous because `cargo test --workspace` runs many busy test binaries at once.
+const WAIT: Duration = Duration::from_secs(60);
+
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-uxplay.sh");
 
 /// Make a small launcher script that sets the fake's mode and starts it.
@@ -49,6 +54,8 @@ fn config(path: PathBuf) -> AirplayConfig {
 fn fast_options() -> SupervisorOptions {
     SupervisorOptions {
         stop_timeout: Duration::from_millis(500),
+        // Long: the limit is only reached when the output thread is stuck.
+        reader_grace: Duration::from_secs(30),
         backoff: Backoff::new(
             Duration::from_millis(100),
             Duration::from_millis(400),
@@ -104,10 +111,12 @@ fn stop_and_get_exit(sup: &mut Supervisor, rx: &Receiver<AirplayEvent>) -> Vec<A
 #[test]
 fn starts_extracts_events_and_stops_cleanly() {
     let (path, dir) = launcher("normal", "normal");
-    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
-        *e == AirplayEvent::ClientDisconnected
-    });
+    // Long stop timeout: a fake that obeys SIGTERM must end long before it, so the check
+    // below ("did not need the kill") does not depend on how fast the machine is.
+    let mut opts = fast_options();
+    opts.stop_timeout = Duration::from_secs(30);
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    let seen = collect_until(&rx, WAIT, |e| *e == AirplayEvent::ClientDisconnected);
     assert!(matches!(seen[0], AirplayEvent::Starting { attempt: 1 }));
     let pos = |want: &AirplayEvent| seen.iter().position(|e| e == want).unwrap();
     let ready = pos(&AirplayEvent::ServerStarted);
@@ -121,7 +130,7 @@ fn starts_extracts_events_and_stops_cleanly() {
     let t = Instant::now();
     let rest = stop_and_get_exit(&mut sup, &rx);
     assert!(
-        t.elapsed() < Duration::from_secs(2),
+        t.elapsed() < Duration::from_secs(30),
         "stop took {:?}",
         t.elapsed()
     );
@@ -152,9 +161,7 @@ fn starts_extracts_events_and_stops_cleanly() {
 fn unexpected_exit_restarts_with_backoff() {
     let (path, dir) = launcher("crash", "crash-once");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(8), |e| {
-        matches!(e, AirplayEvent::PinShown { .. })
-    });
+    let seen = collect_until(&rx, WAIT, |e| matches!(e, AirplayEvent::PinShown { .. }));
     let died = seen
         .iter()
         .find_map(|e| match e {
@@ -189,7 +196,7 @@ fn gives_up_after_too_many_failures() {
         2,
     );
     let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(8), |e| *e == AirplayEvent::Stopped);
+    let seen = collect_until(&rx, WAIT, |e| *e == AirplayEvent::Stopped);
     assert!(seen.iter().any(|e| matches!(e, AirplayEvent::Failed(_))));
     let starts = seen
         .iter()
@@ -208,7 +215,7 @@ fn gives_up_after_too_many_failures() {
 fn missing_program_is_reported() {
     let cfg = config(PathBuf::from("/nonexistent/uxplay-does-not-exist"));
     let (mut sup, rx) = Supervisor::start(cfg, fast_options()).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(5), |e| *e == AirplayEvent::Stopped);
+    let seen = collect_until(&rx, WAIT, |e| *e == AirplayEvent::Stopped);
     assert!(
         seen.iter().any(|e| matches!(e, AirplayEvent::Failed(_))),
         "{seen:?}"
@@ -220,9 +227,7 @@ fn missing_program_is_reported() {
 fn kills_a_process_that_ignores_sigterm() {
     let (path, dir) = launcher("stubborn", "ignore-term");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        *e == AirplayEvent::ClientDisconnected
-    });
+    collect_until(&rx, WAIT, |e| *e == AirplayEvent::ClientDisconnected);
     let t = Instant::now();
     let rest = stop_and_get_exit(&mut sup, &rx);
     let took = t.elapsed();
@@ -230,7 +235,7 @@ fn kills_a_process_that_ignores_sigterm() {
         took >= Duration::from_millis(400),
         "was not given the timeout: {took:?}"
     );
-    assert!(took < Duration::from_secs(3), "stop took {took:?}");
+    assert!(took < Duration::from_secs(30), "stop took {took:?}");
     let Some(AirplayEvent::ProcessExited { pid, .. }) = rest
         .iter()
         .find(|e| matches!(e, AirplayEvent::ProcessExited { .. }))
@@ -246,11 +251,9 @@ fn kills_a_process_that_ignores_sigterm() {
 fn planned_restart_starts_again_at_once() {
     let (path, dir) = launcher("restart", "normal");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        *e == AirplayEvent::ServerStarted
-    });
+    collect_until(&rx, WAIT, |e| *e == AirplayEvent::ServerStarted);
     sup.restart();
-    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
+    let seen = collect_until(&rx, WAIT, |e| {
         matches!(e, AirplayEvent::Starting { attempt: 2 })
     });
     assert!(
@@ -279,7 +282,7 @@ fn denied_pin_restarts_uxplay() {
     let mut opts = fast_options();
     opts.confirm = Some(Arc::new(DenyAll));
     let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(8), |e| {
+    let seen = collect_until(&rx, WAIT, |e| {
         matches!(e, AirplayEvent::Starting { attempt: 2 })
     });
     assert!(seen.contains(&AirplayEvent::Denied));
@@ -291,9 +294,7 @@ fn denied_pin_restarts_uxplay() {
 fn dropping_the_supervisor_stops_the_process() {
     let (path, dir) = launcher("drop", "normal");
     let (sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        *e == AirplayEvent::ServerStarted
-    });
+    collect_until(&rx, WAIT, |e| *e == AirplayEvent::ServerStarted);
     drop(sup);
     let rest: Vec<_> = rx.try_iter().collect();
     assert_eq!(rest.last(), Some(&AirplayEvent::Stopped));
@@ -304,9 +305,7 @@ fn dropping_the_supervisor_stops_the_process() {
 fn long_lines_and_junk_do_not_break_the_reader() {
     let (path, dir) = launcher("chatty", "chatty");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        matches!(e, AirplayEvent::PinShown { .. })
-    });
+    collect_until(&rx, WAIT, |e| matches!(e, AirplayEvent::PinShown { .. }));
     sup.stop();
     let _ = fs::remove_dir_all(dir);
 }
@@ -385,7 +384,7 @@ fn is_dead(pid: u32) -> bool {
 }
 
 fn wait_dead(pid: u32) -> bool {
-    let end = Instant::now() + Duration::from_secs(3);
+    let end = Instant::now() + Duration::from_secs(30);
     while Instant::now() < end {
         if is_dead(pid) {
             return true;
@@ -399,9 +398,7 @@ fn wait_dead(pid: u32) -> bool {
 fn helper_processes_do_not_survive_a_stop() {
     let (path, dir) = launcher("helper", "helper");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        *e == AirplayEvent::ServerStarted
-    });
+    collect_until(&rx, WAIT, |e| *e == AirplayEvent::ServerStarted);
     let pids = helper_pids(&dir);
     assert_eq!(pids.len(), 1, "fake did not start its helper");
     assert!(!is_dead(pids[0]), "helper should be alive while running");
@@ -414,9 +411,7 @@ fn helper_processes_do_not_survive_a_stop() {
 fn helper_processes_do_not_survive_a_crash() {
     let (path, dir) = launcher("helpercrash", "helper-crash");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        matches!(e, AirplayEvent::Restarting { .. })
-    });
+    collect_until(&rx, WAIT, |e| matches!(e, AirplayEvent::Restarting { .. }));
     let first = helper_pids(&dir)[0];
     assert!(wait_dead(first), "helper {first} survived the crash");
     sup.stop();
@@ -430,9 +425,7 @@ fn helper_processes_do_not_survive_a_crash() {
 fn a_pin_line_without_pairing_line_is_not_believed() {
     let (path, dir) = launcher("spoof", "spoof");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
-        matches!(e, AirplayEvent::PinShown { .. })
-    });
+    let seen = collect_until(&rx, WAIT, |e| matches!(e, AirplayEvent::PinShown { .. }));
     // The first PIN line (1111) came before any pairing line and must be dropped.
     let pins: Vec<_> = seen
         .iter()
@@ -457,7 +450,7 @@ impl ConfirmHook for SlowHook {
         self.release
             .lock()
             .unwrap()
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(WAIT)
             .unwrap_or(Decision::Accept)
     }
 }
@@ -480,7 +473,7 @@ fn only_one_confirm_dialog_is_open_at_a_time() {
     let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
     // Wait for both PINs (9876 and 5432).
     let mut pins = 0;
-    collect_until(&rx, Duration::from_secs(8), |e| {
+    collect_until(&rx, WAIT, |e| {
         if matches!(e, AirplayEvent::PinShown { .. }) {
             pins += 1;
         }
@@ -500,10 +493,10 @@ fn no_dialog_and_no_restart_while_a_session_is_active() {
     opts.confirm = Some(hook.clone());
     let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
     sup.set_session_active(true);
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        matches!(e, AirplayEvent::PinShown { .. })
-    });
-    std::thread::sleep(Duration::from_millis(300));
+    // The fake prints "Open connections: 0" after the PIN, so once ClientDisconnected is
+    // seen the reader has handled the PIN line and nothing of it can still be on its way.
+    collect_until(&rx, WAIT, |e| *e == AirplayEvent::ClientDisconnected);
+    std::thread::sleep(Duration::from_millis(300)); // extra grace for the negative check
     assert_eq!(hook.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
     assert!(!rx.try_iter().any(|e| matches!(
         e,
@@ -520,14 +513,10 @@ fn deny_after_a_session_started_is_ignored() {
     let mut opts = fast_options();
     opts.confirm = Some(hook.clone());
     let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
-    collect_until(&rx, Duration::from_secs(5), |e| {
-        matches!(e, AirplayEvent::PinShown { .. })
-    });
+    collect_until(&rx, WAIT, |e| matches!(e, AirplayEvent::PinShown { .. }));
     sup.set_session_active(true); // dialog is open, now a session starts
     release.send(Decision::Deny).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
-        *e == AirplayEvent::DenyIgnored
-    });
+    let seen = collect_until(&rx, WAIT, |e| *e == AirplayEvent::DenyIgnored);
     assert!(!seen.contains(&AirplayEvent::Denied));
     std::thread::sleep(Duration::from_millis(300));
     assert!(
@@ -542,7 +531,7 @@ fn deny_after_a_session_started_is_ignored() {
 fn death_by_signal_is_reported_as_signal() {
     let (path, dir) = launcher("sigkill", "self-kill");
     let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
-    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
+    let seen = collect_until(&rx, WAIT, |e| {
         matches!(e, AirplayEvent::ProcessExited { .. })
     });
     let Some(AirplayEvent::ProcessExited { code, signal, .. }) = seen.last() else {
