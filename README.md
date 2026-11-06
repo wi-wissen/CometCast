@@ -6,8 +6,14 @@
 
 Comet Cast is one app that is both sender and receiver. It sends your screen, documents, links and media, and files to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for schools, offices and clubs, where many different devices meet in one room. The idea is similar to LocalSend, but for presenting on a display.
 
-> **Status: v0.1 beta in early setup. Nothing works end to end yet.**
-> This repository is at the project start. Everything below that is not marked as existing is a plan.
+> **Status: v0.1 beta, in development.**
+> What works today, tested on one machine or one local network:
+> - Browser sender and receiver: screen sharing over WebRTC with a room code, a receiver toolbar (pen, marker, freeze, laser, black screen), image and link transfer.
+> - A signalling server with TLS, rate limits, ALTCHA and TURN credentials (Docker and coturn files exist but were never run).
+> - Native Rust peers and a command-line tool that talk to the browser app; a Flutter desktop app (Linux) that uses the Rust core.
+> - A supervisor for AirPlay receiving through UxPlay (tested with the real UxPlay program, not with an iPhone or iPad).
+>
+> What does not work yet: screen capture and video display in the native apps, STUN/TURN across real networks, Apple TV, Miracast, Cast, the iOS broadcast extension. Everything not listed above is a plan. See [docs/architecture.md](docs/architecture.md) for the milestone status and [docs/measurement-points.md](docs/measurement-points.md) for the unverified assumptions.
 
 ## Principles
 
