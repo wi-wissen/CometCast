@@ -9,6 +9,8 @@
 //! Note: the output text of this tool is English only. It is a developer tool, not a user
 //! interface, so it is not translated (the i18n rules in docs/i18n.md are for the apps).
 
+mod airplay_send;
+
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -24,6 +26,7 @@ Usage:
   cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR] [--ca-file PEM]
                     [--screen [--display :N] [--fps N] [--bitrate-kbps N]]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
+  cometcast-cli airplay-send list | pair | play | photo | screen (details at the end)
   cometcast-cli miracast [--name NAME]
   cometcast-cli --version
 
@@ -54,6 +57,9 @@ Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was
 airplay starts UxPlay (a separate GPL program that must be installed) and prints what it
 reports: server ready, the PIN of each connection, connects, errors. See docs/airplay.md.
 
+airplay-send is the AirPlay sender without FairPlay (discovery, pairing, media link, photo, the
+screen as an HLS stream). Its commands are listed below; see docs/airplay-sender.md.
+
 miracast (Windows 11 only; compile-checked, never run) listens through the Windows
 MiracastReceiver API and prints events. A connection request is answered on stdin: type y or
 n and Enter (no answer within 30 seconds = rejected). On other systems it prints a message
@@ -77,6 +83,7 @@ enum Command {
         screen: Option<ScreenArgs>,
     },
     Airplay(AirplayArgs),
+    AirplaySend(airplay_send::Sub),
     Miracast {
         name: Option<String>,
     },
@@ -178,6 +185,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "--version" | "-V" => return Ok(Command::Version),
         "--help" | "-h" | "help" => return Ok(Command::Help),
         "airplay" => return parse_airplay(args),
+        "airplay-send" => return airplay_send::parse(args).map(Command::AirplaySend),
         "miracast" => return parse_miracast(args),
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
@@ -268,10 +276,11 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Help => {
-            println!("{USAGE}");
+            println!("{USAGE}\n\n{}", airplay_send::USAGE);
             ExitCode::SUCCESS
         }
         Command::Airplay(a) => airplay(a).await,
+        Command::AirplaySend(a) => airplay_send::run(a).await,
         Command::Miracast { name } => miracast(name).await,
         Command::Receive { common, decode } => receive(common, decode).await,
         Command::Send {
