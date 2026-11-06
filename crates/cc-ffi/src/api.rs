@@ -942,26 +942,123 @@ fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
 // Server addresses
 // ---------------------------------------------------------------------------
 
+/// One server offered to the person, with where it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerCandidate {
+    /// `[scheme://]host:port`, as the server field wants it.
+    pub address: String,
+    /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
+    pub source: String,
+}
+
+/// What went wrong while looking for servers, as a code. The UI shows a translated sentence
+/// for each code and never the raw text of `cc-discovery` (it may contain network content).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DiscoveryWarning {
+    /// The policy file of the administrator exists but cannot be used: no server is offered.
+    PolicyUnusable,
+    /// The policy forbids other servers but names none.
+    PolicyNamesNoServer,
+    /// The DNS-SRV lookup did not answer in time.
+    DnsTimeout,
+    /// The DNS-SRV lookup failed or is not available.
+    DnsFailed,
+    /// The network says that there is no server here (SRV target `.`).
+    DnsServiceUnavailable,
+    /// Some DNS records were ignored because they did not pass the checks.
+    EntriesIgnored,
+    /// Listening for display announcements failed.
+    AnnouncementFailed,
+    /// Any other note.
+    Other,
+}
+
+/// Map one English warning text of `cc-discovery` to a code.
+///
+/// UNCERTAIN: `cc-discovery` has no codes yet, so this matches the start of its texts. A text
+/// that changes there falls into `Other` (a general note in the UI), never into raw text; the
+/// tests below build real warnings with `cc-discovery` to notice such a change.
+fn classify_warning(text: &str) -> DiscoveryWarning {
+    if text.starts_with("the policy file is unusable") {
+        DiscoveryWarning::PolicyUnusable
+    } else if text.starts_with("the policy forbids") {
+        DiscoveryWarning::PolicyNamesNoServer
+    } else if text.starts_with("DNS-SRV lookup for") && text.ends_with("timed out") {
+        DiscoveryWarning::DnsTimeout
+    } else if text.starts_with("DNS-SRV") && text.ends_with("says the service is not available") {
+        DiscoveryWarning::DnsServiceUnavailable
+    } else if text.contains("DNS-SRV record(s)") && text.ends_with("were refused") {
+        DiscoveryWarning::EntriesIgnored
+    } else if text.starts_with("DNS-SRV") {
+        DiscoveryWarning::DnsFailed
+    } else if text.starts_with("announcement browse failed") {
+        DiscoveryWarning::AnnouncementFailed
+    } else {
+        DiscoveryWarning::Other
+    }
+}
+
+/// The codes of `warnings`, each once, in order.
+fn classify_warnings(warnings: &[String]) -> Vec<DiscoveryWarning> {
+    let mut out = Vec::new();
+    for w in warnings {
+        let c = classify_warning(w);
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn candidates(report: &cc_discovery::DiscoveryReport) -> Vec<ServerCandidate> {
+    report
+        .servers
+        .iter()
+        .map(|s| ServerCandidate {
+            address: s.address.clone(),
+            source: s.source.as_str().to_owned(),
+        })
+        .collect()
+}
+
+/// May announcements of display devices be used? Not if a policy forbids them or other servers,
+/// or if the policy file is unusable (fail closed).
+fn announcements_allowed(report: &cc_discovery::DiscoveryReport) -> bool {
+    use cc_discovery::PolicyState;
+    match &report.policy {
+        PolicyState::Absent => true,
+        PolicyState::Active(p) => !p.forbid_announcement && !p.forbid_user_override,
+        PolicyState::Invalid(_) => false,
+    }
+}
+
 /// Server addresses the UI offers when the person has not chosen one yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerDefaults {
     /// The servers `cc-discovery` knows without asking the network, best first: the servers of
     /// an MDM policy, then the built-in list (`DEFAULT_SERVERS`) unless the policy forbids it.
-    pub servers: Vec<String>,
+    pub servers: Vec<ServerCandidate>,
+    /// A policy forbids other servers, or the policy file is unusable: the server field must
+    /// be read-only and only `servers` may be used.
+    pub locked: bool,
+    /// Display announcements may be used (see [`ServerDiscovery::announcements_allowed`]).
+    pub announcements_allowed: bool,
+    /// Notes about the policy file, as codes.
+    pub notices: Vec<DiscoveryWarning>,
     /// Address for development on one machine (a local `cometcast-server`).
     pub dev_fallback: String,
 }
 
-/// The development fallback, always offered last.
+/// The development fallback, offered last (not when `locked`).
 const DEV_FALLBACK: &str = "127.0.0.1:8443";
 
 fn server_defaults_with(opts: &cc_discovery::DiscoverOptions) -> ServerDefaults {
+    let r = cc_discovery::discover_servers_offline(opts);
     ServerDefaults {
-        servers: cc_discovery::discover_servers_offline(opts)
-            .servers
-            .into_iter()
-            .map(|s| s.address)
-            .collect(),
+        servers: candidates(&r),
+        locked: r.locked,
+        announcements_allowed: announcements_allowed(&r),
+        notices: classify_warnings(&r.warnings),
         dev_fallback: DEV_FALLBACK.to_owned(),
     }
 }
@@ -971,20 +1068,10 @@ fn server_defaults_with(opts: &cc_discovery::DiscoverOptions) -> ServerDefaults 
 /// network and are in [`discover_servers`].
 ///
 /// UNCERTAIN: the host in the built-in list (`relay.cometcast.de`) does not exist yet, which is
-/// why the UI also offers `dev_fallback`. The UI does not yet hide `dev_fallback` or the text
-/// field when a policy forbids other servers (`ServerDiscovery::locked`).
+/// why the UI also offers `dev_fallback` (unless `locked`).
 #[frb(sync)]
 pub fn server_defaults() -> ServerDefaults {
     server_defaults_with(&cc_discovery::DiscoverOptions::default())
-}
-
-/// One server found by [`discover_servers`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerCandidate {
-    /// `[scheme://]host:port`, as the server field wants it.
-    pub address: String,
-    /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
-    pub source: String,
 }
 
 /// The result of asking all sources for servers.
@@ -994,27 +1081,199 @@ pub struct ServerDiscovery {
     pub servers: Vec<ServerCandidate>,
     /// A policy forbids other servers, or the policy file is unusable.
     pub locked: bool,
-    /// Notes about sources that failed. English text for logs, not for the UI.
+    /// Display announcements may be used: the UI may offer the receivers it finds nearby as a
+    /// way to pick a server. False under a policy that forbids announcements or other servers.
+    pub announcements_allowed: bool,
+    /// Notes about sources that failed, as codes the UI translates.
+    pub notices: Vec<DiscoveryWarning>,
+    /// The same notes as English text for logs. Not for the UI: it may contain network content.
     pub warnings: Vec<String>,
 }
 
 /// Ask all sources for servers: policy file, DNS-SRV and announcements by display devices (it
-/// listens on the network for a moment, so this takes some seconds). Never fails; sources that
-/// do not work leave a warning.
+/// listens on the network for a moment, so this takes some seconds; the time limits are those
+/// of `cc_discovery::DiscoverOptions`). Never fails; sources that do not work leave a warning.
 pub async fn discover_servers() -> ServerDiscovery {
-    let r = cc_discovery::discover_servers(&cc_discovery::DiscoverOptions::default()).await;
+    discover_servers_with(&cc_discovery::DiscoverOptions::default()).await
+}
+
+async fn discover_servers_with(opts: &cc_discovery::DiscoverOptions) -> ServerDiscovery {
+    let r = cc_discovery::discover_servers(opts).await;
     ServerDiscovery {
-        servers: r
-            .servers
-            .into_iter()
-            .map(|s| ServerCandidate {
-                address: s.address,
-                source: s.source.as_str().to_owned(),
-            })
-            .collect(),
+        servers: candidates(&r),
         locked: r.locked,
+        announcements_allowed: announcements_allowed(&r),
+        notices: classify_warnings(&r.warnings),
         warnings: r.warnings,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Announcing this receiver, and listing receivers nearby
+// ---------------------------------------------------------------------------
+
+/// Result of [`start_advertising`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdvertiseOutcome {
+    /// The receiver is announced on the local network.
+    Started,
+    /// The name or the server was refused by the checks of `cc-discovery` (for example a
+    /// loopback or public IP address as server).
+    Refused,
+    /// The network could not be used (no multicast, no interface).
+    Failed,
+    /// A stop or a newer start came first; nothing is announced.
+    Superseded,
+}
+
+struct AdvertiseSlot {
+    generation: AtomicU64,
+    current: Mutex<Option<cc_discovery::Advertisement>>,
+}
+
+static ADVERTISING: AdvertiseSlot = AdvertiseSlot {
+    generation: AtomicU64::new(0),
+    current: Mutex::new(None),
+};
+
+impl AdvertiseSlot {
+    /// Withdraw the running announcement and invalidate starts that are still being set up.
+    fn begin(&self) -> u64 {
+        let g = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        // Dropping the advertisement withdraws the service; do it outside the lock.
+        let old = self
+            .current
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        drop(old);
+        g
+    }
+
+    /// Keep `ad` if no stop or newer start happened; otherwise it is dropped (withdrawn).
+    fn store(&self, generation: u64, ad: cc_discovery::Advertisement) -> bool {
+        let mut slot = self.current.lock().unwrap_or_else(|p| p.into_inner());
+        if self.generation.load(Ordering::SeqCst) != generation {
+            return false;
+        }
+        *slot = Some(ad);
+        true
+    }
+}
+
+/// Announce this receiver on the local network (DNS-SD `_cometcast._tcp`) with the friendly
+/// `name` and, if given, its preferred server (`host:port`, or with a scheme). The room code is
+/// never announced. A running announcement is replaced. Call [`stop_advertising`] when the
+/// receiver view closes.
+pub async fn start_advertising(name: String, preferred_server: Option<String>) -> AdvertiseOutcome {
+    let generation = ADVERTISING.begin();
+    let opts = cc_discovery::AdvertiseOptions {
+        instance_name: name,
+        // UNCERTAIN: receivers do not listen for senders yet; the port only has to exist.
+        port: 9,
+        preferred_server,
+        host_label: None,
+    };
+    let built = tokio::task::spawn_blocking(move || cc_discovery::advertise_receiver(&opts)).await;
+    match built {
+        Ok(Ok(ad)) => {
+            if ADVERTISING.store(generation, ad) {
+                AdvertiseOutcome::Started
+            } else {
+                AdvertiseOutcome::Superseded
+            }
+        }
+        Ok(Err(e)) => classify_advertise_error(&e.0),
+        Err(_) => AdvertiseOutcome::Failed,
+    }
+}
+
+/// `cc-discovery` reports input errors and daemon errors with the same type; the daemon ones
+/// come from `mdns-sd`. UNCERTAIN: this is a guess from the message text.
+fn classify_advertise_error(text: &str) -> AdvertiseOutcome {
+    const INPUT_ERRORS: [&str; 3] = ["instance name", "server cannot be announced", "host label"];
+    if INPUT_ERRORS.iter().any(|p| text.contains(p)) || text.contains("address") {
+        AdvertiseOutcome::Refused
+    } else {
+        AdvertiseOutcome::Failed
+    }
+}
+
+/// Withdraw the announcement of [`start_advertising`] (does nothing if none runs) and cancel a
+/// start that is still being set up.
+pub fn stop_advertising() {
+    ADVERTISING.begin();
+}
+
+/// A change in the receivers found on the local network by [`watch_receivers`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NearbyReceiverEvent {
+    /// A receiver appeared or changed. All text is cleaned and bounded by `cc-discovery`.
+    Found {
+        /// The DNS-SD instance name; identifies the receiver in `Lost`.
+        id: String,
+        /// Friendly name of the display device.
+        name: String,
+        /// The server it prefers (`[scheme://]host:port`), if it announced a valid one. It is
+        /// not trusted: the person decides. The room code is never part of an announcement.
+        server: Option<String>,
+    },
+    /// A receiver went away.
+    Lost {
+        /// The instance name of the receiver.
+        id: String,
+    },
+    /// Listening is not possible here (no multicast); the stream ends after this.
+    Unavailable,
+}
+
+static WATCH: Slot = Slot::new();
+
+/// List the receivers on the local network (mDNS) until [`stop_watching_receivers`] is called or
+/// Dart stops listening. A newer call replaces the running one.
+pub async fn watch_receivers(events: StreamSink<NearbyReceiverEvent>) {
+    let generation = WATCH.begin();
+    let mut browser = match cc_discovery::discover_receivers() {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = events.add(NearbyReceiverEvent::Unavailable);
+            return;
+        }
+    };
+    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
+    WATCH.store(stop_tx);
+    // A stop between `begin` and `store` found an empty slot: check once more.
+    if !WATCH.is_current(generation) {
+        return;
+    }
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut stop_rx => break,
+                ev = browser.next() => {
+                    let Some(ev) = ev else { break };
+                    let out = match ev {
+                        cc_discovery::ReceiverEvent::Found(r) => NearbyReceiverEvent::Found {
+                            id: r.instance,
+                            name: r.name,
+                            server: r.announced_server,
+                        },
+                        cc_discovery::ReceiverEvent::Lost(id) => NearbyReceiverEvent::Lost { id },
+                    };
+                    // Dart stopped listening: stop browsing.
+                    if events.add(out).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+        // `browser` is dropped here: the browse stops. `events` is dropped: the stream ends.
+    });
+}
+
+/// Stop [`watch_receivers`] (does nothing if none runs).
+pub fn stop_watching_receivers() {
+    WATCH.stop();
 }
 
 #[cfg(test)]
@@ -1131,16 +1390,52 @@ mod tests {
         );
     }
 
-    #[test]
-    fn server_defaults_come_from_cc_discovery() {
-        // Without a policy file: the built-in list. (Explicit empty location list, so that a
-        // policy file on the machine running the test does not matter.)
-        let opts = cc_discovery::DiscoverOptions {
+    fn no_policy() -> cc_discovery::DiscoverOptions {
+        // Explicit empty location list, so that a policy file on the machine running the test
+        // does not matter.
+        cc_discovery::DiscoverOptions {
             policy_locations: Some(Vec::new()),
+            dns_srv: false,
+            mdns: false,
+            ..cc_discovery::DiscoverOptions::default()
+        }
+    }
+
+    #[cfg(unix)]
+    fn policy_options(
+        json: &[u8],
+        mode: u32,
+    ) -> (tempfile::TempDir, cc_discovery::DiscoverOptions) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let p = dir.path().join("policy.json");
+        std::fs::write(&p, json).expect("write");
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).expect("chmod");
+        let opts = cc_discovery::DiscoverOptions {
+            policy_locations: Some(vec![cc_discovery::policy::explicit_location(&p)]),
+            dns_srv: false,
+            mdns: false,
             ..cc_discovery::DiscoverOptions::default()
         };
-        let d = server_defaults_with(&opts);
-        assert_eq!(d.servers, ["relay.cometcast.de:443"]);
+        (dir, opts)
+    }
+
+    fn addresses(list: &[ServerCandidate]) -> Vec<(&str, &str)> {
+        list.iter()
+            .map(|c| (c.address.as_str(), c.source.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn server_defaults_come_from_cc_discovery() {
+        let d = server_defaults_with(&no_policy());
+        assert_eq!(
+            addresses(&d.servers),
+            [("relay.cometcast.de:443", "default-list")]
+        );
+        assert!(!d.locked);
+        assert!(d.announcements_allowed);
+        assert!(d.notices.is_empty());
         assert_eq!(d.dev_fallback, "127.0.0.1:8443");
         assert_eq!(server_defaults().dev_fallback, "127.0.0.1:8443");
     }
@@ -1148,23 +1443,156 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn server_defaults_put_the_policy_first() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().expect("temp dir");
-        let p = dir.path().join("policy.json");
-        std::fs::write(
-            &p,
+        let (_dir, opts) = policy_options(
             br#"{"servers":["wss://mdm.example:443"],"forbid_default_list":true}"#,
-        )
-        .expect("write");
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("chmod");
-        let opts = cc_discovery::DiscoverOptions {
-            policy_locations: Some(vec![cc_discovery::policy::explicit_location(&p)]),
-            ..cc_discovery::DiscoverOptions::default()
-        };
-        assert_eq!(
-            server_defaults_with(&opts).servers,
-            ["wss://mdm.example:443"]
+            0o644,
         );
+        let d = server_defaults_with(&opts);
+        assert_eq!(addresses(&d.servers), [("wss://mdm.example:443", "mdm")]);
+        assert!(!d.locked);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_policy_that_forbids_override_locks_and_blocks_announcements() {
+        let (_dir, opts) = policy_options(
+            br#"{"servers":["wss://mdm.example:443"],"forbid_user_override":true}"#,
+            0o644,
+        );
+        let d = server_defaults_with(&opts);
+        assert!(d.locked);
+        assert!(!d.announcements_allowed);
+        assert_eq!(addresses(&d.servers), [("wss://mdm.example:443", "mdm")]);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let r = rt.block_on(discover_servers_with(&opts));
+        assert!(r.locked);
+        assert_eq!(addresses(&r.servers), [("wss://mdm.example:443", "mdm")]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unusable_policy_fails_closed_with_a_code_not_with_text() {
+        // Writable by others: unusable.
+        let (_dir, opts) = policy_options(br#"{"servers":["a.example:1"]}"#, 0o666);
+        let d = server_defaults_with(&opts);
+        assert!(d.locked);
+        assert!(d.servers.is_empty());
+        assert!(!d.announcements_allowed);
+        assert_eq!(d.notices, [DiscoveryWarning::PolicyUnusable]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_locked_policy_without_servers_is_reported() {
+        let (_dir, opts) = policy_options(br#"{"forbid_user_override":true}"#, 0o644);
+        let d = server_defaults_with(&opts);
+        assert!(d.locked);
+        assert!(d.servers.is_empty());
+        assert_eq!(d.notices, [DiscoveryWarning::PolicyNamesNoServer]);
+    }
+
+    #[test]
+    fn discovery_without_network_sources_returns_the_default_list() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let r = rt.block_on(discover_servers_with(&no_policy()));
+        assert_eq!(
+            addresses(&r.servers),
+            [("relay.cometcast.de:443", "default-list")]
+        );
+        assert!(!r.locked);
+        assert!(r.announcements_allowed);
+        assert!(r.warnings.is_empty());
+    }
+
+    #[test]
+    fn warning_texts_map_to_codes() {
+        let w = |s: &str| classify_warning(s);
+        assert_eq!(
+            w("the policy file is unusable (x); no server is offered"),
+            DiscoveryWarning::PolicyUnusable
+        );
+        assert_eq!(
+            w("the policy forbids other servers but lists none"),
+            DiscoveryWarning::PolicyNamesNoServer
+        );
+        assert_eq!(
+            w("DNS-SRV lookup for _cometcast._tcp.x.example timed out"),
+            DiscoveryWarning::DnsTimeout
+        );
+        assert_eq!(
+            w("DNS-SRV lookup for _cometcast._tcp.x.example: boom"),
+            DiscoveryWarning::DnsFailed
+        );
+        assert_eq!(
+            w("DNS-SRV is not available: no resolv.conf"),
+            DiscoveryWarning::DnsFailed
+        );
+        assert_eq!(
+            w("DNS-SRV _cometcast._tcp.x.example says the service is not available"),
+            DiscoveryWarning::DnsServiceUnavailable
+        );
+        assert_eq!(
+            w("2 DNS-SRV record(s) for _cometcast._tcp.x.example were refused"),
+            DiscoveryWarning::EntriesIgnored
+        );
+        assert_eq!(
+            w("announcement browse failed: nope"),
+            DiscoveryWarning::AnnouncementFailed
+        );
+        // Anything else, including hostile text, is only a code.
+        assert_eq!(w("<script>alert(1)</script>"), DiscoveryWarning::Other);
+        let all = classify_warnings(&["a".into(), "b".into(), "DNS-SRV x".into()]);
+        assert_eq!(all, [DiscoveryWarning::Other, DiscoveryWarning::DnsFailed]);
+    }
+
+    #[test]
+    fn real_merge_warnings_keep_their_codes() {
+        // Built with cc-discovery itself, so a changed text there fails here.
+        let invalid = cc_discovery::PolicyState::Invalid("x".into());
+        let m = cc_discovery::merge(&invalid, &[], &[], &[]);
+        assert_eq!(
+            classify_warnings(&m.warnings),
+            [DiscoveryWarning::PolicyUnusable]
+        );
+    }
+
+    #[test]
+    fn advertise_errors_are_sorted_into_refused_and_failed() {
+        assert_eq!(
+            classify_advertise_error("server cannot be announced: loopback"),
+            AdvertiseOutcome::Refused
+        );
+        assert_eq!(
+            classify_advertise_error("instance name is empty or too long"),
+            AdvertiseOutcome::Refused
+        );
+        assert_eq!(
+            classify_advertise_error("no interface found"),
+            AdvertiseOutcome::Failed
+        );
+    }
+
+    #[test]
+    fn advertising_refuses_a_loopback_server_and_stop_is_harmless() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        stop_advertising();
+        let out = rt.block_on(start_advertising(
+            "Test receiver".into(),
+            Some("127.0.0.1:8443".into()),
+        ));
+        assert_eq!(out, AdvertiseOutcome::Refused);
+        let out = rt.block_on(start_advertising(String::new(), None));
+        assert_eq!(out, AdvertiseOutcome::Refused);
+        stop_advertising();
     }
 
     #[test]

@@ -27,6 +27,31 @@ String? findLibrary() {
   return null;
 }
 
+/// Checks that hold whether or not this machine has an MDM policy file.
+void _expectConsistent(
+  List<ServerCandidate> servers,
+  bool locked,
+  List<DiscoveryWarning> notices,
+) {
+  const known = {'mdm', 'dns-srv', 'display-announcement', 'default-list'};
+  for (final s in servers) {
+    expect(known, contains(s.source));
+    expect(s.address.trim(), isNotEmpty);
+  }
+  expect(
+    servers.map((s) => s.address.toLowerCase()).toSet().length,
+    servers.length,
+    reason: 'each address once',
+  );
+  // A lock offers policy servers only.
+  if (locked) expect(servers.every((s) => s.source == 'mdm'), isTrue);
+  // An unusable policy locks and offers nothing.
+  if (notices.contains(DiscoveryWarning.policyUnusable)) {
+    expect(locked, isTrue);
+    expect(servers, isEmpty);
+  }
+}
+
 void main() {
   final lib = findLibrary();
   final skip = lib == null
@@ -90,12 +115,60 @@ void main() {
   test('server defaults come from cc-discovery', () {
     const core = RustCoreApi();
     final d = core.serverDefaults();
-    expect(d.servers, ['relay.cometcast.de:443']);
     expect(d.devFallback, '127.0.0.1:8443');
-    // The Dart fake stays in line with the real values.
     final fake = FakeCoreApi().serverDefaults();
-    expect(fake.servers, d.servers);
     expect(fake.devFallback, d.devFallback);
+    // A machine may have an MDM policy file (/etc/cometcast/policy.json) that changes the
+    // list, so only what holds with and without a policy is checked.
+    _expectConsistent(d.servers, d.locked, d.notices);
+    if (!d.locked && !d.servers.any((s) => s.source == 'mdm')) {
+      // No usable policy: the built-in list, as the fake has it.
+      expect(
+        d.servers.map((s) => (s.address, s.source)),
+        fake.servers.map((s) => (s.address, s.source)),
+      );
+    }
+  }, skip: skip);
+
+  test(
+    'server discovery answers with ordered, labelled, consistent data',
+    () async {
+      const core = RustCoreApi();
+      final r = await core.discoverServers();
+      _expectConsistent(r.servers, r.locked, r.notices);
+      // Policy servers always come first.
+      final sources = r.servers.map((s) => s.source).toList();
+      final lastMdm = sources.lastIndexOf('mdm');
+      if (lastMdm >= 0) {
+        expect(sources.take(lastMdm + 1).every((s) => s == 'mdm'), isTrue);
+      }
+      // A policy that forbids other servers blocks announcements.
+      if (r.locked) expect(r.announcementsAllowed, isFalse);
+      // The raw warnings are for logs; the UI only uses the codes.
+      expect(
+        r.warnings.length >= r.notices.length || r.notices.isEmpty,
+        isTrue,
+      );
+    },
+    skip: skip,
+  );
+
+  test('announcing and listing receivers can be started and stopped', () async {
+    const core = RustCoreApi();
+    // A loopback server is refused by the checks of cc-discovery; the name alone is fine.
+    final refused = await core.startAdvertising(
+      name: 'Test receiver',
+      preferredServer: '127.0.0.1:8443',
+    );
+    expect(refused, AdvertiseOutcome.refused);
+    final outcome = await core.startAdvertising(name: 'Test receiver');
+    // No multicast in a sandbox is possible: then it fails, but never throws.
+    expect(outcome, anyOf(AdvertiseOutcome.started, AdvertiseOutcome.failed));
+    await core.stopAdvertising();
+    final events = core.watchReceivers().listen((_) {});
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await core.stopWatchingReceivers();
+    await events.cancel();
   }, skip: skip);
 
   test('no picture is waiting before a receiver ran', () async {

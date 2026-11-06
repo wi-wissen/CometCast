@@ -456,7 +456,7 @@ void videoTests() {
         store: MemorySettingsStore(),
       );
       expect(fresh.serverAddress, 'relay.cometcast.de:443');
-      expect(fresh.serverSuggestions, [
+      expect(fresh.serverSuggestions.map((s) => s.address), [
         'relay.cometcast.de:443',
         '127.0.0.1:8443',
       ]);

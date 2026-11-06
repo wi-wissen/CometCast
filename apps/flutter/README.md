@@ -17,10 +17,19 @@ Status: milestone M1 on the desktop. The app talks to the Rust core through
   by a Rust-side check), room code input (validated by the Rust core with the same alphabet as
   `cc-proto`), duration (only for the test video), status. Without the switch it sends the
   built-in VP8 test stream.
-- **Server address**: pre-filled from the Rust core (`server_defaults()`: the list of
-  `cc-discovery`, then `127.0.0.1:8443` for development; suggestions appear as chips). The
-  last server you started with is saved (`shared_preferences`) and wins at the next start;
-  `COMETCAST_SERVER=host:port` overrides both (development).
+- **Server address**: pre-filled from the Rust core: at once from `server_defaults()`, then from
+  `discover_servers()` (policy, DNS-SRV, display announcements, built-in list, then
+  `127.0.0.1:8443` for development). Suggestions are chips that say where each came from
+  (translated). The last server you started with is saved (`shared_preferences`) and wins at the
+  next start unless an administrator policy names servers; `COMETCAST_SERVER=host:port`
+  overrides both (development). If the policy forbids other servers the field is read-only
+  ("Your administrator has set the server."). Problems while searching are shown as calm,
+  translated notes (by code, never raw text); a small hint shows while the search runs and
+  closing the screen cancels it.
+- **Receive screen** announces itself and its server in the local network while it is open
+  (`start_advertising`); the **send screen** lists "Nearby receivers" (name and announced
+  server); a tap takes the server and focuses the room code field (the code is never
+  announced). Details and open questions: docs/discovery.md, "In the Flutter app".
 
 **Not built yet:** screen capture on Windows, macOS, Wayland and mobile; other video codecs than
 H.264 in the picture view; audio; sending file or link. English + German, light/dark following the
@@ -182,8 +191,8 @@ Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
 
 - Server address: pre-filled with the first entry of `cc-discovery`'s offline list: an MDM policy file
   if present, otherwise the built-in `relay.cometcast.de:443`, **a host that does not exist yet**
-  (UNCERTAIN: planned name). The DNS SRV / display-announcement steps exist in the core
-  (`discover_servers()`) but the app does not use them yet (docs/discovery.md).
+  (UNCERTAIN: planned name). The DNS SRV / display-announcement steps are used through
+  `discover_servers()` but were never tried on a real school network (docs/discovery.md).
   `127.0.0.1:8443` is offered as a chip for development. The last used server is saved with
   `shared_preferences`; UNCERTAIN: only its Linux behaviour (a JSON file `shared_preferences.json` in the
   application support folder, normally `~/.local/share/<application id>/`) was read about in the package, not looked at on disk.

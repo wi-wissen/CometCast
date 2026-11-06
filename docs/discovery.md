@@ -36,9 +36,8 @@ are fallbacks and suggestions. The pure function `merge()` builds the list:
 | file exists but is unusable | **fail closed**: no server, `locked`, a warning |
 
 **UNCERTAIN:** failing closed on a broken policy file, and what `locked` means for the UI,
-are decisions of this crate. The project owner has not confirmed them. The Flutter app does
-not enforce `locked` yet: it pre-fills the first server but still lets people type another
-one and still appends the development fallback `127.0.0.1:8443`.
+are decisions of this crate. The project owner has not confirmed them. The Flutter app
+enforces `locked` (see "In the Flutter app" below).
 
 **The default list is a placeholder.** `relay.cometcast.de` does not exist yet
 ([server.md](server.md)); it will be set up in the last step of the project. Until then a
@@ -147,13 +146,12 @@ sender is pointed to sees room codes and the addresses of the devices. Therefore
   receivers are kept per browse.
 * `advertise_receiver` applies the same checks to the server it is told to announce, so the
   mistake shows at the receiver.
-* The announcement only feeds a *list*. The app must show which server is used and where it
-  came from (`ServerSource`); it must not switch silently. UNCERTAIN: the Flutter UI does not
-  show the source yet.
+* The announcement only feeds a *list*. The app shows which server is used and where it
+  came from (`ServerSource`) and does not switch silently once the person has chosen.
 
-`advertise_receiver` is **not yet called by the receiver app or `cometcast-cli receive`**.
-`cometcast-cli discover --announce HOST:PORT` advertises for the length of the command and is
-the only caller.
+The Flutter receiver view calls `advertise_receiver` while it is open (through `cc-ffi`
+`start_advertising`); `cometcast-cli receive` does not. `cometcast-cli discover --announce
+HOST:PORT` advertises for the length of the command.
 
 Backends: this is the `mdns-sd` backend (desktop). NWBrowser (Apple) and NsdManager (Android)
 are not implemented ([architecture.md](architecture.md)). Multicast can be blocked by
@@ -181,7 +179,60 @@ while let Some(ReceiverEvent::Found(r)) = receivers.next().await { /* r.announce
 * `cc-ffi`: `server_defaults()` (sync) uses the offline variant, so the pre-fill order is
   "policy, then default list" and the development fallback stays last. `discover_servers()`
   (async) asks everything and returns `ServerCandidate { address, source }`, `locked` and
-  warnings. The Dart side does not call it yet.
+  warnings (English, for logs) and `notices`: a code per kind of warning that the UI
+  translates. Also `start_advertising(name, preferred_server)` / `stop_advertising()` and
+  `watch_receivers()` / `stop_watching_receivers()`, see below.
+
+## In the Flutter app
+
+Both screens (receive, send) show the server field with these rules
+(`apps/flutter/lib/settings.dart`, `widgets.dart`, `discovery.dart`):
+
+* **Pre-fill.** At once, from the offline answer (`server_defaults()`); a moment later the
+  network answer (`discover_servers()`) replaces the list and, if the person has not typed or
+  tapped anything, the pre-fill. The order is the owner's: policy servers, DNS-SRV,
+  announcements, built-in list. The pre-fill is the first policy server; without one, the
+  server used last time (saved with `shared_preferences`); otherwise the first entry. The saved
+  server is shown as a chip "Last used" right after the policy servers; `127.0.0.1:8443` stays
+  last ("This computer (development)"). UNCERTAIN: putting the saved server before DNS-SRV
+  results is a product decision that the owner has not confirmed.
+* **Suggestion chips** carry a translated label for the source: set by your administrator
+  (`mdm`), found in the network (DNS) (`dns-srv`), announced by a display
+  (`display-announcement`), default list (`default-list`). An unknown source name gets "Other
+  source".
+* **`locked`.** The field is read-only (it can still be selected), a line says "Your
+  administrator has set the server.", only the policy servers are chips, the saved server, the
+  development override `COMETCAST_SERVER` and the development server are ignored, the server
+  is not saved, the model refuses other values. UNCERTAIN: with several policy servers the
+  person may still choose between them (chips); the owner has not said whether that is wanted.
+  An unusable policy file locks with an empty list: the start button then asks for a server
+  that cannot be given; the note "The policy file of your administrator could not be read, so
+  no network server is offered." explains it.
+* **Notes.** The Rust side maps each warning text to a code (`DiscoveryWarning`); the UI shows
+  one translated, calm sentence per code and never the raw text (it may contain network
+  content). UNCERTAIN: `cc-discovery` has no codes, so the mapping matches the beginning of its
+  English texts; a changed text becomes the general note "Not every source of servers could be
+  asked." The unit tests in `cc-ffi` build real warnings to notice such a change.
+* **Progress.** While the search runs a still hint "Looking for servers in the network …" is
+  shown (no spinner: it would keep `pumpAndSettle` and screen readers busy). Nothing is
+  blocked. The time limits (DNS 3 s, announcements 1.5 s) are those of
+  `DiscoverOptions::default()`; Dart has no timer of its own. A Rust future cannot be
+  cancelled from Dart: closing the screen makes the answer harmless (`cancelDiscovery`); the
+  search ends by itself within its Rust time limits.
+* **Receiver view.** While open it announces itself with `start_advertising(name,
+  preferred_server)`: the name is the host name of the device (UNCERTAIN: visible to everybody
+  in the network; a chosen or random name might be better) and the server in the field (left
+  out if `cc-discovery` refuses it, for example `127.0.0.1`). Starting to receive announces the
+  server really used. Closing the view stops it. A failure (no multicast) shows nothing.
+* **Send view.** "Nearby receivers" lists what `watch_receivers()` finds (name and announced
+  server). A tap takes over the announced server and moves the focus to the room code field;
+  the person types the code, because **an announcement never contains the room code**. The
+  list is not shown, and mDNS is not even started, when the policy locks the server or
+  forbids announcements. At most 32 receivers are shown. UNCERTAIN: the list is only as
+  trustworthy as the local network; the person sees the server before sending anything.
+* **Not done:** the receiver does not listen for senders (the mDNS port is a placeholder),
+  nothing is picked automatically from the list, no QR code, no Android or Apple discovery
+  backends (the Dart side would work unchanged once Rust has them).
 
 ## Tests
 

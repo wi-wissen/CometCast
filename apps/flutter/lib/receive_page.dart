@@ -2,6 +2,8 @@
 // "Receive on this device": server field, big room code and status. When the sender's H.264
 // screen arrives, the picture fills the window (F11 = full screen, I = statistics).
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,12 +15,26 @@ import 'settings.dart';
 import 'widgets.dart';
 import 'window_control.dart';
 
+/// The name under which this receiver announces itself in the local network.
+// UNCERTAIN: the host name is visible to everybody in the local network (mDNS shows it
+// anyway). A per-install random or user-chosen name would be more private; not decided.
+String defaultReceiverName() {
+  try {
+    final h = Platform.localHostname.trim();
+    if (h.isNotEmpty) return h;
+  } catch (_) {
+    // Not available: use the product name.
+  }
+  return 'Comet Cast';
+}
+
 class ReceivePage extends StatefulWidget {
   const ReceivePage({
     super.key,
     required this.core,
     required this.settings,
     this.setFullscreen = setWindowFullscreen,
+    this.receiverName = defaultReceiverName,
   });
 
   final CoreApi core;
@@ -26,6 +42,9 @@ class ReceivePage extends StatefulWidget {
 
   /// How the window is made full screen (replaced in tests).
   final SetFullscreen setFullscreen;
+
+  /// The name announced in the local network (replaced in tests).
+  final String Function() receiverName;
 
   @override
   State<ReceivePage> createState() => _ReceivePageState();
@@ -39,10 +58,58 @@ class _ReceivePageState extends State<ReceivePage> {
   );
   bool _serverEmpty = false;
 
+  /// The name under which this receiver is announced now, or null.
+  String? _advertisedAs;
+
+  /// The server that the running announcement names.
+  String? _advertisedServer;
+  int _advertiseRun = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Neither call blocks the screen: the results arrive later.
+    widget.settings.discover(widget.core);
+    _advertise();
+  }
+
   @override
   void dispose() {
+    widget.settings.cancelDiscovery();
+    _advertiseRun++;
+    widget.core.stopAdvertising().catchError((Object _) {});
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Announce this receiver and [server] (null = no server) in the local network while this
+  /// view is open. The room code is not part of it. A server that the checks of the core
+  /// refuse (for example 127.0.0.1) is left out; the receiver is announced all the same.
+  Future<void> _advertise() async {
+    final run = ++_advertiseRun;
+    final name = widget.receiverName();
+    final server = widget.settings.serverAddress.trim();
+    try {
+      var outcome = await widget.core.startAdvertising(
+        name: name,
+        preferredServer: server.isEmpty ? null : server,
+      );
+      var named = server.isEmpty ? null : server;
+      if (outcome == AdvertiseOutcome.refused && named != null) {
+        outcome = await widget.core.startAdvertising(name: name);
+        named = null;
+      }
+      if (!mounted || run != _advertiseRun) return;
+      setState(() {
+        _advertisedAs = outcome == AdvertiseOutcome.started ? name : null;
+        _advertisedServer = named;
+      });
+    } catch (_) {
+      // Announcing is a convenience; the receiver works without.
+      if (mounted && run == _advertiseRun) {
+        setState(() => _advertisedAs = null);
+      }
+    }
   }
 
   void _start() {
@@ -50,6 +117,8 @@ class _ReceivePageState extends State<ReceivePage> {
     setState(() => _serverEmpty = server.isEmpty);
     if (server.isEmpty) return;
     widget.settings.rememberServer();
+    // The announcement names the server that is really used now.
+    if (server != _advertisedServer) _advertise();
     _controller.start(server);
   }
 
@@ -203,6 +272,14 @@ class _ReceivePageState extends State<ReceivePage> {
               hint,
               key: const Key('videoHint'),
               style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (_advertisedAs != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              t.advertisedNote(_advertisedAs!),
+              key: const Key('advertisedNote'),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
           const SizedBox(height: 16),

@@ -9,13 +9,16 @@ import 'dart:typed_data';
 import 'package:cometcast/src/rust/api.dart' as rust;
 import 'package:cometcast/src/rust/api.dart'
     show
+        AdvertiseOutcome,
         CaptureInfo,
+        NearbyReceiverEvent,
         PushResult,
         ReceiverUiEvent,
         RoomCodeCheck,
         ScreenRequest,
         SenderUiEvent,
         ServerDefaults,
+        ServerDiscovery,
         VideoFrame;
 
 // The event and result classes (generated) are re-exported for the screens and tests.
@@ -35,7 +38,12 @@ export 'package:cometcast/src/rust/api.dart'
         takeFrame,
         setVideoMaxSize,
         captureInfo,
-        serverDefaults;
+        serverDefaults,
+        discoverServers,
+        startAdvertising,
+        stopAdvertising,
+        watchReceivers,
+        stopWatchingReceivers;
 
 abstract class CoreApi {
   /// Connect to [server], create a room and report events. The first event is the room code.
@@ -95,6 +103,26 @@ abstract class CoreApi {
   /// Server addresses to pre-fill (from cc-discovery) and the development fallback.
   ServerDefaults serverDefaults();
 
+  /// Ask all sources (policy, DNS-SRV, announcements) for servers. Never throws in the real
+  /// core; the time limits are set in Rust. A Rust future cannot be cancelled from Dart, so a
+  /// screen that closes in the meantime simply ignores the answer (see `AppSettings.discover`).
+  Future<ServerDiscovery> discoverServers();
+
+  /// Announce this receiver (and its preferred server, never the room code) on the local
+  /// network until [stopAdvertising]. Replaces a running announcement.
+  Future<AdvertiseOutcome> startAdvertising({
+    required String name,
+    String? preferredServer,
+  });
+
+  Future<void> stopAdvertising();
+
+  /// Receivers announced on the local network, until [stopWatchingReceivers] or until the
+  /// listener cancels.
+  Stream<NearbyReceiverEvent> watchReceivers();
+
+  Future<void> stopWatchingReceivers();
+
   Future<void> stopSender();
 
   /// Same rules as `cc_proto::RoomCode::parse` (the Rust code is the single source of truth).
@@ -133,6 +161,24 @@ class RustCoreApi implements CoreApi {
 
   @override
   ServerDefaults serverDefaults() => rust.serverDefaults();
+
+  @override
+  Future<ServerDiscovery> discoverServers() => rust.discoverServers();
+
+  @override
+  Future<AdvertiseOutcome> startAdvertising({
+    required String name,
+    String? preferredServer,
+  }) => rust.startAdvertising(name: name, preferredServer: preferredServer);
+
+  @override
+  Future<void> stopAdvertising() => rust.stopAdvertising();
+
+  @override
+  Stream<NearbyReceiverEvent> watchReceivers() => rust.watchReceivers();
+
+  @override
+  Future<void> stopWatchingReceivers() => rust.stopWatchingReceivers();
 
   @override
   Stream<SenderUiEvent> startSender({

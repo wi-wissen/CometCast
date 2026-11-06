@@ -11,6 +11,7 @@ import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'core/android_capture.dart';
 import 'core/core_api.dart';
+import 'discovery.dart';
 import 'sender_controller.dart';
 import 'settings.dart';
 import 'widgets.dart';
@@ -55,9 +56,17 @@ class _SendPageState extends State<SendPage> {
   bool _shareScreen = false;
   String? _monitorId;
 
+  /// Receivers announced in the local network; null where announcements must not be used
+  /// (a policy locks the server or forbids them).
+  NearbyReceivers? _nearby;
+
   @override
   void initState() {
     super.initState();
+    widget.settings.discover(widget.core);
+    if (!widget.settings.locked && widget.settings.announcementsAllowed) {
+      _nearby = NearbyReceivers(widget.core)..start();
+    }
     widget.core.captureInfo(display: widget.settings.captureDisplay).then((
       info,
     ) {
@@ -76,6 +85,8 @@ class _SendPageState extends State<SendPage> {
 
   @override
   void dispose() {
+    widget.settings.cancelDiscovery();
+    _nearby?.dispose();
     _controller.dispose();
     _codeFocus.dispose();
     _secondsFocus.dispose();
@@ -178,6 +189,7 @@ class _SendPageState extends State<SendPage> {
                       ),
                     ),
                   ),
+                if (_nearby != null) _buildNearby(context, t, active),
                 const SizedBox(height: 16),
                 _buildShareScreen(context, t, active),
                 TextField(
@@ -264,6 +276,72 @@ class _SendPageState extends State<SendPage> {
           },
         ),
       ),
+    );
+  }
+
+  /// "Nearby receivers": name and announced server of the displays in this network. A tap
+  /// takes over the server (if one was announced) and moves to the code field: the room code
+  /// is never announced, so the person types it.
+  Widget _buildNearby(BuildContext context, AppLocalizations t, bool active) {
+    final nearby = _nearby!;
+    return ListenableBuilder(
+      listenable: nearby,
+      builder: (context, _) {
+        final list = nearby.receivers;
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Column(
+            key: const Key('nearbyReceivers'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                t.nearbyTitle,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              if (nearby.unavailable)
+                Text(
+                  t.nearbyUnavailable,
+                  key: const Key('nearbyUnavailable'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              else if (list.isEmpty)
+                Text(
+                  t.nearbyEmpty,
+                  key: const Key('nearbyEmpty'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              else ...[
+                for (final r in list)
+                  ListTile(
+                    key: Key('nearbyReceiver:${r.id}'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: const Icon(Icons.tv),
+                    title: Text(r.name),
+                    subtitle: Text(
+                      r.server == null
+                          ? t.nearbyNoServer
+                          : t.nearbyServer(r.server!),
+                    ),
+                    enabled: !active,
+                    onTap: () {
+                      final server = r.server;
+                      if (server != null) {
+                        widget.settings.serverAddress = server;
+                      }
+                      _codeFocus.requestFocus();
+                    },
+                  ),
+                Text(
+                  t.nearbyHint,
+                  key: const Key('nearbyHint'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 

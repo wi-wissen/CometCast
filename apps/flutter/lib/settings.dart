@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/core_api.dart';
+import 'discovery.dart';
 
 /// Used only if the core offers no server at all (never the case with the real core).
 const fallbackServerAddress = '127.0.0.1:8443';
@@ -64,36 +65,68 @@ class PrefsSettingsStore implements SettingsStore {
 }
 
 /// Like a tiny Pinia store: screens read [serverAddress] and listen for changes.
+///
+/// The server list follows the owner's order (docs/discovery.md): policy servers, DNS-SRV,
+/// announcements by displays, the built-in list. The pre-fill is the first policy server; if the
+/// policy names none, the server used last time (only when the policy does not [locked] the
+/// field); otherwise the first entry. Whatever the person typed or tapped is never overwritten.
 class AppSettings extends ChangeNotifier {
   AppSettings({
     String? serverAddress,
-    this.serverSuggestions = const [],
+    List<ServerSuggestion> serverSuggestions = const [],
+    bool locked = false,
+    bool announcementsAllowed = true,
+    Set<DiscoveryWarning> notices = const {},
+    this.savedServer,
+    this.devFallback,
     this.udpBind,
     this.captureDisplay,
     this.store,
-  }) : _serverAddress =
-           serverAddress ??
-           (serverSuggestions.isNotEmpty
-               ? serverSuggestions.first
-               : fallbackServerAddress);
+  }) : _suggestions = serverSuggestions,
+       _locked = locked,
+       // ignore: prefer_initializing_formals (named parameters cannot be private)
+       _announcementsAllowed = announcementsAllowed,
+       // ignore: prefer_initializing_formals
+       _notices = notices,
+       _userChose = serverAddress != null && !locked,
+       _serverAddress =
+           (locked ? null : serverAddress) ??
+           _prefill(serverSuggestions, locked: locked, saved: savedServer) ??
+           (locked ? '' : fallbackServerAddress);
 
-  /// Settings with the server list of the core (cc-discovery) and no saved value.
+  /// Settings with the offline answer of the core (policy file and built-in list). The
+  /// network search is started with [discover]. [serverAddress] (development override) and
+  /// [savedServer] (last used) are ignored where a policy locks the server.
   factory AppSettings.fromDefaults(
     ServerDefaults defaults, {
     String? serverAddress,
+    String? savedServer,
     String? udpBind,
     String? captureDisplay,
     SettingsStore? store,
-  }) => AppSettings(
-    serverAddress: serverAddress,
-    serverSuggestions: suggestionsOf(defaults),
-    udpBind: udpBind,
-    captureDisplay: captureDisplay,
-    store: store,
-  );
+  }) {
+    final saved = defaults.locked ? null : savedServer;
+    return AppSettings(
+      serverAddress: serverAddress,
+      serverSuggestions: compose(
+        found: defaults.servers,
+        locked: defaults.locked,
+        saved: saved,
+        devFallback: defaults.devFallback,
+      ),
+      locked: defaults.locked,
+      announcementsAllowed: defaults.announcementsAllowed,
+      notices: defaults.notices.toSet(),
+      savedServer: saved,
+      devFallback: defaults.devFallback,
+      udpBind: udpBind,
+      captureDisplay: captureDisplay,
+      store: store,
+    );
+  }
 
-  /// Start-up: the server is, in this order, [envServer] (development), the saved server,
-  /// the first entry of the core's list.
+  /// Start-up: the server is, in this order, [envServer] (development), the saved server
+  /// (unless a policy locks the field), the first entry of the core's list.
   static Future<AppSettings> load({
     required CoreApi core,
     SettingsStore store = const PrefsSettingsStore(),
@@ -102,39 +135,164 @@ class AppSettings extends ChangeNotifier {
     String? captureDisplay,
   }) async {
     final saved = await store.loadServer();
+    final defaults = core.serverDefaults();
     return AppSettings.fromDefaults(
-      core.serverDefaults(),
-      serverAddress: envServer ?? saved,
+      defaults,
+      // The development override and the saved server beat the list, but not a policy server.
+      serverAddress: envServer ?? (_hasPolicyServer(defaults) ? null : saved),
+      savedServer: saved,
       udpBind: udpBind,
       captureDisplay: captureDisplay,
       store: store,
     );
   }
 
-  /// The core's default servers followed by the development fallback, without repeats.
-  static List<String> suggestionsOf(ServerDefaults d) =>
-      {...d.servers, d.devFallback}.toList();
+  static bool _hasPolicyServer(ServerDefaults d) => d.servers.any(
+    (s) => ServerSourceKind.fromRust(s.source) == ServerSourceKind.policy,
+  );
+
+  /// The list for the field: [found] (from the core, best first), then, unless [locked], the
+  /// [saved] server after the policy servers, and the development server at the end.
+  static List<ServerSuggestion> compose({
+    required List<ServerCandidate> found,
+    required bool locked,
+    String? saved,
+    String? devFallback,
+  }) {
+    final out = <ServerSuggestion>[];
+    bool has(String a) =>
+        out.any((s) => s.address.toLowerCase() == a.toLowerCase());
+    for (final c in found) {
+      if (!has(c.address)) out.add(ServerSuggestion.fromCandidate(c));
+    }
+    if (locked) return out;
+    final savedAddress = saved?.trim();
+    if (savedAddress != null && savedAddress.isNotEmpty && !has(savedAddress)) {
+      final at = out.takeWhile((s) => s.kind == ServerSourceKind.policy).length;
+      out.insert(at, ServerSuggestion(savedAddress, ServerSourceKind.lastUsed));
+    }
+    if (devFallback != null && devFallback.isNotEmpty && !has(devFallback)) {
+      out.add(ServerSuggestion(devFallback, ServerSourceKind.development));
+    }
+    return out;
+  }
+
+  /// The address that fills the field: the first policy server, else the saved one (not when
+  /// locked), else the first suggestion, else null.
+  static String? _prefill(
+    List<ServerSuggestion> list, {
+    required bool locked,
+    String? saved,
+  }) {
+    for (final s in list) {
+      if (s.kind == ServerSourceKind.policy) return s.address;
+    }
+    final savedAddress = saved?.trim();
+    if (!locked && savedAddress != null && savedAddress.isNotEmpty) {
+      return savedAddress;
+    }
+    return list.isEmpty ? null : list.first.address;
+  }
 
   final SettingsStore? store;
 
-  String _serverAddress;
+  /// The server used last time (null if none, or a policy locks the field).
+  final String? savedServer;
 
-  /// Server addresses offered as one-tap suggestions.
-  final List<String> serverSuggestions;
+  /// The development server, offered last.
+  final String? devFallback;
+
+  String _serverAddress;
+  List<ServerSuggestion> _suggestions;
+  bool _locked;
+  bool _announcementsAllowed;
+  Set<DiscoveryWarning> _notices;
+  bool _userChose;
+  bool _discovering = false;
+  int _discoveryRun = 0;
+
+  /// Suggested servers, best first, each with its source.
+  List<ServerSuggestion> get serverSuggestions => _suggestions;
+
+  /// A policy sets the server: the field is read-only and only [serverSuggestions] can be used.
+  bool get locked => _locked;
+
+  /// Announcements of displays may be used (the policy does not forbid them).
+  bool get announcementsAllowed => _announcementsAllowed;
+
+  /// Notes about problems while looking for servers, as codes the screens translate.
+  Set<DiscoveryWarning> get notices => _notices;
+
+  /// The network search runs.
+  bool get discovering => _discovering;
 
   /// Signalling server as `host:port`.
   String get serverAddress => _serverAddress;
 
+  /// The person typed or tapped a server. Under a policy lock only listed servers are taken.
   set serverAddress(String value) {
     if (value == _serverAddress) return;
+    if (_locked && !_suggestions.any((s) => s.address == value)) return;
     _serverAddress = value;
+    _userChose = true;
     notifyListeners();
   }
 
-  /// Remember the current server for the next start (call when it is used).
+  /// Ask all sources for servers (policy, DNS-SRV, announcements; the time limits are in
+  /// Rust) without blocking the screen. The answer changes the list, the lock and the notes,
+  /// and fills the field unless the person chose a server meanwhile. [cancelDiscovery] makes a
+  /// late answer harmless.
+  Future<void> discover(CoreApi core) async {
+    final run = ++_discoveryRun;
+    // No notification here: this is called from initState; the first build reads the flag.
+    _discovering = true;
+    ServerDiscovery? result;
+    try {
+      result = await core.discoverServers();
+    } catch (_) {
+      result = null;
+    }
+    if (run != _discoveryRun) return; // cancelled or replaced
+    _discovering = false;
+    if (result == null) {
+      _notices = {..._notices, DiscoveryWarning.other};
+    } else {
+      _apply(result);
+    }
+    notifyListeners();
+  }
+
+  /// Ignore the answer of a running [discover] (call when the screen closes).
+  void cancelDiscovery() {
+    _discoveryRun++;
+    _discovering = false;
+  }
+
+  void _apply(ServerDiscovery r) {
+    _locked = r.locked;
+    _announcementsAllowed = r.announcementsAllowed;
+    _notices = r.notices.toSet();
+    _suggestions = compose(
+      found: r.servers,
+      locked: r.locked,
+      saved: savedServer,
+      devFallback: devFallback,
+    );
+    final prefill = _prefill(_suggestions, locked: _locked, saved: savedServer);
+    if (_locked) {
+      // A policy beats whatever was chosen before.
+      if (!_suggestions.any((s) => s.address == _serverAddress)) {
+        _serverAddress = prefill ?? '';
+      }
+    } else if (!_userChose && prefill != null) {
+      _serverAddress = prefill;
+    }
+  }
+
+  /// Remember the current server for the next start (call when it is used). Not under a lock.
   Future<void> rememberServer() async {
     final v = _serverAddress.trim();
-    if (v.isEmpty) return;
+    if (v.isEmpty || _locked) return;
     await store?.saveServer(v);
   }
 

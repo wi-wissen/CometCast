@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 447632424;
+  int get rustContentHash => 1152294042;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -107,6 +107,11 @@ abstract class RustLibApi extends BaseApi {
 
   void crateApiSetVideoMaxSize({required int width, required int height});
 
+  Future<AdvertiseOutcome> crateApiStartAdvertising({
+    required String name,
+    String? preferredServer,
+  });
+
   Stream<SenderUiEvent> crateApiStartEncodedSender({
     required String code,
     required String server,
@@ -126,11 +131,17 @@ abstract class RustLibApi extends BaseApi {
     ScreenRequest? screen,
   });
 
+  Future<void> crateApiStopAdvertising();
+
   Future<void> crateApiStopReceiver();
 
   Future<void> crateApiStopSender();
 
+  Future<void> crateApiStopWatchingReceivers();
+
   Future<VideoFrame?> crateApiTakeFrame();
+
+  Stream<NearbyReceiverEvent> crateApiWatchReceivers();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -415,6 +426,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<AdvertiseOutcome> crateApiStartAdvertising({
+    required String name,
+    String? preferredServer,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          sse_encode_opt_String(preferredServer, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_advertise_outcome,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStartAdvertisingConstMeta,
+        argValues: [name, preferredServer],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStartAdvertisingConstMeta => const TaskConstMeta(
+    debugName: "start_advertising",
+    argNames: ["name", "preferredServer"],
+  );
+
+  @override
   Stream<SenderUiEvent> crateApiStartEncodedSender({
     required String code,
     required String server,
@@ -433,7 +478,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 12,
+              funcId: 13,
               port: port_,
             );
           },
@@ -472,7 +517,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 13,
+              funcId: 14,
               port: port_,
             );
           },
@@ -517,7 +562,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 14,
+              funcId: 15,
               port: port_,
             );
           },
@@ -540,6 +585,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<void> crateApiStopAdvertising() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStopAdvertisingConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStopAdvertisingConstMeta =>
+      const TaskConstMeta(debugName: "stop_advertising", argNames: []);
+
+  @override
   Future<void> crateApiStopReceiver() {
     return handler.executeNormal(
       NormalTask(
@@ -548,7 +620,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 17,
             port: port_,
           );
         },
@@ -575,7 +647,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 18,
             port: port_,
           );
         },
@@ -594,6 +666,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "stop_sender", argNames: []);
 
   @override
+  Future<void> crateApiStopWatchingReceivers() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStopWatchingReceiversConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStopWatchingReceiversConstMeta =>
+      const TaskConstMeta(debugName: "stop_watching_receivers", argNames: []);
+
+  @override
   Future<VideoFrame?> crateApiTakeFrame() {
     return handler.executeNormal(
       NormalTask(
@@ -602,7 +701,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -620,10 +719,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiTakeFrameConstMeta =>
       const TaskConstMeta(debugName: "take_frame", argNames: []);
 
+  @override
+  Stream<NearbyReceiverEvent> crateApiWatchReceivers() {
+    final events = RustStreamSink<NearbyReceiverEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_StreamSink_nearby_receiver_event_Sse(events, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 21,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiWatchReceiversConstMeta,
+          argValues: [events],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return events.stream;
+  }
+
+  TaskConstMeta get kCrateApiWatchReceiversConstMeta =>
+      const TaskConstMeta(debugName: "watch_receivers", argNames: ["events"]);
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<NearbyReceiverEvent>
+  dco_decode_StreamSink_nearby_receiver_event_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
   }
 
   @protected
@@ -646,6 +784,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  AdvertiseOutcome dco_decode_advertise_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AdvertiseOutcome.values[raw as int];
   }
 
   @protected
@@ -721,6 +865,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DiscoveryWarning dco_decode_discovery_warning(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return DiscoveryWarning.values[raw as int];
+  }
+
+  @protected
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -745,6 +895,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<DiscoveryWarning> dco_decode_list_discovery_warning(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_discovery_warning).toList();
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -760,6 +916,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_server_candidate).toList();
+  }
+
+  @protected
+  NearbyReceiverEvent dco_decode_nearby_receiver_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return NearbyReceiverEvent_Found(
+          id: dco_decode_String(raw[1]),
+          name: dco_decode_String(raw[2]),
+          server: dco_decode_opt_String(raw[3]),
+        );
+      case 1:
+        return NearbyReceiverEvent_Lost(id: dco_decode_String(raw[1]));
+      case 2:
+        return NearbyReceiverEvent_Unavailable();
+      default:
+        throw Exception("unreachable");
+    }
   }
 
   @protected
@@ -925,11 +1100,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ServerDefaults dco_decode_server_defaults(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return ServerDefaults(
-      servers: dco_decode_list_String(arr[0]),
-      devFallback: dco_decode_String(arr[1]),
+      servers: dco_decode_list_server_candidate(arr[0]),
+      locked: dco_decode_bool(arr[1]),
+      announcementsAllowed: dco_decode_bool(arr[2]),
+      notices: dco_decode_list_discovery_warning(arr[3]),
+      devFallback: dco_decode_String(arr[4]),
     );
   }
 
@@ -937,12 +1115,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ServerDiscovery dco_decode_server_discovery(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return ServerDiscovery(
       servers: dco_decode_list_server_candidate(arr[0]),
       locked: dco_decode_bool(arr[1]),
-      warnings: dco_decode_list_String(arr[2]),
+      announcementsAllowed: dco_decode_bool(arr[2]),
+      notices: dco_decode_list_discovery_warning(arr[3]),
+      warnings: dco_decode_list_String(arr[4]),
     );
   }
 
@@ -998,6 +1178,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<NearbyReceiverEvent>
+  sse_decode_StreamSink_nearby_receiver_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<ReceiverUiEvent> sse_decode_StreamSink_receiver_ui_event_Sse(
     SseDeserializer deserializer,
   ) {
@@ -1018,6 +1207,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  AdvertiseOutcome sse_decode_advertise_outcome(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return AdvertiseOutcome.values[inner];
   }
 
   @protected
@@ -1101,6 +1297,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DiscoveryWarning sse_decode_discovery_warning(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return DiscoveryWarning.values[inner];
+  }
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
@@ -1139,6 +1342,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<DiscoveryWarning> sse_decode_list_discovery_warning(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <DiscoveryWarning>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_discovery_warning(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -1164,6 +1381,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_server_candidate(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  NearbyReceiverEvent sse_decode_nearby_receiver_event(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_id = sse_decode_String(deserializer);
+        var var_name = sse_decode_String(deserializer);
+        var var_server = sse_decode_opt_String(deserializer);
+        return NearbyReceiverEvent_Found(
+          id: var_id,
+          name: var_name,
+          server: var_server,
+        );
+      case 1:
+        var var_id = sse_decode_String(deserializer);
+        return NearbyReceiverEvent_Lost(id: var_id);
+      case 2:
+        return NearbyReceiverEvent_Unavailable();
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -1385,9 +1629,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   ServerDefaults sse_decode_server_defaults(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_servers = sse_decode_list_String(deserializer);
+    var var_servers = sse_decode_list_server_candidate(deserializer);
+    var var_locked = sse_decode_bool(deserializer);
+    var var_announcementsAllowed = sse_decode_bool(deserializer);
+    var var_notices = sse_decode_list_discovery_warning(deserializer);
     var var_devFallback = sse_decode_String(deserializer);
-    return ServerDefaults(servers: var_servers, devFallback: var_devFallback);
+    return ServerDefaults(
+      servers: var_servers,
+      locked: var_locked,
+      announcementsAllowed: var_announcementsAllowed,
+      notices: var_notices,
+      devFallback: var_devFallback,
+    );
   }
 
   @protected
@@ -1395,10 +1648,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_servers = sse_decode_list_server_candidate(deserializer);
     var var_locked = sse_decode_bool(deserializer);
+    var var_announcementsAllowed = sse_decode_bool(deserializer);
+    var var_notices = sse_decode_list_discovery_warning(deserializer);
     var var_warnings = sse_decode_list_String(deserializer);
     return ServerDiscovery(
       servers: var_servers,
       locked: var_locked,
+      announcementsAllowed: var_announcementsAllowed,
+      notices: var_notices,
       warnings: var_warnings,
     );
   }
@@ -1460,6 +1717,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_StreamSink_nearby_receiver_event_Sse(
+    RustStreamSink<NearbyReceiverEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_nearby_receiver_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_StreamSink_receiver_ui_event_Sse(
     RustStreamSink<ReceiverUiEvent> self,
     SseSerializer serializer,
@@ -1497,6 +1771,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_advertise_outcome(
+    AdvertiseOutcome self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -1573,6 +1856,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_discovery_warning(
+    DiscoveryWarning self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
@@ -1602,6 +1894,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_capture_monitor(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_discovery_warning(
+    List<DiscoveryWarning> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_discovery_warning(item, serializer);
     }
   }
 
@@ -1636,6 +1940,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_server_candidate(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_nearby_receiver_event(
+    NearbyReceiverEvent self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case NearbyReceiverEvent_Found(
+        id: final id,
+        name: final name,
+        server: final server,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(id, serializer);
+        sse_encode_String(name, serializer);
+        sse_encode_opt_String(server, serializer);
+      case NearbyReceiverEvent_Lost(id: final id):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(id, serializer);
+      case NearbyReceiverEvent_Unavailable():
+        sse_encode_i_32(2, serializer);
     }
   }
 
@@ -1851,7 +2179,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_String(self.servers, serializer);
+    sse_encode_list_server_candidate(self.servers, serializer);
+    sse_encode_bool(self.locked, serializer);
+    sse_encode_bool(self.announcementsAllowed, serializer);
+    sse_encode_list_discovery_warning(self.notices, serializer);
     sse_encode_String(self.devFallback, serializer);
   }
 
@@ -1863,6 +2194,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_server_candidate(self.servers, serializer);
     sse_encode_bool(self.locked, serializer);
+    sse_encode_bool(self.announcementsAllowed, serializer);
+    sse_encode_list_discovery_warning(self.notices, serializer);
     sse_encode_list_String(self.warnings, serializer);
   }
 

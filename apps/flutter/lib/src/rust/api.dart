@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `begin`, `capture_info_blocking`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `video_stats_event`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `discover_servers_with`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `Slot`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -141,16 +141,57 @@ Future<CaptureInfo> captureInfo({String? display}) =>
 /// network and are in [`discover_servers`].
 ///
 /// UNCERTAIN: the host in the built-in list (`relay.cometcast.de`) does not exist yet, which is
-/// why the UI also offers `dev_fallback`. The UI does not yet hide `dev_fallback` or the text
-/// field when a policy forbids other servers (`ServerDiscovery::locked`).
+/// why the UI also offers `dev_fallback` (unless `locked`).
 ServerDefaults serverDefaults() =>
     RustLib.instance.api.crateApiServerDefaults();
 
 /// Ask all sources for servers: policy file, DNS-SRV and announcements by display devices (it
-/// listens on the network for a moment, so this takes some seconds). Never fails; sources that
-/// do not work leave a warning.
+/// listens on the network for a moment, so this takes some seconds; the time limits are those
+/// of `cc_discovery::DiscoverOptions`). Never fails; sources that do not work leave a warning.
 Future<ServerDiscovery> discoverServers() =>
     RustLib.instance.api.crateApiDiscoverServers();
+
+/// Announce this receiver on the local network (DNS-SD `_cometcast._tcp`) with the friendly
+/// `name` and, if given, its preferred server (`host:port`, or with a scheme). The room code is
+/// never announced. A running announcement is replaced. Call [`stop_advertising`] when the
+/// receiver view closes.
+Future<AdvertiseOutcome> startAdvertising({
+  required String name,
+  String? preferredServer,
+}) => RustLib.instance.api.crateApiStartAdvertising(
+  name: name,
+  preferredServer: preferredServer,
+);
+
+/// Withdraw the announcement of [`start_advertising`] (does nothing if none runs) and cancel a
+/// start that is still being set up.
+Future<void> stopAdvertising() =>
+    RustLib.instance.api.crateApiStopAdvertising();
+
+/// List the receivers on the local network (mDNS) until [`stop_watching_receivers`] is called or
+/// Dart stops listening. A newer call replaces the running one.
+Stream<NearbyReceiverEvent> watchReceivers() =>
+    RustLib.instance.api.crateApiWatchReceivers();
+
+/// Stop [`watch_receivers`] (does nothing if none runs).
+Future<void> stopWatchingReceivers() =>
+    RustLib.instance.api.crateApiStopWatchingReceivers();
+
+/// Result of [`start_advertising`].
+enum AdvertiseOutcome {
+  /// The receiver is announced on the local network.
+  started,
+
+  /// The name or the server was refused by the checks of `cc-discovery` (for example a
+  /// loopback or public IP address as server).
+  refused,
+
+  /// The network could not be used (no multicast, no interface).
+  failed,
+
+  /// A stop or a newer start came first; nothing is announced.
+  superseded,
+}
 
 /// Answer of [`capture_info`].
 class CaptureInfo {
@@ -259,6 +300,62 @@ sealed class CaptureSupport with _$CaptureSupport {
     /// Technical message in English.
     required String message,
   }) = CaptureSupport_Failed;
+}
+
+/// What went wrong while looking for servers, as a code. The UI shows a translated sentence
+/// for each code and never the raw text of `cc-discovery` (it may contain network content).
+enum DiscoveryWarning {
+  /// The policy file of the administrator exists but cannot be used: no server is offered.
+  policyUnusable,
+
+  /// The policy forbids other servers but names none.
+  policyNamesNoServer,
+
+  /// The DNS-SRV lookup did not answer in time.
+  dnsTimeout,
+
+  /// The DNS-SRV lookup failed or is not available.
+  dnsFailed,
+
+  /// The network says that there is no server here (SRV target `.`).
+  dnsServiceUnavailable,
+
+  /// Some DNS records were ignored because they did not pass the checks.
+  entriesIgnored,
+
+  /// Listening for display announcements failed.
+  announcementFailed,
+
+  /// Any other note.
+  other,
+}
+
+@freezed
+sealed class NearbyReceiverEvent with _$NearbyReceiverEvent {
+  const NearbyReceiverEvent._();
+
+  /// A receiver appeared or changed. All text is cleaned and bounded by `cc-discovery`.
+  const factory NearbyReceiverEvent.found({
+    /// The DNS-SD instance name; identifies the receiver in `Lost`.
+    required String id,
+
+    /// Friendly name of the display device.
+    required String name,
+
+    /// The server it prefers (`[scheme://]host:port`), if it announced a valid one. It is
+    /// not trusted: the person decides. The room code is never part of an announcement.
+    String? server,
+  }) = NearbyReceiverEvent_Found;
+
+  /// A receiver went away.
+  const factory NearbyReceiverEvent.lost({
+    /// The instance name of the receiver.
+    required String id,
+  }) = NearbyReceiverEvent_Lost;
+
+  /// Listening is not possible here (no multicast); the stream ends after this.
+  const factory NearbyReceiverEvent.unavailable() =
+      NearbyReceiverEvent_Unavailable;
 }
 
 /// What happened to an access unit given to [`push_encoded_frame`].
@@ -510,7 +607,7 @@ sealed class SenderUiEvent with _$SenderUiEvent {
   }) = SenderUiEvent_Error;
 }
 
-/// One server found by [`discover_servers`].
+/// One server offered to the person, with where it came from.
 class ServerCandidate {
   /// `[scheme://]host:port`, as the server field wants it.
   final String address;
@@ -536,15 +633,36 @@ class ServerCandidate {
 class ServerDefaults {
   /// The servers `cc-discovery` knows without asking the network, best first: the servers of
   /// an MDM policy, then the built-in list (`DEFAULT_SERVERS`) unless the policy forbids it.
-  final List<String> servers;
+  final List<ServerCandidate> servers;
+
+  /// A policy forbids other servers, or the policy file is unusable: the server field must
+  /// be read-only and only `servers` may be used.
+  final bool locked;
+
+  /// Display announcements may be used (see [`ServerDiscovery::announcements_allowed`]).
+  final bool announcementsAllowed;
+
+  /// Notes about the policy file, as codes.
+  final List<DiscoveryWarning> notices;
 
   /// Address for development on one machine (a local `cometcast-server`).
   final String devFallback;
 
-  const ServerDefaults({required this.servers, required this.devFallback});
+  const ServerDefaults({
+    required this.servers,
+    required this.locked,
+    required this.announcementsAllowed,
+    required this.notices,
+    required this.devFallback,
+  });
 
   @override
-  int get hashCode => servers.hashCode ^ devFallback.hashCode;
+  int get hashCode =>
+      servers.hashCode ^
+      locked.hashCode ^
+      announcementsAllowed.hashCode ^
+      notices.hashCode ^
+      devFallback.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -552,6 +670,9 @@ class ServerDefaults {
       other is ServerDefaults &&
           runtimeType == other.runtimeType &&
           servers == other.servers &&
+          locked == other.locked &&
+          announcementsAllowed == other.announcementsAllowed &&
+          notices == other.notices &&
           devFallback == other.devFallback;
 }
 
@@ -563,17 +684,31 @@ class ServerDiscovery {
   /// A policy forbids other servers, or the policy file is unusable.
   final bool locked;
 
-  /// Notes about sources that failed. English text for logs, not for the UI.
+  /// Display announcements may be used: the UI may offer the receivers it finds nearby as a
+  /// way to pick a server. False under a policy that forbids announcements or other servers.
+  final bool announcementsAllowed;
+
+  /// Notes about sources that failed, as codes the UI translates.
+  final List<DiscoveryWarning> notices;
+
+  /// The same notes as English text for logs. Not for the UI: it may contain network content.
   final List<String> warnings;
 
   const ServerDiscovery({
     required this.servers,
     required this.locked,
+    required this.announcementsAllowed,
+    required this.notices,
     required this.warnings,
   });
 
   @override
-  int get hashCode => servers.hashCode ^ locked.hashCode ^ warnings.hashCode;
+  int get hashCode =>
+      servers.hashCode ^
+      locked.hashCode ^
+      announcementsAllowed.hashCode ^
+      notices.hashCode ^
+      warnings.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -582,6 +717,8 @@ class ServerDiscovery {
           runtimeType == other.runtimeType &&
           servers == other.servers &&
           locked == other.locked &&
+          announcementsAllowed == other.announcementsAllowed &&
+          notices == other.notices &&
           warnings == other.warnings;
 }
 

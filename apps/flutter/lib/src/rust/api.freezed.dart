@@ -388,6 +388,349 @@ as String,
 }
 
 /// @nodoc
+mixin _$NearbyReceiverEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyReceiverEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyReceiverEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $NearbyReceiverEventCopyWith<$Res>  {
+$NearbyReceiverEventCopyWith(NearbyReceiverEvent _, $Res Function(NearbyReceiverEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [NearbyReceiverEvent].
+extension NearbyReceiverEventPatterns on NearbyReceiverEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NearbyReceiverEvent_Found value)?  found,TResult Function( NearbyReceiverEvent_Lost value)?  lost,TResult Function( NearbyReceiverEvent_Unavailable value)?  unavailable,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case NearbyReceiverEvent_Found() when found != null:
+return found(_that);case NearbyReceiverEvent_Lost() when lost != null:
+return lost(_that);case NearbyReceiverEvent_Unavailable() when unavailable != null:
+return unavailable(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NearbyReceiverEvent_Found value)  found,required TResult Function( NearbyReceiverEvent_Lost value)  lost,required TResult Function( NearbyReceiverEvent_Unavailable value)  unavailable,}){
+final _that = this;
+switch (_that) {
+case NearbyReceiverEvent_Found():
+return found(_that);case NearbyReceiverEvent_Lost():
+return lost(_that);case NearbyReceiverEvent_Unavailable():
+return unavailable(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NearbyReceiverEvent_Found value)?  found,TResult? Function( NearbyReceiverEvent_Lost value)?  lost,TResult? Function( NearbyReceiverEvent_Unavailable value)?  unavailable,}){
+final _that = this;
+switch (_that) {
+case NearbyReceiverEvent_Found() when found != null:
+return found(_that);case NearbyReceiverEvent_Lost() when lost != null:
+return lost(_that);case NearbyReceiverEvent_Unavailable() when unavailable != null:
+return unavailable(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String id,  String name,  String? server)?  found,TResult Function( String id)?  lost,TResult Function()?  unavailable,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case NearbyReceiverEvent_Found() when found != null:
+return found(_that.id,_that.name,_that.server);case NearbyReceiverEvent_Lost() when lost != null:
+return lost(_that.id);case NearbyReceiverEvent_Unavailable() when unavailable != null:
+return unavailable();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String id,  String name,  String? server)  found,required TResult Function( String id)  lost,required TResult Function()  unavailable,}) {final _that = this;
+switch (_that) {
+case NearbyReceiverEvent_Found():
+return found(_that.id,_that.name,_that.server);case NearbyReceiverEvent_Lost():
+return lost(_that.id);case NearbyReceiverEvent_Unavailable():
+return unavailable();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String id,  String name,  String? server)?  found,TResult? Function( String id)?  lost,TResult? Function()?  unavailable,}) {final _that = this;
+switch (_that) {
+case NearbyReceiverEvent_Found() when found != null:
+return found(_that.id,_that.name,_that.server);case NearbyReceiverEvent_Lost() when lost != null:
+return lost(_that.id);case NearbyReceiverEvent_Unavailable() when unavailable != null:
+return unavailable();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class NearbyReceiverEvent_Found extends NearbyReceiverEvent {
+  const NearbyReceiverEvent_Found({required this.id, required this.name, this.server}): super._();
+  
+
+/// The DNS-SD instance name; identifies the receiver in `Lost`.
+ final  String id;
+/// Friendly name of the display device.
+ final  String name;
+/// The server it prefers (`[scheme://]host:port`), if it announced a valid one. It is
+/// not trusted: the person decides. The room code is never part of an announcement.
+ final  String? server;
+
+/// Create a copy of NearbyReceiverEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NearbyReceiverEvent_FoundCopyWith<NearbyReceiverEvent_Found> get copyWith => _$NearbyReceiverEvent_FoundCopyWithImpl<NearbyReceiverEvent_Found>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyReceiverEvent_Found&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.server, server) || other.server == server));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,name,server);
+}
+
+@override
+String toString() {
+    return 'NearbyReceiverEvent.found(id: $id, name: $name, server: $server)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NearbyReceiverEvent_FoundCopyWith<$Res> implements $NearbyReceiverEventCopyWith<$Res> {
+  factory $NearbyReceiverEvent_FoundCopyWith(NearbyReceiverEvent_Found value, $Res Function(NearbyReceiverEvent_Found) _then) = _$NearbyReceiverEvent_FoundCopyWithImpl;
+@useResult
+$Res call({
+ String id, String name, String? server
+});
+
+
+
+
+}
+/// @nodoc
+class _$NearbyReceiverEvent_FoundCopyWithImpl<$Res>
+    implements $NearbyReceiverEvent_FoundCopyWith<$Res> {
+  _$NearbyReceiverEvent_FoundCopyWithImpl(this._self, this._then);
+
+  final NearbyReceiverEvent_Found _self;
+  final $Res Function(NearbyReceiverEvent_Found) _then;
+
+/// Create a copy of NearbyReceiverEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? server = freezed,}) {
+  return _then(NearbyReceiverEvent_Found(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,server: freezed == server ? _self.server : server // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NearbyReceiverEvent_Lost extends NearbyReceiverEvent {
+  const NearbyReceiverEvent_Lost({required this.id}): super._();
+  
+
+/// The instance name of the receiver.
+ final  String id;
+
+/// Create a copy of NearbyReceiverEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NearbyReceiverEvent_LostCopyWith<NearbyReceiverEvent_Lost> get copyWith => _$NearbyReceiverEvent_LostCopyWithImpl<NearbyReceiverEvent_Lost>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyReceiverEvent_Lost&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id);
+}
+
+@override
+String toString() {
+    return 'NearbyReceiverEvent.lost(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NearbyReceiverEvent_LostCopyWith<$Res> implements $NearbyReceiverEventCopyWith<$Res> {
+  factory $NearbyReceiverEvent_LostCopyWith(NearbyReceiverEvent_Lost value, $Res Function(NearbyReceiverEvent_Lost) _then) = _$NearbyReceiverEvent_LostCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$NearbyReceiverEvent_LostCopyWithImpl<$Res>
+    implements $NearbyReceiverEvent_LostCopyWith<$Res> {
+  _$NearbyReceiverEvent_LostCopyWithImpl(this._self, this._then);
+
+  final NearbyReceiverEvent_Lost _self;
+  final $Res Function(NearbyReceiverEvent_Lost) _then;
+
+/// Create a copy of NearbyReceiverEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(NearbyReceiverEvent_Lost(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NearbyReceiverEvent_Unavailable extends NearbyReceiverEvent {
+  const NearbyReceiverEvent_Unavailable(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyReceiverEvent_Unavailable);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyReceiverEvent.unavailable()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$ReceiverUiEvent {
 
 
