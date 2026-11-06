@@ -1,8 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Network: signalling to the Comet Cast server and WebRTC media. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- Screen capture (see docs/android.md). The capture runs in a foreground service of type
+         mediaProjection; Android 14 (API 34) requires both permissions. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <!-- Android 13+ (API 33): needed to show the foreground service notification.
+         UNCERTAIN: runtime request flow not tried on a device; the service still runs when the
+         user denies it, but the notification is then hidden. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Android TV / Google TV: the app must be installable on devices that have no touch screen,
+         and must not require the leanback feature (it is also a phone and tablet app). -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <uses-feature android:name="android.software.leanback" android:required="false"/>
+
     <application
-        android:label="cometcast"
+        android:label="Comet Cast"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,7 +46,21 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Android TV / Google TV launcher row. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
+            </intent-filter>
         </activity>
+
+        <!-- Screen capture: MediaProjection + MediaCodec (H.264). Skeleton, not run on a device.
+             foregroundServiceType="mediaProjection" is mandatory on Android 14+. Not exported:
+             only the app itself starts it. -->
+        <service
+            android:name=".capture.ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"/>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

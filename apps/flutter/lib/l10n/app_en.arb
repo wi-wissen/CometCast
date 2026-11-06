@@ -229,5 +229,17 @@
   "statusEnded": "Connection ended.",
   "@statusEnded": {
     "description": "Status text when the session ended without an error and without the other side leaving."
+  },
+  "captureNotificationTitle": "Sharing your screen",
+  "@captureNotificationTitle": {
+    "description": "Title of the Android notification shown while the screen is captured (passed to the native capture service)."
+  },
+  "captureNotificationText": "Comet Cast is sending your screen.",
+  "@captureNotificationText": {
+    "description": "Text of the Android notification shown while the screen is captured."
+  },
+  "captureNotificationStop": "Stop",
+  "@captureNotificationStop": {
+    "description": "Action button of the capture notification: stop sharing."
   }
 }
