@@ -291,9 +291,10 @@ Behind several instances, set the same `altcha.secret` on all of them.
 plus 1 for a client that has recent failed joins. UNCERTAIN: all thresholds are placeholders.
 
 Not done: ALTCHA for **joining** a room (the plan wants it at creation and joining; here only
-creation, joining is protected by the limits and bans above); the web app does not
-use ALTCHA yet (`apps/web` was not changed, and neither were the native clients; today
-they work against internal servers only). Independent check: the puzzle was solved by a
+creation, joining is protected by the limits and bans above). The web app (WebCrypto in a
+Web Worker) and the native Rust clients solve the puzzle and use `/ice-servers`; the Flutter apps
+do so through the native core. Solving time on weak devices is not measured (measurement point 8).
+Independent check: the puzzle was solved by a
 small separate Node.js script that implements the PBKDF2 step from the description above,
 against a running server over WSS.
 
@@ -394,7 +395,7 @@ repository exists yet.
 - Docker images and compose were not built or run; coturn was not run (see above).
 - ACME (`instant-acme`) is out of scope; certificate reload without restart is not built.
 - A metrics endpoint (for example the number of untracked failures); sharing bans between several server instances;
-- ALTCHA for joining; ALTCHA in the web and native clients; CORS for other origins.
+- ALTCHA for joining; CORS for other origins (the web app works on the server's own origin only).
 - Image and file storage on internal servers, the SFU, authentication, a ban list that survives
   restarts or is editable at run time (the plan mentions run-time block lists), bandwidth limits.
 - Limits per IPv6 /64 and per IPv4 use the same quota; the plan's separate global limiter per
