@@ -8,8 +8,31 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-[lints]
-workspace = true
+# `cdylib` = a shared library (libcc_ffi.so / .dylib / .dll) that the Flutter app loads.
+# `rlib` = a normal Rust library, so `cargo test` and `cargo clippy` can use the crate too.
+[lib]
+crate-type = ["cdylib", "rlib"]
 
-# UNCERTAIN: UniFFI-generated code uses `unsafe`; once added, this crate needs its own
-# lint table instead of the workspace one. Until then it inherits the strict rules.
+# Own lint table instead of `workspace = true`:
+# the workspace forbids `unsafe`, but the code that flutter_rust_bridge generates
+# (src/frb_generated.rs) needs it to talk to C. So `unsafe_code` is only *denied* here,
+# and the generated module opts out explicitly with `#[allow(unsafe_code)]` in lib.rs.
+# Hand-written code in this crate must stay free of `unsafe`. Everything else matches
+# the workspace table (keep both in sync by hand; Cargo cannot extend a table).
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+# `frb_expand` is a cfg name that the flutter_rust_bridge macros check; tell rustc it is known.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(frb_expand)"] }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[dependencies]
+cc-proto.workspace = true
+cc-transport.workspace = true
+cc-receiver.workspace = true
+cc-sender.workspace = true
+tokio.workspace = true
+# Pinned exactly: the Dart package of the same version must be used (see apps/flutter/pubspec.yaml).
+flutter_rust_bridge = "=2.13.0"

@@ -1,25 +1,221 @@
 {
   "@@locale": "en",
   "appTitle": "Comet Cast",
-  "@appTitle": { "description": "Name of the app, shown in the app bar and task switcher." },
+  "@appTitle": {
+    "description": "Name of the app, shown in the app bar and task switcher."
+  },
   "homeSendScreen": "Send screen",
-  "@homeSendScreen": { "description": "Home list row: start sharing this device's screen." },
+  "@homeSendScreen": {
+    "description": "Home list row: start sharing this device's screen."
+  },
   "homeSendScreenHint": "Show your screen on another device",
-  "@homeSendScreenHint": { "description": "Subtitle of the 'Send screen' row." },
+  "@homeSendScreenHint": {
+    "description": "Subtitle of the 'Send screen' row."
+  },
   "homeSendFileOrLink": "Send file or link",
-  "@homeSendFileOrLink": { "description": "Home list row: send a document, file or web link." },
+  "@homeSendFileOrLink": {
+    "description": "Home list row: send a document, file or web link."
+  },
   "homeSendFileOrLinkHint": "Documents, files and links",
-  "@homeSendFileOrLinkHint": { "description": "Subtitle of the 'Send file or link' row." },
+  "@homeSendFileOrLinkHint": {
+    "description": "Subtitle of the 'Send file or link' row."
+  },
   "homeReceive": "Receive on this device",
-  "@homeReceive": { "description": "Home list row: make this device a receiver." },
+  "@homeReceive": {
+    "description": "Home list row: make this device a receiver."
+  },
   "homeReceiveHint": "Let others send to this device",
-  "@homeReceiveHint": { "description": "Subtitle of the 'Receive' row." },
+  "@homeReceiveHint": {
+    "description": "Subtitle of the 'Receive' row."
+  },
   "languageLabel": "Language",
-  "@languageLabel": { "description": "Label for the language setting." },
+  "@languageLabel": {
+    "description": "Label for the language setting."
+  },
   "previewNotice": "Preview build (v0.1)",
-  "@previewNotice": { "description": "Notice shown at the bottom while the app is an early preview." },
+  "@previewNotice": {
+    "description": "Notice shown at the bottom while the app is an early preview."
+  },
   "roomCodeLabel": "Room code",
-  "@roomCodeLabel": { "description": "Label for the short code that pairs a sender with a receiver." },
+  "@roomCodeLabel": {
+    "description": "Label for the short code that pairs a sender with a receiver."
+  },
   "comingSoon": "Coming soon",
-  "@comingSoon": { "description": "Shown when a row is tapped but the feature is not built yet." }
+  "@comingSoon": {
+    "description": "Shown when a row is tapped but the feature is not built yet."
+  },
+  "receiveTitle": "Receive on this device",
+  "@receiveTitle": {
+    "description": "Title of the receive screen."
+  },
+  "sendTitle": "Send screen",
+  "@sendTitle": {
+    "description": "Title of the send screen."
+  },
+  "serverLabel": "Server",
+  "@serverLabel": {
+    "description": "Label of the text field for the signalling server address."
+  },
+  "serverHelper": "Host and port, for example 127.0.0.1:8443",
+  "@serverHelper": {
+    "description": "Helper text under the server field."
+  },
+  "serverEmpty": "Please enter a server address.",
+  "@serverEmpty": {
+    "description": "Error when the server field is empty."
+  },
+  "startReceiving": "Start receiving",
+  "@startReceiving": {
+    "description": "Button: create a room and wait for a sender."
+  },
+  "startSending": "Start sending",
+  "@startSending": {
+    "description": "Button: join the room and send the test video."
+  },
+  "stop": "Stop",
+  "@stop": {
+    "description": "Button: stop receiving or sending."
+  },
+  "statusIdle": "Not started.",
+  "@statusIdle": {
+    "description": "Status text before anything was started."
+  },
+  "statusConnecting": "Connecting to the server …",
+  "@statusConnecting": {
+    "description": "Status text while the server connection is being set up."
+  },
+  "statusWaitingForSender": "Waiting for a sender. Enter this code on the sending device.",
+  "@statusWaitingForSender": {
+    "description": "Status text of the receiver after the room code is shown."
+  },
+  "statusSenderJoined": "A sender has joined. The connection is being set up …",
+  "@statusSenderJoined": {
+    "description": "Status text of the receiver when a sender joined."
+  },
+  "statusConnectionState": "Connection: {state, select, new{new} connecting{connecting} connected{connected} disconnected{disconnected} failed{failed} closed{closed} other{unknown}}",
+  "@statusConnectionState": {
+    "description": "Status text with the WebRTC connection state.",
+    "placeholders": {
+      "state": {
+        "type": "String"
+      }
+    }
+  },
+  "statusPeerLeftSender": "The sender has left.",
+  "@statusPeerLeftSender": {
+    "description": "Status text of the receiver when the sender left."
+  },
+  "statusPeerLeftReceiver": "The receiver has left.",
+  "@statusPeerLeftReceiver": {
+    "description": "Status text of the sender when the receiver left."
+  },
+  "statusError": "Error: {message}",
+  "@statusError": {
+    "description": "Status text when something failed. The message is a technical text in English.",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "statsTitle": "Incoming video",
+  "@statsTitle": {
+    "description": "Heading of the box with receive counters."
+  },
+  "statsCodec": "Codec",
+  "@statsCodec": {
+    "description": "Label: video codec."
+  },
+  "statsCodecUnknown": "not known yet",
+  "@statsCodecUnknown": {
+    "description": "Shown for the codec before a video track arrived."
+  },
+  "statsPackets": "Packets",
+  "@statsPackets": {
+    "description": "Label: number of received network packets."
+  },
+  "statsBytes": "Bytes",
+  "@statsBytes": {
+    "description": "Label: number of received bytes."
+  },
+  "statsFrames": "Frames",
+  "@statsFrames": {
+    "description": "Label: number of received video frames."
+  },
+  "statsKeyframes": "Key frames",
+  "@statsKeyframes": {
+    "description": "Label: number of received key frames (complete pictures)."
+  },
+  "receiveNotice": "This version only counts the incoming video. Showing the picture (decoding and rendering) comes with the native decoder work.",
+  "@receiveNotice": {
+    "description": "Notice on the receive screen: no decoding or rendering yet."
+  },
+  "sendNotice": "This version sends a built-in test video (VP8), not your screen. Screen capture comes with the native capture work.",
+  "@sendNotice": {
+    "description": "Notice on the send screen: no screen capture yet."
+  },
+  "roomCodeInputLabel": "Room code of the receiver",
+  "@roomCodeInputLabel": {
+    "description": "Label of the text field where the sender types the room code."
+  },
+  "roomCodeHelper": "6 characters: letters without I and O, numbers 2 to 9",
+  "@roomCodeHelper": {
+    "description": "Helper text under the room code field."
+  },
+  "roomCodeWrongLength": "The code must have exactly {length} characters.",
+  "@roomCodeWrongLength": {
+    "description": "Error: room code has the wrong length.",
+    "placeholders": {
+      "length": {
+        "type": "int"
+      }
+    }
+  },
+  "roomCodeInvalidChar": "The character \"{char}\" is not allowed in a room code.",
+  "@roomCodeInvalidChar": {
+    "description": "Error: room code contains a character that is not in the alphabet.",
+    "placeholders": {
+      "char": {
+        "type": "String"
+      }
+    }
+  },
+  "durationLabel": "Duration in seconds",
+  "@durationLabel": {
+    "description": "Label of the field for how long the test video is sent."
+  },
+  "durationInvalid": "Enter a whole number from 1 to 3600.",
+  "@durationInvalid": {
+    "description": "Error: the duration is not a valid number."
+  },
+  "sendStreaming": "Sending the test video: {frames} frames sent",
+  "@sendStreaming": {
+    "description": "Status text of the sender while streaming.",
+    "placeholders": {
+      "frames": {
+        "type": "int"
+      }
+    }
+  },
+  "sendFinished": "Finished: {frames} frames sent",
+  "@sendFinished": {
+    "description": "Status text of the sender when the duration is over.",
+    "placeholders": {
+      "frames": {
+        "type": "int"
+      }
+    }
+  },
+  "sendJoined": "Joined the room. The connection is being set up …",
+  "@sendJoined": {
+    "description": "Status text of the sender after joining."
+  },
+  "copyCode": "Copy code",
+  "@copyCode": {
+    "description": "Tooltip of the button that copies the room code."
+  },
+  "codeCopied": "Code copied",
+  "@codeCopied": {
+    "description": "Short message after the room code was copied."
+  }
 }

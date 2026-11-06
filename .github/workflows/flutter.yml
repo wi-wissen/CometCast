@@ -3,9 +3,23 @@ name: Flutter
 on:
   push:
     branches: [main]
-    paths: ['apps/flutter/**', '.github/workflows/flutter.yml']
+    paths:
+      - 'apps/flutter/**'
+      - 'crates/cc-ffi/**'
+      - 'crates/cc-receiver/**'
+      - 'crates/cc-sender/**'
+      - 'crates/cc-transport/**'
+      - 'crates/cc-proto/**'
+      - '.github/workflows/flutter.yml'
   pull_request:
-    paths: ['apps/flutter/**', '.github/workflows/flutter.yml']
+    paths:
+      - 'apps/flutter/**'
+      - 'crates/cc-ffi/**'
+      - 'crates/cc-receiver/**'
+      - 'crates/cc-sender/**'
+      - 'crates/cc-transport/**'
+      - 'crates/cc-proto/**'
+      - '.github/workflows/flutter.yml'
 permissions:
   contents: read
 concurrency:
@@ -19,11 +33,48 @@ jobs:
         working-directory: apps/flutter
     steps:
       - uses: actions/checkout@v4
-      # UNCERTAIN: action version and channel not yet run on GitHub; locally verified with Flutter 3.47.9.
+      # UNCERTAIN: this workflow has NOT been run on GitHub. Every command below was run
+      # locally with Flutter 3.47.9 on Linux (see apps/flutter/README.md); the action
+      # versions, the apt package names and the cache settings are untested.
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+      # Linux desktop build tools (the Flutter Linux runner needs GTK, cmake, ninja, clang).
+      - name: Install Linux build dependencies
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev xvfb
       - run: flutter pub get
       - run: flutter gen-l10n
+      # The bridge code is committed. This step regenerates it and fails if it is out of date.
+      # UNCERTAIN: the codegen version must match the flutter_rust_bridge version in
+      # crates/cc-ffi/Cargo.toml and apps/flutter/pubspec.yaml (2.13.0 today).
+      - name: Check generated bridge code is up to date
+        run: |
+          cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
+          flutter_rust_bridge_codegen generate
+          git diff --exit-code -- . ../../crates/cc-ffi
       - run: flutter analyze
+      # The real-library tests in test/rust_core_test.dart need libcc_ffi.so first.
+      - name: Build the Rust core for the tests
+        working-directory: .
+        run: cargo build -p cc-ffi
       - run: flutter test
+      # Builds the Rust core through CMake and bundles it (see docs/flutter-bridge.md).
+      - run: flutter build linux --debug
+      # Smoke test: real server + real CLI + the built app under a virtual display.
+      - name: Smoke test (app + server + CLI)
+        working-directory: .
+        run: |
+          cargo build -p cometcast-server -p cometcast-cli
+          target/debug/cometcast-server --listen 127.0.0.1:18443 &
+          sleep 2
+          cd apps/flutter
+          xvfb-run -a flutter test integration_test/receiver_smoke_test.dart -d linux \
+            --dart-define=COMETCAST_TEST_SERVER=127.0.0.1:18443 \
+            --dart-define=COMETCAST_CLI=${{ github.workspace }}/target/debug/cometcast-cli
