@@ -47,7 +47,10 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
 
   async function flush(): Promise<void> {
     remoteSet = true
-    for (const c of pending.splice(0)) await pc.addIceCandidate(c)
+    for (const c of pending.splice(0)) {
+      // One bad candidate must not fail the whole negotiation.
+      await pc.addIceCandidate(c).catch(() => undefined)
+    }
   }
 
   return {

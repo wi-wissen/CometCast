@@ -29,7 +29,7 @@ cargo run -p cometcast-server -- --listen 127.0.0.1:8443 --web-dir apps/web/dist
 
 Open `http://127.0.0.1:8443` in two tabs/browsers: "Receive on this device" shows a room code; on the
 other one choose "Send screen", enter the code and share. For development with `npm run dev`, add
-`?server=127.0.0.1:8443` to the URL so the page talks to the running server.
+`?server=127.0.0.1:8443` to the URL (development builds only; production builds ignore it) so the page talks to the running server.
 
 ## Code layout
 

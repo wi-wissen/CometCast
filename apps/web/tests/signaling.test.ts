@@ -51,8 +51,10 @@ describe('signalingUrl', () => {
     expect(signalingUrl({ protocol: 'https:', host: 'a', search: '' })).toBe('wss://a/ws')
   })
   it('accepts a plain ?server= override only', () => {
-    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=b:9' })).toBe('ws://b:9/ws')
-    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=evil.com/x' })).toBe('ws://a/ws')
+    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=b:9' }, true)).toBe('ws://b:9/ws')
+    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=evil.com/x' }, true)).toBe('ws://a/ws')
+    // Production builds ignore the override completely.
+    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=b:9' }, false)).toBe('ws://a/ws')
   })
 })
 

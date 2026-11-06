@@ -124,6 +124,8 @@ export class ReceiverSession {
         this.set({ phase: 'peer_left', stream: null })
         break
       case 'error':
+        // not_in_room can arrive when the sender has just left; the room itself survives.
+        if (m.code === 'not_in_room' && this.state.phase !== 'connecting') break
         this.fail(m.code)
         break
       default:
