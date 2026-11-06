@@ -3,14 +3,28 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { detectCapabilities } from '../core/capabilities'
+import { isTestVideo } from '../core/capture'
+import { useSender } from '../composables/useSender'
 import { isValidRoomCode, normalizeRoomCode, ROOM_CODE_LENGTH } from '../core/roomCode'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const caps = detectCapabilities()
 
 const code = ref('')
 const touched = ref(false)
 const valid = computed(() => isValidRoomCode(code.value))
+const { state, start, stop } = useSender()
+// TEST-ONLY: ?testVideo=1 replaces the screen with a canvas (see core/capture.ts).
+const canShare = computed(() => caps.screenShare || isTestVideo())
+const active = computed(() => ['capturing', 'connecting', 'joining', 'negotiating', 'sharing'].includes(state.value.phase))
+const errorText = computed(() => {
+  const c = state.value.errorCode
+  return c ? (te(`errors.${c}`) ? t(`errors.${c}`) : t('errors.unknown')) : ''
+})
+
+function onSubmit() {
+  if (valid.value && canShare.value && !active.value) void start(code.value)
+}
 
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
@@ -24,11 +38,12 @@ function onInput(e: Event) {
   <section class="flex flex-col gap-5">
     <h1 class="text-2xl font-semibold tracking-tight">{{ t('send.title') }}</h1>
 
-    <form class="flex flex-col gap-2" @submit.prevent>
+    <form class="flex flex-col gap-2" @submit.prevent="onSubmit">
       <label for="room-code" class="text-sm font-medium">{{ t('send.codeLabel') }}</label>
       <input
         id="room-code"
         :value="code"
+        :disabled="active"
         type="text"
         inputmode="text"
         autocomplete="off"
@@ -48,14 +63,34 @@ function onInput(e: Event) {
       <div class="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled
+          :disabled="!valid || !canShare || active"
           class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {{ t('send.connect') }}
+          {{ t(state.phase === 'error' ? 'send.tryAgain' : 'send.connect') }}
         </button>
-        <span class="text-sm text-muted">{{ t('send.connectUnavailable') }}</span>
+        <button
+          v-if="active"
+          type="button"
+          data-testid="stop"
+          class="rounded-cc border border-line2 bg-surface px-4 py-2 font-medium"
+          @click="stop"
+        >
+          {{ t('send.stop') }}
+        </button>
       </div>
     </form>
+
+    <p
+      data-testid="status"
+      :data-phase="state.phase"
+      role="status"
+      aria-live="polite"
+      class="rounded-cc border px-3 py-2"
+      :class="state.phase === 'error' ? 'border-err text-err' : 'border-line bg-surface'"
+    >
+      {{ t(`send.status.${state.phase}`) }}
+      <template v-if="state.phase === 'error'"> {{ errorText }}</template>
+    </p>
 
     <div
       class="rounded-cc border p-4"

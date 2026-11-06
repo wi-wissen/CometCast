@@ -46,8 +46,13 @@ pub struct ServerConfig {
     pub idle_room_timeout: Duration,
     /// A connection must send a valid `hello` within this time.
     pub hello_timeout: Duration,
+    /// A connection that said hello but is in no room is closed after this time
+    /// (counted from the moment it connected).
+    pub no_room_timeout: Duration,
     /// Largest accepted WebSocket message in bytes.
     pub max_message_bytes: usize,
+    /// How many messages may wait to be sent to one client before it is closed as too slow.
+    pub outgoing_queue_len: usize,
 }
 
 /// UNCERTAIN: 30 minutes is a placeholder. A good value needs real usage data
@@ -59,6 +64,13 @@ pub const DEFAULT_HELLO_TIMEOUT: Duration = Duration::from_secs(5);
 /// (an SDP with many ICE candidates may be several KiB) and measured.
 pub const DEFAULT_MAX_MESSAGE_BYTES: usize = 64 * 1024;
 
+/// UNCERTAIN: 60 seconds is a placeholder for how long a connection may stay
+/// without creating or joining a room; to be measured with real clients.
+pub const DEFAULT_NO_ROOM_TIMEOUT: Duration = Duration::from_secs(60);
+/// UNCERTAIN: 256 queued messages is a placeholder; the right size depends on
+/// how bursty ICE candidates and control messages are in practice.
+pub const DEFAULT_OUTGOING_QUEUE_LEN: usize = 256;
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -69,7 +81,9 @@ impl Default for ServerConfig {
             web_dir: None,
             idle_room_timeout: DEFAULT_IDLE_ROOM_TIMEOUT,
             hello_timeout: DEFAULT_HELLO_TIMEOUT,
+            no_room_timeout: DEFAULT_NO_ROOM_TIMEOUT,
             max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
+            outgoing_queue_len: DEFAULT_OUTGOING_QUEUE_LEN,
         }
     }
 }

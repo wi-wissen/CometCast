@@ -9,7 +9,9 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg};
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::Notify;
+use tokio::time::Instant;
 
 use crate::AppState;
 use crate::rooms::{Gone, JoinError, Outgoing, Tx};
@@ -40,7 +42,7 @@ enum Step {
 
 impl Conn {
     fn send(&self, msg: ServerMsg) {
-        let _ = self.tx.send(Outgoing::Msg(msg));
+        self.tx.send(Outgoing::Msg(msg));
     }
 
     fn error(&self, code: &str, message: &str) {
@@ -53,14 +55,14 @@ impl Conn {
     /// Send an error and end the connection.
     fn fail(&self, code: &str, message: &str) -> Step {
         self.error(code, message);
-        let _ = self.tx.send(Outgoing::Close("error"));
+        self.tx.send(Outgoing::Close("error"));
         Step::Close
     }
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx) = mpsc::unbounded_channel::<Outgoing>();
+    let (tx, mut rx, kill) = Tx::new(state.config.outgoing_queue_len);
 
     // Writer task: the only place that writes to the socket. Everything else
     // (including other connections relaying to us) pushes into the channel.
@@ -94,27 +96,42 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         room: None,
     };
     let mut writer_done = false;
+    // Killed = our queue overflowed (client too slow); then we just drop the connection.
+    let mut killed = false;
+    // Deadlines are fixed at connect time, so pings cannot keep a silent client alive.
+    let connected = Instant::now();
+    let hello_deadline = connected + state.config.hello_timeout;
+    let no_room_deadline = connected + state.config.no_room_timeout;
 
     loop {
-        let hello_timeout = state.config.hello_timeout;
         let waiting_for_hello = conn.role.is_none();
-        // Until hello arrives the wait is limited; afterwards it is not.
+        let deadline = if waiting_for_hello {
+            Some(hello_deadline)
+        } else if conn.room.is_none() {
+            Some(no_room_deadline)
+        } else {
+            None
+        };
         let next = async {
-            if waiting_for_hello {
-                tokio::time::timeout(hello_timeout, stream.next())
+            match deadline {
+                Some(d) => tokio::time::timeout_at(d, stream.next())
                     .await
-                    .map_err(|_| ())
-            } else {
-                Ok(stream.next().await)
+                    .map_err(|_| ()),
+                None => Ok(stream.next().await),
             }
         };
         let received = tokio::select! {
             r = next => r,
             _ = &mut writer => { writer_done = true; break; }
+            _ = kill.notified() => { killed = true; break; }
         };
         let msg = match received {
             Err(()) => {
-                conn.fail("bad_hello", "no hello received in time");
+                if waiting_for_hello {
+                    conn.fail("bad_hello", "no hello received in time");
+                } else {
+                    conn.tx.send(Outgoing::Close("no_room_timeout"));
+                }
                 break;
             }
             // Stream ended or a protocol error (e.g. message too big): just stop.
@@ -148,12 +165,14 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             .unwrap_or_else(|e| e.into_inner())
             .leave(&code, conn.id);
         if let Some(peer) = peer {
-            let _ = peer.send(Outgoing::Msg(ServerMsg::PeerLeft));
+            peer.send(Outgoing::Msg(ServerMsg::PeerLeft));
         }
     }
-    if !writer_done {
+    if killed {
+        writer.abort();
+    } else if !writer_done {
         // Let queued messages (like a final error) go out, but do not wait forever.
-        let _ = conn.tx.send(Outgoing::Close("bye"));
+        conn.tx.send(Outgoing::Close("bye"));
         let _ = tokio::time::timeout(Duration::from_secs(2), &mut writer).await;
         writer.abort();
     }
@@ -185,10 +204,31 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
         };
     };
 
-    let Ok(msg) = parsed else {
-        conn.error("bad_message", "could not understand this message");
-        return Step::Continue;
+    let msg = match parsed {
+        Ok(m) => m,
+        Err(_) => {
+            // A join_room whose code is not even a valid code (wrong length or
+            // characters) behaves like an unknown code. Valid messages are unaffected.
+            if is_join_with_string_code(text) {
+                if role == Role::Sender {
+                    conn.error("room_not_found", "no room with this code");
+                } else {
+                    conn.error("wrong_role", "only a sender can join a room");
+                }
+            } else {
+                conn.error("bad_message", "could not understand this message");
+            }
+            return Step::Continue;
+        }
     };
+
+    // If our room ended meanwhile (the receiver left), forget it so this
+    // connection can create or join another room.
+    if let Some(code) = &conn.room
+        && !lock(state).is_member(code, conn.id)
+    {
+        conn.room = None;
+    }
 
     match msg {
         ClientMsg::Hello { .. } => conn.error("bad_message", "hello was already sent"),
@@ -198,9 +238,9 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
             } else if conn.room.is_some() {
                 conn.error("bad_message", "already in a room");
             } else {
-                let code = lock(state).create(conn.id, conn.tx.clone());
+                let (code, cancel) = lock(state).create(conn.id, conn.tx.clone());
                 conn.room = Some(code.clone());
-                tokio::spawn(expire_when_idle(state.clone(), code.clone()));
+                tokio::spawn(expire_when_idle(state.clone(), code.clone(), cancel));
                 conn.send(ServerMsg::RoomCreated { code });
             }
         }
@@ -215,7 +255,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     Ok(receiver) => {
                         conn.room = Some(code);
                         conn.send(ServerMsg::Joined);
-                        let _ = receiver.send(Outgoing::Msg(ServerMsg::PeerJoined));
+                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined));
                     }
                     Err(JoinError::NotFound) => {
                         conn.error("room_not_found", "no room with this code")
@@ -237,6 +277,14 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
     Step::Continue
 }
 
+/// True for `{"type":"join_room","code":"<any string>"}`.
+fn is_join_with_string_code(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text).is_ok_and(|v| {
+        v.get("type").and_then(|t| t.as_str()) == Some("join_room")
+            && v.get("code").is_some_and(|c| c.is_string())
+    })
+}
+
 fn lock(state: &AppState) -> std::sync::MutexGuard<'_, crate::rooms::Rooms> {
     // If another thread panicked while holding the lock, keep going with the data.
     state.rooms.lock().unwrap_or_else(|e| e.into_inner())
@@ -249,18 +297,22 @@ fn relay(conn: &Conn, state: &AppState, msg: ServerMsg) {
         .and_then(|code| lock(state).peer(code, conn.id));
     match peer {
         Some(peer) => {
-            let _ = peer.send(Outgoing::Msg(msg));
+            peer.send(Outgoing::Msg(msg));
         }
         None => conn.error("not_in_room", "no peer in the room yet"),
     }
 }
 
 /// Background task for one room: removes it when no sender joined in time.
-async fn expire_when_idle(state: AppState, code: RoomCode) {
+async fn expire_when_idle(state: AppState, code: RoomCode, cancel: Arc<Notify>) {
     let idle = state.config.idle_room_timeout;
     let mut wait = idle;
     loop {
-        tokio::time::sleep(wait).await;
+        // Stop early if the room is removed for another reason.
+        tokio::select! {
+            _ = tokio::time::sleep(wait) => {}
+            _ = cancel.notified() => return,
+        }
         match lock(&state).check_expiry(&code, idle) {
             Ok(next) => wait = next,
             Err(Gone) => return,

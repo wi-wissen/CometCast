@@ -2,7 +2,7 @@
   "app": {
     "name": "Comet Cast",
     "tagline": "Bildschirm, Dokumente, Links und Dateien teilen.",
-    "preview": "Vorschau-Version (v0.1): Es wird noch nichts verbunden. Diese Seite zeigt nur, wie die App aussehen wird."
+    "preview": "Frühe Version (v0.1): funktioniert nur im lokalen Netzwerk, ohne STUN/TURN-Relay-Server. Die Verbindung aus einem anderen Netzwerk funktioniert möglicherweise nicht."
   },
   "lang": {
     "label": "Sprache",
@@ -14,32 +14,74 @@
   },
   "home": {
     "title": "Was möchten Sie tun?",
-    "sendScreen": { "title": "Bildschirm senden", "desc": "Ihren Bildschirm auf einem anderen Gerät zeigen." },
-    "sendContent": { "title": "Datei oder Link senden", "desc": "Ein Dokument, eine Datei oder einen Link übergeben." },
-    "receive": { "title": "Auf diesem Gerät empfangen", "desc": "Einen Code anzeigen und auf einen Absender warten." }
+    "sendScreen": {
+      "title": "Bildschirm senden",
+      "desc": "Ihren Bildschirm auf einem anderen Gerät zeigen."
+    },
+    "sendContent": {
+      "title": "Datei oder Link senden",
+      "desc": "Ein Dokument, eine Datei oder einen Link übergeben. (Folgt später.)"
+    },
+    "receive": {
+      "title": "Auf diesem Gerät empfangen",
+      "desc": "Einen Code anzeigen und auf einen Absender warten."
+    }
   },
   "receive": {
     "title": "Auf diesem Gerät empfangen",
     "codeLabel": "Raumcode",
-    "codePlaceholder": "Erscheint hier",
-    "intro": "Später zeigt dieses Gerät einen kurzen Raumcode an. Der Absender gibt ihn ein, und Bildschirm, Datei oder Link kommen hier an.",
-    "willTitle": "Was kommen wird",
-    "will1": "Ein auf diesem Gerät erzeugter Raumcode",
-    "will2": "Eine direkte Verbindung zum Absender, ohne Konto",
-    "will3": "Bildschirme, Dateien, Dokumente und Links an einem Ort"
+    "intro": "Dieses Gerät zeigt einen kurzen Raumcode an. Geben Sie ihn beim Absender ein; danach erscheint dessen Bildschirm hier.",
+    "codeHelp": "Geben Sie diesen Code auf dem sendenden Gerät ein.",
+    "retry": "Neuen Raum erstellen",
+    "videoLabel": "Eingehender Bildschirm",
+    "status": {
+      "idle": "Nicht gestartet.",
+      "connecting": "Verbindung zum Server wird aufgebaut …",
+      "waiting_sender": "Warten auf einen Absender …",
+      "negotiating": "Ein Absender ist beigetreten. Die Verbindung wird eingerichtet …",
+      "receiving": "Der Bildschirm wird empfangen.",
+      "peer_left": "Der Absender hat die Verbindung verlassen. Sie können diesen Code behalten und auf einen neuen Absender warten.",
+      "error": "Es ist ein Fehler aufgetreten."
+    }
   },
   "send": {
     "title": "Senden",
     "codeLabel": "Raumcode des Empfängers",
-    "codeHint": "6 Zeichen: Buchstaben und Ziffern, ohne leicht verwechselbare (0, O, 1, I, L).",
+    "codeHint": "6 Zeichen: Buchstaben und Ziffern, ohne leicht verwechselbare (0, O, 1, I).",
     "codeInvalid": "Bitte alle 6 Zeichen eingeben.",
     "codeValid": "Das Codeformat passt.",
-    "connect": "Verbinden",
-    "connectUnavailable": "Verbinden ist in dieser Vorschau-Version noch nicht möglich.",
+    "connect": "Bildschirm teilen",
     "capTitle": "Bildschirmfreigabe in diesem Browser",
     "capOk": "Bildschirmfreigabe ist in diesem Browser verfügbar.",
     "capUnavailable": "Bildschirmfreigabe ist hier nicht verfügbar. Sie funktioniert nur in Desktop-Browsern und setzt HTTPS (oder localhost) voraus.",
     "capNoSecure": "Diese Seite läuft nicht in einem sicheren Kontext (HTTPS erforderlich).",
-    "capNoDisplay": "Dieser Browser bietet keine Bildschirmaufnahme (getDisplayMedia)."
+    "capNoDisplay": "Dieser Browser bietet keine Bildschirmaufnahme (getDisplayMedia).",
+    "stop": "Freigabe beenden",
+    "tryAgain": "Erneut versuchen",
+    "status": {
+      "idle": "Geben Sie den Code des Empfängers ein, um zu beginnen.",
+      "capturing": "Wählen Sie im Browser-Dialog aus, was geteilt werden soll …",
+      "connecting": "Verbindung zum Server wird aufgebaut …",
+      "joining": "Dem Raum wird beigetreten …",
+      "negotiating": "Die Verbindung wird eingerichtet …",
+      "sharing": "Ihr Bildschirm wird geteilt.",
+      "peer_left": "Der Empfänger hat die Verbindung verlassen. Die Freigabe ist beendet.",
+      "stopped": "Freigabe beendet.",
+      "error": "Es ist ein Fehler aufgetreten."
+    }
+  },
+  "errors": {
+    "bad_hello": "Der Server hat den Verbindungsaufbau nicht akzeptiert. Bitte laden Sie die Seite neu.",
+    "proto_mismatch": "Diese Seite und der Server verwenden unterschiedliche Protokollversionen. Bitte laden Sie die Seite neu.",
+    "wrong_role": "Diese Aktion ist für diese Rolle nicht erlaubt.",
+    "room_not_found": "Es gibt keinen Raum mit diesem Code. Prüfen Sie den Code auf dem Empfänger.",
+    "room_full": "Dieser Raum hat bereits einen Absender.",
+    "not_in_room": "Das andere Gerät ist nicht mehr verbunden.",
+    "bad_message": "Der Server konnte eine Nachricht nicht verstehen. Bitte laden Sie die Seite neu.",
+    "connection_lost": "Die Verbindung zum Server ist abgebrochen oder konnte nicht hergestellt werden.",
+    "peer_failed": "Die direkte Verbindung zum anderen Gerät ist fehlgeschlagen. Ohne STUN/TURN-Server funktioniert das nur im selben lokalen Netzwerk.",
+    "capture_denied": "Die Bildschirmfreigabe wurde abgebrochen oder nicht erlaubt.",
+    "capture_failed": "Der Bildschirm konnte von diesem Browser nicht aufgenommen werden.",
+    "unknown": "Ein unbekannter Fehler ist aufgetreten."
   }
 }

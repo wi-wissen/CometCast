@@ -1,12 +1,13 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
-defineProps<{ title: string; desc: string }>()
+defineProps<{ title: string; desc: string; disabled?: boolean }>()
 </script>
 
 <template>
   <button
     type="button"
-    class="flex w-full items-center justify-between gap-4 border-b border-line px-4 py-3.5 text-left last:border-b-0 hover:bg-sunk"
+    :disabled="disabled"
+    class="flex w-full items-center justify-between gap-4 border-b border-line px-4 py-3.5 text-left last:border-b-0 hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
   >
     <span class="flex flex-col">
       <span class="font-medium">{{ title }}</span>

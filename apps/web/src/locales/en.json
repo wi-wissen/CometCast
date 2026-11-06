@@ -2,7 +2,7 @@
   "app": {
     "name": "Comet Cast",
     "tagline": "Share your screen, documents, links and files.",
-    "preview": "Preview build (v0.1): nothing connects yet. This page only shows what the app will look like."
+    "preview": "Early version (v0.1): works over the local network only, without STUN/TURN relay servers. Connecting from another network may not work."
   },
   "lang": {
     "label": "Language",
@@ -14,32 +14,74 @@
   },
   "home": {
     "title": "What would you like to do?",
-    "sendScreen": { "title": "Send screen", "desc": "Show your screen on another device." },
-    "sendContent": { "title": "Send file or link", "desc": "Hand over a document, file or link." },
-    "receive": { "title": "Receive on this device", "desc": "Show a code and wait for a sender." }
+    "sendScreen": {
+      "title": "Send screen",
+      "desc": "Show your screen on another device."
+    },
+    "sendContent": {
+      "title": "Send file or link",
+      "desc": "Hand over a document, file or link. (Coming later.)"
+    },
+    "receive": {
+      "title": "Receive on this device",
+      "desc": "Show a code and wait for a sender."
+    }
   },
   "receive": {
     "title": "Receive on this device",
     "codeLabel": "Room code",
-    "codePlaceholder": "Will appear here",
-    "intro": "Later, this device will show a short room code. The sender enters it, and the screen, file or link arrives here.",
-    "willTitle": "What will come",
-    "will1": "A room code generated on this device",
-    "will2": "A direct connection to the sender, without an account",
-    "will3": "Screens, files, documents and links in one place"
+    "intro": "This device shows a short room code. Enter it on the sender; the screen then appears here.",
+    "codeHelp": "Enter this code on the sending device.",
+    "retry": "Create new room",
+    "videoLabel": "Incoming screen",
+    "status": {
+      "idle": "Not started.",
+      "connecting": "Connecting to the server…",
+      "waiting_sender": "Waiting for a sender…",
+      "negotiating": "A sender joined. Setting up the connection…",
+      "receiving": "Receiving the screen.",
+      "peer_left": "The sender left. You can keep this code and wait for a new sender.",
+      "error": "Something went wrong."
+    }
   },
   "send": {
     "title": "Send",
     "codeLabel": "Room code of the receiver",
-    "codeHint": "6 characters: letters and digits, without easily confused ones (0, O, 1, I, L).",
+    "codeHint": "6 characters: letters and digits, without easily confused ones (0, O, 1, I).",
     "codeInvalid": "Please enter all 6 characters.",
     "codeValid": "Code format looks good.",
-    "connect": "Connect",
-    "connectUnavailable": "Connecting is not available in this preview build.",
+    "connect": "Share screen",
     "capTitle": "Screen sharing on this browser",
     "capOk": "Screen sharing is available in this browser.",
     "capUnavailable": "Screen sharing is not available here. It works only in desktop browsers and requires HTTPS (or localhost).",
     "capNoSecure": "This page is not in a secure context (HTTPS required).",
-    "capNoDisplay": "This browser does not offer screen capture (getDisplayMedia)."
+    "capNoDisplay": "This browser does not offer screen capture (getDisplayMedia).",
+    "stop": "Stop sharing",
+    "tryAgain": "Try again",
+    "status": {
+      "idle": "Enter the receiver's code to start.",
+      "capturing": "Choose what to share in the browser dialog…",
+      "connecting": "Connecting to the server…",
+      "joining": "Joining the room…",
+      "negotiating": "Setting up the connection…",
+      "sharing": "Sharing your screen.",
+      "peer_left": "The receiver left. Sharing has ended.",
+      "stopped": "Sharing stopped.",
+      "error": "Something went wrong."
+    }
+  },
+  "errors": {
+    "bad_hello": "The server did not accept the handshake. Please reload the page.",
+    "proto_mismatch": "This page and the server use different protocol versions. Please reload the page.",
+    "wrong_role": "This action is not allowed for this role.",
+    "room_not_found": "No room with this code exists. Check the code on the receiver.",
+    "room_full": "This room already has a sender.",
+    "not_in_room": "The other device is not connected anymore.",
+    "bad_message": "The server could not understand a message. Please reload the page.",
+    "connection_lost": "The connection to the server was lost or could not be made.",
+    "peer_failed": "The direct connection to the other device failed. Without STUN/TURN servers this only works in the same local network.",
+    "capture_denied": "Screen sharing was cancelled or not allowed.",
+    "capture_failed": "The screen could not be captured by this browser.",
+    "unknown": "An unknown error occurred."
   }
 }

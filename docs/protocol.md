@@ -96,6 +96,8 @@ goes peer to peer is the design goal; it is not checked by this server.)
   a new sender may join with the same code.
 - A room that has no sender for longer than the idle timeout is removed and its
   receiver's connection is closed with close reason `room_expired`.
+- If the receiver leaves, the sender's connection stays open and may create/join
+  another room on the same connection (it gets `peer_left` first).
 - Rooms are in memory only; a server restart drops all rooms.
 - There is no limit on the number of rooms yet (rate limiting for `Mode::Open`
   is milestone M8 / measurement point 8).
@@ -110,7 +112,7 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 | `bad_hello` | First message is not a valid `hello`, or no hello arrived in time. | yes |
 | `proto_mismatch` | `proto_version` differs from the server's (currently 1). | yes |
 | `wrong_role` | `create_room` from a sender, or `join_room` from a receiver. | no |
-| `room_not_found` | `join_room` with a code that has no room. | no |
+| `room_not_found` | `join_room` with a code that has no room. A code that is syntactically invalid (wrong length or characters) is treated the same way. A `code` that is not a string is `bad_message`. | no |
 | `room_full` | `join_room` for a room that already has a sender. | no |
 | `not_in_room` | A relay message while not in a room or while the peer is not there. | no |
 | `bad_message` | Unparsable JSON, unknown type, binary frame, second `hello`, or `create_room`/`join_room` while already in a room. | no |
@@ -125,6 +127,10 @@ without an `error` message.
 | Max message size | 64 KiB | UNCERTAIN: placeholder; check against real SDP sizes, measure. |
 | Time to send a valid `hello` | 5 s | UNCERTAIN: placeholder; check on slow mobile networks. |
 | Idle time of a room without sender | 30 min | UNCERTAIN: placeholder; needs real usage data. |
+| Time a connection may stay in no room | 60 s | UNCERTAIN: placeholder, counted from connect time; closed with close reason `no_room_timeout` (no `error` message). |
+| Queued outgoing messages per client | 256 | UNCERTAIN: placeholder. A client that does not read and fills the queue is disconnected (its peer gets `peer_left`). |
+
+The hello deadline is fixed at connect time; WebSocket pings do not extend it.
 
 ## Not done yet
 

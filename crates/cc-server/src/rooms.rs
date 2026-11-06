@@ -6,7 +6,9 @@ use std::collections::HashMap;
 
 use cc_proto::{RoomCode, ServerMsg};
 use rand::Rng;
-use tokio::sync::mpsc::UnboundedSender;
+use std::sync::Arc;
+
+use tokio::sync::{Notify, mpsc};
 use tokio::time::Instant;
 
 /// What the writer task of a connection can be told to do.
@@ -18,7 +20,39 @@ pub(crate) enum Outgoing {
     Close(&'static str),
 }
 
-pub(crate) type Tx = UnboundedSender<Outgoing>;
+/// Handle to one connection's outgoing queue. The queue is bounded: if a client
+/// does not read fast enough and the queue is full, the connection is told to
+/// close (via `kill`) instead of letting memory grow without limit.
+#[derive(Clone)]
+pub(crate) struct Tx {
+    queue: mpsc::Sender<Outgoing>,
+    kill: Arc<Notify>,
+}
+
+impl Tx {
+    /// New queue with room for `len` messages. Returns the handle, the receiving end
+    /// for the writer task, and the signal the connection waits on to be closed.
+    pub(crate) fn new(len: usize) -> (Self, mpsc::Receiver<Outgoing>, Arc<Notify>) {
+        let (queue, rx) = mpsc::channel(len.max(1));
+        let kill = Arc::new(Notify::new());
+        (
+            Self {
+                queue,
+                kill: kill.clone(),
+            },
+            rx,
+            kill,
+        )
+    }
+
+    /// Queue a message. Never waits. If the queue is full, the connection is killed.
+    pub(crate) fn send(&self, out: Outgoing) {
+        if let Err(mpsc::error::TrySendError::Full(_)) = self.queue.try_send(out) {
+            // `notify_one` remembers the signal even if nobody waits yet.
+            self.kill.notify_one();
+        }
+    }
+}
 
 struct Room {
     receiver_id: u64,
@@ -26,6 +60,8 @@ struct Room {
     sender: Option<(u64, Tx)>,
     /// When the room last became sender-less (set at creation). `None` while a sender is in.
     empty_since: Option<Instant>,
+    /// Wakes the expiry task so it stops when the room is removed.
+    cancel: Arc<Notify>,
 }
 
 #[derive(Default)]
@@ -41,7 +77,8 @@ pub(crate) enum JoinError {
 
 impl Rooms {
     /// Create a room with a fresh random code (retry on collision).
-    pub(crate) fn create(&mut self, receiver_id: u64, receiver: Tx) -> RoomCode {
+    /// Also returns a signal that fires when the room is removed.
+    pub(crate) fn create(&mut self, receiver_id: u64, receiver: Tx) -> (RoomCode, Arc<Notify>) {
         let mut rng = rand::rng();
         loop {
             let mut idx = [0u8; RoomCode::LEN];
@@ -55,6 +92,7 @@ impl Rooms {
             if self.map.contains_key(&code) {
                 continue;
             }
+            let cancel = Arc::new(Notify::new());
             self.map.insert(
                 code.clone(),
                 Room {
@@ -62,9 +100,10 @@ impl Rooms {
                     receiver,
                     sender: None,
                     empty_since: Some(Instant::now()),
+                    cancel: cancel.clone(),
                 },
             );
-            return code;
+            return (code, cancel);
         }
     }
 
@@ -77,6 +116,13 @@ impl Rooms {
         room.sender = Some((id, tx));
         room.empty_since = None;
         Ok(room.receiver.clone())
+    }
+
+    /// Is this connection still part of this room?
+    pub(crate) fn is_member(&self, code: &RoomCode, id: u64) -> bool {
+        self.map.get(code).is_some_and(|room| {
+            room.receiver_id == id || room.sender.as_ref().is_some_and(|(sid, _)| *sid == id)
+        })
     }
 
     /// Channel of the other side of the room, if both sides are present.
@@ -97,6 +143,7 @@ impl Rooms {
         if room.receiver_id == id {
             // The room ends with its receiver.
             let room = self.map.remove(code)?;
+            room.cancel.notify_one();
             room.sender.map(|(_, tx)| tx)
         } else if room.sender.as_ref().is_some_and(|(sid, _)| *sid == id) {
             room.sender = None;
@@ -122,7 +169,7 @@ impl Rooms {
         let remaining = (since + idle).saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             if let Some(room) = self.map.remove(code) {
-                let _ = room.receiver.send(Outgoing::Close("room_expired"));
+                room.receiver.send(Outgoing::Close("room_expired"));
             }
             return Err(Gone);
         }

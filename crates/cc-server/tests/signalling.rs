@@ -314,3 +314,106 @@ async fn healthz_and_static_files() {
     assert!(index.contains("<h1>hi</h1>"));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn pings_do_not_keep_a_silent_client_alive() {
+    let config = ServerConfig {
+        hello_timeout: Duration::from_millis(300),
+        ..ServerConfig::default()
+    };
+    let addr = start(config).await;
+    let mut c = connect(addr).await;
+    let start_time = std::time::Instant::now();
+    // Ping every 50 ms; the server must still give up after about 300 ms.
+    loop {
+        assert!(
+            start_time.elapsed() < Duration::from_secs(3),
+            "never closed"
+        );
+        if c.send(Message::Ping(vec![1].into())).await.is_err() {
+            return;
+        }
+        match tokio::time::timeout(Duration::from_millis(50), c.next()).await {
+            Ok(Some(Ok(Message::Text(t)))) => {
+                assert!(t.as_str().contains("bad_hello"));
+                break;
+            }
+            Ok(None) | Ok(Some(Err(_))) => return,
+            _ => {}
+        }
+    }
+    expect_closed(&mut c).await;
+}
+
+#[tokio::test]
+async fn connection_without_room_is_closed() {
+    let config = ServerConfig {
+        no_room_timeout: Duration::from_millis(300),
+        ..ServerConfig::default()
+    };
+    let addr = start(config).await;
+    let mut c = connect(addr).await;
+    hello(&mut c, "sender").await;
+    expect_closed(&mut c).await;
+}
+
+#[tokio::test]
+async fn malformed_code_is_room_not_found() {
+    let addr = start(ServerConfig::default()).await;
+    let mut s = connect(addr).await;
+    hello(&mut s, "sender").await;
+    send(&mut s, json!({"type":"join_room","code":"bad"})).await;
+    assert_eq!(error_code(&recv(&mut s).await), "room_not_found");
+    send(&mut s, json!({"type":"join_room","code":"ABCDE0"})).await;
+    assert_eq!(error_code(&recv(&mut s).await), "room_not_found");
+    // A code that is not a string at all is still a bad message.
+    send(&mut s, json!({"type":"join_room","code":5})).await;
+    assert_eq!(error_code(&recv(&mut s).await), "bad_message");
+}
+
+#[tokio::test]
+async fn sender_can_join_another_room_after_receiver_left() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    r.close(None).await.unwrap();
+    assert_eq!(recv(&mut s).await, json!({"type":"peer_left"}));
+
+    let mut r2 = connect(addr).await;
+    hello(&mut r2, "receiver").await;
+    send(&mut r2, json!({"type":"create_room"})).await;
+    let code = recv(&mut r2).await["code"].as_str().unwrap().to_string();
+    send(&mut s, json!({"type":"join_room","code":code})).await;
+    assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
+    assert_eq!(recv(&mut r2).await, json!({"type":"peer_joined"}));
+}
+
+#[tokio::test]
+async fn slow_reader_is_disconnected() {
+    let config = ServerConfig {
+        outgoing_queue_len: 4,
+        ..ServerConfig::default()
+    };
+    let addr = start(config).await;
+    let (r, s, _) = paired(addr).await;
+    // The sender never reads. The receiver floods it with big messages while
+    // also reading, because once the sender is gone the server answers with
+    // not_in_room errors that the receiver must not leave unread.
+    let big = "x".repeat(40 * 1024);
+    let (mut w, mut rd) = r.split();
+    let mut got_peer_left = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    while !got_peer_left && tokio::time::Instant::now() < deadline {
+        tokio::select! {
+            res = w.send(Message::text(json!({"type":"offer","sdp":big}).to_string())) => {
+                if res.is_err() { break; }
+            }
+            m = rd.next() => match m {
+                Some(Ok(Message::Text(t))) if t.as_str().contains("peer_left") => got_peer_left = true,
+                Some(Ok(_)) => {}
+                _ => break,
+            },
+        }
+    }
+    assert!(got_peer_left, "slow sender was not disconnected");
+    drop(s);
+}
