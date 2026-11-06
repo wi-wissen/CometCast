@@ -25,6 +25,20 @@ watch(
 function afterOpen() {
   setTimeout(() => emit('close'), 0)
 }
+/** Keeps Tab inside the link card (Open <-> Dismiss) while it is shown. */
+function trapTab(e: KeyboardEvent) {
+  const card = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('a[href], button')
+  const first = card[0]
+  const last = card[card.length - 1]
+  if (!first || !last) return
+  if (e.shiftKey && document.activeElement === first) {
+    last.focus()
+    e.preventDefault()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    first.focus()
+    e.preventDefault()
+  }
+}
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && props.content) {
     emit('close')
@@ -59,6 +73,8 @@ function onKey(e: KeyboardEvent) {
     <div v-else class="absolute inset-0 z-[26] grid place-items-center bg-black/55 p-4" @keydown="onKey">
       <div
         role="alertdialog"
+        aria-modal="true"
+        @keydown.tab="trapTab"
         aria-labelledby="link-card-title"
         aria-describedby="link-card-desc"
         data-testid="link-card"

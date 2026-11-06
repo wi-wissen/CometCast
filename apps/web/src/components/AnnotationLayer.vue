@@ -15,6 +15,7 @@ let h = 0
 let raf = 0
 let ro: ResizeObserver | null = null
 let drawing = false
+let activeId = -1 // only this pointer draws; other fingers are ignored
 
 function redraw() {
   raf = 0
@@ -69,7 +70,8 @@ function point(e: PointerEvent): Point {
 
 function onDown(e: PointerEvent) {
   const tool = props.toolbar.tool
-  if (!tool || (e.pointerType === 'mouse' && e.button !== 0)) return
+  if (!tool || drawing || (e.pointerType === 'mouse' && e.button !== 0)) return
+  activeId = e.pointerId
   canvas.value!.setPointerCapture(e.pointerId)
   const p = point(e)
   drawing = true
@@ -87,6 +89,7 @@ function onDown(e: PointerEvent) {
 function onMove(e: PointerEvent) {
   const tool = props.toolbar.tool
   if (!tool) return
+  if (drawing && e.pointerId !== activeId) return
   const p = point(e)
   if (tool === 'laser') {
     // A mouse shows the laser while hovering; touch and pen only while pressed.
@@ -97,8 +100,8 @@ function onMove(e: PointerEvent) {
   if (tool === 'eraser') props.model.eraseAt(p, ERASER_RADIUS, w, h)
   else props.model.extend(p)
 }
-function onUp() {
-  if (!drawing) return
+function onUp(e: PointerEvent) {
+  if (!drawing || e.pointerId !== activeId) return
   drawing = false
   props.model.endStroke()
   if (props.toolbar.tool === 'laser') laser.value = null

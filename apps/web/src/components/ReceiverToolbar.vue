@@ -3,7 +3,7 @@
 // Floating, draggable toolbar over the received screen; collapses to a dot.
 // Keyboard: Tab enters the toolbar, Left/Right/Home/End move between buttons, the grip moves with the
 // arrow keys, Escape collapses it. All pointer handling uses pointer events (mouse, touch, pen).
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { COLORS, type ColorId, type SizeIndex, type Tool, type ToolbarState } from '../core/toolbarState'
 
@@ -30,7 +30,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const root = ref<HTMLElement | null>(null)
-const rov = ref('pen') // item with tabindex 0 (roving tabindex)
+const rov = ref('pen') // item that last had focus (roving tabindex)
+const dot = ref<HTMLElement | null>(null)
 
 const ICONS: Record<string, string> = {
   pen: 'M4 20l1-4L16 5l3 3L8 19l-4 1z M14 7l3 3',
@@ -130,6 +131,7 @@ function focusables(): HTMLElement[] {
 }
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
+    if (props.state.open) refocus = true
     emit('open', false)
     e.stopPropagation()
     return
@@ -146,6 +148,33 @@ function onKey(e: KeyboardEvent) {
   els[next]!.focus()
   e.preventDefault()
 }
+
+// The tab stop must never sit on a disabled item: fall back to the first enabled one (the grip).
+const effRov = computed(() => {
+  const it = items.value.find((i) => i.id === rov.value)
+  if (it) return it.disabled ? 'grip' : it.id
+  return rov.value === 'grip' || rov.value === 'collapse' ? rov.value : 'grip'
+})
+function focusFirst() {
+  root.value?.querySelector<HTMLElement>(`[data-tb][tabindex="0"]`)?.focus()
+}
+// A focused button that becomes disabled drops focus to <body>; move it to the tab stop instead.
+watch(effRov, async () => {
+  await nextTick()
+  if (props.state.open && document.activeElement === document.body) focusFirst()
+})
+// Keyboard users who collapse/expand should not lose their place.
+let refocus = false
+watch(
+  () => props.state.open,
+  async (open) => {
+    if (!refocus) return
+    refocus = false
+    await nextTick()
+    if (open) focusFirst()
+    else dot.value?.focus()
+  },
+)
 
 // --- dragging (grip and collapsed dot) --------------------------------------------------------
 let drag: { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean } | null = null
@@ -191,6 +220,7 @@ function onGripKey(e: KeyboardEvent) {
 }
 function onDotKey(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') {
+    refocus = true
     emit('open', true)
     e.preventDefault()
   } else onGripKey(e)
@@ -207,6 +237,7 @@ const posStyle = computed(() => ({
     <button
       v-if="!state.open"
       type="button"
+      ref="dot"
       data-testid="toolbar-dot"
       class="cc-tbdot"
       :aria-label="t('toolbar.expand')"
@@ -227,7 +258,7 @@ const posStyle = computed(() => ({
           data-tb
           data-testid="toolbar-grip"
           class="cc-grip"
-          :tabindex="rov === 'grip' ? 0 : -1"
+          :tabindex="effRov === 'grip' ? 0 : -1"
           :aria-label="t('toolbar.grip')"
           :title="t('toolbar.grip')"
           @focus="rov = 'grip'"
@@ -257,7 +288,7 @@ const posStyle = computed(() => ({
           :title="it.label"
           :aria-pressed="it.pressed === undefined ? undefined : it.pressed"
           :disabled="it.disabled"
-          :tabindex="rov === it.id ? 0 : -1"
+          :tabindex="effRov === it.id ? 0 : -1"
           @focus="rov = it.id"
           @click="it.run()"
         >
@@ -273,9 +304,9 @@ const posStyle = computed(() => ({
           data-testid="tb-collapse"
           :aria-label="t('toolbar.collapse')"
           :title="t('toolbar.collapse')"
-          :tabindex="rov === 'collapse' ? 0 : -1"
+          :tabindex="effRov === 'collapse' ? 0 : -1"
           @focus="rov = 'collapse'"
-          @click="emit('open', false)"
+          @click="((refocus = true), emit('open', false))"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" class="cc-i"><path :d="ICONS.collapse" /></svg>
         </button>

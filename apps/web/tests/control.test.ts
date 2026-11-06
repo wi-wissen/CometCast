@@ -9,6 +9,7 @@ import {
   SendError,
   chunkBytes,
   parseControlMessage,
+  stripBidi,
   validateLinkUrl,
   type ControlReceiverHandlers,
   type ImageSource,
@@ -148,17 +149,29 @@ describe('ImageAssembler', () => {
   })
   it('rejects data beyond the announced size and drops the transfer', () => {
     const asm = new ImageAssembler()
-    asm.start({ name: 'a.png', mime: 'image/png', size: 10 })
-    expect(asm.push(bytes(6))).toBeNull()
-    expect(asm.push(bytes(6))).toBe('too_large')
+    asm.start({ name: 'a.png', mime: 'image/png', size: CHUNK_SIZE + 10 })
+    expect(asm.push(bytes(CHUNK_SIZE))).toBeNull()
+    expect(asm.push(bytes(11))).toBe('too_large')
     expect(asm.active).toBe(false)
+  })
+  it('rejects short chunks that do not complete the image (message flood)', () => {
+    const asm = new ImageAssembler()
+    asm.start({ name: 'a.png', mime: 'image/png', size: MAX_IMAGE_BYTES })
+    expect(asm.push(bytes(1))).toBe('bad_chunk')
+    expect(asm.active).toBe(false)
+  })
+  it('accepts a short final chunk that completes the image', () => {
+    const asm = new ImageAssembler()
+    asm.start({ name: 'a.png', mime: 'image/png', size: 5 })
+    expect(asm.push(bytes(5))).toBeNull()
+    expect(asm.finish()).toMatchObject({ name: 'a.png' })
   })
   it('reports missing data and chunks without a transfer', () => {
     const asm = new ImageAssembler()
     expect(asm.push(bytes(1))).toBe('unexpected_chunk')
     expect(asm.finish()).toBe('no_transfer')
-    asm.start({ name: 'a.png', mime: 'image/png', size: 10 })
-    asm.push(bytes(4))
+    asm.start({ name: 'a.png', mime: 'image/png', size: CHUNK_SIZE + 10 })
+    asm.push(bytes(CHUNK_SIZE))
     expect(asm.finish()).toBe('size_mismatch')
   })
 })
@@ -182,7 +195,8 @@ function collect() {
 describe('ControlReceiver', () => {
   it('handles a full image transfer and a stop command', async () => {
     const { log, handlers } = collect()
-    const r = new ControlReceiver(handlers)
+    let clock = 0
+    const r = new ControlReceiver(handlers, () => (clock += 200)) // every call is past the throttle interval
     const data = bytes(CHUNK_SIZE + 1)
     r.handle(JSON.stringify({ kind: 'image', name: 'p.png', mime: 'image/png', size: data.byteLength }))
     for (const c of chunkBytes(data)) r.handle(c.slice().buffer)
@@ -203,10 +217,9 @@ describe('ControlReceiver', () => {
     const r = new ControlReceiver(handlers)
     r.handle('{"kind":"image","name":"p.png","mime":"image/png","size":10}')
     r.handle(bytes(3).buffer as ArrayBuffer)
-    r.handle('{"kind":"image_end"}')
     r.handle('garbage')
     r.handle(42)
-    expect(log).toContain('error:size_mismatch')
+    expect(log).toContain('error:bad_chunk')
     expect(log.filter((l) => l === 'error:bad_message').length).toBe(2)
     expect(log.some((l) => l.startsWith('image:'))).toBe(false)
   })
@@ -216,6 +229,36 @@ describe('ControlReceiver', () => {
     r.handle('{"kind":"link","url":"https://example.org/x"}')
     r.handle('{"kind":"link","url":"javascript:alert(1)"}')
     expect(log).toEqual(['link:https://example.org/x', 'error:bad_message'])
+  })
+})
+
+describe('ControlReceiver resource limits (regression: 1-byte message flood)', () => {
+  it('drops a flood of tiny binary messages at the first one and keeps no data', () => {
+    const { log, handlers } = collect()
+    const r = new ControlReceiver(handlers)
+    r.handle(JSON.stringify({ kind: 'image', name: 'a', mime: 'image/png', size: MAX_IMAGE_BYTES }))
+    for (let i = 0; i < 100_000; i++) r.handle(new ArrayBuffer(1))
+    expect(log.filter((l) => l.startsWith('error:')).length).toBe(100_000) // each rejected, none stored
+    expect(log).toContain('error:bad_chunk')
+    expect(log).not.toContain('error:too_large')
+  })
+  it('throttles progress callbacks', () => {
+    const { log, handlers } = collect()
+    let clock = 0
+    const r = new ControlReceiver(handlers, () => clock)
+    r.handle(JSON.stringify({ kind: 'image', name: 'a', mime: 'image/png', size: CHUNK_SIZE * 10 }))
+    for (let i = 0; i < 10; i++) {
+      clock += 10 // 10 ms apart: well under the 100 ms interval
+      r.handle(new ArrayBuffer(CHUNK_SIZE))
+    }
+    expect(log.filter((l) => l.startsWith('progress:') && l !== 'progress:null').length).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('stripBidi', () => {
+  it('removes bidi controls', () => {
+    expect(stripBidi('ab\u202Ecd\u2066e\u200F')).toBe('abcde')
+    expect(parseControlMessage(JSON.stringify({ kind: 'image', name: 'a\u202Epng', mime: 'image/png', size: 5 }))).toMatchObject({ name: 'apng' })
   })
 })
 
@@ -258,6 +301,19 @@ describe('ControlSender -> ControlReceiver end to end (fake channel pair)', () =
     }
     await p
     expect(a.sent.length).toBe(1 + 80 + 1)
+  })
+  it('does not hang when the channel closes while waiting for the buffer to drain', async () => {
+    const a = new FakeChannel()
+    a.simulateBuffer = true
+    a.bufferedAmount = 5_000_000 // stuck above the high-water mark
+    const sessionClose = () => {}
+    a.onclose = sessionClose
+    const p = new ControlSender(a).sendImage(source(bytes(CHUNK_SIZE * 4)))
+    const settled = p.then(() => 'ok', (e) => (e as SendError).code)
+    await new Promise((r) => setTimeout(r, 30))
+    a.close()
+    expect(await settled).toBe('channel_closed')
+    expect(a.onclose).toBe(sessionClose) // the previous handler is restored
   })
   it('fails when the channel closes mid transfer', async () => {
     const a = new FakeChannel()

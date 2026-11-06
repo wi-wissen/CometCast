@@ -104,6 +104,14 @@ export class AnnotationModel {
     return true
   }
 
+  /** Drops all strokes and the undo history (used when the content underneath changes). */
+  reset(): void {
+    this.strokes = []
+    this.history = []
+    this.current = null
+    this.changed()
+  }
+
   clear(): void {
     if (this.strokes.length === 0) return
     this.push()

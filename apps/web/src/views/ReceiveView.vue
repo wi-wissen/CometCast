@@ -90,6 +90,28 @@ watch(showVideo, (v) => {
   if (!v) videoSize.value = 0
 })
 
+// New content or a departed sender invalidates annotations made on top of the old content.
+const announce = ref('')
+watch(
+  () => state.value.content,
+  (c, old) => {
+    if (c) {
+      model.reset()
+      const key = c.kind === 'image' ? 'receive.announce.image' : 'receive.announce.link'
+      const text = t(key, { name: c.kind === 'image' ? c.name : c.host })
+      announce.value = old ? `${t('receive.announce.replaced')} ${text}` : text
+    } else if (old) {
+      announce.value = t('receive.announce.closed')
+    }
+  },
+)
+watch(
+  () => state.value.phase,
+  (p) => {
+    if (p === 'peer_left') model.reset()
+  },
+)
+
 const isFullscreen = ref(false)
 const fullscreenAvailable = typeof document !== 'undefined' && document.fullscreenEnabled === true
 function onFullscreenChange() {
@@ -182,7 +204,8 @@ const contentErrorText = computed(() => {
       </p>
 
       <ContentOverlay :content="state.content" @close="clearContent" />
-      <AnnotationLayer :model="model" :toolbar="toolbar" :label="t('toolbar.canvasLabel')" @changed="onModelChanged" />
+      <p class="sr-only" role="status" aria-live="polite" data-testid="announce">{{ announce }}</p>
+      <AnnotationLayer :inert="state.content?.kind === 'link'" :model="model" :toolbar="toolbar" :label="t('toolbar.canvasLabel')" @changed="onModelChanged" />
 
       <div
         v-if="toolbar.black"
@@ -217,6 +240,7 @@ const contentErrorText = computed(() => {
       </p>
 
       <ReceiverToolbar
+        :inert="state.content?.kind === 'link'"
         :state="toolbar"
         :can-undo="canUndo"
         :has-strokes="hasStrokes"

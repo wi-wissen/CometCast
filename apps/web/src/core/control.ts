@@ -17,6 +17,7 @@ export const MAX_NAME_LENGTH = 255
 /** Stop writing when this much is queued in the channel; resume at the low-water mark. */
 const HIGH_WATER = 1024 * 1024
 const LOW_WATER = 256 * 1024
+const PROGRESS_INTERVAL_MS = 100
 
 /** Mirrors `ControlCmd` in cc-proto (serde default enum form). */
 export type ControlCmd = 'next_page' | 'prev_page' | 'stop' | { go_to_page: { page: number } }
@@ -105,7 +106,9 @@ export function parseControlMessage(text: string): ControlMessage | null {
       if (typeof o.name !== 'string' || o.name.length === 0 || o.name.length > MAX_NAME_LENGTH) return null
       if (!isImageMime(o.mime)) return null
       if (!isPositiveInt(o.size, MAX_IMAGE_BYTES)) return null
-      return { kind: 'image', name: o.name, mime: o.mime, size: o.size }
+      const name = stripBidi(o.name)
+      if (name.length === 0) return null
+      return { kind: 'image', name, mime: o.mime, size: o.size }
     }
     case 'image_end':
       return { kind: 'image_end' }
@@ -126,11 +129,21 @@ export function chunkBytes(data: Uint8Array, size = CHUNK_SIZE): Uint8Array[] {
   return out
 }
 
-export type TransferErrorCode = 'unexpected_chunk' | 'too_large' | 'size_mismatch' | 'no_transfer'
+/** Removes bidirectional control characters, which can make a displayed name or host read differently. */
+export function stripBidi(s: string): string {
+  return s.replace(/[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/g, '')
+}
 
-/** Reassembles one image from its metadata message and binary chunks. */
+export type TransferErrorCode = 'unexpected_chunk' | 'too_large' | 'size_mismatch' | 'no_transfer' | 'bad_chunk'
+
+/**
+ * Reassembles one image from its metadata message and binary chunks.
+ * Memory is bounded: one buffer of the announced size is allocated up front and chunks are copied in.
+ * Every chunk must be exactly CHUNK_SIZE long unless it completes the image, so the number of
+ * messages is bounded by size / CHUNK_SIZE (a flood of tiny messages is rejected).
+ */
 export class ImageAssembler {
-  private cur: { name: string; mime: ImageMime; size: number; chunks: Uint8Array[]; received: number } | null = null
+  private cur: { name: string; mime: ImageMime; size: number; buf: Uint8Array; received: number } | null = null
 
   get active(): boolean {
     return this.cur !== null
@@ -140,21 +153,26 @@ export class ImageAssembler {
     return this.cur ? { name: this.cur.name, received: this.cur.received, size: this.cur.size } : null
   }
 
-  /** Begins a transfer; a transfer in progress is dropped. */
+  /** Begins a transfer; a transfer in progress is dropped. The size limit is enforced by parseControlMessage. */
   start(meta: { name: string; mime: ImageMime; size: number }): void {
-    this.cur = { ...meta, chunks: [], received: 0 }
+    this.cur = { ...meta, buf: new Uint8Array(meta.size), received: 0 }
   }
 
   /** Returns an error code (and drops the transfer) if the chunk is not acceptable. */
   push(chunk: Uint8Array): TransferErrorCode | null {
     const c = this.cur
     if (!c) return 'unexpected_chunk'
-    if (c.received + chunk.byteLength > c.size) {
+    const end = c.received + chunk.byteLength
+    if (end > c.size) {
       this.cur = null
       return 'too_large'
     }
-    c.chunks.push(chunk)
-    c.received += chunk.byteLength
+    if (chunk.byteLength !== CHUNK_SIZE && end !== c.size) {
+      this.cur = null
+      return 'bad_chunk'
+    }
+    c.buf.set(chunk, c.received)
+    c.received = end
     return null
   }
 
@@ -163,7 +181,7 @@ export class ImageAssembler {
     this.cur = null
     if (!c) return 'no_transfer'
     if (c.received !== c.size) return 'size_mismatch'
-    return { blob: new Blob(c.chunks as BlobPart[], { type: c.mime }), name: c.name }
+    return { blob: new Blob([c.buf as BlobPart], { type: c.mime }), name: c.name }
   }
 
   reset(): void {
@@ -182,7 +200,12 @@ export interface ControlReceiverHandlers {
 /** Receiver side: feed it every message of the channel. */
 export class ControlReceiver {
   private readonly asm = new ImageAssembler()
-  constructor(private readonly h: ControlReceiverHandlers) {}
+  private lastProgress = 0
+  /** `now` is injectable for tests; progress callbacks are throttled to one per PROGRESS_INTERVAL_MS. */
+  constructor(
+    private readonly h: ControlReceiverHandlers,
+    private readonly now: () => number = () => Date.now(),
+  ) {}
 
   handle(data: unknown): void {
     if (typeof data === 'string') return this.handleText(data)
@@ -202,7 +225,11 @@ export class ControlReceiver {
       this.h.onError(err)
       return
     }
-    this.h.onProgress(this.asm.progress)
+    const t = this.now()
+    if (t - this.lastProgress >= PROGRESS_INTERVAL_MS) {
+      this.lastProgress = t
+      this.h.onProgress(this.asm.progress)
+    }
   }
 
   private handleText(text: string): void {
@@ -215,6 +242,7 @@ export class ControlReceiver {
         break
       case 'image':
         this.asm.start(m)
+        this.lastProgress = this.now()
         this.h.onProgress(this.asm.progress)
         break
       case 'image_end': {
@@ -273,13 +301,24 @@ export class ControlSender {
     return true
   }
 
+  /** Resolves when the buffer is low, or when the channel is no longer open (close handler or poll). */
   private waitDrain(): Promise<void> {
     return new Promise((resolve) => {
+      const prevClose = this.ch.onclose
+      const poll = setInterval(() => {
+        if (!this.isOpen) done()
+      }, 200)
       const done = () => {
+        clearInterval(poll)
         this.ch.onbufferedamountlow = null
+        this.ch.onclose = prevClose
         resolve()
       }
       this.ch.onbufferedamountlow = done
+      this.ch.onclose = (ev) => {
+        prevClose?.call(this.ch, ev)
+        done()
+      }
       // The channel may have drained between the check and the handler assignment.
       if (this.ch.bufferedAmount <= LOW_WATER || !this.isOpen) done()
     })

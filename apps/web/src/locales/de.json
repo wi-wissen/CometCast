@@ -51,7 +51,8 @@
       "unexpected_chunk": "Unerwartete Bilddaten wurden ignoriert.",
       "too_large": "Das Bild war größer als angekündigt und wurde verworfen.",
       "size_mismatch": "Das Bild ist unvollständig angekommen und wurde verworfen.",
-      "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert."
+      "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert.",
+      "bad_chunk": "Bilddaten kamen in unerwarteter Form an und wurden verworfen."
     },
     "content": {
       "imageAlt": "Bild vom Absender: {name}",
@@ -63,6 +64,12 @@
       "address": "Adresse",
       "open": "Öffnen",
       "dismiss": "Verwerfen"
+    },
+    "announce": {
+      "image": "Bild empfangen: {name}.",
+      "link": "Link-Anfrage von {host}.",
+      "replaced": "Neuer Inhalt ersetzt den vorherigen.",
+      "closed": "Inhalt geschlossen."
     }
   },
   "send": {

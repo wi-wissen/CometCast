@@ -51,7 +51,8 @@
       "unexpected_chunk": "Unexpected image data was ignored.",
       "too_large": "The image was larger than announced and was discarded.",
       "size_mismatch": "The image arrived incomplete and was discarded.",
-      "no_transfer": "An image transfer ended unexpectedly and was ignored."
+      "no_transfer": "An image transfer ended unexpectedly and was ignored.",
+      "bad_chunk": "Image data arrived in an unexpected form and was discarded."
     },
     "content": {
       "imageAlt": "Image from the sender: {name}",
@@ -63,6 +64,12 @@
       "address": "Address",
       "open": "Open",
       "dismiss": "Dismiss"
+    },
+    "announce": {
+      "image": "Image received: {name}.",
+      "link": "Link request from {host}.",
+      "replaced": "New content replaced the previous one.",
+      "closed": "Content closed."
     }
   },
   "send": {
