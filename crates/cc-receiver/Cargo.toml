@@ -11,3 +11,12 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+cc-proto.workspace = true
+cc-transport.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cc-server.workspace = true
+cc-sender.workspace = true

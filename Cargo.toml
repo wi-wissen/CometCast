@@ -43,9 +43,18 @@ tower-http = { version = "0.6", features = ["fs"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rand = "0.9"
 tokio-tungstenite = "0.29"
+# Native WebRTC (async layer on the sans-io `rtc` core). `rtc` is named directly because
+# the media types (codecs, RTCP packets) live there; keep both on the same version.
+webrtc = "0.21.1"
+rtc = "0.21.1"
+async-trait = "0.1"
+bytes = "1"
 # Our own crates, so they can refer to each other by name.
 cc-proto = { path = "crates/cc-proto" }
 cc-server = { path = "crates/cc-server" }
+cc-transport = { path = "crates/cc-transport" }
+cc-receiver = { path = "crates/cc-receiver" }
+cc-sender = { path = "crates/cc-sender" }
 
 # Lints every crate inherits with `[lints] workspace = true`.
 [workspace.lints.rust]

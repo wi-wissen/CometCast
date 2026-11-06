@@ -93,6 +93,17 @@ Web app:
 cd apps/web && npm ci && npm run dev
 ```
 
+Native peers (developer CLI, M1). Start a server, then receive in one terminal and send in another:
+
+```sh
+cargo run -p cometcast-server -- --listen 127.0.0.1:8443
+cargo run -p cometcast-cli -- receive            # prints the room code, then packet statistics
+cargo run -p cometcast-cli -- send <CODE> --seconds 10   # sends a built-in VP8 test pattern
+```
+
+The browser app interoperates with them: `cd apps/web && npm run build && npm run e2e:native`.
+Details and limits: [docs/transport.md](docs/transport.md).
+
 More commands will be added here when the things they build exist.
 
 ## Contributing

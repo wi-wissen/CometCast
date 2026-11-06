@@ -10,3 +10,9 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+cc-proto.workspace = true
+cc-receiver.workspace = true
+cc-sender.workspace = true
+tokio.workspace = true
