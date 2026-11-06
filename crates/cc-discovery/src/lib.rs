@@ -8,9 +8,9 @@
 pub const SERVICE_TYPE: &str = "_cometcast._tcp";
 
 /// Built-in default servers, used only when every other source found nothing.
-// UNCERTAIN: "vermittlung.cometcast.de" comes from a mockup, not from a live service.
+// UNCERTAIN: "relay.cometcast.de" is a planned name only. No such host exists yet; it will be set up in the last step of the project.
 // It must be replaced or confirmed before release.
-pub const DEFAULT_SERVERS: [&str; 1] = ["vermittlung.cometcast.de:443"];
+pub const DEFAULT_SERVERS: [&str; 1] = ["relay.cometcast.de:443"];
 
 /// Where a server address can come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
