@@ -12,7 +12,7 @@ use std::time::Duration;
 use cc_docs::{Isolation, WorkerSpec};
 use cc_proto::ControlCmd;
 use cc_receiver::{
-    ContentError, ContentEvent, ContentOptions, ImageMime, ContentEvents, ReceiverCore,
+    ContentError, ContentEvent, ContentEvents, ContentOptions, ImageMime, ReceiverCore,
     ReceiverEvent, ReceiverOptions,
 };
 use cc_sender::{ContentSender, ContentSenderOptions, ControlSender, SenderCore, SenderOptions};
@@ -41,9 +41,35 @@ fn local_session() -> SessionConfig {
     }
 }
 
+/// A private copy of the render worker, made once per test run. The build directory can be
+/// rebuilt (for example by another cargo process) while the tests run, which would break a
+/// worker that runs from there.
+fn private_worker() -> Option<&'static std::path::PathBuf> {
+    static COPY: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+    COPY.get_or_init(|| {
+        let found = WorkerSpec::discover()?;
+        let copy = std::env::temp_dir().join(format!("cc-docs-worker-test-{}", std::process::id()));
+        std::fs::copy(&found.program, &copy).ok()?;
+        // The worker in a shared build directory can come from a different version of
+        // cc-docs (another checkout's build); then it cannot talk to this test. Use it only
+        // when it works.
+        let probe = cc_docs::Document::open_with_options(
+            MINIMAL.to_vec(),
+            cc_docs::Limits::default(),
+            Isolation::Process(WorkerSpec::new(copy.clone())),
+        );
+        if probe.is_err() {
+            eprintln!("warning: the found cc-docs-worker does not work, rendering in process");
+            return None;
+        }
+        Some(copy)
+    })
+    .as_ref()
+}
+
 fn content_options() -> ContentOptions {
-    let isolation = if WorkerSpec::discover().is_some() {
-        Isolation::Auto
+    let isolation = if let Some(copy) = private_worker() {
+        Isolation::Process(WorkerSpec::new(copy.clone()))
     } else {
         eprintln!("note: cc-docs-worker not found, rendering in process");
         Isolation::InProcess
@@ -126,7 +152,9 @@ async fn image_link_pdf_commands_and_stop() {
 
     // Image, byte for byte.
     let png = tiny_png();
-    ctl.send_image("pixel.png", ImageMime::Png, &png).await.unwrap();
+    ctl.send_image("pixel.png", ImageMime::Png, &png)
+        .await
+        .unwrap();
     match next(&mut rx).await {
         ContentEvent::ImageReceived { name, mime, bytes } => {
             assert_eq!((name.as_str(), mime), ("pixel.png", ImageMime::Png));
@@ -165,7 +193,10 @@ async fn image_link_pdf_commands_and_stop() {
         } => {
             assert_eq!(width, 300);
             assert_eq!(rgba.len(), (width * height * 4) as usize);
-            assert!(rgba.chunks(4).any(|p| p[..3] != [255, 255, 255]), "not blank");
+            assert!(
+                rgba.chunks(4).any(|p| p[..3] != [255, 255, 255]),
+                "not blank"
+            );
             page
         }
         other => panic!("{other:?}"),
@@ -173,18 +204,25 @@ async fn image_link_pdf_commands_and_stop() {
     assert_eq!(page(next(&mut rx).await), 1);
     ctl.send_cmd(ControlCmd::NextPage).await.unwrap();
     assert_eq!(page(next(&mut rx).await), 2);
-    ctl.send_cmd(ControlCmd::GoToPage { page: 3 }).await.unwrap();
+    ctl.send_cmd(ControlCmd::GoToPage { page: 3 })
+        .await
+        .unwrap();
     assert_eq!(page(next(&mut rx).await), 3);
     ctl.send_cmd(ControlCmd::PrevPage).await.unwrap();
     assert_eq!(page(next(&mut rx).await), 2);
     // A larger window: same page again, wider.
     rx.core.set_content_target_width(300);
-    ctl.send_cmd(ControlCmd::GoToPage { page: 1 }).await.unwrap();
+    ctl.send_cmd(ControlCmd::GoToPage { page: 1 })
+        .await
+        .unwrap();
     assert_eq!(page(next(&mut rx).await), 1);
 
     // A one-page PDF replaces it; stop ends the content.
     ctl.send_document("min.pdf", MINIMAL).await.unwrap();
-    assert!(matches!(next(&mut rx).await, ContentEvent::DocumentOpened { pages: 1, .. }));
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::DocumentOpened { pages: 1, .. }
+    ));
     assert_eq!(page(next(&mut rx).await), 1);
     ctl.send_cmd(ControlCmd::Stop).await.unwrap();
     assert_eq!(next(&mut rx).await, ContentEvent::ContentStopped);
@@ -198,7 +236,10 @@ async fn image_link_pdf_commands_and_stop() {
         other => panic!("{other:?}"),
     }
     ctl.send_link("http://example.com/").await.unwrap();
-    assert!(matches!(next(&mut rx).await, ContentEvent::LinkRequested { .. }));
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::LinkRequested { .. }
+    ));
 
     assert!(ctl.finish().await);
     tx.stop().await;
@@ -224,12 +265,18 @@ async fn a_slow_reader_holds_the_sender_back_and_loses_nothing() {
     let sender = ctl.clone();
     let send = tokio::spawn(async move {
         for n in 0..COUNT {
-            sender.send_image("big.png", ImageMime::Png, &image(n)).await.unwrap();
+            sender
+                .send_image("big.png", ImageMime::Png, &image(n))
+                .await
+                .unwrap();
         }
     });
     // Do not read for a while.
     tokio::time::sleep(Duration::from_secs(2)).await;
-    assert!(!send.is_finished(), "the sender must be held back by the full queues");
+    assert!(
+        !send.is_finished(),
+        "the sender must be held back by the full queues"
+    );
     for n in 0..COUNT {
         match next(&mut rx).await {
             ContentEvent::ImageReceived { bytes, .. } => {
@@ -253,10 +300,16 @@ async fn a_hostile_sender_gets_errors_then_is_cut_off() {
     let ch = tx.control().channel().clone();
 
     // Oversize announcement, junk, a chunk without transfer, and a transfer that lies.
-    ch.send_text(r#"{"kind":"image","name":"x","mime":"image/png","size":99999999999}"#).await.unwrap();
+    ch.send_text(r#"{"kind":"image","name":"x","mime":"image/png","size":99999999999}"#)
+        .await
+        .unwrap();
     ch.send_text("not json").await.unwrap();
-    ch.send_text(r#"{"kind":"image","name":"x","mime":"image/svg+xml","size":5}"#).await.unwrap();
-    ch.send_text(r#"{"kind":"image","name":"x","mime":"image/png","size":20000}"#).await.unwrap();
+    ch.send_text(r#"{"kind":"image","name":"x","mime":"image/svg+xml","size":5}"#)
+        .await
+        .unwrap();
+    ch.send_text(r#"{"kind":"image","name":"x","mime":"image/png","size":20000}"#)
+        .await
+        .unwrap();
     ch.send_binary(&[0; 16384]).await.unwrap();
     ch.send_binary(&[0; 16384]).await.unwrap(); // more than announced
     let mut codes = Vec::new();
@@ -284,7 +337,11 @@ async fn a_hostile_sender_gets_errors_then_is_cut_off() {
     }
     let mut blocked = false;
     for _ in 0..300 {
-        if let ContentEvent::Error { error: ContentError::TooManyErrors, .. } = next(&mut rx).await {
+        if let ContentEvent::Error {
+            error: ContentError::TooManyErrors,
+            ..
+        } = next(&mut rx).await
+        {
             blocked = true;
             break;
         }
@@ -313,7 +370,10 @@ async fn the_control_channel_works_next_to_video() {
     let ctl: ControlSender = sender.control().expect("control handle");
     ctl.wait_ready(Duration::from_secs(20)).await.unwrap();
     ctl.send_link("https://example.org/").await.unwrap();
-    assert!(matches!(next(&mut rx).await, ContentEvent::LinkRequested { .. }));
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::LinkRequested { .. }
+    ));
     // Video flows on the same connection.
     let saw_video = tokio::time::timeout(Duration::from_secs(20), async {
         loop {
@@ -325,7 +385,10 @@ async fn the_control_channel_works_next_to_video() {
         }
     })
     .await;
-    assert!(saw_video.is_ok(), "video packets arrived next to the channel");
+    assert!(
+        saw_video.is_ok(),
+        "video packets arrived next to the channel"
+    );
     sender.stop().await;
     rx.core.stop().await;
 }

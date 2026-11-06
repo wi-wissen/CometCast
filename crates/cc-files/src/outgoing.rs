@@ -66,7 +66,11 @@ impl<'a> Iterator for Transfer<'a> {
 fn clip_name(name: &str, fallback: &str) -> String {
     let n: String = name.chars().take(MAX_NAME_LENGTH).collect();
     let n = crate::wire::sanitize_name(&n);
-    if n.is_empty() { fallback.to_string() } else { n }
+    if n.is_empty() {
+        fallback.to_string()
+    } else {
+        n
+    }
 }
 
 /// The messages that send an image.
@@ -134,7 +138,9 @@ mod tests {
     #[test]
     fn chunks_follow_the_rule() {
         let data = vec![7u8; CHUNK_SIZE * 2 + 100];
-        let items: Vec<_> = image_transfer("a.png", ImageMime::Png, &data).unwrap().collect();
+        let items: Vec<_> = image_transfer("a.png", ImageMime::Png, &data)
+            .unwrap()
+            .collect();
         assert_eq!(items.len(), 1 + 3 + 1);
         let sizes: Vec<usize> = items
             .iter()
@@ -144,7 +150,9 @@ mod tests {
             })
             .collect();
         assert_eq!(sizes, [CHUNK_SIZE, CHUNK_SIZE, 100]);
-        assert!(matches!(&items[0], Outgoing::Text(t) if t.contains("\"image\"") && t.contains("\"size\":32868")));
+        assert!(
+            matches!(&items[0], Outgoing::Text(t) if t.contains("\"image\"") && t.contains("\"size\":32868"))
+        );
         assert_eq!(items[4], Outgoing::Text(r#"{"kind":"image_end"}"#.into()));
     }
 
@@ -165,26 +173,50 @@ mod tests {
 
     #[test]
     fn refusals() {
-        assert_eq!(image_transfer("a", ImageMime::Png, &[]).unwrap_err(), SendError::Empty);
+        assert_eq!(
+            image_transfer("a", ImageMime::Png, &[]).unwrap_err(),
+            SendError::Empty
+        );
         let big = vec![0u8; MAX_IMAGE_BYTES as usize + 1];
-        assert_eq!(image_transfer("a", ImageMime::Png, &big).unwrap_err(), SendError::TooLarge);
-        assert_eq!(document_transfer("a.pdf", b"hello").unwrap_err(), SendError::NotPdf);
-        assert_eq!(document_transfer("a.pdf", &[]).unwrap_err(), SendError::Empty);
-        assert_eq!(link_message("javascript:1").unwrap_err(), SendError::BadLink);
+        assert_eq!(
+            image_transfer("a", ImageMime::Png, &big).unwrap_err(),
+            SendError::TooLarge
+        );
+        assert_eq!(
+            document_transfer("a.pdf", b"hello").unwrap_err(),
+            SendError::NotPdf
+        );
+        assert_eq!(
+            document_transfer("a.pdf", &[]).unwrap_err(),
+            SendError::Empty
+        );
+        assert_eq!(
+            link_message("javascript:1").unwrap_err(),
+            SendError::BadLink
+        );
         assert_eq!(
             link_message("https://example.org").unwrap(),
             r#"{"kind":"link","url":"https://example.org/"}"#
         );
-        assert_eq!(cmd_message(ControlCmd::NextPage), r#"{"cmd":"next_page","kind":"cmd"}"#);
+        assert_eq!(
+            cmd_message(ControlCmd::NextPage),
+            r#"{"cmd":"next_page","kind":"cmd"}"#
+        );
     }
 
     #[test]
     fn names_are_clipped() {
         let long = "n".repeat(400);
-        let first = image_transfer(&long, ImageMime::Gif, b"GIF89a").unwrap().next().unwrap();
+        let first = image_transfer(&long, ImageMime::Gif, b"GIF89a")
+            .unwrap()
+            .next()
+            .unwrap();
         let Outgoing::Text(t) = first else { panic!() };
         assert!(crate::wire::parse_message(&t, MAX_IMAGE_BYTES, MAX_DOCUMENT_BYTES).is_ok());
-        let first = image_transfer("\u{202e}", ImageMime::Gif, b"GIF89a").unwrap().next().unwrap();
+        let first = image_transfer("\u{202e}", ImageMime::Gif, b"GIF89a")
+            .unwrap()
+            .next()
+            .unwrap();
         let Outgoing::Text(t) = first else { panic!() };
         assert!(t.contains("\"image\""), "falls back to a default name");
     }

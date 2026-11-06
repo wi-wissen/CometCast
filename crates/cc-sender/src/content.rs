@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cc_files::{
-    ImageMime, SendError, cmd_message, document_transfer, image_transfer, link_message, Outgoing,
+    ImageMime, Outgoing, SendError, cmd_message, document_transfer, image_transfer, link_message,
 };
 use cc_proto::{ClientMsg, ControlCmd, Role, RoomCode, ServerMsg};
 use cc_transport::{
@@ -33,6 +33,9 @@ const JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long [`ControlSender::wait_ready`] callers typically wait for the channel to open.
 /// UNCERTAIN: placeholder, not measured.
 pub const READY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long closing the channel may wait for the peer. UNCERTAIN: placeholder.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// How long [`ControlSender::finish`] waits for the data to leave. UNCERTAIN: placeholder.
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -296,6 +299,8 @@ async fn run(
             },
         }
     }
-    channel.close().await;
+    // Closing the channel first lets the peer deliver the last messages before the connection
+    // goes away.
+    channel.close_graceful(CLOSE_TIMEOUT).await;
     let _ = session.close().await;
 }

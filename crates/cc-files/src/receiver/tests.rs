@@ -53,9 +53,19 @@ fn doc_start(size: u64) -> String {
 fn an_image_arrives_whole() {
     let data: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
     let mut r = rx();
-    let ev = feed(&mut r, image_transfer("a.png", ImageMime::Png, &data).unwrap());
+    let ev = feed(
+        &mut r,
+        image_transfer("a.png", ImageMime::Png, &data).unwrap(),
+    );
     assert_eq!(ev.len(), 2, "{ev:?}");
-    assert!(matches!(&ev[0], ContentEvent::TransferStarted { document: false, size: 40_000, .. }));
+    assert!(matches!(
+        &ev[0],
+        ContentEvent::TransferStarted {
+            document: false,
+            size: 40_000,
+            ..
+        }
+    ));
     let ContentEvent::ImageReceived { name, mime, bytes } = &ev[1] else {
         panic!("{ev:?}")
     };
@@ -97,7 +107,10 @@ fn links_are_reported_and_validated() {
     ] {
         let ev = r.handle_text(bad);
         assert_eq!(errors(&ev), [ContentError::BadMessage], "{bad}");
-        assert!(!ev.iter().any(|e| matches!(e, ContentEvent::LinkRequested { .. })));
+        assert!(
+            !ev.iter()
+                .any(|e| matches!(e, ContentEvent::LinkRequested { .. }))
+        );
     }
 }
 
@@ -115,21 +128,34 @@ fn oversize_announcements_are_refused() {
         max_image_bytes: 1000,
         ..ContentOptions::default()
     });
-    assert!(small.handle_text(&image_start(1001)).iter().any(|e| matches!(e, ContentEvent::Error { .. })));
+    assert!(
+        small
+            .handle_text(&image_start(1001))
+            .iter()
+            .any(|e| matches!(e, ContentEvent::Error { .. }))
+    );
     assert!(!small.handle_text(&image_start(1000)).is_empty());
     let mut tiny_docs = ContentReceiver::new(ContentOptions {
         max_document_bytes: 1000,
         ..ContentOptions::default()
     });
-    assert_eq!(errors(&tiny_docs.handle_text(&doc_start(1001))), [ContentError::BadMessage]);
+    assert_eq!(
+        errors(&tiny_docs.handle_text(&doc_start(1001))),
+        [ContentError::BadMessage]
+    );
     // The cc-docs file limit counts too.
-    let mut limits = Limits::default();
-    limits.max_file_bytes = 500;
+    let limits = Limits {
+        max_file_bytes: 500,
+        ..Limits::default()
+    };
     let mut docs = ContentReceiver::new(ContentOptions {
         doc_limits: limits,
         ..ContentOptions::default()
     });
-    assert_eq!(errors(&docs.handle_text(&doc_start(501))), [ContentError::BadMessage]);
+    assert_eq!(
+        errors(&docs.handle_text(&doc_start(501))),
+        [ContentError::BadMessage]
+    );
 }
 
 #[test]
@@ -174,7 +200,10 @@ fn a_short_chunk_in_the_middle_is_refused() {
     let mut r = rx();
     r.handle_text(&image_start(3 * CHUNK_SIZE as u64));
     assert!(r.handle_binary(&[0; CHUNK_SIZE]).is_empty());
-    assert_eq!(errors(&r.handle_binary(&[0; CHUNK_SIZE - 1])), [ContentError::BadChunk]);
+    assert_eq!(
+        errors(&r.handle_binary(&[0; CHUNK_SIZE - 1])),
+        [ContentError::BadChunk]
+    );
 }
 
 #[test]
@@ -184,7 +213,10 @@ fn truncated_transfers_are_not_delivered() {
     r.handle_binary(&[0; CHUNK_SIZE]);
     let ev = r.handle_text(r#"{"kind":"image_end"}"#);
     assert_eq!(errors(&ev), [ContentError::SizeMismatch]);
-    assert!(!ev.iter().any(|e| matches!(e, ContentEvent::ImageReceived { .. })));
+    assert!(
+        !ev.iter()
+            .any(|e| matches!(e, ContentEvent::ImageReceived { .. }))
+    );
     assert!(!r.transfer_active());
     // Same for a document.
     r.handle_text(&doc_start(100));
@@ -195,8 +227,14 @@ fn truncated_transfers_are_not_delivered() {
 #[test]
 fn chunks_after_the_end_are_refused() {
     let mut r = rx();
-    feed(&mut r, image_transfer("a.png", ImageMime::Png, &[1; 100]).unwrap());
-    assert_eq!(errors(&r.handle_binary(&[1; 100])), [ContentError::UnexpectedChunk]);
+    feed(
+        &mut r,
+        image_transfer("a.png", ImageMime::Png, &[1; 100]).unwrap(),
+    );
+    assert_eq!(
+        errors(&r.handle_binary(&[1; 100])),
+        [ContentError::UnexpectedChunk]
+    );
     assert_eq!(
         errors(&r.handle_text(r#"{"kind":"image_end"}"#)),
         [ContentError::NoTransfer]
@@ -216,7 +254,10 @@ fn a_chunk_flood_without_a_transfer_gives_one_event_and_blocks() {
     assert_eq!(events, 2, "one unexpected_chunk and one too_many_errors");
     assert!(r.is_blocked());
     // Blocked: even valid messages are ignored.
-    assert!(r.handle_text(&link_message("https://example.org").unwrap()).is_empty());
+    assert!(
+        r.handle_text(&link_message("https://example.org").unwrap())
+            .is_empty()
+    );
     assert!(r.handle_text(&cmd_message(ControlCmd::Stop)).is_empty());
 }
 
@@ -228,7 +269,10 @@ fn a_new_transfer_interrupts_the_old_one() {
     // Interleaved: a document starts while the image is open.
     let ev = r.handle_text(&doc_start(MINIMAL.len() as u64));
     assert_eq!(errors(&ev), [ContentError::Interrupted]);
-    assert!(ev.iter().any(|e| matches!(e, ContentEvent::TransferStarted { document: true, .. })));
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, ContentEvent::TransferStarted { document: true, .. }))
+    );
     // The image's end message now finds a document transfer: wrong kind, nothing delivered.
     let ev = r.handle_text(r#"{"kind":"image_end"}"#);
     assert_eq!(errors(&ev), [ContentError::NoTransfer]);
@@ -242,8 +286,14 @@ fn end_of_the_wrong_kind_is_refused() {
     r.handle_binary(b"%PDF-");
     let ev = r.handle_text(r#"{"kind":"image_end"}"#);
     assert_eq!(errors(&ev), [ContentError::NoTransfer]);
-    assert!(!ev.iter().any(|e| matches!(e, ContentEvent::DocumentOpened { .. })));
-    assert_eq!(errors(&r.handle_text(r#"{"kind":"document_end"}"#)), [ContentError::NoTransfer]);
+    assert!(
+        !ev.iter()
+            .any(|e| matches!(e, ContentEvent::DocumentOpened { .. }))
+    );
+    assert_eq!(
+        errors(&r.handle_text(r#"{"kind":"document_end"}"#)),
+        [ContentError::NoTransfer]
+    );
 }
 
 #[test]
@@ -253,7 +303,10 @@ fn a_refused_start_drops_an_open_transfer() {
     let ev = r.handle_text(r#"{"kind":"image","name":"x","mime":"image/svg+xml","size":5}"#);
     assert_eq!(errors(&ev), [ContentError::BadMessage]);
     assert!(!r.transfer_active());
-    assert_eq!(errors(&r.handle_binary(&[0; 1000])), [ContentError::UnexpectedChunk]);
+    assert_eq!(
+        errors(&r.handle_binary(&[0; 1000])),
+        [ContentError::UnexpectedChunk]
+    );
 }
 
 #[test]
@@ -284,7 +337,13 @@ fn a_pdf_is_opened_rendered_and_driven_by_commands() {
         _ => None,
     });
     assert_eq!(opened, Some(("class.pdf".into(), 3)));
-    let Some(ContentEvent::PageRendered { page, width, height, rgba }) = ev.last() else {
+    let Some(ContentEvent::PageRendered {
+        page,
+        width,
+        height,
+        rgba,
+    }) = ev.last()
+    else {
         panic!("{ev:?}")
     };
     assert_eq!((*page, *width), (1, 400));
@@ -296,29 +355,57 @@ fn a_pdf_is_opened_rendered_and_driven_by_commands() {
         [ContentEvent::PageRendered { page, .. }] => Some(*page),
         _ => None,
     };
-    assert_eq!(page_of(&r.handle_text(&cmd_message(ControlCmd::NextPage))), Some(2));
-    assert_eq!(page_of(&r.handle_text(&cmd_message(ControlCmd::NextPage))), Some(3));
+    assert_eq!(
+        page_of(&r.handle_text(&cmd_message(ControlCmd::NextPage))),
+        Some(2)
+    );
+    assert_eq!(
+        page_of(&r.handle_text(&cmd_message(ControlCmd::NextPage))),
+        Some(3)
+    );
     // At the last page nothing changes, nothing is rendered again.
     assert!(r.handle_text(&cmd_message(ControlCmd::NextPage)).is_empty());
-    assert_eq!(page_of(&r.handle_text(&cmd_message(ControlCmd::PrevPage))), Some(2));
-    assert_eq!(page_of(&r.handle_text(&cmd_message(ControlCmd::GoToPage { page: 1 }))), Some(1));
+    assert_eq!(
+        page_of(&r.handle_text(&cmd_message(ControlCmd::PrevPage))),
+        Some(2)
+    );
+    assert_eq!(
+        page_of(&r.handle_text(&cmd_message(ControlCmd::GoToPage { page: 1 }))),
+        Some(1)
+    );
     // Out of range is clamped by the page state, not refused.
-    assert_eq!(page_of(&r.handle_text(&cmd_message(ControlCmd::GoToPage { page: 999 }))), Some(3));
+    assert_eq!(
+        page_of(&r.handle_text(&cmd_message(ControlCmd::GoToPage { page: 999 }))),
+        Some(3)
+    );
     assert_eq!(r.violations(), 0);
 
-    assert_eq!(r.handle_text(&cmd_message(ControlCmd::Stop)), [ContentEvent::ContentStopped]);
+    assert_eq!(
+        r.handle_text(&cmd_message(ControlCmd::Stop)),
+        [ContentEvent::ContentStopped]
+    );
     assert_eq!(r.document_state(), None);
-    assert!(r.handle_text(&cmd_message(ControlCmd::NextPage)).is_empty(), "nothing to turn");
+    assert!(
+        r.handle_text(&cmd_message(ControlCmd::NextPage)).is_empty(),
+        "nothing to turn"
+    );
 }
 
 #[test]
 fn page_commands_without_a_document_are_ignored() {
     let mut r = rx();
-    for c in [ControlCmd::NextPage, ControlCmd::PrevPage, ControlCmd::GoToPage { page: 2 }] {
+    for c in [
+        ControlCmd::NextPage,
+        ControlCmd::PrevPage,
+        ControlCmd::GoToPage { page: 2 },
+    ] {
         assert!(r.handle_text(&cmd_message(c)).is_empty());
     }
     assert_eq!(r.violations(), 0);
-    assert_eq!(r.handle_text(&cmd_message(ControlCmd::Stop)), [ContentEvent::ContentStopped]);
+    assert_eq!(
+        r.handle_text(&cmd_message(ControlCmd::Stop)),
+        [ContentEvent::ContentStopped]
+    );
 }
 
 #[test]
@@ -326,7 +413,10 @@ fn stop_cancels_a_transfer() {
     let mut r = rx();
     r.handle_text(&image_start(50_000));
     r.handle_binary(&[0; CHUNK_SIZE]);
-    assert_eq!(r.handle_text(&cmd_message(ControlCmd::Stop)), [ContentEvent::ContentStopped]);
+    assert_eq!(
+        r.handle_text(&cmd_message(ControlCmd::Stop)),
+        [ContentEvent::ContentStopped]
+    );
     assert!(!r.transfer_active());
 }
 
@@ -364,14 +454,20 @@ fn a_new_document_or_image_replaces_the_shown_one() {
     assert_eq!(r.document_state(), None);
     feed(&mut r, document_transfer("a.pdf", MINIMAL).unwrap());
     assert_eq!(r.document_state(), Some((1, 1)));
-    feed(&mut r, image_transfer("i.png", ImageMime::Png, &[1; 10]).unwrap());
+    feed(
+        &mut r,
+        image_transfer("i.png", ImageMime::Png, &[1; 10]).unwrap(),
+    );
     assert_eq!(r.document_state(), None, "an image replaces the document");
 }
 
 #[test]
 fn the_target_width_is_clamped_and_rerenders() {
     let mut r = rx();
-    assert!(r.set_target_width(800).is_empty(), "no document, nothing to render");
+    assert!(
+        r.set_target_width(800).is_empty(),
+        "no document, nothing to render"
+    );
     feed(&mut r, document_transfer("m.pdf", MINIMAL).unwrap());
     let ev = r.set_target_width(300);
     let [ContentEvent::PageRendered { width, height, .. }] = &ev[..] else {
@@ -380,10 +476,14 @@ fn the_target_width_is_clamped_and_rerenders() {
     assert_eq!((*width, *height), (300, 150));
     // Too small: raised to the minimum. Too big: lowered to the output limit.
     let ev = r.set_target_width(1);
-    let [ContentEvent::PageRendered { width, .. }] = &ev[..] else { panic!() };
+    let [ContentEvent::PageRendered { width, .. }] = &ev[..] else {
+        panic!()
+    };
     assert_eq!(*width, MIN_RENDER_WIDTH);
     let ev = r.set_target_width(u32::MAX);
-    let [ContentEvent::PageRendered { width, height, .. }] = &ev[..] else { panic!("{ev:?}") };
+    let [ContentEvent::PageRendered { width, height, .. }] = &ev[..] else {
+        panic!("{ev:?}")
+    };
     assert!(*width <= Limits::default().max_output_side);
     assert!(u64::from(*width) * u64::from(*height) <= Limits::default().max_output_pixels);
 }

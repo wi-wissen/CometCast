@@ -21,12 +21,12 @@ mod content;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime};
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
     ConnectionState, IceServerConfig, MediaSnapshot, ServerAddr, Session, SessionConfig,
     SessionEvent, SignalingClient, TlsTrust, TransportError, VideoCodec, altcha, ice,
 };
-pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 

@@ -10,9 +10,10 @@ the Rust core's WebRTC path (assumptions A1/A2, measurement point 2 in
 | Where | What |
 | --- | --- |
 | `crates/cc-transport` | `SignalingClient` (WebSocket, `cc-proto` message types, plain or TLS), `net` (server address parsing, TLS trust, a minimal HTTP GET), `altcha` (proof-of-work solver), `ice` (`/ice-servers` client), `Session` (wrapper over the `webrtc` crate), `Route`, RTP counters and key frame check |
+| `crates/cc-files` | Content over the control data channel: message set (web format plus `document`), sender chunking, receiver state machine with hard limits, PDF hand-over to `cc-docs` (see below) |
 | `crates/cc-receiver` | `ReceiverCore`: creates a room (solves ALTCHA when the server asks), exposes the code, answers the offer, reports video through events |
 | `crates/cc-sender` | `SenderCore`: joins by code, offers, sends a synthetic VP8 stream, or the real screen as H.264 (see [capture.md](capture.md)) |
-| `bins/cometcast-cli` | `receive` and `send` commands (developer tool, English output only) |
+| `bins/cometcast-cli` | `receive`, `send`, `send-file` and `send-link` commands (developer tool, English output only) |
 | `tools/gen-test-frames.py` | Dev-time script that made `crates/cc-sender/assets/test-frames.ivf` |
 
 ## WebRTC library
@@ -75,6 +76,8 @@ cargo run -p cometcast-cli -- receive [--server ADDRESS] [--bind ADDR] [--ca-fil
 cargo run -p cometcast-cli -- send <CODE> [--server ADDRESS] [--seconds N] [--bind ADDR] [--ca-file PEM]
 cargo run -p cometcast-cli -- send <CODE> --screen [--display :99] [--fps 15] [--bitrate-kbps 2000]
 cargo run -p cometcast-cli -- receive --decode   # also decodes H.264 and prints size and mean colour
+cargo run -p cometcast-cli -- send-file <CODE> photo.png            # or a .pdf; --then next,go:3,stop sends page commands
+cargo run -p cometcast-cli -- send-link <CODE> https://example.org/
 ```
 
 `ADDRESS` is `HOST:PORT` (plain `ws://`) or a `ws://`, `wss://`, `http://` or `https://` URL.
@@ -85,6 +88,45 @@ certificate of a development server, `tls.self_signed_cert_out` in [server.md](s
 `stats packets=203 bytes=198354 frames=77 keyframes=2 (+61 packets/s)`. It exits with 0 when the sender
 leaves or on Ctrl-C. Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was exchanged. The default server is `127.0.0.1:8443`. `--bind` sets the local UDP address; the default
 `0.0.0.0:0` makes the library bind one socket per non-loopback interface.
+
+## Content over the control data channel
+
+The sender creates a data channel `control` (ordered, reliable) before the offer, as the web client does; the
+receiver accepts the first channel with that label and closes others. Message format and limits: [web-m2.md](web-m2.md)
+(JSON text messages `image` / `image_end` / `link` / `cmd`, 16 KiB binary chunks, plus the native `document` /
+`document_end` kinds for PDFs). It works with a media stream or alone (content-only offer without media sections).
+
+| Layer | What |
+| --- | --- |
+| `cc-transport`: `Session::create_control_channel`, `SessionEvent::ControlChannel`, `ControlChannel` | the channel; incoming messages through a **bounded** queue (64 messages); sending waits when more than 1 MiB is queued (`with_data_channel_send_buffer_limit`), thresholds 256 KiB / 1 MiB as the web client; `flush`, `close_graceful` |
+| `cc-files` | `wire` (parse and validate every message, link rules like the web client's `validateLinkUrl`), `outgoing` (chunking), `receiver::ContentReceiver` (state machine) |
+| `cc-sender` | `ContentSender` (content-only sender), `ControlSender` (`send_image`, `send_document`, `send_link`, `send_cmd`, `finish`), `SenderOptions::control` for a channel next to video |
+| `cc-receiver` | `ReceiverOptions::content` turns it on; events come from `ReceiverCore::take_content_events()`: `TransferStarted`, `ImageReceived`, `LinkRequested`, `DocumentOpened`, `PageRendered`, `ContentStopped`, `Error`; `set_content_target_width` |
+
+Receiver rules (each has a unit test in `crates/cc-files`, several also in `crates/cc-receiver/tests/content.rs`):
+
+- One transfer at a time. The buffer is reserved once at the announced size, which is checked against the limit first (images
+  10 MiB, PDFs 64 MiB and `cc-docs`' own file limit); data past the announced size ends the transfer.
+- Every chunk is exactly 16 KiB except the last, so messages are bounded by size / 16 KiB (tiny-chunk floods are refused);
+  chunks without a transfer, an end message of the wrong kind, a size mismatch and a transfer that interrupts another one
+  are protocol violations (reported; a flood of unexpected chunks gives one event). After 64 violations the receiver
+  blocks itself and closes the channel.
+- Links are validated again (http/https, no credentials, at most 2048 characters, no control characters, WHATWG parsing
+  through the `url` crate) and reported as `LinkRequested`; **never opened by the core**.
+- A PDF goes to `cc_docs::Document::open_with_options` (child process with memory and time limits, `Isolation::Auto` or the
+  application's choice) and a page is rendered only after its size was checked against the output limits (scaled down to
+  fit when it would be too large). Page numbers are clamped by `DocumentSession`. Every failure is an `Error` event.
+- Memory on the receiving side is bounded: library queue (256 messages), inbox (64), event queue (8; a slow application
+  slows the sender down), one transfer buffer, one document. Tested: 48 images of 1 MiB to a reader that does not read.
+- `ContentSender` closes the data channel before the connection (the close is ordered after the data), so the browser
+  delivers the last messages first; closing the connection at once lost the end of a transfer in about half of the runs
+  against Chromium. `send-file` also stays connected until Ctrl-C (or `--seconds N`) because a web receiver drops the
+  shown content when the sender leaves.
+
+UNCERTAIN: the limits (64 MiB documents, 64 violations, queue sizes, thresholds) are guesses, not measured. There is no
+timeout for a transfer that stalls half way (it holds one buffer until the next transfer or `stop`). Magic bytes of images
+are not checked (the web client does not either); the declared type only decides how the application shows the bytes.
+Throughput of the data channel was not measured. Only Chromium was tested against the native peers.
 
 ## Open servers, TLS and TURN (native side)
 
@@ -129,6 +171,9 @@ leaves or on Ctrl-C. Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left
 | Rust loopback | `cargo test -p cc-receiver --test loopback` | Real `cc-server` on an ephemeral port in the same process, `ReceiverCore` and `SenderCore` over real UDP on 127.0.0.1: at least 20 RTP packets, frames and VP8 key frames counted; `PeerLeft` after the sender stops; wrong code gives `room_not_found` |
 | Open mode, TLS, TURN list | `cargo test -p cc-receiver --test open_mode` | Real `cc-server` in open mode: `create_room` without ALTCHA is refused, with an invalid payload `altcha_invalid`; `ReceiverCore` solves the puzzle by itself and video flows (real UDP on 127.0.0.1); a solved puzzle cannot be used twice; `wss://` and `https://` against a self-signed server (refused without its certificate, works with it); an internal-mode server with a TURN secret hands out a list whose credential matches HMAC-SHA1, and both cores report it |
 | Solver, address parsing, HTTP parsing | `cargo test -p cc-transport` | A challenge made by the `altcha` crate (`crates/cc-transport/testdata/altcha-known.json`, also solved by the web test) is solved and verified; address forms; HTTP answers (content-length, chunked, partial); ICE list parsing; TURN configuration accepted by the library |
+| Content, native to native | `cargo test -p cc-receiver --test content` | Real `cc-server` and UDP on 127.0.0.1: image (byte for byte), link, PDF (3 pages, rendered at the target width in the `cc-docs` child process when `cc-docs-worker` is found, else in process), next/prev/go-to page, stop, a refused PDF, 48 MiB through a reader that does not read (back-pressure), a hostile sender (oversize announcement, junk, chunk flood: errors, then cut off), a channel next to video, a receiver without content that refuses the channel |
+| Content, state machine | `cargo test -p cc-files` | Chunking, reassembly, limits, hostile sequences (oversize, tiny chunks, chunk after end, interleaved transfers, truncated, wrong MIME and type, link rules, command edge cases, PDF handling) |
+| Content, browser and Rust | `cd apps/web && npm run build && npm run e2e:content` | Web content sender to `cometcast-cli receive` (image byte for byte, link printed and not opened, stop); `cometcast-cli send-file` to the web receiver (`<img>` `naturalWidth > 0`), `send-link` (link card), PDF (translated "cannot show documents yet", en and de); `send-file x.pdf --then next,go:3,prev,stop` to `receive` (pages 1, 2, 3, 2, stopped, with the sandboxed worker) |
 | Browser to Rust, Rust to browser | `cd apps/web && npm run build && npm run e2e:native` | Chromium web sender to `cometcast-cli receive` (packet counts rise every second) and `cometcast-cli send` to the web receiver (Chromium decodes the Rust VP8 stream at 320x180 and plays it) |
 
 Observed once in this environment (not a benchmark): browser to Rust, about 60 packets/s, VP8, 2 key frames in the
@@ -144,9 +189,9 @@ first seconds (the Rust receiver sends a picture-loss request at the start).
 - Chromium was started with `--disable-features=WebRtcHideLocalIpsWithMdns`; the Rust side cannot resolve `.local`
   mDNS candidate names, so with default Chromium settings across machines the connection may fail. UNCERTAIN: not tested.
 - Only Chromium was tested. Firefox and Safari are untested against the native peers.
-- One video m-line, no audio, no data channel, no control messages handled yet (the `control` messages are ignored by the cores).
+- One video m-line, no audio. The `control` data channel exists (see above); the signalling `control` messages of protocol.md are still ignored by the cores.
 - One sender per `ReceiverCore`: after `peer_left` the core stops. A new sender needs a new core (and a new room code).
-- Candidates: native clients leave `sdpMid` out (`null`) and set `sdpMLineIndex` to 0, which works for one bundled video line only.
+- Candidates: native clients leave `sdpMid` out (`null`) and set `sdpMLineIndex` to 0. With media plus data channel, or a data channel alone, everything is in one BUNDLE group and this worked against Chromium; other browsers are untested.
 - Server addresses accepted: `host:port`, `host:port/ws`, `ws://...`, `wss://...`, `http://...` (read as `ws://`), `https://...` (read as `wss://`).
 - Disconnected state: the library may report `Disconnected` and recover; both cores treat `Failed` and signalling loss as final, `Disconnected` is not.
   The receiver also gives up (error event) if no connection exists 30 s after the offer arrived (UNCERTAIN: placeholder value). The sender has no such timeout yet.

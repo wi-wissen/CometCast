@@ -2,9 +2,10 @@
 //
 // Sender -> receiver control channel (WebRTC DataChannel "control", ordered, reliable).
 // Message format: docs/web-m2.md.
-// UNCERTAIN: this message set is local to the web client for milestone M2. It should move to cc-proto
-// (and be implemented by the native clients) once it has been exercised; until then native clients
-// must not assume it.
+// UNCERTAIN: this message set is local to the web client for milestone M2 plus the `document` kinds
+// that the native clients send (PDF). It should move to cc-proto once it has been exercised. The native
+// implementation is crates/cc-files. This client cannot show documents yet: it skips the data of a
+// document and tells the person (error code `document_unsupported`).
 
 export const CONTROL_CHANNEL_LABEL = 'control'
 export const CHUNK_SIZE = 16 * 1024
@@ -14,6 +15,8 @@ export const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image
 export type ImageMime = (typeof IMAGE_MIME_TYPES)[number]
 export const MAX_LINK_LENGTH = 2048
 export const MAX_NAME_LENGTH = 255
+/** Largest document a native sender sends (64 MiB). Only used to bound the data that is skipped. */
+export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
 /** Stop writing when this much is queued in the channel; resume at the low-water mark. */
 const HIGH_WATER = 1024 * 1024
 const LOW_WATER = 256 * 1024
@@ -26,6 +29,8 @@ export type ControlMessage =
   | { kind: 'cmd'; cmd: ControlCmd }
   | { kind: 'image'; name: string; mime: ImageMime; size: number }
   | { kind: 'image_end' }
+  | { kind: 'document'; name: string; mime: 'application/pdf'; size: number }
+  | { kind: 'document_end' }
   | { kind: 'link'; url: string }
 
 /** The part of RTCDataChannel that is used here (so tests can provide a fake). */
@@ -112,6 +117,16 @@ export function parseControlMessage(text: string): ControlMessage | null {
     }
     case 'image_end':
       return { kind: 'image_end' }
+    case 'document': {
+      if (typeof o.name !== 'string' || o.name.length === 0 || o.name.length > MAX_NAME_LENGTH) return null
+      if (o.mime !== 'application/pdf') return null
+      if (!isPositiveInt(o.size, MAX_DOCUMENT_BYTES)) return null
+      const name = stripBidi(o.name)
+      if (name.length === 0) return null
+      return { kind: 'document', name, mime: 'application/pdf', size: o.size }
+    }
+    case 'document_end':
+      return { kind: 'document_end' }
     case 'link': {
       if (typeof o.url !== 'string') return null
       const url = validateLinkUrl(o.url)
@@ -134,7 +149,13 @@ export function stripBidi(s: string): string {
   return s.replace(/[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/g, '')
 }
 
-export type TransferErrorCode = 'unexpected_chunk' | 'too_large' | 'size_mismatch' | 'no_transfer' | 'bad_chunk'
+export type TransferErrorCode =
+  | 'unexpected_chunk'
+  | 'too_large'
+  | 'size_mismatch'
+  | 'no_transfer'
+  | 'bad_chunk'
+  | 'document_unsupported'
 
 /**
  * Reassembles one image from its metadata message and binary chunks.
@@ -200,6 +221,8 @@ export interface ControlReceiverHandlers {
 /** Receiver side: feed it every message of the channel. */
 export class ControlReceiver {
   private readonly asm = new ImageAssembler()
+  /** A document (PDF) from a native sender is being skipped: only the byte count is kept, never the data. */
+  private skipping: { size: number; received: number } | null = null
   private lastProgress = 0
   /** `now` is injectable for tests; progress callbacks are throttled to one per PROGRESS_INTERVAL_MS. */
   constructor(
@@ -216,9 +239,20 @@ export class ControlReceiver {
 
   reset(): void {
     this.asm.reset()
+    this.skipping = null
   }
 
   private handleBinary(chunk: Uint8Array): void {
+    const skip = this.skipping
+    if (skip) {
+      // Same chunk rule as for images, without keeping anything.
+      skip.received += chunk.byteLength
+      if (skip.received > skip.size || (chunk.byteLength !== CHUNK_SIZE && skip.received !== skip.size)) {
+        this.skipping = null
+        this.h.onError(skip.received > skip.size ? 'too_large' : 'bad_chunk')
+      }
+      return
+    }
     const err = this.asm.push(chunk)
     if (err) {
       this.h.onProgress(null)
@@ -237,10 +271,24 @@ export class ControlReceiver {
     if (!m) return this.h.onError('bad_message')
     switch (m.kind) {
       case 'cmd':
-        if (m.cmd === 'stop') this.asm.reset()
+        if (m.cmd === 'stop') this.reset()
         this.h.onCmd(m.cmd)
         break
+      case 'document':
+        // PDF rendering is not available in the web client yet: skip the data, report at the end.
+        this.asm.reset()
+        this.h.onProgress(null)
+        this.skipping = { size: m.size, received: 0 }
+        break
+      case 'document_end': {
+        const skip = this.skipping
+        this.skipping = null
+        if (!skip) this.h.onError('no_transfer')
+        else this.h.onError(skip.received === skip.size ? 'document_unsupported' : 'size_mismatch')
+        break
+      }
       case 'image':
+        this.skipping = null
         this.asm.start(m)
         this.lastProgress = this.now()
         this.h.onProgress(this.asm.progress)

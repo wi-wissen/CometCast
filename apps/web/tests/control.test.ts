@@ -255,6 +255,68 @@ describe('ControlReceiver resource limits (regression: 1-byte message flood)', (
   })
 })
 
+describe('documents from native senders (the web client cannot show them yet)', () => {
+  const start = (size: number, name = 'a.pdf', mime = 'application/pdf') =>
+    JSON.stringify({ kind: 'document', name, mime, size })
+
+  it('parses the document kinds and refuses other types and sizes', () => {
+    expect(parseControlMessage(start(5))).toEqual({ kind: 'document', name: 'a.pdf', mime: 'application/pdf', size: 5 })
+    expect(parseControlMessage('{"kind":"document_end"}')).toEqual({ kind: 'document_end' })
+    expect(parseControlMessage(start(5, 'a', 'image/png'))).toBeNull()
+    expect(parseControlMessage(start(0))).toBeNull()
+    expect(parseControlMessage(start(64 * 1024 * 1024 + 1))).toBeNull()
+    expect(parseControlMessage(start(5, ''))).toBeNull()
+  })
+  it('skips the data and reports one translated error, without keeping bytes or crashing', () => {
+    const { log, handlers } = collect()
+    const r = new ControlReceiver(handlers)
+    const size = CHUNK_SIZE * 2 + 10
+    r.handle(start(size))
+    r.handle(new ArrayBuffer(CHUNK_SIZE))
+    r.handle(new ArrayBuffer(CHUNK_SIZE))
+    r.handle(new ArrayBuffer(10))
+    expect(log.filter((l) => l.startsWith('error:'))).toEqual([])
+    r.handle('{"kind":"document_end"}')
+    expect(log.filter((l) => l.startsWith('error:'))).toEqual(['error:document_unsupported'])
+    expect(log.some((l) => l.startsWith('image:'))).toBe(false)
+    // Data after the end is unexpected again.
+    r.handle(new ArrayBuffer(CHUNK_SIZE))
+    expect(log.at(-1)).toBe('error:unexpected_chunk')
+  })
+  it('applies the chunk rule while skipping and does not accept incomplete documents', () => {
+    const { log, handlers } = collect()
+    const errs = () => log.filter((l) => l.startsWith('error:'))
+    const r = new ControlReceiver(handlers)
+    r.handle(start(CHUNK_SIZE * 3))
+    r.handle(new ArrayBuffer(5)) // tiny chunk: flood protection
+    expect(errs()).toEqual(['error:bad_chunk'])
+    r.handle('{"kind":"document_end"}')
+    expect(errs()).toEqual(['error:bad_chunk', 'error:no_transfer'])
+    log.length = 0
+    r.handle(start(CHUNK_SIZE))
+    r.handle(new ArrayBuffer(CHUNK_SIZE + 1)) // more than announced
+    expect(errs()).toEqual(['error:too_large'])
+    log.length = 0
+    r.handle(start(CHUNK_SIZE * 2))
+    r.handle(new ArrayBuffer(CHUNK_SIZE))
+    r.handle('{"kind":"document_end"}') // truncated
+    expect(errs()).toEqual(['error:size_mismatch'])
+  })
+  it('lets an image replace a skipped document and stop clears it', () => {
+    const { log, handlers } = collect()
+    const r = new ControlReceiver(handlers, () => 0)
+    r.handle(start(CHUNK_SIZE))
+    r.handle(JSON.stringify({ kind: 'image', name: 'p.png', mime: 'image/png', size: 3 }))
+    r.handle(new ArrayBuffer(3))
+    r.handle('{"kind":"image_end"}')
+    expect(log.at(-1)).toBe('image:p.png')
+    r.handle(start(CHUNK_SIZE))
+    r.handle('{"kind":"cmd","cmd":"stop"}')
+    r.handle(new ArrayBuffer(CHUNK_SIZE))
+    expect(log.at(-1)).toBe('error:unexpected_chunk')
+  })
+})
+
 describe('stripBidi', () => {
   it('removes bidi controls', () => {
     expect(stripBidi('ab\u202Ecd\u2066e\u200F')).toBe('abcde')

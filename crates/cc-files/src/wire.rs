@@ -135,11 +135,7 @@ pub enum ParseError {
 
 /// Parse one text message. `max_size` is the largest `size` accepted for the transfer kinds.
 /// Never panics.
-pub fn parse_message(
-    text: &str,
-    max_image: u64,
-    max_document: u64,
-) -> Result<Message, ParseError> {
+pub fn parse_message(text: &str, max_image: u64, max_document: u64) -> Result<Message, ParseError> {
     // Bytes first (cheap), then characters: a message cannot be longer in characters
     // than in bytes, so the byte test never refuses a message that is short enough.
     if text.len() > MAX_TEXT_CHARS * 4 || text.chars().count() > MAX_TEXT_CHARS {
@@ -216,7 +212,9 @@ fn parse_name(v: Option<&serde_json::Value>) -> Result<String, ParseError> {
 
 fn parse_size(v: Option<&serde_json::Value>, max: u64) -> Result<u64, ParseError> {
     // `as_u64` is `None` for fractions, negative numbers and numbers written as floats.
-    let size = v.and_then(|s| s.as_u64()).ok_or(ParseError::InvalidFields)?;
+    let size = v
+        .and_then(|s| s.as_u64())
+        .ok_or(ParseError::InvalidFields)?;
     if size == 0 || size > max {
         return Err(ParseError::InvalidFields);
     }
@@ -230,7 +228,9 @@ fn is_bidi(c: char) -> bool {
 /// Removes control characters and bidirectional controls, which can make a displayed name
 /// read differently from what it is.
 pub fn sanitize_name(s: &str) -> String {
-    s.chars().filter(|c| !c.is_control() && !is_bidi(*c)).collect()
+    s.chars()
+        .filter(|c| !c.is_control() && !is_bidi(*c))
+        .collect()
 }
 
 /// Accepts only absolute `http`/`https` URLs without credentials. Returns the normalised
@@ -258,7 +258,9 @@ pub fn validate_link(input: &str) -> Option<String> {
     // The web client lets `http://@host` through (empty user name); the raw text of the
     // authority is stricter here: any `@` before the path is refused.
     let after_scheme = s.split_once("://")?.1;
-    let authority_end = after_scheme.find(['/', '\\', '?', '#']).unwrap_or(after_scheme.len());
+    let authority_end = after_scheme
+        .find(['/', '\\', '?', '#'])
+        .unwrap_or(after_scheme.len());
     if after_scheme[..authority_end].contains('@') {
         return None;
     }
@@ -361,7 +363,13 @@ mod tests {
 
     #[test]
     fn bad_mimes_are_refused() {
-        for mime in ["image/svg+xml", "text/html", "IMAGE/PNG", "image/png; x=1", ""] {
+        for mime in [
+            "image/svg+xml",
+            "text/html",
+            "IMAGE/PNG",
+            "image/png; x=1",
+            "",
+        ] {
             let t = format!(r#"{{"kind":"image","name":"a","mime":"{mime}","size":3}}"#);
             assert_eq!(parse(&t), Err(ParseError::BadMime), "{mime}");
         }
@@ -373,13 +381,26 @@ mod tests {
 
     #[test]
     fn sizes_are_checked() {
-        let img = |size: &str| format!(r#"{{"kind":"image","name":"a","mime":"image/png","size":{size}}}"#);
+        let img = |size: &str| {
+            format!(r#"{{"kind":"image","name":"a","mime":"image/png","size":{size}}}"#)
+        };
         assert!(parse(&img("1")).is_ok());
         assert!(parse(&img("10485760")).is_ok());
-        for bad in ["0", "-1", "10485761", "1.5", "\"7\"", "null", "1e3", "99999999999999999999"] {
+        for bad in [
+            "0",
+            "-1",
+            "10485761",
+            "1.5",
+            "\"7\"",
+            "null",
+            "1e3",
+            "99999999999999999999",
+        ] {
             assert_eq!(parse(&img(bad)), Err(ParseError::InvalidFields), "{bad}");
         }
-        let doc = |size: u64| format!(r#"{{"kind":"document","name":"a","mime":"application/pdf","size":{size}}}"#);
+        let doc = |size: u64| {
+            format!(r#"{{"kind":"document","name":"a","mime":"application/pdf","size":{size}}}"#)
+        };
         assert!(parse(&doc(MAX_DOCUMENT_BYTES)).is_ok());
         assert!(parse(&doc(MAX_DOCUMENT_BYTES + 1)).is_err());
         // A receiver with a smaller limit refuses earlier.
@@ -397,7 +418,10 @@ mod tests {
                 size: 3
             })
         );
-        assert!(parse(&t("\"\\u202e\\u0000\"")).is_err(), "nothing left after cleaning");
+        assert!(
+            parse(&t("\"\\u202e\\u0000\"")).is_err(),
+            "nothing left after cleaning"
+        );
         assert!(parse(&t(r#""""#)).is_err());
         assert!(parse(&t(&format!("\"{}\"", "a".repeat(256)))).is_err());
         assert!(parse(&t(&format!("\"{}\"", "a".repeat(255)))).is_ok());
@@ -430,7 +454,10 @@ mod tests {
         assert_eq!(parse(&"[".repeat(100_000)), Err(ParseError::TooLong));
         // Deeply nested JSON: serde_json has a recursion limit, so this is an error, not a crash.
         assert!(parse(&format!("{}1{}", "[".repeat(5000), "]".repeat(5000))).is_err());
-        let long = format!(r#"{{"kind":"link","url":"https://a.org/{}"}}"#, "x".repeat(9000));
+        let long = format!(
+            r#"{{"kind":"link","url":"https://a.org/{}"}}"#,
+            "x".repeat(9000)
+        );
         assert_eq!(parse(&long), Err(ParseError::TooLong));
     }
 
@@ -440,7 +467,10 @@ mod tests {
             validate_link("https://example.org/path?x=1").as_deref(),
             Some("https://example.org/path?x=1")
         );
-        assert_eq!(validate_link("http://Example.ORG").as_deref(), Some("http://example.org/"));
+        assert_eq!(
+            validate_link("http://Example.ORG").as_deref(),
+            Some("http://example.org/")
+        );
         assert_eq!(
             validate_link("  https://example.org  ").as_deref(),
             Some("https://example.org/")
@@ -473,7 +503,10 @@ mod tests {
             validate_link("https://example.org\\@evil.example").as_deref(),
             Some("https://example.org/@evil.example")
         );
-        let at_limit = format!("https://a.org/{}", "x".repeat(MAX_LINK_LENGTH - "https://a.org/".len()));
+        let at_limit = format!(
+            "https://a.org/{}",
+            "x".repeat(MAX_LINK_LENGTH - "https://a.org/".len())
+        );
         assert!(validate_link(&at_limit).is_some());
         assert!(validate_link(&format!("{at_limit}x")).is_none());
         // Internationalised host names are normalised to punycode like in a browser.

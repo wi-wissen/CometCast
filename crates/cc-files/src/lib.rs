@@ -18,7 +18,9 @@ pub mod outgoing;
 pub mod receiver;
 pub mod wire;
 
-pub use outgoing::{Outgoing, SendError, Transfer, cmd_message, document_transfer, image_transfer, link_message};
+pub use outgoing::{
+    Outgoing, SendError, Transfer, cmd_message, document_transfer, image_transfer, link_message,
+};
 pub use receiver::{
     Blob, ContentError, ContentEvent, ContentOptions, ContentReceiver, DEFAULT_MAX_VIOLATIONS,
     DEFAULT_TARGET_WIDTH,

@@ -53,7 +53,8 @@
       "too_large": "The image was larger than announced and was discarded.",
       "size_mismatch": "The image arrived incomplete and was discarded.",
       "no_transfer": "An image transfer ended unexpectedly and was ignored.",
-      "bad_chunk": "Image data arrived in an unexpected form and was discarded."
+      "bad_chunk": "Image data arrived in an unexpected form and was discarded.",
+      "document_unsupported": "The sender sent a PDF document. This app cannot show documents yet."
     },
     "content": {
       "imageAlt": "Image from the sender: {name}",

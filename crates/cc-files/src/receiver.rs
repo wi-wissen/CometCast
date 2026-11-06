@@ -297,7 +297,9 @@ impl ContentReceiver {
         let msg = parse_message(
             text,
             self.opts.max_image_bytes,
-            self.opts.max_document_bytes.min(self.opts.doc_limits.max_file_bytes as u64),
+            self.opts
+                .max_document_bytes
+                .min(self.opts.doc_limits.max_file_bytes as u64),
         );
         let msg = match msg {
             Ok(m) => m,
@@ -411,11 +413,19 @@ impl ContentReceiver {
             return;
         };
         if (a.kind == Kind::Document) != document {
-            self.violation(out, ContentError::NoTransfer, "end message of the wrong kind");
+            self.violation(
+                out,
+                ContentError::NoTransfer,
+                "end message of the wrong kind",
+            );
             return;
         }
         if a.buf.len() != a.size {
-            self.violation(out, ContentError::SizeMismatch, "fewer bytes than announced");
+            self.violation(
+                out,
+                ContentError::SizeMismatch,
+                "fewer bytes than announced",
+            );
             return;
         }
         match a.kind {
@@ -450,7 +460,10 @@ impl ContentReceiver {
             .ok()
             .and_then(DocumentSession::new);
         let Some(pages) = pages else {
-            out.push(doc_error(ContentError::DocumentRejected, &DocError::NoPages));
+            out.push(doc_error(
+                ContentError::DocumentRejected,
+                &DocError::NoPages,
+            ));
             return;
         };
         out.push(ContentEvent::DocumentOpened {
@@ -495,7 +508,12 @@ impl ContentReceiver {
         };
         let index = shown.pages.current_index();
         let page = shown.pages.current_page();
-        match render(&shown.doc, index, self.opts.target_width, &self.opts.doc_limits) {
+        match render(
+            &shown.doc,
+            index,
+            self.opts.target_width,
+            &self.opts.doc_limits,
+        ) {
             Ok(p) => out.push(ContentEvent::PageRendered {
                 page,
                 width: p.width,
@@ -528,7 +546,10 @@ fn render(
     }
     let max_side = f64::from(limits.max_output_side.max(1));
     let max_pixels = limits.max_output_pixels.max(1) as f64;
-    let mut w = f64::from(width.clamp(MIN_RENDER_WIDTH, limits.max_output_side.max(MIN_RENDER_WIDTH)));
+    let mut w = f64::from(width.clamp(
+        MIN_RENDER_WIDTH,
+        limits.max_output_side.max(MIN_RENDER_WIDTH),
+    ));
     let aspect = f64::from(size.height_pt) / f64::from(size.width_pt);
     let mut h = (w * aspect).ceil();
     if h > max_side || w * h > max_pixels {

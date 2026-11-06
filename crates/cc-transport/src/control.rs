@@ -216,4 +216,21 @@ impl ControlChannel {
     pub async fn close(&self) {
         let _ = self.inner.dc.close().await;
     }
+
+    /// Close the channel and wait (at most `timeout`) until the close was completed with the
+    /// peer. The close is ordered after the data already sent, so a browser delivers every
+    /// message to its application before it sees the channel close; closing the whole
+    /// connection at once can cut off the end of a transfer.
+    pub async fn close_graceful(&self, timeout: Duration) {
+        let _ = self.inner.dc.close().await;
+        let mut closed = self.inner.closed.clone();
+        let _ = tokio::time::timeout(timeout, async {
+            while !*closed.borrow_and_update() {
+                if closed.changed().await.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
+    }
 }

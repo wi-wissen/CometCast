@@ -23,6 +23,7 @@ use rtc::rtp_transceiver::rtp_sender::{
     RtpCodecKind,
 };
 use tokio::sync::{Mutex, OnceCell, mpsc};
+use webrtc::data_channel::RTCDataChannelInit;
 use webrtc::media_stream::MediaStreamTrack;
 use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
 use webrtc::media_stream::track_local::{TrackLocal, TrackLocalEvent};
@@ -32,7 +33,6 @@ use webrtc::peer_connection::{
     RTCIceCandidateInit, RTCIceServer, RTCPeerConnectionIceEvent, RTCPeerConnectionState,
     RTCSessionDescription,
 };
-use webrtc::data_channel::RTCDataChannelInit;
 use webrtc::rtp_transceiver::RtpSender;
 
 use crate::Route;

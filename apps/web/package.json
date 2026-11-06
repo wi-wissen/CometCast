@@ -14,6 +14,7 @@
     "e2e:native": "node e2e/native-receiver.spec.mjs",
     "e2e:screen": "node e2e/native-screen.spec.mjs",
     "e2e:m2": "node e2e/m2.spec.mjs",
+    "e2e:content": "node e2e/native-content.spec.mjs",
     "e2e:open": "node e2e/open-mode.spec.mjs"
   },
   "dependencies": {
