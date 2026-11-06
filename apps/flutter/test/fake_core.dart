@@ -105,13 +105,86 @@ class FakeCoreApi implements CoreApi {
     return captureInfoResult;
   }
 
-  // Same content as the real list of cc-discovery at the time of writing; the real values
-  // are checked in rust_core_test.dart.
-  @override
-  ServerDefaults serverDefaults() => const ServerDefaults(
-    servers: ['relay.cometcast.de:443'],
+  /// What serverDefaults answers (the offline answer of the core). Default: no policy,
+  /// the built-in list; the real values are checked in rust_core_test.dart.
+  ServerDefaults defaults = const ServerDefaults(
+    servers: [
+      ServerCandidate(
+        address: 'relay.cometcast.de:443',
+        source: 'default-list',
+      ),
+    ],
+    locked: false,
+    announcementsAllowed: true,
+    notices: [],
     devFallback: '127.0.0.1:8443',
   );
+
+  @override
+  ServerDefaults serverDefaults() => defaults;
+
+  /// What discoverServers answers; null = the same as [defaults]. Set [discoveryGate] to keep
+  /// the search "running" until the test completes it.
+  ServerDiscovery? discovery;
+  Completer<void>? discoveryGate;
+  bool discoveryThrows = false;
+  int discoverCalls = 0;
+
+  @override
+  Future<ServerDiscovery> discoverServers() async {
+    discoverCalls++;
+    final gate = discoveryGate;
+    if (gate != null) await gate.future;
+    if (discoveryThrows) throw StateError('discovery failed');
+    return discovery ??
+        ServerDiscovery(
+          servers: defaults.servers,
+          locked: defaults.locked,
+          announcementsAllowed: defaults.announcementsAllowed,
+          notices: defaults.notices,
+          warnings: const [],
+        );
+  }
+
+  // Announcing the receiver.
+  final advertiseCalls = <({String name, String? server})>[];
+  int stopAdvertisingCalls = 0;
+
+  /// Answers of the next startAdvertising calls (the last one repeats); default: started.
+  List<AdvertiseOutcome> advertiseOutcomes = [AdvertiseOutcome.started];
+
+  @override
+  Future<AdvertiseOutcome> startAdvertising({
+    required String name,
+    String? preferredServer,
+  }) async {
+    advertiseCalls.add((name: name, server: preferredServer));
+    final i = advertiseCalls.length - 1;
+    return advertiseOutcomes[i < advertiseOutcomes.length
+        ? i
+        : advertiseOutcomes.length - 1];
+  }
+
+  @override
+  Future<void> stopAdvertising() async => stopAdvertisingCalls++;
+
+  // Receivers nearby.
+  StreamController<NearbyReceiverEvent>? nearbyEvents;
+  int watchCalls = 0;
+  int stopWatchingCalls = 0;
+  bool nearbyCancelled = false;
+
+  @override
+  Stream<NearbyReceiverEvent> watchReceivers() {
+    watchCalls++;
+    final c = nearbyEvents = StreamController<NearbyReceiverEvent>(
+      onCancel: () => nearbyCancelled = true,
+    );
+    return c.stream;
+  }
+
+  @override
+  Future<void> stopWatchingReceivers() async => stopWatchingCalls++;
 
   @override
   Stream<SenderUiEvent> startSender({

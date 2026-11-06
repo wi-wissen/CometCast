@@ -27,6 +27,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<NearbyReceiverEvent>
+  dco_decode_StreamSink_nearby_receiver_event_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<ReceiverUiEvent> dco_decode_StreamSink_receiver_ui_event_Sse(
     dynamic raw,
   );
@@ -38,6 +42,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String dco_decode_String(dynamic raw);
+
+  @protected
+  AdvertiseOutcome dco_decode_advertise_outcome(dynamic raw);
 
   @protected
   bool dco_decode_bool(dynamic raw);
@@ -61,6 +68,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CaptureSupport dco_decode_capture_support(dynamic raw);
 
   @protected
+  DiscoveryWarning dco_decode_discovery_warning(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -73,6 +83,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<CaptureMonitor> dco_decode_list_capture_monitor(dynamic raw);
 
   @protected
+  List<DiscoveryWarning> dco_decode_list_discovery_warning(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
@@ -80,6 +93,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw);
+
+  @protected
+  NearbyReceiverEvent dco_decode_nearby_receiver_event(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -139,6 +155,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<NearbyReceiverEvent>
+  sse_decode_StreamSink_nearby_receiver_event_Sse(SseDeserializer deserializer);
+
+  @protected
   RustStreamSink<ReceiverUiEvent> sse_decode_StreamSink_receiver_ui_event_Sse(
     SseDeserializer deserializer,
   );
@@ -150,6 +170,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
+
+  @protected
+  AdvertiseOutcome sse_decode_advertise_outcome(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
@@ -175,6 +198,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CaptureSupport sse_decode_capture_support(SseDeserializer deserializer);
 
   @protected
+  DiscoveryWarning sse_decode_discovery_warning(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
@@ -189,6 +215,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<DiscoveryWarning> sse_decode_list_discovery_warning(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -196,6 +227,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<ServerCandidate> sse_decode_list_server_candidate(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  NearbyReceiverEvent sse_decode_nearby_receiver_event(
     SseDeserializer deserializer,
   );
 
@@ -266,6 +302,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_nearby_receiver_event_Sse(
+    RustStreamSink<NearbyReceiverEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_receiver_ui_event_Sse(
     RustStreamSink<ReceiverUiEvent> self,
     SseSerializer serializer,
@@ -279,6 +321,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_advertise_outcome(
+    AdvertiseOutcome self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
@@ -314,6 +362,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_discovery_warning(
+    DiscoveryWarning self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -329,6 +383,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_discovery_warning(
+    List<DiscoveryWarning> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -340,6 +400,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_server_candidate(
     List<ServerCandidate> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_nearby_receiver_event(
+    NearbyReceiverEvent self,
     SseSerializer serializer,
   );
 

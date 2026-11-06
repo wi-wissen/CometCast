@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'core/core_api.dart';
+import 'discovery.dart';
 import 'settings.dart';
 
 /// Translated text for a connection state (the words come from the ARB files).
@@ -134,20 +135,45 @@ class _ServerFieldState extends State<ServerField> {
   final FocusNode _focusNode = textFieldFocusNode(debugLabel: 'serverField');
 
   @override
+  void initState() {
+    super.initState();
+    widget.settings.addListener(_syncText);
+  }
+
+  @override
   void dispose() {
+    widget.settings.removeListener(_syncText);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
 
+  /// The settings changed the address (a tap on a suggestion, the result of the discovery).
+  void _syncText() {
+    if (_controller.text != widget.settings.serverAddress) {
+      _controller.text = widget.settings.serverAddress;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.settings,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final settings = widget.settings;
+    final locked = settings.locked;
     final field = TextField(
       key: const Key('serverField'),
       controller: _controller,
       focusNode: _focusNode,
       enabled: widget.enabled,
+      // Read-only, not disabled: the address can still be selected and copied.
+      readOnly: locked,
       autofocus: widget.autofocus,
       keyboardType: TextInputType.url,
       textInputAction: widget.textInputAction,
@@ -155,45 +181,130 @@ class _ServerFieldState extends State<ServerField> {
       enableSuggestions: false,
       decoration: InputDecoration(
         labelText: t.serverLabel,
-        helperText: t.serverHelper,
+        helperText: locked ? null : t.serverHelper,
+        suffixIcon: locked ? const Icon(Icons.lock_outline) : null,
         border: const OutlineInputBorder(),
       ),
-      onChanged: (v) => widget.settings.serverAddress = v,
+      onChanged: (v) => settings.serverAddress = v,
       onSubmitted: (_) => widget.onSubmitted?.call(),
     );
-    final suggestions = widget.settings.serverSuggestions;
-    if (suggestions.isEmpty) return field;
+    final suggestions = settings.serverSuggestions;
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         field,
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              t.serverSuggestionsLabel,
-              style: Theme.of(context).textTheme.labelMedium,
+        if (locked)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lock_outline, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    t.serverLockedNote,
+                    key: const Key('serverLockedNote'),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
             ),
-            for (final address in suggestions)
-              ActionChip(
-                key: Key('serverSuggestion:$address'),
-                label: Text(address),
-                onPressed: widget.enabled
-                    ? () {
-                        _controller.text = address;
-                        widget.settings.serverAddress = address;
-                      }
-                    : null,
+          ),
+        if (settings.discovering)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            // A still icon, not a spinner: nothing animates forever, and the screen is usable.
+            child: Semantics(
+              liveRegion: true,
+              child: Row(
+                children: [
+                  Icon(Icons.search, size: 18, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      t.discoveryProgress,
+                      key: const Key('discoveryProgress'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
               ),
-          ],
-        ),
+            ),
+          ),
+        if (suggestions.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            t.serverSuggestionsLabel,
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final s in suggestions)
+                ActionChip(
+                  key: Key('serverSuggestion:${s.address}'),
+                  label: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.address),
+                      Text(
+                        serverSourceText(t, s.kind),
+                        key: Key('serverSource:${s.address}'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  onPressed: widget.enabled
+                      ? () => settings.serverAddress = s.address
+                      : null,
+                ),
+            ],
+          ),
+        ],
+        for (final n in settings.notices)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: NoticeBox(
+              noticeKey: Key('discoveryNotice:${n.name}'),
+              text: discoveryNoticeText(t, n),
+            ),
+          ),
       ],
     );
   }
 }
+
+/// Translated name of the source of a suggested server.
+String serverSourceText(AppLocalizations t, ServerSourceKind k) => switch (k) {
+  ServerSourceKind.policy => t.serverSourcePolicy,
+  ServerSourceKind.dns => t.serverSourceDns,
+  ServerSourceKind.announced => t.serverSourceAnnounced,
+  ServerSourceKind.defaultList => t.serverSourceDefault,
+  ServerSourceKind.lastUsed => t.serverSourceLastUsed,
+  ServerSourceKind.development => t.serverSourceDevelopment,
+  ServerSourceKind.unknown => t.serverSourceOther,
+};
+
+/// Translated, calm sentence for a note from the discovery. Only the code is used, never text
+/// from the policy file or the network.
+String discoveryNoticeText(
+  AppLocalizations t,
+  DiscoveryWarning w,
+) => switch (w) {
+  DiscoveryWarning.policyUnusable => t.discoveryNoticePolicyUnusable,
+  DiscoveryWarning.policyNamesNoServer => t.discoveryNoticePolicyNamesNoServer,
+  DiscoveryWarning.dnsTimeout => t.discoveryNoticeDnsTimeout,
+  DiscoveryWarning.dnsFailed => t.discoveryNoticeDnsFailed,
+  DiscoveryWarning.dnsServiceUnavailable => t.discoveryNoticeDnsUnavailable,
+  DiscoveryWarning.entriesIgnored => t.discoveryNoticeEntriesIgnored,
+  DiscoveryWarning.announcementFailed => t.discoveryNoticeAnnouncementFailed,
+  DiscoveryWarning.other => t.discoveryNoticeOther,
+};
 
 /// Puts content in a centred column that is at most 560 px wide (looks good on desktop).
 class PageBody extends StatelessWidget {

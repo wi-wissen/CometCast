@@ -397,5 +397,111 @@
         "type": "String"
       }
     }
+  },
+  "serverLockedNote": "Your administrator has set the server.",
+  "@serverLockedNote": {
+    "description": "Shown under the read-only server field when a policy (MDM) forbids other servers."
+  },
+  "discoveryProgress": "Looking for servers in the network …",
+  "@discoveryProgress": {
+    "description": "Small hint while the server discovery runs; it does not block the screen."
+  },
+  "serverSourcePolicy": "Set by your administrator",
+  "@serverSourcePolicy": {
+    "description": "Label of a server suggestion that comes from the policy file (MDM)."
+  },
+  "serverSourceDns": "Found in the network (DNS)",
+  "@serverSourceDns": {
+    "description": "Label of a server suggestion that comes from a DNS-SRV record."
+  },
+  "serverSourceAnnounced": "Announced by a display",
+  "@serverSourceAnnounced": {
+    "description": "Label of a server suggestion that a receiving display announced in the local network."
+  },
+  "serverSourceDefault": "Default list",
+  "@serverSourceDefault": {
+    "description": "Label of a server suggestion from the built-in default list."
+  },
+  "serverSourceLastUsed": "Last used",
+  "@serverSourceLastUsed": {
+    "description": "Label of the server that the person used the last time."
+  },
+  "serverSourceDevelopment": "This computer (development)",
+  "@serverSourceDevelopment": {
+    "description": "Label of the development server on this computer."
+  },
+  "serverSourceOther": "Other source",
+  "@serverSourceOther": {
+    "description": "Label of a server suggestion from an unknown source."
+  },
+  "discoveryNoticePolicyUnusable": "The policy file of your administrator could not be read, so no network server is offered.",
+  "@discoveryNoticePolicyUnusable": {
+    "description": "Note: the policy file exists but is unusable."
+  },
+  "discoveryNoticePolicyNamesNoServer": "Your administrator has not named a server. Please ask them for help.",
+  "@discoveryNoticePolicyNamesNoServer": {
+    "description": "Note: the policy forbids other servers but lists none."
+  },
+  "discoveryNoticeDnsTimeout": "The network did not answer the question for a server in time. The other sources are still used.",
+  "@discoveryNoticeDnsTimeout": {
+    "description": "Note: the DNS lookup timed out."
+  },
+  "discoveryNoticeDnsFailed": "The network could not be asked for a server (DNS). The other sources are still used.",
+  "@discoveryNoticeDnsFailed": {
+    "description": "Note: the DNS lookup failed."
+  },
+  "discoveryNoticeDnsUnavailable": "This network says that no server is provided here.",
+  "@discoveryNoticeDnsUnavailable": {
+    "description": "Note: the DNS record says the service is not available."
+  },
+  "discoveryNoticeEntriesIgnored": "Some entries from the network were ignored because they did not look usable.",
+  "@discoveryNoticeEntriesIgnored": {
+    "description": "Note: some DNS records were refused by the checks."
+  },
+  "discoveryNoticeAnnouncementFailed": "Display devices in the network could not be searched.",
+  "@discoveryNoticeAnnouncementFailed": {
+    "description": "Note: listening for announcements failed."
+  },
+  "discoveryNoticeOther": "Not every source of servers could be asked.",
+  "@discoveryNoticeOther": {
+    "description": "Note: a general problem while looking for servers."
+  },
+  "nearbyTitle": "Nearby receivers",
+  "@nearbyTitle": {
+    "description": "Heading of the list of receivers found in the local network on the send screen."
+  },
+  "nearbyHint": "Select a receiver to use its server, then enter the room code shown on that screen. The code itself is never announced in the network.",
+  "@nearbyHint": {
+    "description": "Explains what a tap on a nearby receiver does."
+  },
+  "nearbyEmpty": "No receivers found yet.",
+  "@nearbyEmpty": {
+    "description": "Shown while the list of nearby receivers is empty."
+  },
+  "nearbyNoServer": "No server announced",
+  "@nearbyNoServer": {
+    "description": "Subtitle of a nearby receiver that announced no server."
+  },
+  "nearbyServer": "Server: {server}",
+  "@nearbyServer": {
+    "description": "Subtitle of a nearby receiver: the server it announced.",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    }
+  },
+  "nearbyUnavailable": "Receivers in the network cannot be listed on this device.",
+  "@nearbyUnavailable": {
+    "description": "Shown when listening for receivers is not possible."
+  },
+  "advertisedNote": "This device is visible to senders nearby as “{name}”.",
+  "@advertisedNote": {
+    "description": "Receive screen: the receiver is announced in the local network under this name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }
