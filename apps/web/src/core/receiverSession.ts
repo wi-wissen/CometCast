@@ -2,6 +2,7 @@
 //
 // Receiver state machine: creates a room, waits for a sender, answers its offer, exposes the stream.
 import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
+import { CONTROL_CHANNEL_LABEL, ControlReceiver, type ControlChannel, type TransferErrorCode } from './control'
 import { SignalingClient, type ServerMessage, type SocketFactory } from './signaling'
 
 export type ReceiverPhase =
@@ -13,12 +14,22 @@ export type ReceiverPhase =
   | 'peer_left' // sender left; the room stays, a new sender may join
   | 'error'
 
+/** Content pushed by the sender over the control channel. Shown only locally. */
+export type ReceivedContent =
+  | { kind: 'image'; url: string; name: string }
+  | { kind: 'link'; url: string; host: string }
+
 export interface ReceiverState {
   phase: ReceiverPhase
   code: string | null
   /** Server error code or a local one (connection_lost, peer_failed). Set when phase is 'error'. */
   errorCode: string | null
   stream: MediaStream | null
+  content: ReceivedContent | null
+  /** Image transfer in progress (bytes received so far), else null. */
+  transfer: { name: string; received: number; size: number } | null
+  /** Last transfer problem (TransferErrorCode or bad_message), cleared by the next content. */
+  contentError: TransferErrorCode | 'bad_message' | null
 }
 
 export interface ReceiverDeps {
@@ -26,10 +37,41 @@ export interface ReceiverDeps {
   onChange: (s: ReceiverState) => void
   socketFactory?: SocketFactory
   peerFactory?: PeerFactory
+  /** Test seam; defaults to URL.createObjectURL / revokeObjectURL. */
+  objectUrl?: { create(b: Blob): string; revoke(u: string): void }
+}
+
+const EMPTY: ReceiverState = {
+  phase: 'idle',
+  code: null,
+  errorCode: null,
+  stream: null,
+  content: null,
+  transfer: null,
+  contentError: null,
 }
 
 export class ReceiverSession {
-  private state: ReceiverState = { phase: 'idle', code: null, errorCode: null, stream: null }
+  private state: ReceiverState = { ...EMPTY, phase: 'idle' }
+  private readonly control = new ControlReceiver({
+    onCmd: (cmd) => {
+      // Page commands have nothing to act on until documents exist (later milestone); only stop is used.
+      if (cmd === 'stop') this.clearContent()
+    },
+    onProgress: (transfer) => this.set({ transfer }),
+    onImage: (blob, name) => {
+      this.clearContent()
+      this.set({ content: { kind: 'image', url: this.urls.create(blob), name }, contentError: null })
+    },
+    onLink: (url) => {
+      this.clearContent()
+      this.set({ content: { kind: 'link', url, host: new URL(url).host }, contentError: null })
+    },
+    onError: (contentError) => this.set({ contentError }),
+  })
+  private get urls() {
+    return this.deps.objectUrl ?? { create: (b: Blob) => URL.createObjectURL(b), revoke: (u: string) => URL.revokeObjectURL(u) }
+  }
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private readonly peerFactory: PeerFactory
@@ -47,9 +89,16 @@ export class ReceiverSession {
     this.deps.onChange(this.state)
   }
 
+  /** Closes the shown image or link (also used by the receiver's close/dismiss button). */
+  clearContent(): void {
+    const c = this.state.content
+    if (c?.kind === 'image') this.urls.revoke(c.url)
+    if (c || this.state.transfer || this.state.contentError) this.set({ content: null, transfer: null, contentError: null })
+  }
+
   start(): void {
     this.teardown()
-    this.set({ phase: 'connecting', code: null, errorCode: null, stream: null })
+    this.set({ ...EMPTY, phase: 'connecting' })
     this.client = new SignalingClient(
       this.deps.url,
       'receiver',
@@ -65,10 +114,12 @@ export class ReceiverSession {
 
   stop(): void {
     this.teardown()
-    this.set({ phase: 'idle', code: null, errorCode: null, stream: null })
+    this.set({ ...EMPTY, phase: 'idle' })
   }
 
   private teardown(): void {
+    this.clearContent()
+    this.control.reset()
     this.peer?.close()
     this.peer = null
     this.client?.close()
@@ -86,6 +137,7 @@ export class ReceiverSession {
     const peer = this.peerFactory({
       onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
       onTrack: (stream) => this.set({ stream }),
+      onDataChannel: (ch) => this.attachChannel(ch),
       onState: (s: PeerState) => {
         if (s === 'connected') this.set({ phase: 'receiving' })
         else if (s === 'failed') this.fail('peer_failed')
@@ -93,6 +145,12 @@ export class ReceiverSession {
     })
     this.peer = peer
     return peer
+  }
+
+  private attachChannel(ch: ControlChannel): void {
+    if (ch.label !== CONTROL_CHANNEL_LABEL) return // other labels are not defined; ignore them
+    ch.binaryType = 'arraybuffer'
+    ch.onmessage = (ev) => this.control.handle(ev.data)
   }
 
   private onMessage(m: ServerMessage): void {
@@ -121,6 +179,8 @@ export class ReceiverSession {
       case 'peer_left':
         this.peer?.close()
         this.peer = null
+        this.clearContent()
+        this.control.reset()
         this.set({ phase: 'peer_left', stream: null })
         break
       case 'error':

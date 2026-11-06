@@ -20,7 +20,7 @@
     },
     "sendContent": {
       "title": "Send file or link",
-      "desc": "Hand over a document, file or link. (Coming later.)"
+      "desc": "Hand over an image or a link. PDF and Office documents come later."
     },
     "receive": {
       "title": "Receive on this device",
@@ -42,6 +42,27 @@
       "receiving": "Receiving the screen.",
       "peer_left": "The sender left. You can keep this code and wait for a new sender.",
       "error": "Something went wrong."
+    },
+    "stageLabel": "Received content",
+    "stageWaiting": "Connected. Waiting for the screen or content from the sender…",
+    "transfer": "Receiving {name}… {percent} %",
+    "transferError": {
+      "bad_message": "A message from the sender could not be understood and was ignored.",
+      "unexpected_chunk": "Unexpected image data was ignored.",
+      "too_large": "The image was larger than announced and was discarded.",
+      "size_mismatch": "The image arrived incomplete and was discarded.",
+      "no_transfer": "An image transfer ended unexpectedly and was ignored."
+    },
+    "content": {
+      "imageAlt": "Image from the sender: {name}",
+      "close": "Close image"
+    },
+    "link": {
+      "title": "{host} wants to open a link",
+      "hint": "The sender asks you to open this link. Open it only if you expect it. It opens in a new tab, and only if you click \"Open\".",
+      "address": "Address",
+      "open": "Open",
+      "dismiss": "Dismiss"
     }
   },
   "send": {
@@ -83,5 +104,86 @@
     "capture_denied": "Screen sharing was cancelled or not allowed.",
     "capture_failed": "The screen could not be captured by this browser.",
     "unknown": "An unknown error occurred."
+  },
+  "toolbar": {
+    "label": "Screen tools",
+    "grip": "Move toolbar (arrow keys move it)",
+    "collapse": "Collapse toolbar",
+    "expand": "Show toolbar",
+    "pen": "Pen",
+    "marker": "Highlighter",
+    "eraser": "Eraser",
+    "undo": "Undo",
+    "clear": "Clear all annotations",
+    "laser": "Laser pointer",
+    "freeze": "Freeze image (the live stream keeps running)",
+    "black": "Black screen",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen",
+    "size": {
+      "small": "Thin",
+      "medium": "Medium",
+      "large": "Thick"
+    },
+    "color": {
+      "red": "Red",
+      "yellow": "Yellow",
+      "green": "Green",
+      "blue": "Blue",
+      "white": "White"
+    },
+    "canvasLabel": "Annotations (visible only on this device)",
+    "frozenHint": "Frozen. The live stream keeps running in the background.",
+    "blackHint": "Screen hidden"
+  },
+  "sendContent": {
+    "title": "Send file or link",
+    "intro": "Enter the receiver's room code, then send an image or a link. The content travels directly to the receiver; the server only helps to connect.",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "stopShowing": "Stop showing on the receiver",
+    "status": {
+      "idle": "Enter the receiver's code to start.",
+      "capturing": "Connecting…",
+      "connecting": "Connecting to the server…",
+      "joining": "Joining the room…",
+      "negotiating": "Setting up the connection…",
+      "sharing": "Connected. You can send now.",
+      "peer_left": "The receiver left.",
+      "stopped": "Disconnected.",
+      "error": "Something went wrong."
+    },
+    "image": {
+      "title": "Image",
+      "help": "PNG, JPEG, WebP or GIF, up to {max}.",
+      "drop": "Drop an image here, or",
+      "choose": "Choose image",
+      "progress": "Sending {name}: {percent} %",
+      "sent": "Sent {name}. It is now shown on the receiver.",
+      "error": {
+        "bad_type": "Only PNG, JPEG, WebP and GIF images can be sent.",
+        "too_large": "This image is larger than {max}.",
+        "empty": "This file is empty.",
+        "not_open": "Not connected to the receiver.",
+        "channel_closed": "The connection was closed while sending.",
+        "failed": "The image could not be sent."
+      }
+    },
+    "link": {
+      "title": "Link",
+      "label": "Web address",
+      "hint": "Must start with http:// or https://. The receiver sees the address and decides whether to open it; nothing opens automatically.",
+      "send": "Send link",
+      "invalid": "Please enter a full web address starting with http:// or https://.",
+      "sent": "Link sent. The receiver has to confirm before it opens.",
+      "failed": "The link could not be sent."
+    },
+    "later": {
+      "title": "Coming later",
+      "pdf": "PDF documents",
+      "office": "Office documents (Word, Excel, PowerPoint)",
+      "video": "Playing media links directly",
+      "note": "These need the native core and are not available in the browser version yet."
+    }
   }
 }

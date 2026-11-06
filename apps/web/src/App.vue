@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AppHeader from './components/AppHeader.vue'
 import HomeView from './views/HomeView.vue'
 import SendView from './views/SendView.vue'
+import SendContentView from './views/SendContentView.vue'
 import ReceiveView from './views/ReceiveView.vue'
 import type { ViewName } from './types'
 
@@ -30,6 +31,7 @@ const view = ref<ViewName>('home')
       </button>
       <HomeView v-if="view === 'home'" @go="view = $event" />
       <SendView v-else-if="view === 'send'" />
+      <SendContentView v-else-if="view === 'sendContent'" />
       <ReceiveView v-else />
     </main>
   </div>

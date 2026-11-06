@@ -20,7 +20,7 @@
     },
     "sendContent": {
       "title": "Datei oder Link senden",
-      "desc": "Ein Dokument, eine Datei oder einen Link übergeben. (Folgt später.)"
+      "desc": "Ein Bild oder einen Link übergeben. PDF- und Office-Dokumente folgen später."
     },
     "receive": {
       "title": "Auf diesem Gerät empfangen",
@@ -42,6 +42,27 @@
       "receiving": "Der Bildschirm wird empfangen.",
       "peer_left": "Der Absender hat die Verbindung verlassen. Sie können diesen Code behalten und auf einen neuen Absender warten.",
       "error": "Es ist ein Fehler aufgetreten."
+    },
+    "stageLabel": "Empfangene Inhalte",
+    "stageWaiting": "Verbunden. Warten auf den Bildschirm oder Inhalte des Absenders …",
+    "transfer": "{name} wird empfangen … {percent} %",
+    "transferError": {
+      "bad_message": "Eine Nachricht des Absenders konnte nicht verstanden werden und wurde ignoriert.",
+      "unexpected_chunk": "Unerwartete Bilddaten wurden ignoriert.",
+      "too_large": "Das Bild war größer als angekündigt und wurde verworfen.",
+      "size_mismatch": "Das Bild ist unvollständig angekommen und wurde verworfen.",
+      "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert."
+    },
+    "content": {
+      "imageAlt": "Bild vom Absender: {name}",
+      "close": "Bild schließen"
+    },
+    "link": {
+      "title": "{host} möchte einen Link öffnen",
+      "hint": "Der Absender bittet Sie, diesen Link zu öffnen. Öffnen Sie ihn nur, wenn Sie ihn erwarten. Er öffnet sich in einem neuen Tab, und nur wenn Sie auf „Öffnen“ klicken.",
+      "address": "Adresse",
+      "open": "Öffnen",
+      "dismiss": "Verwerfen"
     }
   },
   "send": {
@@ -83,5 +104,86 @@
     "capture_denied": "Die Bildschirmfreigabe wurde abgebrochen oder nicht erlaubt.",
     "capture_failed": "Der Bildschirm konnte von diesem Browser nicht aufgenommen werden.",
     "unknown": "Ein unbekannter Fehler ist aufgetreten."
+  },
+  "toolbar": {
+    "label": "Bildschirm-Werkzeuge",
+    "grip": "Werkzeugleiste verschieben (mit den Pfeiltasten)",
+    "collapse": "Werkzeugleiste einklappen",
+    "expand": "Werkzeugleiste anzeigen",
+    "pen": "Stift",
+    "marker": "Textmarker",
+    "eraser": "Radierer",
+    "undo": "Rückgängig",
+    "clear": "Alle Markierungen löschen",
+    "laser": "Laserpointer",
+    "freeze": "Bild einfrieren (der Live-Stream läuft weiter)",
+    "black": "Schwarzer Bildschirm",
+    "fullscreen": "Vollbild",
+    "exitFullscreen": "Vollbild beenden",
+    "size": {
+      "small": "Dünn",
+      "medium": "Mittel",
+      "large": "Dick"
+    },
+    "color": {
+      "red": "Rot",
+      "yellow": "Gelb",
+      "green": "Grün",
+      "blue": "Blau",
+      "white": "Weiß"
+    },
+    "canvasLabel": "Markierungen (nur auf diesem Gerät sichtbar)",
+    "frozenHint": "Eingefroren. Der Live-Stream läuft im Hintergrund weiter.",
+    "blackHint": "Bildschirm ausgeblendet"
+  },
+  "sendContent": {
+    "title": "Datei oder Link senden",
+    "intro": "Geben Sie den Raumcode des Empfängers ein und senden Sie dann ein Bild oder einen Link. Die Inhalte gehen direkt zum Empfänger; der Server hilft nur beim Verbinden.",
+    "connect": "Verbinden",
+    "disconnect": "Trennen",
+    "stopShowing": "Anzeige beim Empfänger beenden",
+    "status": {
+      "idle": "Geben Sie den Code des Empfängers ein, um zu beginnen.",
+      "capturing": "Verbindung wird aufgebaut …",
+      "connecting": "Verbindung zum Server wird aufgebaut …",
+      "joining": "Raum wird betreten …",
+      "negotiating": "Verbindung wird eingerichtet …",
+      "sharing": "Verbunden. Sie können jetzt senden.",
+      "peer_left": "Der Empfänger hat die Verbindung verlassen.",
+      "stopped": "Getrennt.",
+      "error": "Etwas ist schiefgelaufen."
+    },
+    "image": {
+      "title": "Bild",
+      "help": "PNG, JPEG, WebP oder GIF, bis zu {max}.",
+      "drop": "Ziehen Sie ein Bild hierher, oder",
+      "choose": "Bild auswählen",
+      "progress": "{name} wird gesendet: {percent} %",
+      "sent": "{name} gesendet. Es wird jetzt beim Empfänger angezeigt.",
+      "error": {
+        "bad_type": "Es können nur PNG-, JPEG-, WebP- und GIF-Bilder gesendet werden.",
+        "too_large": "Dieses Bild ist größer als {max}.",
+        "empty": "Diese Datei ist leer.",
+        "not_open": "Nicht mit dem Empfänger verbunden.",
+        "channel_closed": "Die Verbindung wurde beim Senden geschlossen.",
+        "failed": "Das Bild konnte nicht gesendet werden."
+      }
+    },
+    "link": {
+      "title": "Link",
+      "label": "Webadresse",
+      "hint": "Muss mit http:// oder https:// beginnen. Der Empfänger sieht die Adresse und entscheidet, ob er sie öffnet; nichts öffnet sich automatisch.",
+      "send": "Link senden",
+      "invalid": "Bitte geben Sie eine vollständige Webadresse ein, die mit http:// oder https:// beginnt.",
+      "sent": "Link gesendet. Der Empfänger muss bestätigen, bevor er sich öffnet.",
+      "failed": "Der Link konnte nicht gesendet werden."
+    },
+    "later": {
+      "title": "Folgt später",
+      "pdf": "PDF-Dokumente",
+      "office": "Office-Dokumente (Word, Excel, PowerPoint)",
+      "video": "Medienlinks direkt abspielen",
+      "note": "Dafür wird der native Kern benötigt; in der Browser-Version sind sie noch nicht verfügbar."
+    }
   }
 }

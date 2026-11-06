@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Thin RTCPeerConnection wrapper. Signalling happens elsewhere; this class only deals with WebRTC.
+import type { ControlChannel } from './control'
 
 export type PeerState = 'connecting' | 'connected' | 'failed'
 
@@ -9,10 +10,14 @@ export interface PeerHandlers {
   onIceCandidate(candidate: string): void
   onTrack(stream: MediaStream): void
   onState(state: PeerState): void
+  /** The remote side opened a data channel (receiver side). */
+  onDataChannel?(channel: ControlChannel): void
 }
 
 export interface Peer {
   addStream(stream: MediaStream): void
+  /** Creates an ordered, reliable data channel (sender side; call before createOffer). */
+  openChannel(label: string): ControlChannel
   createOffer(): Promise<string>
   /** Takes the remote offer SDP, returns the answer SDP. */
   acceptOffer(sdp: string): Promise<string>
@@ -38,6 +43,7 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
   pc.ontrack = (ev) => {
     handlers.onTrack(ev.streams[0] ?? new MediaStream([ev.track]))
   }
+  pc.ondatachannel = (ev) => handlers.onDataChannel?.(ev.channel)
   pc.onconnectionstatechange = () => {
     const s = pc.connectionState
     if (s === 'connected') handlers.onState('connected')
@@ -56,6 +62,9 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
   return {
     addStream(stream) {
       for (const t of stream.getTracks()) pc.addTrack(t, stream)
+    },
+    openChannel(label) {
+      return pc.createDataChannel(label, { ordered: true })
     },
     async createOffer() {
       const offer = await pc.createOffer()
@@ -80,7 +89,7 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
       else await pc.addIceCandidate(init)
     },
     close() {
-      pc.onicecandidate = pc.ontrack = pc.onconnectionstatechange = null
+      pc.onicecandidate = pc.ontrack = pc.ondatachannel = pc.onconnectionstatechange = null
       pc.close()
     },
   }
