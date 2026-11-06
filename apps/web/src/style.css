@@ -71,3 +71,8 @@ body {
   outline: 2px solid var(--cc-accent);
   outline-offset: 2px;
 }
+
+/* Keep the focus ring visible inside clipped (overflow-hidden) button groups. */
+.overflow-hidden button:focus-visible {
+  outline-offset: -2px;
+}

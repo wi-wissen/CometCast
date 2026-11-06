@@ -14,14 +14,15 @@ Run these once on your own machine (Flutter SDK installed), inside `apps/flutter
 ```sh
 cd apps/flutter
 flutter create --project-name cometcast --org de.cometcast --platforms=android,ios,linux,macos,windows .
+rm -f test/widget_test.dart   # template test from `flutter create`, does not fit this app
 flutter pub get
-flutter gen-l10n      # generates AppLocalizations from lib/l10n/*.arb
+flutter gen-l10n      # generates AppLocalizations into lib/l10n (git-ignored)
 flutter test
 flutter run -d <device>   # list devices with: flutter devices
 ```
 
 `flutter create .` in an existing folder keeps our `lib/`, `pubspec.yaml` and
-`test/`; if it overwrites `lib/main.dart` or `test/`, restore them from git.
+`test/`; if it overwrites `lib/main.dart` or `test/`, restore them from git (`git checkout -- lib test pubspec.yaml`).
 
 Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
 `lib/main.dart` like `main.js`; widgets are like components; the `.arb` files
@@ -29,10 +30,12 @@ are like `locales/en.json`. `check-i18n` in `tools/` compares the `.arb` keys.
 
 ## Known uncertainties
 
-- Import path `package:flutter_gen/gen_l10n/app_localizations.dart`: newer Flutter
-  versions may prefer a synthetic package or a checked-in output path
-  (`output-dir` in `l10n.yaml`). If the import fails, adapt it to the error message.
-- Package versions (`intl`, `flutter_lints`, Dart SDK range) are not checked.
+- `l10n.yaml` writes generated code to `lib/l10n` (`synthetic-package: false`) and the
+  code imports `package:cometcast/l10n/app_localizations.dart`. Not run against a real
+  SDK; if the build complains, adapt to the error message.
+- `intl: any` lets Flutter pick the version `flutter_localizations` needs. Other
+  versions (`flutter_lints`, Dart SDK range) are not checked.
+- `flutter create .` behaviour with existing files is not verified.
 
 ## Later (not in this skeleton)
 

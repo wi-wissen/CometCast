@@ -60,7 +60,6 @@ function onInput(e: Event) {
     <div
       class="rounded-cc border p-4"
       :class="caps.screenShare ? 'border-line bg-surface' : 'border-warn bg-warn-soft'"
-      role="status"
     >
       <h2 class="mb-1 font-semibold">{{ t('send.capTitle') }}</h2>
       <p v-if="caps.screenShare">{{ t('send.capOk') }}</p>

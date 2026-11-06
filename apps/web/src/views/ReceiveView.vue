@@ -11,7 +11,7 @@ const { t } = useI18n()
     <p class="text-muted">{{ t('receive.intro') }}</p>
     <div class="rounded-cc border border-dashed border-line2 bg-surface p-4">
       <div class="text-xs font-semibold uppercase tracking-wider text-muted">{{ t('receive.codeLabel') }}</div>
-      <div class="mt-1 font-mono text-2xl tracking-[0.3em] text-muted" aria-live="polite">{{ t('receive.codePlaceholder') }}</div>
+      <div class="mt-1 font-mono text-2xl tracking-[0.3em] text-muted">{{ t('receive.codePlaceholder') }}</div>
     </div>
     <div>
       <h2 class="mb-2 font-semibold">{{ t('receive.willTitle') }}</h2>

@@ -3,3 +3,9 @@
 arb-dir: lib/l10n
 template-arb-file: app_en.arb
 output-localization-file: app_localizations.dart
+# Write generated code to lib/l10n instead of the legacy synthetic package
+# (package:flutter_gen). UNCERTAIN: flag names checked against docs from memory,
+# not against a running Flutter SDK.
+output-dir: lib/l10n
+synthetic-package: false
+nullable-getter: false

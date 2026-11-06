@@ -21,12 +21,12 @@ const { locale, setLocale } = useLocale()
           :key="l"
           type="button"
           :lang="l"
+          :aria-label="t(`lang.${l}`)"
           :aria-pressed="locale === l"
           class="px-3 py-1 text-sm uppercase hover:bg-sunk aria-pressed:bg-accent aria-pressed:text-accent-fg"
           @click="setLocale(l as Locale)"
         >
           {{ l }}
-          <span class="sr-only">{{ t(`lang.${l}`) }}</span>
         </button>
       </div>
     </div>
