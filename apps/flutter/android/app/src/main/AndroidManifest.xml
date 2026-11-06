@@ -2,7 +2,12 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network: signalling to the Comet Cast server and WebRTC media. -->
+    <!-- Network: signalling to the Comet Cast server and WebRTC media.
+         No android:usesCleartextTraffic: ws:// URLs are opened by the Rust core with its own raw
+         TCP sockets, which Android's network security config (cleartext policy) does not apply
+         to; it only governs HttpURLConnection/OkHttp-style stacks. UNCERTAIN: not tried on a
+         device. TLS (wss://) verification in Rust uses rustls-native-certs; reading the Android
+         system CA store that way is UNVERIFIED (see docs/android.md). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
@@ -11,8 +16,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <!-- Android 13+ (API 33): needed to show the foreground service notification.
-         UNCERTAIN: runtime request flow not tried on a device; the service still runs when the
-         user denies it, but the notification is then hidden. -->
+         Requested at runtime by CaptureBridge before the consent dialog. UNCERTAIN: not tried on
+         a device; the service still runs when the user denies it, but the notification is then
+         hidden. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- Android TV / Google TV: the app must be installable on devices that have no touch screen,

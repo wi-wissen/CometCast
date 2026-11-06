@@ -138,6 +138,9 @@ jobs:
       - run: flutter test
       # Builds libcc_ffi.so for arm64-v8a and armeabi-v7a through cargo-ndk (Gradle task
       # cargoNdkDebug in android/app/build.gradle.kts) and packs it into the APK.
+      # Release builds are NOT made here: the release type is signed with the debug key and the
+      # Gradle guard checkReleaseSigning fails it unless -PcometcastAllowDebugSigning=true is set
+      # (see docs/android.md). Never publish an APK built that way.
       - run: flutter build apk --debug --target-platform android-arm,android-arm64
       - name: Check the APK contains the Rust library
         run: |

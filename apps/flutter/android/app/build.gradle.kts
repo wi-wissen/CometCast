@@ -28,7 +28,9 @@ android {
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Signed with the DEBUG key for now. That is fine for local tests only, never for
+            // distribution, so the build refuses unless it is allowed explicitly (see the
+            // checkReleaseSigning task at the end of this file).
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -101,8 +103,11 @@ fun registerCargoNdk(
             inputs.property("abis", rustAbis.joinToString(","))
             outputs.dir(outDir)
             doFirst {
+                // Stale ABIs from an earlier build must not end up in the APK.
+                outDir.asFile.deleteRecursively()
                 val cargoBin = System.getProperty("user.home") + "/.cargo/bin"
-                environment("PATH", cargoBin + File.pathSeparator + System.getenv("PATH"))
+                val oldPath = System.getenv("PATH")
+                environment("PATH", if (oldPath.isNullOrEmpty()) cargoBin else cargoBin + File.pathSeparator + oldPath)
                 // cargo-ndk reads the NDK location from here: the NDK version AGP uses.
                 environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
                 // Without debug info the debug .so is much smaller (backtraces keep function
@@ -116,16 +121,46 @@ fun registerCargoNdk(
             if (release) args += "--release"
             commandLine(args)
         }
+    // AGP rejects Provider instances in source sets and flattens file collections to plain
+    // directories, so a task dependency cannot be attached to the source set itself (tried:
+    // srcDir(provider), srcDir(files(dir).builtBy(task)); neither ran the task). Instead the
+    // tasks that read the directory depend on it explicitly:
     android.sourceSets.getByName(buildType).jniLibs.srcDir(outDir.asFile)
-    // Make sure the .so exists before AGP collects native libraries.
     tasks
         .matching {
             it.name.startsWith("merge") &&
-                it.name.endsWith("JniLibFolders") &&
-                it.name.contains(buildType, ignoreCase = true)
+                it.name.contains(buildType, ignoreCase = true) &&
+                (it.name.endsWith("JniLibFolders") || it.name.endsWith("NativeLibs"))
         }.configureEach { dependsOn(cargoTask) }
 }
 
 registerCargoNdk("debug", release = false)
 registerCargoNdk("profile", release = true)
 registerCargoNdk("release", release = true)
+
+// ---------------------------------------------------------------------------------------------
+// Release signing guard. The release build type is signed with the debug key (no keystore is
+// configured yet). Building a release therefore fails unless the property
+// cometcastAllowDebugSigning=true is set: `-PcometcastAllowDebugSigning=true` for Gradle, or
+// `ORG_GRADLE_PROJECT_cometcastAllowDebugSigning=true` in the environment for
+// `flutter build apk --release` (flutter does not forward -P options). A release APK built this
+// way must not be distributed. See docs/android.md.
+// ---------------------------------------------------------------------------------------------
+val checkReleaseSigning =
+    tasks.register("checkReleaseSigning") {
+        group = "cometcast"
+        description = "Fails release builds that would be signed with the debug key unless allowed."
+        val allowed = project.findProperty("cometcastAllowDebugSigning") == "true"
+        doLast {
+            if (!allowed) {
+                throw GradleException(
+                    "The release build is signed with the DEBUG key (no release keystore is " +
+                        "configured). Pass -PcometcastAllowDebugSigning=true (or set " +
+                        "ORG_GRADLE_PROJECT_cometcastAllowDebugSigning=true) for a local test " +
+                        "build; never distribute the result. See docs/android.md.",
+                )
+            }
+            logger.warn("WARNING: the release APK is signed with the DEBUG key. Do not distribute it.")
+        }
+    }
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkReleaseSigning) }
