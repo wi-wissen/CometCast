@@ -13,6 +13,7 @@ members = [
     "crates/cc-office",
     "crates/cc-files",
     "crates/cc-sender",
+    "crates/cc-cast",
     "crates/cc-receiver",
     "crates/cc-ffi",
     "crates/cc-server",
@@ -86,6 +87,7 @@ x11rb = { version = "0.14", default-features = false, features = ["damage", "ran
 # cc-media features.
 openh264 = { version = "0.9", default-features = false }
 cc-miracast = { path = "crates/cc-miracast" }
+cc-cast = { path = "crates/cc-cast", default-features = false }
 
 # Lints every crate inherits with `[lints] workspace = true`.
 [workspace.lints.rust]

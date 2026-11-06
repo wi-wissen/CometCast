@@ -12,6 +12,8 @@
 use std::process::ExitCode;
 use std::time::Duration;
 
+mod cast;
+
 use cc_airplay::{AirplayConfig, AirplayEvent, AirplayStatus, Supervisor, SupervisorOptions};
 use cc_proto::RoomCode;
 use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
@@ -25,6 +27,10 @@ Usage:
                     [--screen [--display :N] [--fps N] [--bitrate-kbps N]]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
   cometcast-cli miracast [--name NAME]
+  cometcast-cli cast list [--seconds N]
+  cometcast-cli cast send <DEVICE-NAME|IP[:PORT]> [--screen] [--display :N] [--fps N]
+                    [--bitrate-kbps N] [--seconds N] [--trust-anchors PEM]
+                    [--insecure-skip-device-auth]
   cometcast-cli --version
 
 Options:
@@ -54,6 +60,11 @@ Exit codes: 0 ok, 1 error, 2 bad arguments, 3 the peer left before any video was
 airplay starts UxPlay (a separate GPL program that must be installed) and prints what it
 reports: server ready, the PIN of each connection, connects, errors. See docs/airplay.md.
 
+cast (BETA, never tried on a real device) finds Chromecast / Google Cast devices (`cast list`) and
+mirrors the X11 screen to one as H.264 (`cast send`). The device certificate chain is checked against
+the roots in --trust-anchors PEM (this program embeds none); --insecure-skip-device-auth skips that
+check, prints a warning and lets anybody who answers at the address receive the screen. See docs/cast.md.
+
 miracast (Windows 11 only; compile-checked, never run) listens through the Windows
 MiracastReceiver API and prints events. A connection request is answered on stdin: type y or
 n and Enter (no answer within 30 seconds = rejected). On other systems it prints a message
@@ -77,6 +88,7 @@ enum Command {
         screen: Option<ScreenArgs>,
     },
     Airplay(AirplayArgs),
+    Cast(cast::CastCmd),
     Miracast {
         name: Option<String>,
     },
@@ -179,6 +191,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "--help" | "-h" | "help" => return Ok(Command::Help),
         "airplay" => return parse_airplay(args),
         "miracast" => return parse_miracast(args),
+        "cast" => return Ok(cast::parse(args)?.map_or(Command::Help, Command::Cast)),
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
     }
@@ -273,6 +286,7 @@ async fn main() -> ExitCode {
         }
         Command::Airplay(a) => airplay(a).await,
         Command::Miracast { name } => miracast(name).await,
+        Command::Cast(c) => cast::run(c).await,
         Command::Receive { common, decode } => receive(common, decode).await,
         Command::Send {
             code,

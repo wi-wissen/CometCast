@@ -11,7 +11,8 @@ Licence details marked **unchecked** were not verified and must be checked again
 | openh264 (`openh264` crate 0.9.9 and Cisco's OpenH264 2.6.0) | Software H.264 encoder (screen sender) and a test-only decoder, `cc-media`. Two build modes: compiled from the source inside the crate (`h264-source`, default), or Cisco's prebuilt library loaded at run time (`h264-libloading`) | BSD-2-Clause (crate and OpenH264, as stated in the crate metadata; licence texts not checked) | in use (compiled in; no Cisco binary is bundled) | **Uncertain: H.264 patent coverage.** The crate documentation says the Cisco binary should be downloaded during installation; whether a source build is covered was not checked. See docs/capture.md, section "H.264 licensing". Hardware encoders of the systems are to be used first (plan) |
 | x11rb 0.14 | X11 screen capture in pure Rust (`cc-capture`) | MIT OR Apache-2.0 (as stated on crates.io; unchecked against the licence texts) | in use (compiled in) | |
 | coturn | TURN server, separate process | BSD-style | planned | **Uncertain:** the plan says "BSD-like"; check the exact licence text before release and ship the licence file |
-| Open Screen Library | Reference for the Google Cast sender protocol (reading and possibly building the sender against it) | BSD | planned (reference) | |
+| Open Screen Library (commit `8b62b21479f1adb7663f182d97962b960c5c64ef`, chromium.googlesource.com/openscreen) | Specification reference for the Chromecast / Google Cast compatible sender `cc-cast`: message formats, field names, constants, framing, RTP/RTCP layout, AES-CTR nonce, device-auth steps. The code of `cc-cast` is written in Rust from reading these files; it is an adaptation, not a copy. Files read are listed in `docs/cast.md` | BSD-3-Clause, Copyright 2018 and later The Chromium Authors (text below) | in use as reference; adapted parts are marked in the `cc-cast` module headers | The notice below must stay with source and binary distributions of `cc-cast`. No Open Screen source file and none of its trust-anchor data is copied or embedded. UNCERTAIN: whether further per-file notices are needed was not checked with a lawyer |
+| prost 0.14, mdns-sd 0.21, aes 0.8, ctr 0.9, ring 0.17, x509-parser 0.18 | `cc-cast`: protobuf derive, mDNS browsing, AES-128-CTR, RSA signature check, certificate parsing | Apache-2.0 / MIT OR Apache-2.0 / Apache-2.0 AND ISC (as stated in the crate metadata; licence texts not checked) | in use (compiled in) | Transitive crates not reviewed |
 | hayro | PDF rendering (also as WASM) | not recorded in the plan | planned | Licence: unchecked |
 | office2pdf | Office to PDF on the sender | Apache-2.0 | planned | |
 | webrtc-rs (`webrtc` and `rtc` crates, 0.21.1) | WebRTC transport (native peers, `cc-transport`) | MIT / Apache-2.0 (as stated on crates.io; unchecked against the licence texts) | in use (compiled in, nothing bundled yet) | Pinned in the workspace `Cargo.toml`. Its transitive crates (ring and others) are not reviewed yet |
@@ -47,3 +48,37 @@ Apple, AirPlay, tvOS, Google, Google Cast, Chromecast, Android, Miracast, AirSer
 - Logo and icon files under `assets/logo` come from the owner's design hand-off. The author and licence
   of the artwork are not recorded in the repository yet (see the open questions).
 - A full generated list (for example with cargo-about or cargo-deny and `npm ls`) is still to do.
+
+## Open Screen Library notice
+
+Used as the specification reference for `crates/cc-cast` (see the table above and `docs/cast.md`).
+
+```
+Copyright 2018 The Chromium Authors
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
