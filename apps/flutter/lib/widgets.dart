@@ -13,7 +13,11 @@ import 'settings.dart';
 String connectionStateText(AppLocalizations t, UiConnectionState? s) =>
     t.statusConnectionState(s?.name ?? 'other');
 
-/// Wraps a screen so that the Escape key goes back to the previous screen.
+/// Wraps a screen so that the Escape key goes back to the previous screen, and so that the
+/// arrow keys / D-pad of a TV remote move the focus inside the screen (one traversal group).
+///
+/// Flutter's built-in focus system does the work (no extra package): the arrow keys are bound to
+/// directional focus by `WidgetsApp`, and select / Enter activate the focused control.
 class EscapeToGoBack extends StatelessWidget {
   const EscapeToGoBack({super.key, required this.child});
 
@@ -21,15 +25,86 @@ class EscapeToGoBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.escape): () =>
-            Navigator.of(context).maybePop(),
-      },
-      child: child,
+    return FocusTraversalGroup(
+      policy: ReadingOrderTraversalPolicy(),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              Navigator.of(context).maybePop(),
+        },
+        child: child,
+      ),
     );
   }
 }
+
+/// Draws a clearly visible frame around [child] while [child] or one of its descendants has the
+/// keyboard / D-pad focus. Material's own focus overlay is too faint to see from a sofa.
+class FocusRing extends StatefulWidget {
+  const FocusRing({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<FocusRing> createState() => _FocusRingState();
+}
+
+class _FocusRingState extends State<FocusRing> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // A Focus node that cannot take focus itself, only reports focus inside its subtree.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (v) => setState(() => _focused = v),
+      child: DecoratedBox(
+        key: const Key('focusRing'),
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border.all(
+            width: 3,
+            color: _focused
+                ? Theme.of(context).colorScheme.tertiary
+                : Colors.transparent,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// A focus node for a single-line text field that lets the up / down arrow keys (D-pad of a TV
+/// remote) move the focus to the neighbouring control. Without it the text field keeps the focus
+/// when the arrow keys are pressed (observed in test/dpad_focus_test.dart); left / right still move
+/// the caret. Dispose it like any FocusNode.
+FocusNode textFieldFocusNode({String? debugLabel}) => FocusNode(
+  debugLabel: debugLabel,
+  onKeyEvent: (node, event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final direction = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowDown => TraversalDirection.down,
+      LogicalKeyboardKey.arrowUp => TraversalDirection.up,
+      _ => null,
+    };
+    if (direction == null) return KeyEventResult.ignored;
+    return node.focusInDirection(direction)
+        ? KeyEventResult.handled
+        : KeyEventResult.ignored;
+  },
+);
+
+/// A thick border on buttons while they have focus (added to the button themes in main.dart).
+ButtonStyle focusBorderStyle(ColorScheme scheme) => ButtonStyle(
+  side: WidgetStateProperty.resolveWith(
+    (states) => states.contains(WidgetState.focused)
+        ? BorderSide(color: scheme.tertiary, width: 3)
+        : null,
+  ),
+);
 
 /// Text field for the server address, kept in sync with [AppSettings].
 class ServerField extends StatefulWidget {
@@ -56,9 +131,11 @@ class _ServerFieldState extends State<ServerField> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.settings.serverAddress,
   );
+  final FocusNode _focusNode = textFieldFocusNode(debugLabel: 'serverField');
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -69,6 +146,7 @@ class _ServerFieldState extends State<ServerField> {
     return TextField(
       key: const Key('serverField'),
       controller: _controller,
+      focusNode: _focusNode,
       enabled: widget.enabled,
       autofocus: widget.autofocus,
       keyboardType: TextInputType.url,

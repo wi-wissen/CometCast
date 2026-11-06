@@ -33,12 +33,16 @@ class _SendPageState extends State<SendPage> {
   );
   final _code = TextEditingController();
   final _seconds = TextEditingController(text: '$_defaultSeconds');
+  final _codeFocus = textFieldFocusNode(debugLabel: 'codeField');
+  final _secondsFocus = textFieldFocusNode(debugLabel: 'secondsField');
   bool _triedToStart = false;
   bool _serverEmpty = false;
 
   @override
   void dispose() {
     _controller.dispose();
+    _codeFocus.dispose();
+    _secondsFocus.dispose();
     _code.dispose();
     _seconds.dispose();
     super.dispose();
@@ -115,6 +119,7 @@ class _SendPageState extends State<SendPage> {
                 TextField(
                   key: const Key('codeField'),
                   controller: _code,
+                  focusNode: _codeFocus,
                   enabled: !active,
                   autofocus: true,
                   textCapitalization: TextCapitalization.characters,
@@ -142,6 +147,7 @@ class _SendPageState extends State<SendPage> {
                 TextField(
                   key: const Key('secondsField'),
                   controller: _seconds,
+                  focusNode: _secondsFocus,
                   enabled: !active,
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,

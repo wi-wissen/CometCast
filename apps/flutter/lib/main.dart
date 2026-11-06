@@ -13,6 +13,7 @@ import 'core/core_api.dart';
 import 'core/rust_loader.dart';
 import 'home_page.dart';
 import 'settings.dart';
+import 'widgets.dart';
 
 // Accent colour of the brand.
 const Color cometAccent = Color(0xFF2D4A8A);
@@ -33,6 +34,24 @@ Future<void> main() async {
 String? _env(String name) {
   final v = Platform.environment[name];
   return (v == null || v.isEmpty) ? null : v;
+}
+
+/// Material 3 theme with visible focus indicators (for D-pad / keyboard use on Android TV).
+ThemeData _theme(Brightness brightness) {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: cometAccent,
+    brightness: brightness,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    focusColor: scheme.primary.withValues(alpha: 0.2),
+    filledButtonTheme: FilledButtonThemeData(style: focusBorderStyle(scheme)),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: focusBorderStyle(scheme),
+    ),
+    iconButtonTheme: IconButtonThemeData(style: focusBorderStyle(scheme)),
+  );
 }
 
 /// Root widget (like App.vue). Pass [locale] to force a language (used by tests).
@@ -72,17 +91,8 @@ class CometCastApp extends StatelessWidget {
         }
         return const Locale('en');
       },
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: cometAccent),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: cometAccent,
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: _theme(Brightness.light),
+      darkTheme: _theme(Brightness.dark),
       themeMode: ThemeMode.system, // light/dark follows the system
       home: HomePage(core: core, settings: settings),
     );
