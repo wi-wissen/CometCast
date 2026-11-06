@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Sender core: joins a room, creates the offer and sends video.
 //!
-//! Two modes:
+//! Three modes:
 //!
 //! * Test pattern (default): the sender replays a few pre-made VP8 key frames from
 //!   `assets/test-frames.ivf` (made by `tools/gen-test-frames.py`). Every frame is a key
@@ -11,10 +11,17 @@
 //!   and sent as RTP. See [`screen`] for the rules (one frame in flight, key frame on request,
 //!   static refresh) and docs/capture.md.
 //!
+//! * External H.264 ([`SenderOptions::external`]): the host pushes finished H.264 access units
+//!   (Android: `MediaCodec` output) into an [`ExternalInput`]; see [`external`] for the accepted
+//!   formats and the queue rules (one frame in flight, bounded queue, drops are counted, key
+//!   frame requests the host can read).
+//!
 //! Use: [`SenderCore::start`] -> loop on [`SenderCore::next_event`].
 
+pub mod external;
 mod screen;
 
+pub use external::{ExternalInput, ExternalOptions, ExternalStats, PushOutcome};
 pub use screen::{ScreenOptions, ScreenStats};
 
 use std::sync::Arc;
@@ -99,7 +106,11 @@ pub struct SenderOptions {
     pub duration: Option<Duration>,
     /// Send the screen instead of the test pattern (H.264). `None` = test pattern (VP8).
     pub screen: Option<ScreenOptions>,
-    /// WebRTC settings. The codec list is forced to VP8 (test pattern) or H.264 (screen).
+    /// Send H.264 access units that the host pushes (cannot be combined with `screen`). The
+    /// host keeps a clone of the [`ExternalInput`] and pushes into it.
+    pub external: Option<ExternalInput>,
+    /// WebRTC settings. The codec list is forced to VP8 (test pattern) or H.264 (screen,
+    /// external).
     /// If `session.ice_servers` is empty the core asks the server for its STUN/TURN list.
     pub session: SessionConfig,
     /// Extra trusted certificates for `wss://` / `https://` (default: system store only).
@@ -114,6 +125,7 @@ impl SenderOptions {
             code,
             duration: None,
             screen: None,
+            external: None,
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
         }
@@ -145,6 +157,7 @@ pub enum SenderEvent {
 pub struct SenderCore {
     ice_servers: Vec<IceServerConfig>,
     counters: Arc<screen::Counters>,
+    external: Option<ExternalInput>,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
@@ -176,6 +189,11 @@ impl SenderCore {
         .await
         .map_err(|_| TransportError::Timeout("waiting for joined"))??;
 
+        if options.screen.is_some() && options.external.is_some() {
+            return Err(TransportError::Invalid(
+                "screen and external input cannot be used together".into(),
+            ));
+        }
         let counters = Arc::new(screen::Counters::default());
         // Open the screen and the encoder before anything is negotiated, so a missing
         // display or encoder is an error of `start`.
@@ -186,7 +204,7 @@ impl SenderCore {
             ),
             None => None,
         };
-        let codec = if prepared.is_some() {
+        let codec = if prepared.is_some() || options.external.is_some() {
             VideoCodec::H264
         } else {
             VideoCodec::Vp8
@@ -204,6 +222,7 @@ impl SenderCore {
         // The offer goes out first; candidates found meanwhile follow from the event channel.
         sig.send(ClientMsg::Offer { sdp: offer }).await?;
 
+        let external = options.external.take();
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
         let task = tokio::spawn(run(
@@ -211,6 +230,7 @@ impl SenderCore {
             Arc::new(session),
             video,
             prepared,
+            external.clone(),
             session_events,
             events_tx,
             stop_rx,
@@ -219,6 +239,7 @@ impl SenderCore {
         Ok(Self {
             ice_servers,
             counters,
+            external,
             events: events_rx,
             stop: Some(stop_tx),
             task,
@@ -234,6 +255,14 @@ impl SenderCore {
     /// Counters of the screen pipeline (all zero in test pattern mode).
     pub fn screen_stats(&self) -> ScreenStats {
         self.counters.snapshot()
+    }
+
+    /// Counters of the external input (all zero unless `SenderOptions::external` was set).
+    pub fn external_stats(&self) -> ExternalStats {
+        self.external
+            .as_ref()
+            .map(ExternalInput::stats)
+            .unwrap_or_default()
     }
 
     /// Next event, or `None` after the core has stopped and all events were read.
@@ -281,6 +310,7 @@ async fn run(
     session: Arc<Session>,
     video: Arc<VideoSender>,
     mut prepared: Option<screen::Prepared>,
+    external: Option<ExternalInput>,
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<SenderEvent>,
     mut stop: oneshot::Receiver<()>,
@@ -290,7 +320,7 @@ async fn run(
         let _ = out.send(e);
     };
     let test = builtin_test_frames();
-    let test_mode = prepared.is_none();
+    let test_mode = prepared.is_none() && external.is_none();
     let frame_time = Duration::from_secs(1) / test.fps;
     let mut frame_tick = tokio::time::interval(frame_time);
     frame_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -299,6 +329,8 @@ async fn run(
     let mut frames_sent: u64 = 0;
     let mut screen_run: Option<ScreenRun> = None;
     let mut keyframe_task: Option<tokio::task::JoinHandle<()>> = None;
+    // External mode: presentation time and wall time of the previous frame (RTP time step).
+    let mut ext_last: Option<(Option<u64>, Instant)> = None;
     loop {
         // The channels of the screen pipeline only exist once it runs; until then these
         // futures never complete.
@@ -346,6 +378,18 @@ async fn run(
                 Some(SessionEvent::State(s)) => {
                     if s == ConnectionState::Connected && streaming_since.is_none() {
                         streaming_since = Some(Instant::now());
+                        // External mode: units are accepted from now on and the host is asked
+                        // for a key frame; later ones come from the peer's PLI requests.
+                        if let Some(ext) = external.clone() {
+                            ext.begin_streaming();
+                            let v = Arc::clone(&video);
+                            keyframe_task = Some(tokio::spawn(async move {
+                                while v.next_keyframe_request().await {
+                                    // Counted and rate limited inside.
+                                    ext.request_keyframe();
+                                }
+                            }));
+                        }
                         // A new peer starts the screen pipeline, whose first frame is a key
                         // frame; later key frames come from the peer's picture loss requests.
                         if let Some(p) = prepared.take() {
@@ -392,6 +436,24 @@ async fn run(
                 }
                 frames_sent += 1;
             },
+            unit = async {
+                match &external {
+                    Some(e) => e.next_unit().await,
+                    None => std::future::pending().await,
+                }
+            }, if streaming_since.is_some() => {
+                let (Some(unit), Some(ext)) = (unit, external.as_ref()) else { break };
+                let wall = ext_last.map_or(frame_time, |(_, t)| t.elapsed());
+                let step = external::rtp_step(ext_last.and_then(|(p, _)| p), unit.pts_us, wall);
+                ext_last = Some((unit.pts_us, Instant::now()));
+                let (len, key) = (unit.data.len(), unit.key);
+                if let Err(e) = video.send_frame(Bytes::from(unit.data), step).await {
+                    emit(SenderEvent::Error(format!("cannot send frame: {e}")));
+                    break;
+                }
+                ext.count_sent(len, key);
+                frames_sent += 1;
+            },
             msg = screen_msg => match msg {
             ScreenMsg::Frame(unit) => {
                 let (Some(unit), Some(r)) = (unit, screen_run.as_mut()) else { continue };
@@ -436,6 +498,9 @@ async fn run(
     }
     if let Some(t) = keyframe_task {
         t.abort();
+    }
+    if let Some(ext) = &external {
+        ext.close();
     }
     if let Some(mut r) = screen_run {
         // Joining waits for a capture call that may be sleeping up to one frame time.
