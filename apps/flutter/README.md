@@ -28,8 +28,9 @@ Status: milestone M1 on the desktop. The app talks to the Rust core through
   closing the screen cancels it.
 - **Receive screen** announces itself and its server in the local network while it is open
   (`start_advertising`); the **send screen** lists "Nearby receivers" (name and announced
-  server); a tap takes the server and focuses the room code field (the code is never
-  announced). Details and open questions: docs/discovery.md, "In the Flutter app".
+  server, marked "not verified"); a tap takes the server, shows its source next to the field
+  and focuses the room code field (the code is never announced). Announced servers are never
+  pre-filled or saved as "last used". Details and open questions: docs/discovery.md, "In the Flutter app".
 
 **Not built yet:** screen capture on Windows, macOS, Wayland and mobile; other video codecs than
 H.264 in the picture view; audio; sending file or link. English + German, light/dark following the

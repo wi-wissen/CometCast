@@ -87,7 +87,7 @@
   "discoveryProgress": "Suche nach Servern im Netzwerk …",
   "serverSourcePolicy": "Von Ihrer IT-Administration festgelegt",
   "serverSourceDns": "Im Netzwerk gefunden (DNS)",
-  "serverSourceAnnounced": "Von einem Anzeigegerät angekündigt",
+  "serverSourceAnnounced": "Von einem Anzeigegerät in diesem Netzwerk angekündigt, nicht überprüft",
   "serverSourceDefault": "Standardliste",
   "serverSourceLastUsed": "Zuletzt verwendet",
   "serverSourceDevelopment": "Dieser Computer (Entwicklung)",
@@ -105,6 +105,8 @@
   "nearbyEmpty": "Noch keine Empfänger gefunden.",
   "nearbyNoServer": "Kein Server angekündigt",
   "nearbyServer": "Server: {server}",
+  "nearbyMore": "und weitere …",
+  "serverFieldSource": "Quelle dieser Adresse: {source}",
   "nearbyUnavailable": "Empfänger im Netzwerk können auf diesem Gerät nicht aufgelistet werden.",
   "advertisedNote": "Dieses Gerät ist für Sender in der Nähe sichtbar als „{name}“."
 }

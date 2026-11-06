@@ -19,6 +19,8 @@ import 'package:cometcast/widgets.dart';
 
 import 'fake_core.dart';
 
+const announcedLabel = 'Announced by a display on this network, not verified';
+
 const _policyOnly = ServerDefaults(
   servers: [ServerCandidate(address: 'wss://mdm.example:443', source: 'mdm')],
   locked: true,
@@ -176,7 +178,7 @@ void main() {
           chipSource(tester, 'srv.school.example:8443'),
           'Found in the network (DNS)',
         );
-        expect(chipSource(tester, '10.0.0.7:8443'), 'Announced by a display');
+        expect(chipSource(tester, '10.0.0.7:8443'), announcedLabel);
         expect(chipSource(tester, 'relay.cometcast.de:443'), 'Default list');
         expect(
           chipSource(tester, '127.0.0.1:8443'),
@@ -226,7 +228,7 @@ void main() {
           ServerSourceKind.lastUsed,
         );
         expect(chipSource(tester, 'mine.example:1'), 'Last used');
-        expect(chipSource(tester, '10.0.0.7:8443'), 'Announced by a display');
+        expect(chipSource(tester, '10.0.0.7:8443'), announcedLabel);
       },
     );
 
@@ -809,23 +811,339 @@ void main() {
       expect(find.byKey(const Key('nearbyUnavailable')), findsOneWidget);
     });
 
-    test('a flood of announcements is capped', () async {
+    test(
+      'a flood of announcements evicts the oldest, newer ones still appear',
+      () async {
+        final core = FakeCoreApi();
+        final nearby = NearbyReceivers(core)..start();
+        await Future<void>.delayed(Duration.zero);
+        for (var i = 0; i < 100; i++) {
+          core.nearbyEvents!.add(
+            NearbyReceiverEvent.found(id: 'r$i', name: 'R$i'),
+          );
+        }
+        await Future<void>.delayed(Duration.zero);
+        expect(nearby.receivers, hasLength(NearbyReceivers.maxShown));
+        expect(nearby.truncated, isTrue);
+        // The newest are kept, the oldest are gone.
+        expect(nearby.receivers.first.id, 'r68');
+        expect(nearby.receivers.last.id, 'r99');
+        // One that is known can still be updated.
+        core.nearbyEvents!.add(
+          const NearbyReceiverEvent.found(id: 'r99', name: 'New'),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(nearby.receivers.last.name, 'New');
+        // Room again: the note goes away.
+        core.nearbyEvents!.add(const NearbyReceiverEvent.lost(id: 'r99'));
+        await Future<void>.delayed(Duration.zero);
+        expect(nearby.truncated, isFalse);
+        nearby.dispose();
+      },
+    );
+  });
+
+  group('review fixes', () {
+    testWidgets('a refused answer after the view closed starts nothing new', (
+      tester,
+    ) async {
+      final core = _GatedCore()..firstGate = Completer();
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openReceive(tester, core, settings);
+      await goBack(tester);
+      // The stop waits for the start that is still running.
+      expect(core.stopAdvertisingCalls, 0);
+      core.firstGate!.complete(AdvertiseOutcome.refused);
+      await tester.pumpAndSettle();
+      expect(core.advertiseCalls, hasLength(1));
+      expect(core.stopAdvertisingCalls, 1);
+    });
+
+    testWidgets('stop is queued behind the pending start (order of calls)', (
+      tester,
+    ) async {
+      final core = _GatedCore()..firstGate = Completer();
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openReceive(tester, core, settings);
+      await goBack(tester);
+      core.firstGate!.complete(AdvertiseOutcome.started);
+      await tester.pumpAndSettle();
+      expect(core.order, ['start', 'stop']);
+    });
+
+    for (final forbid in ['announcements', 'lock']) {
+      testWidgets('no announcement when the policy has $forbid', (
+        tester,
+      ) async {
+        final core = FakeCoreApi()
+          ..defaults = ServerDefaults(
+            servers: const [
+              ServerCandidate(address: 'wss://mdm.example:443', source: 'mdm'),
+            ],
+            locked: forbid == 'lock',
+            announcementsAllowed: forbid != 'announcements',
+            notices: const [],
+            devFallback: '127.0.0.1:8443',
+          );
+        final settings = AppSettings.fromDefaults(core.serverDefaults());
+        await openReceive(tester, core, settings);
+        expect(core.advertiseCalls, isEmpty);
+        expect(find.byKey(const Key('advertisedNote')), findsNothing);
+      });
+    }
+
+    testWidgets('a ban learned late stops a running announcement', (
+      tester,
+    ) async {
+      final core = FakeCoreApi()
+        ..discoveryGate = Completer()
+        ..discovery = _found([
+          ('wss://mdm.example:443', 'mdm'),
+        ], announcementsAllowed: false);
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openReceive(tester, core, settings);
+      expect(core.advertiseCalls, hasLength(1));
+      expect(find.byKey(const Key('advertisedNote')), findsOneWidget);
+      core.discoveryGate!.complete();
+      await tester.pumpAndSettle();
+      expect(core.stopAdvertisingCalls, 1);
+      expect(find.byKey(const Key('advertisedNote')), findsNothing);
+    });
+
+    testWidgets(
+      'a late announced server does not replace the default pre-fill',
+      (tester) async {
+        final core = FakeCoreApi()
+          ..discoveryGate = Completer()
+          ..discovery = _found([
+            ('ws://192.168.1.66:8443', 'display-announcement'),
+            ('relay.cometcast.de:443', 'default-list'),
+          ]);
+        final settings = AppSettings.fromDefaults(core.serverDefaults());
+        await openSend(tester, core, settings);
+        await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+        core.discoveryGate!.complete();
+        await tester.pumpAndSettle();
+        expect(settings.serverAddress, 'relay.cometcast.de:443');
+        expect(fieldText(tester), 'relay.cometcast.de:443');
+        // It is offered, labelled, and not selected.
+        expect(chipSource(tester, 'ws://192.168.1.66:8443'), announcedLabel);
+        expect(find.byKey(const Key('serverFieldSource')), findsNothing);
+      },
+    );
+
+    test('only announced servers: nothing is pre-filled from them', () {
+      final settings = AppSettings(
+        serverSuggestions: const [
+          ServerSuggestion('10.0.0.7:8443', ServerSourceKind.announced),
+        ],
+      );
+      expect(settings.serverAddress, fallbackServerAddress);
+    });
+
+    testWidgets('a tapped chip shows its source next to the field', (
+      tester,
+    ) async {
+      final core = FakeCoreApi()
+        ..discovery = _found([
+          ('srv.school.example:8443', 'dns-srv'),
+          ('10.0.0.7:8443', 'display-announcement'),
+          ('relay.cometcast.de:443', 'default-list'),
+        ]);
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openSend(tester, core, settings);
+      expect(find.byKey(const Key('serverFieldSource')), findsNothing);
+      await tester.tap(find.byKey(const Key('serverSuggestion:10.0.0.7:8443')));
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('serverFieldSource'))).data,
+        'Source of this address: $announcedLabel',
+      );
+      await tester.tap(
+        find.byKey(const Key('serverSuggestion:srv.school.example:8443')),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('serverFieldSource'))).data,
+        'Source of this address: Found in the network (DNS)',
+      );
+      // Typing removes the label: the text is the person's own.
+      await tester.enterText(find.byKey(const Key('serverField')), 'mine:1');
+      await tester.pump();
+      expect(find.byKey(const Key('serverFieldSource')), findsNothing);
+    });
+
+    testWidgets('German label of the source', (tester) async {
+      final core = FakeCoreApi()
+        ..discovery = _found([('10.0.0.7:8443', 'display-announcement')]);
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openSend(tester, core, settings, locale: 'de');
+      await tester.tap(find.byKey(const Key('serverSuggestion:10.0.0.7:8443')));
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('serverFieldSource'))).data,
+        'Quelle dieser Adresse: Von einem Anzeigegerät in diesem Netzwerk '
+        'angekündigt, nicht überprüft',
+      );
+    });
+
+    testWidgets(
+      'an announced server is labelled in the tile and never saved as last used',
+      (tester) async {
+        final core = FakeCoreApi();
+        final store = MemorySettingsStore();
+        final settings = AppSettings.fromDefaults(
+          core.serverDefaults(),
+          store: store,
+        );
+        await openSend(tester, core, settings);
+        core.nearbyEvents!.add(
+          const NearbyReceiverEvent.found(
+            id: 'x',
+            name: 'TV',
+            server: 'wss://evil.example:443',
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<Text>(find.byKey(const Key('nearbyUnverified:x'))).data,
+          announcedLabel,
+        );
+        await tester.tap(find.byKey(const Key('nearbyReceiver:x')));
+        await tester.pump();
+        expect(
+          tester.widget<Text>(find.byKey(const Key('serverFieldSource'))).data,
+          'Source of this address: $announcedLabel',
+        );
+        await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+        await tester.tap(find.byKey(const Key('startButton')));
+        await tester.pumpAndSettle();
+        expect(core.senderServer, 'wss://evil.example:443');
+        expect(store.server, isNull);
+        // The next start is not pre-filled from it.
+        final next = await AppSettings.load(core: core, store: store);
+        expect(next.serverAddress, isNot('wss://evil.example:443'));
+      },
+    );
+
+    testWidgets('a server tapped from a DNS chip is remembered', (
+      tester,
+    ) async {
+      final core = FakeCoreApi()
+        ..discovery = _found([('srv.school.example:8443', 'dns-srv')]);
+      final store = MemorySettingsStore();
+      final settings = AppSettings.fromDefaults(
+        core.serverDefaults(),
+        store: store,
+      );
+      await openSend(tester, core, settings);
+      await tester.tap(
+        find.byKey(const Key('serverSuggestion:srv.school.example:8443')),
+      );
+      await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+      await tester.tap(find.byKey(const Key('startButton')));
+      await tester.pumpAndSettle();
+      expect(store.server, 'srv.school.example:8443');
+    });
+
+    testWidgets('the server is trimmed before it is sent', (tester) async {
       final core = FakeCoreApi();
-      final nearby = NearbyReceivers(core)..start();
-      for (var i = 0; i < 100; i++) {
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openSend(tester, core, settings);
+      await tester.enterText(
+        find.byKey(const Key('serverField')),
+        '  10.0.0.7:8443 ',
+      );
+      await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+      await tester.tap(find.byKey(const Key('startButton')));
+      await tester.pumpAndSettle();
+      expect(core.senderServer, '10.0.0.7:8443');
+    });
+
+    testWidgets('a lock that arrives late hides the nearby list', (
+      tester,
+    ) async {
+      final core = FakeCoreApi()
+        ..discoveryGate = Completer()
+        ..discovery = _found([('wss://mdm.example:443', 'mdm')], locked: true);
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openSend(tester, core, settings);
+      expect(find.byKey(const Key('nearbyReceivers')), findsOneWidget);
+      core.discoveryGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('nearbyReceivers')), findsNothing);
+      expect(core.nearbyCancelled, isTrue);
+      expect(core.stopWatchingCalls, 1);
+    });
+
+    testWidgets('the list says "and more" after a flood', (tester) async {
+      final core = FakeCoreApi();
+      final settings = AppSettings.fromDefaults(core.serverDefaults());
+      await openSend(tester, core, settings);
+      for (var i = 0; i < NearbyReceivers.maxShown + 1; i++) {
         core.nearbyEvents!.add(
           NearbyReceiverEvent.found(id: 'r$i', name: 'R$i'),
         );
       }
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('nearbyMore')), findsOneWidget);
+    });
+
+    test(
+      'a listener that closed before the start never starts the core',
+      () async {
+        final core = FakeCoreApi();
+        NearbyReceivers(core)
+          ..start()
+          ..dispose();
+        final second = NearbyReceivers(core)..start();
+        await Future<void>.delayed(Duration.zero);
+        expect(core.watchCalls, 1);
+        expect(core.stopWatchingCalls, 1);
+        second.dispose();
+      },
+    );
+
+    test('SerialQueue runs jobs in order even when one fails', () async {
+      final q = SerialQueue();
+      final log = <String>[];
+      final gate = Completer<void>();
+      final a = q.run(() async {
+        await gate.future;
+        log.add('a');
+        throw StateError('x');
+      });
+      final b = q.run(() async => log.add('b'));
       await Future<void>.delayed(Duration.zero);
-      expect(nearby.receivers, hasLength(NearbyReceivers.maxShown));
-      // One that is known can still be updated.
-      core.nearbyEvents!.add(
-        const NearbyReceiverEvent.found(id: 'r0', name: 'New'),
-      );
-      await Future<void>.delayed(Duration.zero);
-      expect(nearby.receivers.first.name, 'New');
-      nearby.dispose();
+      expect(log, isEmpty);
+      gate.complete();
+      await expectLater(a, throwsStateError);
+      await b;
+      expect(log, ['a', 'b']);
     });
   });
+}
+
+class _GatedCore extends FakeCoreApi {
+  Completer<AdvertiseOutcome>? firstGate;
+  final order = <String>[];
+
+  @override
+  Future<AdvertiseOutcome> startAdvertising({
+    required String name,
+    String? preferredServer,
+  }) async {
+    advertiseCalls.add((name: name, server: preferredServer));
+    order.add('start');
+    if (advertiseCalls.length == 1 && firstGate != null) {
+      return firstGate!.future;
+    }
+    return AdvertiseOutcome.started;
+  }
+
+  @override
+  Future<void> stopAdvertising() async {
+    order.add('stop');
+    stopAdvertisingCalls++;
+  }
 }

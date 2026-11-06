@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'core/core_api.dart';
+import 'discovery.dart';
 import 'receiver_controller.dart';
 import 'settings.dart';
 import 'widgets.dart';
@@ -64,51 +65,92 @@ class _ReceivePageState extends State<ReceivePage> {
   /// The server that the running announcement names.
   String? _advertisedServer;
   int _advertiseRun = 0;
+  late final SerialQueue _advertiseQueue = serialQueueFor(
+    widget.core,
+    'advertise',
+  );
+
+  /// A running or queued announcement has been stopped because of the policy.
+  bool _announcementStopped = false;
 
   @override
   void initState() {
     super.initState();
     // Neither call blocks the screen: the results arrive later.
     widget.settings.discover(widget.core);
+    widget.settings.addListener(_onSettings);
     _advertise();
   }
 
   @override
   void dispose() {
+    widget.settings.removeListener(_onSettings);
     widget.settings.cancelDiscovery();
     _advertiseRun++;
-    widget.core.stopAdvertising().catchError((Object _) {});
+    // Queued behind a start that is still running, so that it cannot outlive this view.
+    _advertiseQueue
+        .run(() => widget.core.stopAdvertising())
+        .catchError((Object _) {});
     _controller.dispose();
     super.dispose();
+  }
+
+  /// A policy forbids announcing (also one that is learned late, from the network search).
+  bool get _announcingForbidden =>
+      !widget.settings.announcementsAllowed || widget.settings.locked;
+
+  void _onSettings() {
+    if (!_announcingForbidden || _announcementStopped || !mounted) return;
+    _announcementStopped = true;
+    _advertiseRun++; // a running start must not go on with its fallback
+    _advertiseQueue
+        .run(() => widget.core.stopAdvertising())
+        .catchError((Object _) {});
+    if (_advertisedAs != null || _advertisedServer != null) {
+      setState(() {
+        _advertisedAs = null;
+        _advertisedServer = null;
+      });
+    }
   }
 
   /// Announce this receiver and [server] (null = no server) in the local network while this
   /// view is open. The room code is not part of it. A server that the checks of the core
   /// refuse (for example 127.0.0.1) is left out; the receiver is announced all the same.
+  /// Nothing is announced where the policy forbids it. The calls to the core are queued, and
+  /// a view that was closed (or a newer call) is checked before every one of them.
   Future<void> _advertise() async {
+    if (_announcingForbidden) return;
+    _announcementStopped = false;
     final run = ++_advertiseRun;
+    bool stale() => !mounted || run != _advertiseRun;
     final name = widget.receiverName();
     final server = widget.settings.serverAddress.trim();
     try {
-      var outcome = await widget.core.startAdvertising(
-        name: name,
-        preferredServer: server.isEmpty ? null : server,
+      final result = await _advertiseQueue.run<(AdvertiseOutcome, String?)?>(
+        () async {
+          if (stale()) return null;
+          var outcome = await widget.core.startAdvertising(
+            name: name,
+            preferredServer: server.isEmpty ? null : server,
+          );
+          var named = server.isEmpty ? null : server;
+          if (outcome == AdvertiseOutcome.refused && named != null) {
+            if (stale()) return null;
+            outcome = await widget.core.startAdvertising(name: name);
+            named = null;
+          }
+          return (outcome, named);
+        },
       );
-      var named = server.isEmpty ? null : server;
-      if (outcome == AdvertiseOutcome.refused && named != null) {
-        outcome = await widget.core.startAdvertising(name: name);
-        named = null;
-      }
-      if (!mounted || run != _advertiseRun) return;
+      if (result == null || stale()) return;
       setState(() {
-        _advertisedAs = outcome == AdvertiseOutcome.started ? name : null;
-        _advertisedServer = named;
+        _advertisedAs = result.$1 == AdvertiseOutcome.started ? name : null;
+        _advertisedServer = result.$2;
       });
     } catch (_) {
       // Announcing is a convenience; the receiver works without.
-      if (mounted && run == _advertiseRun) {
-        setState(() => _advertisedAs = null);
-      }
+      if (!stale()) setState(() => _advertisedAs = null);
     }
   }
 

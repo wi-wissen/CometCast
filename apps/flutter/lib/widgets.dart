@@ -194,6 +194,15 @@ class _ServerFieldState extends State<ServerField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         field,
+        if (settings.valueSource != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              t.serverFieldSource(serverSourceText(t, settings.valueSource!)),
+              key: const Key('serverFieldSource'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         if (locked)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -260,7 +269,7 @@ class _ServerFieldState extends State<ServerField> {
                     ],
                   ),
                   onPressed: widget.enabled
-                      ? () => settings.serverAddress = s.address
+                      ? () => settings.chooseSuggestion(s)
                       : null,
                 ),
             ],

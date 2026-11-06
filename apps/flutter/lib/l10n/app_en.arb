@@ -414,9 +414,9 @@
   "@serverSourceDns": {
     "description": "Label of a server suggestion that comes from a DNS-SRV record."
   },
-  "serverSourceAnnounced": "Announced by a display",
+  "serverSourceAnnounced": "Announced by a display on this network, not verified",
   "@serverSourceAnnounced": {
-    "description": "Label of a server suggestion that a receiving display announced in the local network."
+    "description": "Label of a server suggestion that a receiving display announced in the local network. Any device in the network can do this, so the label says that nothing was verified."
   },
   "serverSourceDefault": "Default list",
   "@serverSourceDefault": {
@@ -487,6 +487,19 @@
     "description": "Subtitle of a nearby receiver: the server it announced.",
     "placeholders": {
       "server": {
+        "type": "String"
+      }
+    }
+  },
+  "nearbyMore": "and more …",
+  "@nearbyMore": {
+    "description": "Shown under the list of nearby receivers when more were announced than the list can hold."
+  },
+  "serverFieldSource": "Source of this address: {source}",
+  "@serverFieldSource": {
+    "description": "Shown next to the server field when the address was taken from a suggestion or a nearby receiver.",
+    "placeholders": {
+      "source": {
         "type": "String"
       }
     }

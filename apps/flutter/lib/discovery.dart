@@ -41,6 +41,32 @@ enum ServerSourceKind {
   };
 }
 
+/// Runs async jobs one after the other (first in, first out). Starting and stopping the
+/// announcement or the listening in the Rust core must not overlap: a stop that is sent
+/// while a start is still running could be handled first and leave the start running.
+class SerialQueue {
+  Future<void> _tail = Future<void>.value();
+
+  /// Runs [job] after all earlier jobs have finished (whether they failed or not). The
+  /// returned future completes with the result of [job].
+  Future<T> run<T>(Future<T> Function() job) {
+    final result = _tail.then((_) => job());
+    _tail = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+}
+
+/// One queue per core and purpose, so that two screens that follow each other (the old one
+/// closing, the new one opening) cannot interleave their calls.
+final _queues = Expando<Map<String, SerialQueue>>('SerialQueue');
+
+/// The queue of [core] for [purpose] (for example `advertise`, `watch`).
+SerialQueue serialQueueFor(CoreApi core, String purpose) =>
+    (_queues[core] ??= <String, SerialQueue>{}).putIfAbsent(
+      purpose,
+      SerialQueue.new,
+    );
+
 /// One suggested server: the address and where it came from.
 @immutable
 class ServerSuggestion {
@@ -82,7 +108,9 @@ class NearbyReceiver {
 class NearbyReceivers extends ChangeNotifier {
   NearbyReceivers(this._core);
 
-  /// More than this are not shown (a hostile network could announce thousands).
+  /// More than this are not kept (a hostile network could announce thousands). When the
+  /// limit is reached the oldest entry makes room for a new one, so a flood cannot keep a
+  /// real receiver that appears later out of the list.
   static const maxShown = 32;
 
   final CoreApi _core;
@@ -90,6 +118,11 @@ class NearbyReceivers extends ChangeNotifier {
   StreamSubscription<NearbyReceiverEvent>? _subscription;
   bool _unavailable = false;
   bool _disposed = false;
+  bool _truncated = false;
+
+  /// Older entries were dropped because there were more than [maxShown] (the list is
+  /// incomplete: the screen says "and more").
+  bool get truncated => _truncated;
 
   /// In the order in which they were found.
   List<NearbyReceiver> get receivers => List.unmodifiable(_byId.values);
@@ -97,13 +130,24 @@ class NearbyReceivers extends ChangeNotifier {
   /// Listening is not possible on this system.
   bool get unavailable => _unavailable;
 
+  /// Starts listening. The call to the core is queued behind a stop of an earlier screen
+  /// (see [SerialQueue]); it is skipped if this object was disposed meanwhile.
   void start() {
-    if (_subscription != null || _disposed) return;
-    _subscription = _core.watchReceivers().listen(
-      _onEvent,
-      onError: (Object _) => _setUnavailable(),
-    );
+    if (_started || _disposed) return;
+    _started = true;
+    _queue
+        .run(() async {
+          if (_disposed) return;
+          _subscription = _core.watchReceivers().listen(
+            _onEvent,
+            onError: (Object _) => _setUnavailable(),
+          );
+        })
+        .catchError((Object _) => _setUnavailable());
   }
+
+  late final SerialQueue _queue = serialQueueFor(_core, 'watch');
+  bool _started = false;
 
   void _setUnavailable() {
     if (_disposed) return;
@@ -115,10 +159,14 @@ class NearbyReceivers extends ChangeNotifier {
     if (_disposed) return;
     switch (e) {
       case NearbyReceiverEvent_Found(:final id, :final name, :final server):
-        if (!_byId.containsKey(id) && _byId.length >= maxShown) return;
+        if (!_byId.containsKey(id) && _byId.length >= maxShown) {
+          _byId.remove(_byId.keys.first);
+          _truncated = true;
+        }
         _byId[id] = NearbyReceiver(id: id, name: name, server: server);
       case NearbyReceiverEvent_Lost(:final id):
         _byId.remove(id);
+        if (_byId.length < maxShown) _truncated = false;
       case NearbyReceiverEvent_Unavailable():
         _unavailable = true;
     }
@@ -129,11 +177,11 @@ class NearbyReceivers extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    final started = _subscription != null;
     _subscription?.cancel();
     _subscription = null;
-    if (started) {
-      _core.stopWatchingReceivers().catchError((Object _) {});
+    if (_started) {
+      // Queued: it waits for a start that has not reached the core yet.
+      _queue.run(() => _core.stopWatchingReceivers()).catchError((Object _) {});
     }
     super.dispose();
   }

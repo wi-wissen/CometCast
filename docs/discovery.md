@@ -234,16 +234,26 @@ Both screens (receive, send) show the server field with these rules
 
 * **Pre-fill.** At once, from the offline answer (`server_defaults()`); a moment later the
   network answer (`discover_servers()`) replaces the list and, if the person has not typed or
-  tapped anything, the pre-fill. The order is the owner's: policy servers, DNS-SRV,
-  announcements, built-in list. The pre-fill is the first policy server; without one, the
-  server used last time (saved with `shared_preferences`); otherwise the first entry. The saved
+  tapped anything, the pre-fill. The order of the list is the owner's: policy servers, DNS-SRV,
+  announcements, built-in list. **The pre-fill is a different rule: it never takes an
+  announced server** (any device in the local network can announce one, and the room code
+  would be sent to it). It is the first policy server; without one, the server used last
+  time (saved with `shared_preferences`); otherwise the first entry that is not an
+  announcement (DNS-SRV, built-in list, development server). Announced servers are chips that
+  the person has to tap. If only announced servers exist, the field gets `127.0.0.1:8443`. The saved
   server is shown as a chip "Last used" right after the policy servers; `127.0.0.1:8443` stays
   last ("This computer (development)"). UNCERTAIN: putting the saved server before DNS-SRV
   results is a product decision that the owner has not confirmed.
 * **Suggestion chips** carry a translated label for the source: set by your administrator
   (`mdm`), found in the network (DNS) (`dns-srv`), announced by a display
   (`display-announcement`), default list (`default-list`). An unknown source name gets "Other
-  source".
+  source" and, like an announcement, is never pre-filled. The announced label reads "Announced
+  by a display on this network, not verified". Whenever the value of the field was taken from
+  a chip or a nearby receiver, a line next to the field names its source ("Source of this
+  address: ..."); typing removes it.
+* **Last used.** A server whose source is an announcement is not saved as "last used", so an
+  unverified announcement cannot become the trusted pre-fill of the next start. Servers from a
+  policy, DNS-SRV, the built-in list or typed by the person are saved (not under a lock).
 * **`locked`.** The field is read-only (it can still be selected), a line says "Your
   administrator has set the server.", only the policy servers are chips, the saved server, the
   development override `COMETCAST_SERVER` and the development server are ignored, the server
@@ -267,15 +277,27 @@ Both screens (receive, send) show the server field with these rules
   preferred_server)`: the name is the host name of the device (UNCERTAIN: visible to everybody
   in the network; a chosen or random name might be better) and the server in the field (left
   out if `cc-discovery` refuses it, for example `127.0.0.1`). Starting to receive announces the
-  server really used. Closing the view stops it. A failure (no multicast) shows nothing.
+  server really used. Closing the view stops it. Nothing is announced when the policy
+  forbids announcements or locks the server (and a ban learned late stops a running
+  announcement). Starting and stopping the announcement, and the listening, are queued in
+  Dart (first in, first out), so a stop never overtakes a start that is still running and a
+  closed view never starts the fallback announcement. UNCERTAIN: the Rust core keeps one global announcement and one global watch; if a
+  second screen starts before the first one is disposed, the late stop of the first still ends
+  the second's. A failure (no multicast) shows nothing.
 * **Send view.** "Nearby receivers" lists what `watch_receivers()` finds (name and announced
-  server). A tap takes over the announced server and moves the focus to the room code field;
+  server, each marked "Announced by a display on this network, not verified"). A tap takes
+  over the announced server (the field then names the source) and moves the focus to the room
+  code field;
   the person types the code, because **an announcement never contains the room code**. The
   list is not shown, and mDNS is not even started, when the policy locks the server or
-  forbids announcements. At most 32 receivers are shown. UNCERTAIN: the list is only as
+  forbids announcements, also when that is only learned from the late network answer (the
+  listening then stops). At most 32 receivers are kept; when more are announced the oldest
+  entry makes room for the newest and the list says "and more ...". UNCERTAIN: the list is only as
   trustworthy as the local network; the person sees the server before sending anything.
 * **Not done:** the receiver does not listen for senders (the mDNS port is a placeholder),
-  nothing is picked automatically from the list, no QR code, no Android or Apple discovery
+  nothing is picked automatically from announcements (only a tap selects an announced
+  server; the pre-fill comes from the policy, DNS-SRV, the saved server or the built-in
+  list), no QR code, no Android or Apple discovery
   backends (the Dart side would work unchanged once Rust has them).
 
 `address` carries the scheme for network servers (`ws://` or `wss://`); the `tls` flag of

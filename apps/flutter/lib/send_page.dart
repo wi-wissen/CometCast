@@ -60,13 +60,30 @@ class _SendPageState extends State<SendPage> {
   /// (a policy locks the server or forbids them).
   NearbyReceivers? _nearby;
 
+  bool get _nearbyAllowed =>
+      !widget.settings.locked && widget.settings.announcementsAllowed;
+
+  /// The lock or the ban on announcements can arrive late (the network answer): the list is
+  /// then hidden and the listening stops.
+  void _syncNearby() {
+    if (!mounted) return;
+    if (_nearbyAllowed && _nearby == null) {
+      setState(() => _nearby = NearbyReceivers(widget.core)..start());
+    } else if (!_nearbyAllowed && _nearby != null) {
+      final old = _nearby!;
+      setState(() => _nearby = null);
+      old.dispose();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     widget.settings.discover(widget.core);
-    if (!widget.settings.locked && widget.settings.announcementsAllowed) {
+    if (_nearbyAllowed) {
       _nearby = NearbyReceivers(widget.core)..start();
     }
+    widget.settings.addListener(_syncNearby);
     widget.core.captureInfo(display: widget.settings.captureDisplay).then((
       info,
     ) {
@@ -85,6 +102,7 @@ class _SendPageState extends State<SendPage> {
 
   @override
   void dispose() {
+    widget.settings.removeListener(_syncNearby);
     widget.settings.cancelDiscovery();
     _nearby?.dispose();
     _controller.dispose();
@@ -135,7 +153,7 @@ class _SendPageState extends State<SendPage> {
       final t = AppLocalizations.of(context);
       _controller.startCapture(
         code: check.code,
-        server: widget.settings.serverAddress,
+        server: widget.settings.serverAddress.trim(),
         notification: CaptureNotificationTexts(
           title: t.captureNotificationTitle,
           text: t.captureNotificationText,
@@ -146,7 +164,7 @@ class _SendPageState extends State<SendPage> {
     }
     _controller.start(
       code: check.code,
-      server: widget.settings.serverAddress,
+      server: widget.settings.serverAddress.trim(),
       // A screen is shared until the person stops it.
       seconds: sharing ? null : seconds,
       screen: sharing
@@ -318,19 +336,36 @@ class _SendPageState extends State<SendPage> {
                     dense: true,
                     leading: const Icon(Icons.tv),
                     title: Text(r.name),
-                    subtitle: Text(
-                      r.server == null
-                          ? t.nearbyNoServer
-                          : t.nearbyServer(r.server!),
-                    ),
+                    isThreeLine: r.server != null,
+                    subtitle: r.server == null
+                        ? Text(t.nearbyNoServer)
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.nearbyServer(r.server!)),
+                              // Anybody in the network can announce anything.
+                              Text(
+                                t.serverSourceAnnounced,
+                                key: Key('nearbyUnverified:${r.id}'),
+                              ),
+                            ],
+                          ),
                     enabled: !active,
                     onTap: () {
                       final server = r.server;
                       if (server != null) {
-                        widget.settings.serverAddress = server;
+                        widget.settings.chooseSuggestion(
+                          ServerSuggestion(server, ServerSourceKind.announced),
+                        );
                       }
                       _codeFocus.requestFocus();
                     },
+                  ),
+                if (nearby.truncated)
+                  Text(
+                    t.nearbyMore,
+                    key: const Key('nearbyMore'),
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 Text(
                   t.nearbyHint,

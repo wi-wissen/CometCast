@@ -69,7 +69,10 @@ class PrefsSettingsStore implements SettingsStore {
 /// The server list follows the owner's order (docs/discovery.md): policy servers, DNS-SRV,
 /// announcements by displays, the built-in list. The pre-fill is the first policy server; if the
 /// policy names none, the server used last time (only when the policy does not [locked] the
-/// field); otherwise the first entry. Whatever the person typed or tapped is never overwritten.
+/// field); otherwise the first entry that is not an announcement. **A server that any device
+/// in the local network announced is never pre-filled** (the room code would go to it): it is
+/// only a labelled suggestion that the person taps. Whatever the person typed or tapped is
+/// never overwritten.
 class AppSettings extends ChangeNotifier {
   AppSettings({
     String? serverAddress,
@@ -177,8 +180,13 @@ class AppSettings extends ChangeNotifier {
     return out;
   }
 
+  /// Sources that may fill the field without a tap by the person. Announcements (any device
+  /// in the network can make one) and unknown sources may not.
+  static bool _mayPrefill(ServerSourceKind k) =>
+      k != ServerSourceKind.announced && k != ServerSourceKind.unknown;
+
   /// The address that fills the field: the first policy server, else the saved one (not when
-  /// locked), else the first suggestion, else null.
+  /// locked), else the first suggestion that [_mayPrefill], else null.
   static String? _prefill(
     List<ServerSuggestion> list, {
     required bool locked,
@@ -191,7 +199,10 @@ class AppSettings extends ChangeNotifier {
     if (!locked && savedAddress != null && savedAddress.isNotEmpty) {
       return savedAddress;
     }
-    return list.isEmpty ? null : list.first.address;
+    for (final s in list) {
+      if (_mayPrefill(s.kind)) return s.address;
+    }
+    return null;
   }
 
   final SettingsStore? store;
@@ -208,6 +219,10 @@ class AppSettings extends ChangeNotifier {
   bool _announcementsAllowed;
   Set<DiscoveryWarning> _notices;
   bool _userChose;
+
+  /// Where the current value comes from if the person took it from a suggestion or a nearby
+  /// receiver; null if it was typed or pre-filled.
+  ServerSourceKind? _valueSource;
   bool _discovering = false;
   int _discoveryRun = 0;
 
@@ -229,11 +244,28 @@ class AppSettings extends ChangeNotifier {
   /// Signalling server as `host:port`.
   String get serverAddress => _serverAddress;
 
-  /// The person typed or tapped a server. Under a policy lock only listed servers are taken.
+  /// Where the current address comes from, when the person took it from a chip or a nearby
+  /// receiver (the screen shows it next to the field). Null after typing.
+  ServerSourceKind? get valueSource => _valueSource;
+
+  /// The person typed a server. Under a policy lock only listed servers are taken.
   set serverAddress(String value) {
     if (value == _serverAddress) return;
     if (_locked && !_suggestions.any((s) => s.address == value)) return;
     _serverAddress = value;
+    _valueSource = null;
+    _userChose = true;
+    notifyListeners();
+  }
+
+  /// The person tapped [s] (a chip or a nearby receiver): the address is taken and its
+  /// source is remembered, so that it stays visible and an announced server is not saved as
+  /// "last used".
+  void chooseSuggestion(ServerSuggestion s) {
+    if (_locked && !_suggestions.any((x) => x.address == s.address)) return;
+    if (s.address == _serverAddress && s.kind == _valueSource) return;
+    _serverAddress = s.address;
+    _valueSource = s.kind;
     _userChose = true;
     notifyListeners();
   }
@@ -283,16 +315,22 @@ class AppSettings extends ChangeNotifier {
       // A policy beats whatever was chosen before.
       if (!_suggestions.any((s) => s.address == _serverAddress)) {
         _serverAddress = prefill ?? '';
+        _valueSource = null;
       }
     } else if (!_userChose && prefill != null) {
       _serverAddress = prefill;
+      _valueSource = null;
     }
   }
 
-  /// Remember the current server for the next start (call when it is used). Not under a lock.
+  /// Remember the current server for the next start (call when it is used). Not under a lock,
+  /// and not a server that was announced in the local network: "last used" is pre-filled
+  /// next time, which would turn an unverified announcement into a trusted default.
   Future<void> rememberServer() async {
     final v = _serverAddress.trim();
-    if (v.isEmpty || _locked) return;
+    if (v.isEmpty || _locked || _valueSource == ServerSourceKind.announced) {
+      return;
+    }
     await store?.saveServer(v);
   }
 
