@@ -22,3 +22,27 @@ jobs:
       - run: cargo test --workspace
       # cc-proto must stay usable in the browser (WebAssembly).
       - run: cargo check -p cc-proto --target wasm32-unknown-unknown
+  # The release variant of the CLI must not contain an OpenH264 source build (docs/capture.md,
+  # "H.264 licensing"). The other job builds with the development default `h264-source`.
+  release-variant:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p cometcast-cli --no-default-features --features h264-libloading
+      - name: The dependency graph has no OpenH264 source build
+        run: |
+          cargo tree -p cometcast-cli --no-default-features --features h264-libloading -e features -i openh264 > tree.txt
+          grep -q 'openh264 feature "libloading"' tree.txt
+          if grep -E 'openh264 feature "source"|cc-media feature "h264-source"|cc-sender feature "h264-source"' tree.txt; then
+            echo "the release variant pulls in the OpenH264 source build" >&2
+            exit 1
+          fi
+      - name: Without COMETCAST_OPENH264_LIB the binary refuses to start the codec
+        run: |
+          set +e
+          out=$(env -u COMETCAST_OPENH264_LIB target/release/cometcast-cli receive --decode --server 127.0.0.1:1 2>&1)
+          code=$?
+          echo "$out"
+          test "$code" -ne 0
+          echo "$out" | grep -q "built without the h264-source feature"

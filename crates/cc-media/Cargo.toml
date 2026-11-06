@@ -15,6 +15,8 @@ workspace = true
 # UNCERTAIN: which build mode the releases use is an open legal/packaging decision (see
 # docs/capture.md, "H.264 licensing"). `h264-source` builds and tests here without a
 # download; `h264-libloading` loads Cisco's prebuilt library at run time.
+# Consumers inside the workspace use `default-features = false` and choose the feature
+# themselves (the CLI decides for releases); this default only serves `cargo test -p cc-media`.
 default = ["h264-source"]
 h264-source = ["openh264/source"]
 h264-libloading = ["openh264/libloading"]

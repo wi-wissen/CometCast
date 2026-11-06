@@ -19,6 +19,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 cc-server.workspace = true
-cc-sender.workspace = true
-cc-media.workspace = true
+# The tests decode with OpenH264 built from source (dev only, see docs/capture.md).
+cc-sender = { workspace = true, features = ["h264-source"] }
+cc-media = { workspace = true, features = ["h264-source"] }
 cc-capture = { workspace = true, features = ["test-support"] }

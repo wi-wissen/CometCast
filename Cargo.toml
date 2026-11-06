@@ -73,10 +73,12 @@ cc-proto = { path = "crates/cc-proto" }
 cc-server = { path = "crates/cc-server" }
 cc-transport = { path = "crates/cc-transport" }
 cc-receiver = { path = "crates/cc-receiver" }
-cc-sender = { path = "crates/cc-sender" }
+# default-features = false: the H.264 build mode (OpenH264 from source or the prebuilt
+# library) is chosen by the program crate, see bins/cometcast-cli/Cargo.toml and docs/capture.md.
+cc-sender = { path = "crates/cc-sender", default-features = false }
 cc-airplay = { path = "crates/cc-airplay" }
 cc-capture = { path = "crates/cc-capture" }
-cc-media = { path = "crates/cc-media" }
+cc-media = { path = "crates/cc-media", default-features = false }
 # Screen capture on X11: pure-Rust protocol implementation (no libxcb, no unsafe in our code).
 x11rb = { version = "0.14", default-features = false, features = ["damage", "randr"] }
 # H.264 (BSD-2-Clause bindings around Cisco's OpenH264). The build mode is chosen by the
