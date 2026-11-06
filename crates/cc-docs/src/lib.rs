@@ -6,8 +6,14 @@
 //! device renders the pages itself with the same renderer, [`hayro`](https://crates.io/crates/hayro)
 //! (pure Rust, Apache-2.0 OR MIT). This crate is that renderer plus the limits around it.
 //!
-//! * [`Document::open`] checks hard limits **before** parsing, then parses on a guarded
-//!   worker thread (see [`Limits`]).
+//! * [`Document::open`] checks hard limits **before** parsing, then parses and renders in a
+//!   **child process** with memory and CPU limits (see [`Limits`], [`Isolation`], and
+//!   `docs/documents.md`). A PDF comes from a remote sender and is treated as hostile; hayro
+//!   cannot be interrupted and aborts the whole process on out-of-memory, so the process is
+//!   the boundary. iOS, tvOS and `wasm32` have no child processes and use a weaker in-process
+//!   engine.
+//! * The worker program is the `cc-docs-worker` binary of this crate or any program that
+//!   calls [`worker_main`] (`cometcast-cli docs-worker`).
 //! * [`Document::render_page`] and [`Document::thumbnail`] give RGBA pictures
 //!   ([`RenderedPage`]); [`encode_png`] / [`encode_webp_lossless`] / [`validate_webp`] are
 //!   the pure-Rust image helpers.
@@ -23,13 +29,44 @@
 //! Not in this crate (later steps): Office conversion, the WASM build for the web app,
 //! speaker notes (they come from PPTX; PDFs have none, see [`Document::notes`]).
 
+#[cfg(not(target_arch = "wasm32"))]
+mod clamp;
 mod document;
 mod encode;
 mod error;
+mod isolation;
+mod prescan;
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(target_os = "ios"),
+    not(target_os = "tvos")
+))]
+mod process;
+#[cfg(not(target_arch = "wasm32"))]
+mod process_stats;
 mod session;
+#[cfg(not(target_arch = "wasm32"))]
+mod wire;
 mod worker;
+#[cfg(not(target_arch = "wasm32"))]
+mod worker_main;
 
 pub use document::{Document, Limits, PageSize, RenderOptions, RenderedPage, abandoned_renders};
+pub use isolation::{Isolation, WORKER_ENV, WORKER_FILE_NAME, WorkerSpec};
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(target_os = "ios"),
+    not(target_os = "tvos")
+))]
+pub use process::sandbox_tools_available;
+#[cfg(not(target_arch = "wasm32"))]
+pub use worker_main::worker_main;
+
+/// There is no render worker process on `wasm32`; returns 2.
+#[cfg(target_arch = "wasm32")]
+pub fn worker_main() -> i32 {
+    2
+}
 pub use encode::{WebpInfo, encode_png, encode_webp_lossless, validate_webp};
 pub use error::DocError;
 pub use session::{DocumentSession, SessionEvent};

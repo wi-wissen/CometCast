@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Hostile and damaged input: the library must return an error or a picture, never panic out
-//! of the API, never hang past the time limit, and never allocate without bound.
+//! of the API and never hang past the time limit. Memory is bounded by the render worker
+//! process, not by this file: the memory bombs are in `sandbox.rs`.
 //!
 //! Test files are built in memory; nothing here is a real exploit, only structures that
 //! stress a parser (truncation, mutation, deep nesting, cycles, huge numbers, compression

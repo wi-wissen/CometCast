@@ -69,9 +69,26 @@ pub enum DocError {
     /// The renderer panicked on this input (caught).
     #[error("the renderer failed on this document")]
     Panicked,
-    /// Too many earlier renders that timed out are still running in the background.
+    /// Too many earlier renders that timed out are still running in the background
+    /// (in-process engine only).
     #[error("too many abandoned renders are still running")]
     Busy,
+    /// An earlier render of this document (or of a file with the same content) timed out in
+    /// the in-process engine; it is not rendered again so that one bad file costs one thread.
+    #[error("an earlier render of this document timed out; it is not tried again")]
+    Poisoned,
+    /// The pre-scan refused the document before rendering (see [`Limits`](crate::Limits)).
+    #[error("the PDF was refused by the safety scan: {0}")]
+    Rejected(&'static str),
+    /// The render process used more memory than [`Limits::max_worker_memory_bytes`](crate::Limits).
+    #[error("the renderer needed more memory than allowed")]
+    MemoryLimit,
+    /// The render process ended without an answer (crash, out of memory, CPU limit, signal).
+    #[error("the renderer process failed: {0}")]
+    WorkerFailed(&'static str),
+    /// The render process could not be started or found.
+    #[error("the render worker is not available: {0}")]
+    WorkerUnavailable(String),
     /// A worker thread could not be started or died unexpectedly.
     #[error("internal error: {0}")]
     Internal(&'static str),

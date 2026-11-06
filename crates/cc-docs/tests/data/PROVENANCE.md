@@ -22,4 +22,15 @@ are asserted in `../render.rs`; the layout numbers below match those tests.
 
 Not covered by files here: AES encryption, CJK text, non-embedded CID fonts, JPEG 2000,
 transparency groups, forms, scans, real classroom PDFs. Hostile inputs are built in memory
-by the tests (`../hostile.rs`, `../limits.rs`), not stored.
+by the tests (`../hostile.rs`, `../limits.rs`, `../sandbox.rs`, `../poison.rs`), not stored.
+
+## Review generators
+
+`review_gen.py` and `review_gen2.py` are the hostile-PDF generators of the independent review of
+this crate (2026-11-06), copied unchanged below a provenance header (own work of the review,
+GPL-3.0-or-later like the repository). They are documentation of the shapes the review used
+and are **not run by the tests**: `review_gen.py` writes files of up to 2 GB. The same shapes
+are built in memory by `../sandbox.rs` (2 GiB flate bomb as a 2 MB file, declared 2e9 x 2e9 image,
+20000 x 20000 RGB image of 1.2 GB decoded, million pages), `../poison.rs` (self-using tiling
+pattern, 725 bytes) and `../hostile.rs` (nesting). The shape `xref_huge.pdf` (xref subsection
+with 4e9 entries) is not reproduced in Rust; UNCERTAIN: it is only covered by the process limits.

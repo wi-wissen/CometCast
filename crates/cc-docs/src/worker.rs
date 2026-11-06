@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The engine that talks to hayro.
+//! The in-process engine that talks to hayro, and the functions the render worker process
+//! shares with it.
 //!
-//! Native targets: one worker thread per open document owns the parsed `Pdf` and the render
+//! This is the **weak** engine (see `docs/documents.md`): it is used on `wasm32`, on iOS and
+//! tvOS (no child processes) and when the caller asks for `Isolation::InProcess`. The
+//! default on every other platform is the child process of `process.rs`.
+//!
+//! Threads: one worker thread per open document owns the parsed `Pdf` and the render
 //! cache; callers send jobs and wait with a time limit. hayro has no hook to interrupt a
 //! running page, so when the limit passes (or the caller cancels) the thread is **abandoned**:
-//! the caller gets an error at once, the thread runs on until hayro returns, and the result
-//! is dropped. A global counter limits how many abandoned threads may be alive at once.
+//! the caller gets an error at once and the thread runs on until hayro returns. A document
+//! whose render timed out is **poisoned** (never rendered again, also not after reopening the
+//! same bytes), so one bad file costs one thread. Memory is not bounded in this engine.
 //!
 //! `wasm32`: no threads and no usable `catch_unwind` (panic aborts there), so the engine
 //! parses and renders inline, without time limit or cancel. The hard limits that do not need
-//! threads (file size, page count, output size) still apply.
+//! threads (file size, page count, output size) and the pre-scan still apply.
 
 use std::sync::Arc;
 
@@ -23,6 +29,7 @@ use hayro::{RenderCache, RenderSettings, render_into};
 
 use crate::document::{Limits, PageSize, RenderedPage};
 use crate::error::DocError;
+use crate::prescan::ScanLevel;
 
 /// A validated render request: the output size is already checked against the limits.
 #[derive(Debug, Clone, Copy)]
@@ -32,8 +39,13 @@ pub(crate) struct Job {
     pub height: u32,
 }
 
-/// Parse the bytes and collect the page sizes. Runs on the worker (or inline on wasm).
-fn parse(bytes: &Arc<Vec<u8>>, limits: &Limits) -> Result<(Pdf, Vec<PageSize>), DocError> {
+/// Parse the bytes, run the pre-scan and collect the page sizes. Runs on the worker thread
+/// (or inline on wasm, or in the worker process).
+pub(crate) fn parse(
+    bytes: &Arc<Vec<u8>>,
+    limits: &Limits,
+    level: ScanLevel,
+) -> Result<(Pdf, Vec<PageSize>), DocError> {
     let pdf = Pdf::new(Arc::clone(bytes)).map_err(|e| match e {
         LoadPdfError::Decryption(d) => match d {
             hayro_syntax::DecryptionError::PasswordProtected => DocError::PasswordProtected,
@@ -49,6 +61,7 @@ fn parse(bytes: &Arc<Vec<u8>>, limits: &Limits) -> Result<(Pdf, Vec<PageSize>), 
         },
         LoadPdfError::Invalid => DocError::Invalid,
     })?;
+    crate::prescan::scan(&pdf, limits, level)?;
     let pages = pdf.pages();
     if pages.is_empty() {
         return Err(DocError::NoPages);
@@ -73,7 +86,7 @@ fn parse(bytes: &Arc<Vec<u8>>, limits: &Limits) -> Result<(Pdf, Vec<PageSize>), 
 }
 
 /// Render one page at exactly `job.width` x `job.height` pixels on white.
-fn render_one<'a>(
+pub(crate) fn render_one<'a>(
     pdf: &'a Pdf,
     cache: &RenderCache<'a>,
     settings: &InterpreterSettings,
@@ -122,32 +135,69 @@ fn render_one<'a>(
     })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) use native::Engine;
 #[cfg(target_arch = "wasm32")]
-pub(crate) use wasm::Engine;
+pub(crate) use wasm::{Engine, content_key, is_poisoned, poison, stuck_workers};
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use std::panic::{AssertUnwindSafe, catch_unwind};
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
     use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
-    use super::{Job, parse, render_one};
+    use super::{Job, ScanLevel, parse, render_one};
     use crate::document::{Limits, PageSize, RenderedPage};
     use crate::error::DocError;
 
     /// Renders that were abandoned (time limit, cancel) and still run inside hayro.
-    static STUCK: AtomicI64 = AtomicI64::new(0);
+    static STUCK: AtomicUsize = AtomicUsize::new(0);
     /// Do not start new workers while this many abandoned ones are still running.
-    // UNCERTAIN: 4 is a guess; it only bounds CPU and memory a hostile file can keep busy.
-    const MAX_STUCK: i64 = 4;
+    /// Poisoning (see the module docs) means a single file can hold only one of them.
+    // UNCERTAIN: 8 is a guess; it only bounds the CPU and memory hostile files can keep busy.
+    const MAX_STUCK: usize = 8;
     /// Stack of a worker thread. Parsing and rendering recurse (nested objects, forms,
     /// patterns); a stack overflow cannot be caught and would end the whole process.
     // UNCERTAIN: 64 MiB is generous but not derived from hayro's maximum recursion depth.
     const WORKER_STACK: usize = 64 * 1024 * 1024;
+    /// Content hashes of files whose open or render timed out (bounded, oldest dropped).
+    static POISONED: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+    const MAX_POISONED: usize = 64;
+
+    const RUNNING: u8 = 0;
+    const ABANDONED: u8 = 1;
+    const DONE: u8 = 2;
+
+    /// Shared between the engine and its thread; makes the STUCK count exact whatever the
+    /// order of "abandon" and "thread ended".
+    struct Slot(AtomicU8);
+
+    impl Slot {
+        /// The caller gives up on the thread.
+        fn abandon(&self) {
+            if self
+                .0
+                .compare_exchange(RUNNING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                STUCK.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        fn is_abandoned(&self) -> bool {
+            self.0.load(Ordering::SeqCst) == ABANDONED
+        }
+    }
+
+    /// Dropped when the thread ends, also after a panic.
+    struct ThreadEnd(Arc<Slot>);
+
+    impl Drop for ThreadEnd {
+        fn drop(&mut self) {
+            if self.0.0.swap(DONE, Ordering::SeqCst) == ABANDONED {
+                STUCK.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+    }
 
     enum Reply {
         Info(Result<Vec<PageSize>, DocError>),
@@ -156,13 +206,38 @@ mod native {
 
     /// Number of abandoned renders still running (for tests and diagnostics).
     pub(crate) fn stuck_workers() -> usize {
-        usize::try_from(STUCK.load(Ordering::SeqCst)).unwrap_or(0)
+        STUCK.load(Ordering::SeqCst)
+    }
+
+    /// A hash of the file content (random per process).
+    pub(crate) fn content_key(bytes: &[u8]) -> u64 {
+        use std::hash::BuildHasher;
+        use std::sync::OnceLock;
+        static STATE: OnceLock<std::collections::hash_map::RandomState> = OnceLock::new();
+        STATE.get_or_init(Default::default).hash_one(bytes)
+    }
+
+    pub(crate) fn is_poisoned(key: u64) -> bool {
+        POISONED
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(&key)
+    }
+
+    pub(crate) fn poison(key: u64) {
+        let mut v = POISONED.lock().unwrap_or_else(|p| p.into_inner());
+        if !v.contains(&key) {
+            if v.len() >= MAX_POISONED {
+                v.remove(0);
+            }
+            v.push(key);
+        }
     }
 
     pub(crate) struct Engine {
         tx: Option<Sender<Job>>,
         rx: Receiver<Reply>,
-        abandoned: Arc<AtomicBool>,
+        slot: Arc<Slot>,
     }
 
     impl Drop for Engine {
@@ -173,34 +248,41 @@ mod native {
     }
 
     impl Engine {
-        /// Start the worker, parse on it and wait for the page sizes.
+        /// Start the worker, parse on it and wait for the page sizes. A timeout here poisons
+        /// the content (`key`).
         pub(crate) fn open(
             bytes: Arc<Vec<u8>>,
             limits: Limits,
+            key: u64,
         ) -> Result<(Engine, Vec<PageSize>), DocError> {
-            if STUCK.load(Ordering::SeqCst) >= MAX_STUCK {
+            if is_poisoned(key) {
+                return Err(DocError::Poisoned);
+            }
+            if stuck_workers() >= MAX_STUCK {
                 return Err(DocError::Busy);
             }
             let (job_tx, job_rx) = channel::<Job>();
             let (reply_tx, reply_rx) = channel::<Reply>();
-            let abandoned = Arc::new(AtomicBool::new(false));
-            let flag = Arc::clone(&abandoned);
+            let slot = Arc::new(Slot(AtomicU8::new(RUNNING)));
+            let end = ThreadEnd(Arc::clone(&slot));
             std::thread::Builder::new()
                 .name("cc-docs-worker".into())
                 .stack_size(WORKER_STACK)
                 .spawn(move || {
+                    let _end = end;
                     serve(&bytes, &limits, &job_rx, &reply_tx);
-                    if flag.load(Ordering::SeqCst) {
-                        STUCK.fetch_sub(1, Ordering::SeqCst);
-                    }
                 })
                 .map_err(|_| DocError::Internal("cannot start worker thread"))?;
             let mut engine = Engine {
                 tx: Some(job_tx),
                 rx: reply_rx,
-                abandoned,
+                slot,
             };
-            match engine.wait(limits.open_timeout, None)? {
+            let r = engine.wait(limits.open_timeout, None);
+            if matches!(r, Err(DocError::Timeout)) {
+                poison(key);
+            }
+            match r? {
                 Reply::Info(r) => r.map(|sizes| (engine, sizes)),
                 Reply::Page(_) => Err(DocError::Internal("unexpected reply")),
             }
@@ -227,7 +309,7 @@ mod native {
 
         /// Is the worker usable for another job?
         pub(crate) fn alive(&self) -> bool {
-            self.tx.is_some() && !self.abandoned.load(Ordering::SeqCst)
+            self.tx.is_some() && !self.slot.is_abandoned()
         }
 
         fn wait(
@@ -235,7 +317,7 @@ mod native {
             timeout: Duration,
             cancel: Option<&AtomicBool>,
         ) -> Result<Reply, DocError> {
-            let deadline = Instant::now() + timeout;
+            let deadline = crate::clamp::deadline(timeout);
             loop {
                 if cancel.is_some_and(|c| c.load(Ordering::SeqCst)) {
                     self.abandon();
@@ -269,9 +351,7 @@ mod native {
         }
 
         fn abandon(&mut self) {
-            if !self.abandoned.swap(true, Ordering::SeqCst) {
-                STUCK.fetch_add(1, Ordering::SeqCst);
-            }
+            self.slot.abandon();
             self.tx = None;
         }
     }
@@ -282,7 +362,9 @@ mod native {
 
     /// The worker loop: parse once, then answer jobs until the sender is dropped.
     fn serve(bytes: &Arc<Vec<u8>>, limits: &Limits, jobs: &Receiver<Job>, replies: &Sender<Reply>) {
-        let parsed = panic_to_error(catch_unwind(AssertUnwindSafe(|| parse(bytes, limits))));
+        let parsed = panic_to_error(catch_unwind(AssertUnwindSafe(|| {
+            parse(bytes, limits, ScanLevel::Full)
+        })));
         let pdf = match parsed {
             Ok((pdf, sizes)) => {
                 let _ = replies.send(Reply::Info(Ok(sizes)));
@@ -310,9 +392,7 @@ mod native {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use native::stuck_workers;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use wasm::stuck_workers;
+pub(crate) use native::{Engine, content_key, is_poisoned, poison, stuck_workers};
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
@@ -320,13 +400,23 @@ mod wasm {
     use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
-    use super::{Job, parse, render_one};
+    use super::{Job, ScanLevel, parse, render_one};
     use crate::document::{Limits, PageSize, RenderedPage};
     use crate::error::DocError;
 
     pub(crate) fn stuck_workers() -> usize {
         0
     }
+
+    pub(crate) fn content_key(_bytes: &[u8]) -> u64 {
+        0
+    }
+
+    pub(crate) fn is_poisoned(_key: u64) -> bool {
+        false
+    }
+
+    pub(crate) fn poison(_key: u64) {}
 
     /// Inline engine: parses again for every render (hayro's page type borrows the parsed
     /// document, so it cannot be stored next to it without extra machinery).
@@ -340,8 +430,9 @@ mod wasm {
         pub(crate) fn open(
             bytes: Arc<Vec<u8>>,
             limits: Limits,
+            _key: u64,
         ) -> Result<(Engine, Vec<PageSize>), DocError> {
-            let (_, sizes) = parse(&bytes, &limits)?;
+            let (_, sizes) = parse(&bytes, &limits, ScanLevel::Full)?;
             Ok((Engine { bytes, limits }, sizes))
         }
 
@@ -352,7 +443,7 @@ mod wasm {
             _timeout: Duration,
             _cancel: Option<&AtomicBool>,
         ) -> Result<RenderedPage, DocError> {
-            let (pdf, _) = parse(&self.bytes, &self.limits)?;
+            let (pdf, _) = parse(&self.bytes, &self.limits, ScanLevel::Structure)?;
             let settings = hayro::hayro_interpret::InterpreterSettings::default();
             let cache = hayro::RenderCache::new();
             render_one(&pdf, &cache, &settings, job)

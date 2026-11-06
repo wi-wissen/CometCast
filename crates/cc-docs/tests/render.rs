@@ -209,6 +209,65 @@ fn thumbnails_fit_the_box() {
     assert_eq!(d.thumbnail(0, 0).unwrap_err(), DocError::InvalidWidth);
 }
 
+/// A one-page PDF with the given page dictionary entries.
+fn page_with(extra: &str) -> Vec<u8> {
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+        format!("<< /Type /Page /Parent 2 0 R {extra} /Contents 4 0 R /Resources << >> >>"),
+        "<< /Length 23 >>\nstream\n1 0 0 rg 0 0 50 50 re f\nendstream".to_string(),
+    ];
+    let mut offs = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offs.push(out.len());
+        out.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).bytes());
+    }
+    let x = out.len();
+    out.extend(b"xref\n0 5\n0000000000 65535 f \n");
+    for o in offs {
+        out.extend(format!("{o:010} 00000 n \n").bytes());
+    }
+    out.extend(format!("trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{x}\n%%EOF\n").bytes());
+    out
+}
+
+/// Review finding: a 10 x 10 000 pt page with `max_side` 64 gave a 1 x 1000 picture.
+#[test]
+fn thumbnails_of_extreme_shapes_still_fit_the_box() {
+    for (media, max_side) in [
+        ("[0 0 10 10000]", 64u32),
+        ("[0 0 10000 10]", 64),
+        ("[0 0 1 100000]", 16),
+        ("[0 0 100 100]", 1),
+        ("[0 0 7 300]", 100),
+    ] {
+        let d = Document::open(page_with(&format!("/MediaBox {media}"))).unwrap();
+        let t = d.thumbnail(0, max_side).unwrap();
+        println!("{media} in {max_side}: {} x {}", t.width, t.height);
+        assert!(t.width >= 1 && t.height >= 1);
+        assert!(
+            t.width <= max_side && t.height <= max_side,
+            "{media}: {} x {}",
+            t.width,
+            t.height
+        );
+        // The long side uses the whole box.
+        assert_eq!(t.width.max(t.height), max_side, "{media}");
+        assert_eq!(t.rgba.len(), t.width as usize * t.height as usize * 4);
+    }
+}
+
+/// `/UserUnit` (PDF 1.6) scales a page's unit; hayro ignores it, so the size stays in
+/// points. Documented in `docs/documents.md` and `PageSize`.
+#[test]
+fn user_unit_is_not_applied() {
+    let d = Document::open(page_with("/MediaBox [0 0 100 100] /UserUnit 100")).unwrap();
+    let s = d.page_size(0).unwrap();
+    assert_eq!((s.width_pt, s.height_pt), (100.0, 100.0));
+    assert_eq!(d.render_page(0, 200).unwrap().height, 200);
+}
+
 #[test]
 fn notes_are_none_for_pdf() {
     assert_eq!(open("minimal.pdf").notes(0), None);

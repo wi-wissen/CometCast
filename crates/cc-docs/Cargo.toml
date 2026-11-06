@@ -12,13 +12,25 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["worker-bin"]
+# Builds the `cc-docs-worker` program (the render worker process). Needed by the tests; an
+# application that ships its own worker entry (`cc_docs::worker_main`) can turn it off.
+worker-bin = []
+
+[[bin]]
+name = "cc-docs-worker"
+path = "src/bin/cc-docs-worker.rs"
+required-features = ["worker-bin"]
+
 [dependencies]
 cc-proto.workspace = true
 hayro.workspace = true
 png.workspace = true
 image-webp.workspace = true
 thiserror.workspace = true
+# Inflate pre-scan of PDF streams (pure Rust backend, no C code).
+flate2 = { workspace = true }
 
 [dev-dependencies]
 serde_json.workspace = true
-flate2 = "1"

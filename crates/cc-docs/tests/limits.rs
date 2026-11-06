@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Resource limits: time limit, cancel, abandoned workers, compression bombs, huge images.
 //!
-//! These tests leave abandoned renders running inside hayro (it cannot be interrupted), so
-//! they live in their own test binary (own process) and run one after the other.
+//! The in-process tests leave abandoned renders running inside hayro (it cannot be
+//! interrupted), so they live in their own test binary (own process) and run one after the
+//! other. The process-sandbox tests with the memory limit are in `sandbox.rs`.
 
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use cc_docs::{DocError, Document, Limits, RenderOptions};
+use cc_docs::{DocError, Document, Isolation, Limits, RenderOptions, WorkerSpec};
 
 static SERIAL: Mutex<()> = Mutex::new(());
 
@@ -202,60 +203,163 @@ fn image_with_huge_declared_size() {
     }
 }
 
-#[test]
-fn render_time_limit_returns_in_time_and_the_next_render_works() {
-    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-    // fan 60: 60^3 = 216 000 leaf draws + 12 960 form invocations; far over 150 ms in debug.
-    let bytes = blowup_pdf(60);
-    let d = Document::open_with_limits(bytes, quick()).unwrap();
+fn worker() -> Isolation {
+    Isolation::Process(WorkerSpec::new(env!("CARGO_BIN_EXE_cc-docs-worker")))
+}
+
+/// Wait until earlier tests' abandoned in-process renders have ended (the counter is global).
+fn wait_idle() {
     let t = Instant::now();
-    let r = d.render_page_with(
+    while cc_docs::abandoned_renders() > 0 && t.elapsed() < Duration::from_secs(120) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        cc_docs::abandoned_renders(),
         0,
-        400,
-        &RenderOptions {
-            timeout: Some(Duration::from_millis(150)),
-            cancel: None,
-        },
+        "earlier abandoned render never ended"
     );
+}
+
+fn short(ms: u64) -> RenderOptions {
+    RenderOptions {
+        timeout: Some(Duration::from_millis(ms)),
+        cancel: None,
+    }
+}
+
+/// In-process engine: a timed-out document is poisoned, the same bytes are refused on reopen,
+/// the abandoned counter goes back to 0 when hayro returns, and `open` never reports Busy for
+/// a file that was already seen (finding: pattern_self.pdf made `open` return Busy forever).
+#[test]
+fn in_process_timeout_poisons_the_document_and_the_counter_recovers() {
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    wait_idle();
+    // fan 15: 15^3 = 3375 leaf draws; over 150 ms in debug but finite, so that the abandoned
+    // thread ends within seconds and the counter can be checked (fan 60 runs for minutes).
+    let bytes = blowup_pdf(15);
+    let d = Document::open_with_options(bytes.clone(), quick(), Isolation::InProcess).unwrap();
+    assert!(!d.is_sandboxed());
+    let t = Instant::now();
+    let r = d.render_page_with(0, 400, &short(150));
     let took = t.elapsed();
-    println!("blow-up render with 150 ms limit: {r:?} after {took:?}");
+    println!("blow-up render with 150 ms limit (in process): {r:?} after {took:?}");
     match r {
         Err(DocError::Timeout) => {
             assert!(took < Duration::from_millis(400), "returned late: {took:?}");
             assert!(cc_docs::abandoned_renders() >= 1);
+            // One bad file costs one thread: no further render, also not after reopening.
+            assert_eq!(d.render_page(0, 100).unwrap_err(), DocError::Poisoned);
+            for _ in 0..10 {
+                let again =
+                    Document::open_with_options(bytes.clone(), quick(), Isolation::InProcess);
+                assert_eq!(again.unwrap_err(), DocError::Poisoned);
+            }
+            assert!(cc_docs::abandoned_renders() <= 1, "threads piled up");
+            // The count must come back to 0 when hayro finishes (exact accounting).
+            let wait = Instant::now();
+            while cc_docs::abandoned_renders() > 0 && wait.elapsed() < Duration::from_secs(120) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            println!("abandoned thread ended after {:?}", wait.elapsed());
+            assert_eq!(cc_docs::abandoned_renders(), 0);
         }
         // UNCERTAIN: if hayro is fast enough on this machine the render simply finishes.
         Ok(_) => {}
         Err(e) => panic!("unexpected {e:?}"),
     }
-    // The document is still usable: a new worker is started (page_size needs no worker).
     assert_eq!(d.page_count(), 1);
+}
+
+/// Process engine: a timeout kills the child (nothing abandoned), the document stays usable.
+#[test]
+fn process_timeout_kills_the_worker_and_the_next_render_works() {
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    wait_idle();
+    let d = Document::open_with_options(blowup_pdf(60), quick(), worker()).unwrap();
+    assert!(d.is_sandboxed());
+    let t = Instant::now();
+    let r = d.render_page_with(0, 400, &short(150));
+    let took = t.elapsed();
+    println!("blow-up render with 150 ms limit (process): {r:?} after {took:?}");
+    match r {
+        Err(DocError::Timeout) => {
+            assert!(
+                took < Duration::from_millis(1500),
+                "returned late: {took:?}"
+            );
+            assert_eq!(cc_docs::abandoned_renders(), 0);
+        }
+        // UNCERTAIN: if hayro is fast enough on this machine the render simply finishes.
+        Ok(_) => {}
+        Err(e) => panic!("unexpected {e:?}"),
+    }
+    // Not poisoned: a good page of another document renders with the same settings.
+    let good = Document::open_with_options(
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/data/minimal.pdf"
+        ))
+        .unwrap(),
+        quick(),
+        worker(),
+    )
+    .unwrap();
+    assert!(good.render_page(0, 200).is_ok());
+}
+
+/// `Duration::MAX` as a timeout used to panic in `Instant::now() + timeout`.
+#[test]
+fn huge_timeouts_do_not_panic() {
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/data/minimal.pdf"
+    ))
+    .unwrap();
+    for iso in [Isolation::InProcess, worker()] {
+        let limits = Limits {
+            open_timeout: Duration::MAX,
+            render_timeout: Duration::MAX,
+            ..Limits::default()
+        };
+        let d = Document::open_with_options(bytes.clone(), limits, iso).unwrap();
+        let opts = RenderOptions {
+            timeout: Some(Duration::MAX),
+            cancel: None,
+        };
+        assert!(d.render_page_with(0, 100, &opts).is_ok());
+        assert!(d.render_page(0, 100).is_ok());
+    }
 }
 
 #[test]
 fn cancel_flag_stops_waiting() {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-    let d = Document::open_with_limits(blowup_pdf(60), quick()).unwrap();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let c2 = Arc::clone(&cancel);
-    let h = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(50));
-        c2.store(true, Ordering::SeqCst);
-    });
-    let t = Instant::now();
-    let r = d.render_page_with(
-        0,
-        400,
-        &RenderOptions {
-            timeout: None,
-            cancel: Some(cancel),
-        },
-    );
-    h.join().unwrap();
-    println!("cancelled render: {r:?} after {:?}", t.elapsed());
-    match r {
-        Err(DocError::Cancelled) => assert!(t.elapsed() < Duration::from_millis(500)),
-        Ok(_) => {} // finished before the flag was set
-        Err(e) => panic!("unexpected {e:?}"),
+    for iso in [Isolation::InProcess, worker()] {
+        // Fan 15 ends in seconds; an abandoned in-process thread is waited for below.
+        let d = Document::open_with_options(blowup_pdf(15), quick(), iso.clone()).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let c2 = Arc::clone(&cancel);
+        let h = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            c2.store(true, Ordering::SeqCst);
+        });
+        let t = Instant::now();
+        let r = d.render_page_with(
+            0,
+            400,
+            &RenderOptions {
+                timeout: None,
+                cancel: Some(cancel),
+            },
+        );
+        h.join().unwrap();
+        println!("cancelled render ({iso:?}): {r:?} after {:?}", t.elapsed());
+        match r {
+            Err(DocError::Cancelled) => assert!(t.elapsed() < Duration::from_millis(1000)),
+            Ok(_) => {} // finished before the flag was set
+            Err(e) => panic!("unexpected {e:?}"),
+        }
+        wait_idle();
     }
 }
