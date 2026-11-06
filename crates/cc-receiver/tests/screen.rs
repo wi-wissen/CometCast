@@ -15,7 +15,7 @@ use cc_media::{DecodedFrame, H264Backend, H264Decoder};
 use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
 use cc_sender::{ScreenOptions, SenderCore, SenderEvent, SenderOptions};
 use cc_server::{ServerConfig, run};
-use cc_transport::{SessionConfig, VideoCodec, VideoPacket};
+use cc_transport::{SessionConfig, VideoCodec, VideoPacket, VideoTap};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
@@ -39,7 +39,7 @@ fn local_session() -> SessionConfig {
 
 /// Turns tapped RTP packets into decoded pictures.
 struct Viewer {
-    rx: mpsc::UnboundedReceiver<VideoPacket>,
+    rx: mpsc::Receiver<VideoPacket>,
     assembler: H264Assembler,
     decoder: H264Decoder,
     units: u64,
@@ -49,7 +49,7 @@ struct Viewer {
 }
 
 impl Viewer {
-    fn new(rx: mpsc::UnboundedReceiver<VideoPacket>) -> Self {
+    fn new(rx: mpsc::Receiver<VideoPacket>) -> Self {
         Self {
             rx,
             assembler: H264Assembler::new(),
@@ -123,7 +123,7 @@ async fn x11_screen_reaches_the_receiver_as_h264_and_goes_quiet_when_static() {
     let window = TestWindow::open(&x.display, (0, 0, 640, 480), RED).unwrap();
 
     let server = start_server().await;
-    let (tap_tx, tap_rx) = mpsc::unbounded_channel();
+    let (tap_tx, tap_rx) = VideoTap::channel_default();
     let mut ropts = ReceiverOptions::new(&server);
     ropts.session = local_session();
     ropts.session.video_tap = Some(tap_tx);

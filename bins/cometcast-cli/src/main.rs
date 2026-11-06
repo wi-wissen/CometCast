@@ -587,6 +587,7 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
     let mut opts = ReceiverOptions::new(common.server);
     let mut checker = None;
     let mut tap_rx = None;
+    let mut tap_handle: Option<cc_transport::VideoTap> = None;
     if decode {
         match DecodeCheck::new() {
             Ok(c) => checker = Some(c),
@@ -595,8 +596,11 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
                 return ExitCode::FAILURE;
             }
         }
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        opts.session.video_tap = Some(tx);
+        // Bounded: if decoding is slower than the packets arrive, packets are dropped and
+        // counted instead of piling up in memory.
+        let (tx, rx) = cc_transport::VideoTap::channel_default();
+        opts.session.video_tap = Some(tx.clone());
+        tap_handle = Some(tx);
         tap_rx = Some(rx);
     }
     opts.trust = match load_trust(common.ca_file.as_deref()) {
@@ -655,6 +659,9 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
                     last_packets = s.packets;
                     if let Some(c) = checker.as_ref() {
                         println!("{}", c.report());
+                    }
+                    if let Some(dropped) = tap_handle.as_ref().map(|t| t.dropped()).filter(|d| *d > 0) {
+                        println!("decoder too slow: {dropped} packets dropped");
                     }
                 }
                 Some(ReceiverEvent::PeerLeft) => {
@@ -737,8 +744,9 @@ async fn send(
                     if screen_mode {
                         let st = core.screen_stats();
                         println!(
-                            "sent frames={frames_sent} polls={} changed={} unchanged={} refreshes={} keyframes={} key_requests={} bytes={}",
-                            st.polls, st.changed, st.unchanged, st.refreshes, st.keyframes, st.keyframe_requests, st.encoded_bytes
+                            "sent frames={frames_sent} polls={} changed={} unchanged={} refreshes={} keyframes={} key_requests={} bytes={} key_requests_ignored={} skipped={}",
+                            st.polls, st.changed, st.unchanged, st.refreshes, st.keyframes, st.keyframe_requests, st.encoded_bytes,
+                            st.keyframe_requests_ignored, st.skipped
                         );
                     } else {
                         println!("sent frames={frames_sent}");
