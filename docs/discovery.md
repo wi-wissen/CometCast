@@ -305,9 +305,9 @@ Both screens (receive, send) show the server field with these rules
 
 ## Minimum Rust version
 
-The workspace `rust-version` is **1.88** (`hickory-resolver` 0.26 declares it, and the code
+The workspace `rust-version` is **1.92** (raised for `hayro`; `hickory-resolver` 0.26 needs 1.88, and the code
 uses let-chains, stable since 1.88). UNCERTAIN: CI uses the stable toolchain, so no job builds
-with exactly 1.88.
+with exactly 1.92.
 
 ## Tests
 
