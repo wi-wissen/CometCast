@@ -31,6 +31,7 @@ use crate::framed::Cipher;
 use crate::http::{Conn, Request, Response};
 use crate::srp::{Client, Group, KeyKind};
 use crate::tlv::{self, Tlv};
+use zeroize::Zeroizing;
 
 /// The fixed PIN of transient pairing.
 pub const TRANSIENT_PIN: &str = "3939";
@@ -128,13 +129,13 @@ pub fn pair_transient<S: Read + Write>(conn: &mut Conn<S>) -> Result<()> {
         &conn.exchange(&req("/pair-setup", Hkp::Transient, &m3))?,
         "/pair-setup (M3)",
     )?;
-    if let Some(p) = m4.get(tlv::PROOF) {
-        if !srp.verify_server_proof(p) {
-            return Err(SenderError::Auth("the receiver's M4 proof is wrong".into()));
-        }
+    // The receiver's proof is required: without it nothing shows that the receiver knew
+    // the PIN, and a man in the middle could strip it (downgrade).
+    let proof = m4.require(tlv::PROOF, "a proof")?;
+    if !srp.verify_server_proof(proof) {
+        return Err(SenderError::Auth("the receiver's M4 proof is wrong".into()));
     }
-    conn.framed_mut().enable(control_cipher(&res.session_key));
-    Ok(())
+    conn.enable_encryption(control_cipher(&res.session_key))
 }
 
 fn new_srp(pin: &str) -> Result<Client<Sha512>> {
@@ -189,16 +190,15 @@ pub fn setup_pin_finish<S: Read + Write>(
         "/pair-setup (M3)",
     )?;
     seq_is(&m4, 4)?;
-    if let Some(p) = m4.get(tlv::PROOF) {
-        if !srp.verify_server_proof(p) {
-            return Err(SenderError::Auth(
-                "the receiver's proof is wrong (wrong PIN?)".into(),
-            ));
-        }
+    let proof = m4.require(tlv::PROOF, "a proof")?;
+    if !srp.verify_server_proof(proof) {
+        return Err(SenderError::Auth(
+            "the receiver's proof is wrong (wrong PIN?)".into(),
+        ));
     }
     let k = &res.session_key;
 
-    let seed: [u8; 32] = random();
+    let seed: Zeroizing<[u8; 32]> = Zeroizing::new(random());
     let signing = SigningKey::from_bytes(&seed);
     let ltpk = signing.verifying_key().to_bytes();
     let pairing_id = uuid_text();
@@ -255,7 +255,7 @@ pub fn setup_pin_finish<S: Read + Write>(
     Ok((
         Credentials::Hap {
             pairing_id,
-            seed: hex(&seed),
+            seed: hex(seed.as_slice()),
             device_id: hex(acc_id),
             device_key: hex(&acc_key),
         },
@@ -275,7 +275,8 @@ pub fn pair_verify<S: Read + Write>(conn: &mut Conn<S>, creds: &Credentials) -> 
     else {
         return Err(SenderError::Input("not HomeKit-style credentials".into()));
     };
-    let seed: [u8; 32] = unhex(seed).ok_or_else(|| SenderError::Store("bad stored seed".into()))?;
+    let seed: Zeroizing<[u8; 32]> =
+        Zeroizing::new(unhex(seed).ok_or_else(|| SenderError::Store("bad stored seed".into()))?);
     let device_key: [u8; 32] =
         unhex(device_key).ok_or_else(|| SenderError::Store("bad stored device key".into()))?;
     let device_id = unhex_vec(device_id, 256)
@@ -345,8 +346,7 @@ pub fn pair_verify<S: Read + Write>(conn: &mut Conn<S>, creds: &Credentials) -> 
         "/pair-verify (M3)",
     )?;
     let _ = m4;
-    conn.framed_mut().enable(control_cipher(&shared));
-    Ok(())
+    conn.enable_encryption(control_cipher(&shared))
 }
 
 fn uuid_text() -> String {

@@ -41,6 +41,8 @@ chacha20poly1305 = "0.10"
 aes = "0.8"
 ctr = "0.9"
 aes-gcm = "0.10"
+# Wipes secret keys from memory when they are dropped. MIT OR Apache-2.0.
+zeroize = "1"
 
 [dev-dependencies]
 cc-capture = { workspace = true, features = ["test-support"] }

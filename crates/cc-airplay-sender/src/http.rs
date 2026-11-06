@@ -6,7 +6,7 @@
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
-use crate::error::{Result, SenderError};
+use crate::error::{Result, SenderError, clean};
 use crate::framed::Framed;
 
 /// Largest request or response head (start line and headers).
@@ -100,6 +100,7 @@ fn reason(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        416 => "Range Not Satisfiable",
         453 => "Not Enough Bandwidth",
         470 => "Connection Authorization Required",
         500 => "Internal Server Error",
@@ -114,6 +115,9 @@ pub struct Conn<S> {
     io: Framed<S>,
     buf: Vec<u8>,
     closed: bool,
+    /// An I/O or framing error happened: the stream position (and, when encrypted, the
+    /// frame counters) can no longer be trusted, so the connection is never used again.
+    broken: bool,
     /// Client side: send `RTSP/1.0` requests with a `CSeq` header instead of `HTTP/1.1`.
     /// Server side: the last request was RTSP, so answer in RTSP.
     rtsp: bool,
@@ -128,6 +132,7 @@ impl<S: Read + Write> Conn<S> {
             io: Framed::new(stream),
             buf: Vec::new(),
             closed: false,
+            broken: false,
             rtsp: false,
             cseq: 0,
             peer_cseq: None,
@@ -148,6 +153,20 @@ impl<S: Read + Write> Conn<S> {
     /// Whether this connection speaks RTSP/1.0.
     pub fn is_rtsp(&self) -> bool {
         self.rtsp
+    }
+
+    /// Switch the connection to the encrypted framing. Fails when plaintext bytes that
+    /// followed the last message are still buffered: they would otherwise be taken for
+    /// authenticated data on the encrypted channel (an on-path attacker could forge
+    /// answers by appending bytes to the last plaintext response).
+    pub fn enable_encryption(&mut self, cipher: crate::framed::Cipher) -> Result<()> {
+        if !self.buf.is_empty() {
+            return Err(SenderError::Protocol(
+                "unexpected plaintext data after the last pairing answer".into(),
+            ));
+        }
+        self.io.enable(cipher);
+        Ok(())
     }
 
     /// Access the framing layer (to switch encryption on).
@@ -268,8 +287,34 @@ impl<S: Read + Write> Conn<S> {
         }
     }
 
-    /// Send a request.
+    fn check_usable(&self) -> Result<()> {
+        if self.broken {
+            Err(SenderError::Io(
+                "the connection was dropped after an earlier error; reconnect".into(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Record that an error left the stream in an unknown state. Bad input from our own
+    /// caller does not touch the stream.
+    fn track<T>(&mut self, r: Result<T>) -> Result<T> {
+        if matches!(&r, Err(e) if !matches!(e, SenderError::Input(_))) {
+            self.broken = true;
+        }
+        r
+    }
+
+    /// Send a request. After any error other than bad input the connection is discarded: a
+    /// partly written encrypted frame would desynchronise the counters.
     pub fn send_request(&mut self, req: &Request) -> Result<()> {
+        self.check_usable()?;
+        let r = self.send_request_inner(req);
+        self.track(r)
+    }
+
+    fn send_request_inner(&mut self, req: &Request) -> Result<()> {
         if req.method.contains(|c: char| c.is_whitespace())
             || req
                 .path
@@ -302,6 +347,12 @@ impl<S: Read + Write> Conn<S> {
 
     /// Read the answer to a request. `head_only` is true for HEAD requests.
     pub fn read_response(&mut self, head_only: bool) -> Result<Response> {
+        self.check_usable()?;
+        let r = self.read_response_inner(head_only);
+        self.track(r)
+    }
+
+    fn read_response_inner(&mut self, head_only: bool) -> Result<Response> {
         let deadline = Instant::now() + MESSAGE_TIMEOUT;
         for _ in 0..4 {
             let lines = self.read_head(deadline)?;
@@ -311,7 +362,7 @@ impl<S: Read + Write> Conn<S> {
             if !(version == "HTTP/1.1" || version == "HTTP/1.0" || version == "RTSP/1.0") {
                 return Err(SenderError::Protocol(format!(
                     "unexpected start line {:?}",
-                    start.chars().take(40).collect::<String>()
+                    clean(start, 40)
                 )));
             }
             let status: u16 = parts
@@ -371,6 +422,12 @@ impl<S: Read + Write> Conn<S> {
 
     /// Server side: read one request. `max_body` caps the body.
     pub fn read_request(&mut self, max_body: usize, timeout: Duration) -> Result<Request> {
+        self.check_usable()?;
+        let r = self.read_request_inner(max_body, timeout);
+        self.track(r)
+    }
+
+    fn read_request_inner(&mut self, max_body: usize, timeout: Duration) -> Result<Request> {
         let deadline = Instant::now() + timeout;
         let lines = self.read_head(deadline)?;
         let start = lines.first().map(String::as_str).unwrap_or("");
@@ -433,11 +490,19 @@ impl<S: Read + Write> Conn<S> {
             head.push_str(&format!("{k}: {v}\r\n"));
         }
         head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
-        let mut wire = head.into_bytes();
-        if send_body {
+        // A big body is written from the caller's slice, not copied behind the head (a
+        // segment can be megabytes and several clients may fetch at once). A small one goes
+        // out in one write so that the head does not wait for the body (Nagle).
+        if send_body && body.len() <= 16 * 1024 {
+            let mut wire = head.into_bytes();
             wire.extend_from_slice(body);
+            self.io.write_all(&wire)?;
+        } else {
+            self.io.write_all(head.as_bytes())?;
+            if send_body {
+                self.io.write_all(body)?;
+            }
         }
-        self.io.write_all(&wire)?;
         self.io.flush()?;
         Ok(())
     }
@@ -470,6 +535,35 @@ mod tests {
 
     fn conn(data: &[u8]) -> Conn<Fixed> {
         Conn::new(Fixed(Cursor::new(data.to_vec())))
+    }
+
+    #[test]
+    fn a_connection_is_discarded_after_an_io_error() {
+        let mut c = conn(b"");
+        let first = c.exchange(&Request::new("GET", "/a")).unwrap_err();
+        assert!(first.to_string().contains("closed"), "{first}");
+        let second = c.exchange(&Request::new("GET", "/a")).unwrap_err();
+        assert!(second.to_string().contains("reconnect"), "{second}");
+        // Bad input from our own caller does not poison the connection.
+        let mut c = conn(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        assert!(c.send_request(&Request::new("GET", "/a b")).is_err());
+        assert_eq!(c.exchange(&Request::new("GET", "/a")).unwrap().status, 200);
+    }
+
+    #[test]
+    fn encryption_is_refused_while_plaintext_is_buffered() {
+        use crate::framed::Cipher;
+        let cipher = || Cipher::new(&[1; 32], &[2; 32]);
+        // Bytes that follow the last plaintext answer must not become "encrypted" input.
+        let mut c = conn(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nFORGED");
+        c.read_response(false).unwrap();
+        assert!(c.enable_encryption(cipher()).is_err());
+        assert!(!c.framed_ref().is_encrypted());
+        // Nothing left over: fine.
+        let mut c = conn(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        c.read_response(false).unwrap();
+        c.enable_encryption(cipher()).unwrap();
+        assert!(c.framed_ref().is_encrypted());
     }
 
     #[test]

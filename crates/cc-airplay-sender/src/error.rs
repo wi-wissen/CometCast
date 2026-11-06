@@ -54,3 +54,30 @@ impl From<std::io::Error> for SenderError {
 
 /// Result alias of this crate.
 pub type Result<T> = std::result::Result<T, SenderError>;
+
+/// Make text that came from the network safe to print on a terminal and to put in a log:
+/// control characters and invisible direction controls become `?`, and the text is cut to
+/// `max` characters. Use it for every receiver-supplied string that reaches a message.
+pub(crate) fn clean(text: &str, max: usize) -> String {
+    text.chars()
+        .map(|c| {
+            let hidden = matches!(
+                c,
+                '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'
+            );
+            if c.is_control() || hidden { '?' } else { c }
+        })
+        .take(max)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clean;
+
+    #[test]
+    fn control_and_direction_characters_are_replaced() {
+        assert_eq!(clean("a\u{1b}[31mb\r\nc\u{202E}d", 100), "a?[31mb??c?d");
+        assert_eq!(clean(&"x".repeat(500), 64).len(), 64);
+    }
+}

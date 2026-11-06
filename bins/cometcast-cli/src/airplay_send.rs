@@ -3,6 +3,7 @@
 //! docs/airplay-sender.md. All the work is blocking network code of `cc-airplay-sender`; it
 //! runs on a blocking thread so that Ctrl-C can stop it cleanly.
 
+use std::io::Read;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +26,9 @@ airplay-send commands:
 
 airplay-send (AirPlay sender without FairPlay, see docs/airplay-sender.md): <device> is the name
 or deviceid from 'list', or an address HOST:PORT / HOST (port 7000). 'pair' shows the PIN request
-and stores the result in ~/.config/cometcast/airplay-pairings.json (mode 0600). 'play' plays a
+and stores the result in ~/.config/cometcast/airplay-pairings.json (mode 0600). Without --pin (or
+with '--pin -') the PIN is read from standard input; --pin XXXX is visible in the process list.
+'play' plays a
 media link, 'photo' shows a JPEG, 'screen' shows the screen as an HLS live stream with a delay of
 several seconds. Real AirPlay screen mirroring needs FairPlay and is not available.";
 
@@ -169,8 +172,14 @@ fn run_blocking(sub: Sub, stop: &AtomicBool) -> SendResult<()> {
             watch(&mut s, seconds, stop, || None)
         }
         Sub::Photo { device, file } => {
-            let data =
-                std::fs::read(&file).map_err(|e| SenderError::Input(format!("{file}: {e}")))?;
+            // Read at most one byte more than the cap: a huge file is never loaded whole.
+            let io_err = |e: std::io::Error| SenderError::Input(format!("{file}: {e}"));
+            let mut data = Vec::new();
+            std::fs::File::open(&file)
+                .map_err(io_err)?
+                .take(cc_airplay_sender::client::MAX_PHOTO_BYTES as u64 + 1)
+                .read_to_end(&mut data)
+                .map_err(io_err)?;
             let mut s = connect(&device)?;
             s.photo(data)?;
             println!("photo sent");
@@ -260,7 +269,13 @@ fn pair(selector: &str, pin: Option<String>, mode: Option<&str>) -> SendResult<(
         legacy::pair_finish(s.conn_mut(), &pin)?
     };
     let st = store()?;
-    st.put(&device.store_key(), creds)?;
+    if st.put(&device.store_key(), creds)? {
+        println!(
+            "warning: this replaced the stored credentials for {} (the key comes from the \
+             network announcement, which another device can fake)",
+            device.store_key()
+        );
+    }
     println!("paired; credentials stored in {}", st.path().display());
     Ok(())
 }
@@ -272,7 +287,9 @@ fn hap_preferred(d: &Device) -> bool {
 }
 
 fn ask_pin(given: Option<String>) -> SendResult<String> {
-    if let Some(p) = given {
+    // `--pin XXXX` is visible to other users in the process list; without it (or with
+    // `--pin -`) the PIN is read from standard input.
+    if let Some(p) = given.filter(|p| p != "-") {
         return Ok(p);
     }
     println!("Enter the PIN shown on the receiver, then Enter:");

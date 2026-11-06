@@ -49,7 +49,9 @@ pub fn open_labelled(key: &[u8; 32], label: &[u8; 8], sealed: &[u8]) -> Result<V
         .map_err(|_| SenderError::Auth("the receiver's encrypted answer did not verify".into()))
 }
 
-/// Random bytes from the operating system's generator.
+/// Random bytes from `rand::rng()`: the thread-local `ThreadRng`, a ChaCha-based CSPRNG that
+/// is seeded from the operating system and reseeded regularly (not a direct `getrandom`
+/// call per use). Fine for keys and nonces here.
 pub fn random<const N: usize>() -> [u8; N] {
     use rand::RngCore;
     let mut b = [0u8; N];

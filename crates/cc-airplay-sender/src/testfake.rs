@@ -650,19 +650,20 @@ fn fake_hls_client(url: &str, state: &Mutex<FakeState>) {
     let base = format!("/{}", path.rsplit_once('/').map_or("", |(d, _)| d));
     let base = if base == "/" { String::new() } else { base };
     let mut seen = std::collections::BTreeSet::new();
+    // The sender's HLS server closes after each answer: one connection per request.
+    let get = |p: &str| {
+        let s = TcpStream::connect(hostport).ok()?;
+        let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
+        Conn::new(s).exchange(&Request::new("GET", p)).ok()
+    };
     for _ in 0..12 {
         std::thread::sleep(Duration::from_millis(500));
-        let Ok(s) = TcpStream::connect(hostport) else {
-            continue;
-        };
-        let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
-        let mut c = Conn::new(s);
-        let Ok(pl) = c.exchange(&Request::new("GET", &format!("/{path}"))) else {
+        let Some(pl) = get(&format!("/{path}")) else {
             continue;
         };
         for line in String::from_utf8_lossy(&pl.body).lines() {
             if line.ends_with(".ts") && seen.insert(line.to_owned()) {
-                if let Ok(seg) = c.exchange(&Request::new("GET", &format!("{base}/{line}"))) {
+                if let Some(seg) = get(&format!("{base}/{line}")) {
                     state
                         .lock()
                         .expect("lock")

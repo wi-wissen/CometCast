@@ -20,7 +20,7 @@ use plist::{Dictionary, Value};
 use crate::creds::Credentials;
 use crate::cryptoutil::{hex, random};
 use crate::discovery::{Device, feature};
-use crate::error::{Result, SenderError};
+use crate::error::{Result, SenderError, clean};
 use crate::http::{Conn, Request, Response};
 use crate::{hap, legacy, plistx};
 
@@ -306,7 +306,7 @@ impl Session {
             Some(Value::Dictionary(e)) => {
                 let code = plistx::number(e, "code").map(|c| c as i64);
                 let domain = match e.get("domain") {
-                    Some(Value::String(s)) => s.chars().take(64).collect::<String>(),
+                    Some(Value::String(s)) => clean(s, 64),
                     _ => "?".into(),
                 };
                 Some(format!("code {code:?} in {domain}"))

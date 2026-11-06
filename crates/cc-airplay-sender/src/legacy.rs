@@ -29,6 +29,7 @@ use crate::error::{Result, SenderError};
 use crate::http::{Conn, Request, Response};
 use crate::plistx;
 use crate::srp::{Client, Group, KeyKind};
+use zeroize::Zeroizing;
 
 const USER_AGENT: &str = "AirPlay/320.20";
 
@@ -87,7 +88,7 @@ pub fn pair_finish<S: Read + Write>(conn: &mut Conn<S>, pin: &str) -> Result<Cre
     if pin.is_empty() || pin.len() > 16 || !pin.chars().all(|c| c.is_ascii_digit()) {
         return Err(SenderError::Input("the PIN must be digits only".into()));
     }
-    let seed: [u8; 32] = random();
+    let seed: Zeroizing<[u8; 32]> = Zeroizing::new(random());
     let client_id = hex(&random::<8>()).to_ascii_uppercase();
     let signing = SigningKey::from_bytes(&seed);
     let auth_public = signing.verifying_key().to_bytes();
@@ -125,14 +126,15 @@ pub fn pair_finish<S: Read + Write>(conn: &mut Conn<S>, pin: &str) -> Result<Cre
             ("proof", Value::Data(res.proof.clone())),
         ],
     )?;
-    // pyatv ignores the receiver's proof. We check it when it is there.
-    // UNCERTAIN: whether every receiver sends it.
-    if let Some(m2) = plistx::data(&a2, "proof") {
-        if !srp.verify_server_proof(m2) {
-            return Err(SenderError::Auth(
-                "the receiver's proof is wrong (wrong PIN or a man in the middle)".into(),
-            ));
-        }
+    // pyatv ignores the receiver's proof. We require it and check it (a receiver that
+    // sends none cannot be told from a man in the middle that knows no PIN).
+    // UNCERTAIN: whether every Apple receiver sends it; UxPlay is covered by the interop test.
+    let m2 = plistx::data(&a2, "proof")
+        .ok_or_else(|| SenderError::Protocol("answer 2 has no receiver proof".into()))?;
+    if !srp.verify_server_proof(m2) {
+        return Err(SenderError::Auth(
+            "the receiver's proof is wrong (wrong PIN or a man in the middle)".into(),
+        ));
     }
 
     // Step 3: our Ed25519 public key, encrypted with AES-128-GCM under a key from K.
@@ -161,7 +163,7 @@ pub fn pair_finish<S: Read + Write>(conn: &mut Conn<S>, pin: &str) -> Result<Cre
 
     Ok(Credentials::Legacy {
         client_id,
-        seed: hex(&seed),
+        seed: hex(seed.as_slice()),
     })
 }
 
@@ -174,8 +176,9 @@ pub fn pair_verify<S: Read + Write>(conn: &mut Conn<S>, creds: &Credentials) -> 
     let Credentials::Legacy { seed, .. } = creds else {
         return Err(SenderError::Input("not legacy credentials".into()));
     };
-    let seed: [u8; 32] =
-        unhex(seed).ok_or_else(|| SenderError::Store("stored seed is not 64 hex digits".into()))?;
+    let seed: Zeroizing<[u8; 32]> = Zeroizing::new(
+        unhex(seed).ok_or_else(|| SenderError::Store("stored seed is not 64 hex digits".into()))?,
+    );
     let signing = SigningKey::from_bytes(&seed);
     let auth_public = signing.verifying_key().to_bytes();
     let secret = StaticSecret::from(random::<32>());

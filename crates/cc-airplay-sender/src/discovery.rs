@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 
-use crate::error::{Result, SenderError};
+use crate::error::{Result, SenderError, clean};
 
 /// The DNS-SD service type of AirPlay receivers.
 pub const SERVICE_TYPE: &str = "_airplay._tcp.local.";
@@ -189,13 +189,6 @@ fn parse_flags(text: &str) -> u64 {
         .or_else(|| t.strip_prefix("0X"))
         .unwrap_or(t);
     u64::from_str_radix(t, 16).unwrap_or(0)
-}
-
-fn clean(text: &str, max: usize) -> String {
-    text.chars()
-        .map(|c| if c.is_control() { '?' } else { c })
-        .take(max)
-        .collect()
 }
 
 /// Build a [`Device`] from the parts of a resolved mDNS service. Pure, for tests.
