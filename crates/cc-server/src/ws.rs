@@ -1,0 +1,269 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! One WebSocket connection: handshake (`hello`), room handling and relaying.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use axum::extract::State;
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::response::Response;
+use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg};
+use futures_util::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
+
+use crate::AppState;
+use crate::rooms::{Gone, JoinError, Outgoing, Tx};
+
+/// Source of unique connection numbers.
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+pub(crate) async fn ws_handler(State(state): State<AppState>, ws: WebSocketUpgrade) -> Response {
+    let max = state.config.max_message_bytes;
+    // Messages or frames bigger than `max` make the connection fail and close.
+    ws.max_message_size(max)
+        .max_frame_size(max)
+        .on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+/// Per-connection state.
+struct Conn {
+    id: u64,
+    tx: Tx,
+    role: Option<Role>,
+    room: Option<RoomCode>,
+}
+
+enum Step {
+    Continue,
+    Close,
+}
+
+impl Conn {
+    fn send(&self, msg: ServerMsg) {
+        let _ = self.tx.send(Outgoing::Msg(msg));
+    }
+
+    fn error(&self, code: &str, message: &str) {
+        self.send(ServerMsg::Error {
+            code: code.into(),
+            message: message.into(),
+        });
+    }
+
+    /// Send an error and end the connection.
+    fn fail(&self, code: &str, message: &str) -> Step {
+        self.error(code, message);
+        let _ = self.tx.send(Outgoing::Close("error"));
+        Step::Close
+    }
+}
+
+async fn handle_socket(socket: WebSocket, state: AppState) {
+    let (mut sink, mut stream) = socket.split();
+    let (tx, mut rx) = mpsc::unbounded_channel::<Outgoing>();
+
+    // Writer task: the only place that writes to the socket. Everything else
+    // (including other connections relaying to us) pushes into the channel.
+    let mut writer = tokio::spawn(async move {
+        while let Some(out) = rx.recv().await {
+            match out {
+                Outgoing::Msg(m) => {
+                    let Ok(text) = serde_json::to_string(&m) else {
+                        continue;
+                    };
+                    if sink.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Outgoing::Close(reason) => {
+                    let frame = CloseFrame {
+                        code: 1000,
+                        reason: reason.into(),
+                    };
+                    let _ = sink.send(Message::Close(Some(frame))).await;
+                    break;
+                }
+            }
+        }
+    });
+
+    let mut conn = Conn {
+        id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+        tx,
+        role: None,
+        room: None,
+    };
+    let mut writer_done = false;
+
+    loop {
+        let hello_timeout = state.config.hello_timeout;
+        let waiting_for_hello = conn.role.is_none();
+        // Until hello arrives the wait is limited; afterwards it is not.
+        let next = async {
+            if waiting_for_hello {
+                tokio::time::timeout(hello_timeout, stream.next())
+                    .await
+                    .map_err(|_| ())
+            } else {
+                Ok(stream.next().await)
+            }
+        };
+        let received = tokio::select! {
+            r = next => r,
+            _ = &mut writer => { writer_done = true; break; }
+        };
+        let msg = match received {
+            Err(()) => {
+                conn.fail("bad_hello", "no hello received in time");
+                break;
+            }
+            // Stream ended or a protocol error (e.g. message too big): just stop.
+            Ok(None) | Ok(Some(Err(_))) => break,
+            Ok(Some(Ok(m))) => m,
+        };
+        let step = match msg {
+            Message::Text(text) => handle_text(&mut conn, &state, text.as_str()),
+            Message::Binary(_) => {
+                if conn.role.is_none() {
+                    conn.fail("bad_hello", "first message must be a hello text message")
+                } else {
+                    conn.error("bad_message", "binary messages are not supported");
+                    Step::Continue
+                }
+            }
+            Message::Close(_) => Step::Close,
+            // Ping/pong are answered by the library.
+            Message::Ping(_) | Message::Pong(_) => Step::Continue,
+        };
+        if let Step::Close = step {
+            break;
+        }
+    }
+
+    // Cleanup: tell the other side and free the room.
+    if let Some(code) = conn.room.take() {
+        let peer = state
+            .rooms
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .leave(&code, conn.id);
+        if let Some(peer) = peer {
+            let _ = peer.send(Outgoing::Msg(ServerMsg::PeerLeft));
+        }
+    }
+    if !writer_done {
+        // Let queued messages (like a final error) go out, but do not wait forever.
+        let _ = conn.tx.send(Outgoing::Close("bye"));
+        let _ = tokio::time::timeout(Duration::from_secs(2), &mut writer).await;
+        writer.abort();
+    }
+}
+
+fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
+    let parsed = serde_json::from_str::<ClientMsg>(text);
+
+    // Step 1: the first message must be a valid hello.
+    let Some(role) = conn.role else {
+        return match parsed {
+            Ok(ClientMsg::Hello {
+                proto_version,
+                role,
+            }) => {
+                if proto_version != PROTO_VERSION {
+                    return conn.fail(
+                        "proto_mismatch",
+                        &format!("server speaks protocol version {PROTO_VERSION}"),
+                    );
+                }
+                conn.role = Some(role);
+                conn.send(ServerMsg::Hello {
+                    proto_version: PROTO_VERSION,
+                });
+                Step::Continue
+            }
+            _ => conn.fail("bad_hello", "first message must be a valid hello"),
+        };
+    };
+
+    let Ok(msg) = parsed else {
+        conn.error("bad_message", "could not understand this message");
+        return Step::Continue;
+    };
+
+    match msg {
+        ClientMsg::Hello { .. } => conn.error("bad_message", "hello was already sent"),
+        ClientMsg::CreateRoom => {
+            if role != Role::Receiver {
+                conn.error("wrong_role", "only a receiver can create a room");
+            } else if conn.room.is_some() {
+                conn.error("bad_message", "already in a room");
+            } else {
+                let code = lock(state).create(conn.id, conn.tx.clone());
+                conn.room = Some(code.clone());
+                tokio::spawn(expire_when_idle(state.clone(), code.clone()));
+                conn.send(ServerMsg::RoomCreated { code });
+            }
+        }
+        ClientMsg::JoinRoom { code } => {
+            if role != Role::Sender {
+                conn.error("wrong_role", "only a sender can join a room");
+            } else if conn.room.is_some() {
+                conn.error("bad_message", "already in a room");
+            } else {
+                let result = lock(state).join(&code, conn.id, conn.tx.clone());
+                match result {
+                    Ok(receiver) => {
+                        conn.room = Some(code);
+                        conn.send(ServerMsg::Joined);
+                        let _ = receiver.send(Outgoing::Msg(ServerMsg::PeerJoined));
+                    }
+                    Err(JoinError::NotFound) => {
+                        conn.error("room_not_found", "no room with this code")
+                    }
+                    Err(JoinError::Full) => {
+                        conn.error("room_full", "this room already has a sender")
+                    }
+                }
+            }
+        }
+        // Everything below is relayed unchanged to the other side.
+        ClientMsg::Offer { sdp } => relay(conn, state, ServerMsg::Offer { sdp }),
+        ClientMsg::Answer { sdp } => relay(conn, state, ServerMsg::Answer { sdp }),
+        ClientMsg::IceCandidate { candidate } => {
+            relay(conn, state, ServerMsg::IceCandidate { candidate });
+        }
+        ClientMsg::Control { cmd } => relay(conn, state, ServerMsg::Control { cmd }),
+    }
+    Step::Continue
+}
+
+fn lock(state: &AppState) -> std::sync::MutexGuard<'_, crate::rooms::Rooms> {
+    // If another thread panicked while holding the lock, keep going with the data.
+    state.rooms.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn relay(conn: &Conn, state: &AppState, msg: ServerMsg) {
+    let peer = conn
+        .room
+        .as_ref()
+        .and_then(|code| lock(state).peer(code, conn.id));
+    match peer {
+        Some(peer) => {
+            let _ = peer.send(Outgoing::Msg(msg));
+        }
+        None => conn.error("not_in_room", "no peer in the room yet"),
+    }
+}
+
+/// Background task for one room: removes it when no sender joined in time.
+async fn expire_when_idle(state: AppState, code: RoomCode) {
+    let idle = state.config.idle_room_timeout;
+    let mut wait = idle;
+    loop {
+        tokio::time::sleep(wait).await;
+        match lock(&state).check_expiry(&code, idle) {
+            Ok(next) => wait = next,
+            Err(Gone) => return,
+        }
+    }
+}
