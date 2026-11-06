@@ -1,0 +1,29 @@
+# Third-party notices
+
+**Current state: nothing is bundled yet.** The repository does not ship any third-party binary. All entries below are **planned** uses according to the project plan unless a row says otherwise. This file will be updated when a component is actually added; at that point the licence texts and source offers listed here must be shipped with it.
+
+Licence details marked **unchecked** were not verified and must be checked against the licence text before release.
+
+| Component | Planned use | Licence | Status | Notes |
+| --- | --- | --- | --- | --- |
+| UxPlay | AirPlay receiving, run as a separate companion process on Windows, Linux and macOS. Not linked, not copied | GPL-3.0 | planned | Ship the licence text and an offer of the source code. Legal classification of the FairPlay handshake is not finally settled, so this stays an optional, separate module |
+| yt-dlp | Media-link resolving on desktop and mini PC, run as a separate process, always with `--xff never` | Unlicense (GPLv3+ for the single-file build, as stated in the plan) | planned | Ship the licence text. Updater only outside Google Play and the Mac App Store. iOS apps do not resolve links themselves (App Store rule 5.2.3). Exact licence details: unchecked |
+| openh264 (Cisco binary) | Software H.264 fallback encoder. The Cisco binary is downloaded at install time | BSD-2-Clause | planned | Hardware encoders of the systems are used first |
+| coturn | TURN server, separate process | BSD-style | planned | **Uncertain:** the plan says "BSD-like"; check the exact licence text before release and ship the licence file |
+| Open Screen Library | Reference for the Google Cast sender protocol (reading and possibly building the sender against it) | BSD | planned (reference) | |
+| hayro | PDF rendering (also as WASM) | not recorded in the plan | planned | Licence: unchecked |
+| office2pdf | Office to PDF on the sender | Apache-2.0 | planned | |
+| webrtc-rs (`webrtc` crate) | WebRTC transport | MIT / Apache-2.0 | planned | Licence as named in the plan; versions are pinned in the workspace once it exists |
+| mdns-sd | mDNS discovery on desktop | Apache-2.0 OR MIT | planned | |
+| hickory-resolver | DNS-SRV lookup | MIT OR Apache-2.0 | planned | |
+| lopdf | Writing annotations into PDFs | MIT | planned | |
+| axum, tokio and other Rust crates | Server and core | mostly MIT / Apache-2.0 | planned | A full list will be generated from `Cargo.lock` once the workspace has dependencies |
+| Flutter, Vue 3 and their packages | Apps and web app | not recorded in the plan | planned | A list will be generated from the lock files |
+
+## Source of this list
+
+The planned components and licences come from the project planning document (Rust modules and libraries, "legal and licences" notes). Crate licences were queried from crates.io on 2 November 2026 according to that document. This is an overview, not legal advice.
+
+## Names
+
+Apple, AirPlay, tvOS, Google, Google Cast, Chromecast, Android, Miracast, AirServer, AirParrot and other names are trademarks of their owners. They are used only to describe compatibility.
