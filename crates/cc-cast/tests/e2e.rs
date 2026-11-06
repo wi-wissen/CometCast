@@ -591,7 +591,12 @@ fn device_auth_rejects_a_chain_signed_by_a_non_ca_device_leaf() {
         }),
         error: None,
     };
-    let msg = CastMessage::binary("receiver-0", "sender-0", AUTH_NAMESPACE, body.encode_to_vec());
+    let msg = CastMessage::binary(
+        "receiver-0",
+        "sender-0",
+        AUTH_NAMESPACE,
+        body.encode_to_vec(),
+    );
     let r = cc_cast::device_auth::verify_response(
         &msg,
         &nonce,

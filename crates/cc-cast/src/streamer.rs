@@ -95,7 +95,11 @@ struct CachedFrame {
 /// The later of two RTP timestamps, comparing modulo 2^32 (so a wrap-around does not make
 /// the older value win).
 fn later_rtp_ts(a: u32, b: u32) -> u32 {
-    if (a.wrapping_sub(b) as i32) >= 0 { a } else { b }
+    if (a.wrapping_sub(b) as i32) >= 0 {
+        a
+    } else {
+        b
+    }
 }
 
 /// Counters, for the CLI and for tests.

@@ -136,7 +136,12 @@ impl Connection {
 
         let ping_tx = tx.clone();
         let pinger = tokio::spawn(async move {
-            let mut tick = tokio::time::interval(heartbeat.interval);
+            // The first PING is one interval away: the caller queues the virtual-connection
+            // CONNECT right after `start`, and a PING must not overtake it.
+            let mut tick = tokio::time::interval_at(
+                tokio::time::Instant::now() + heartbeat.interval,
+                heartbeat.interval,
+            );
             loop {
                 tick.tick().await;
                 let ping = json_message(
@@ -231,17 +236,34 @@ mod tests {
             &serde_json::json!({"type":"X"}),
         );
         framing::write_message(&mut b, &hello).await.unwrap();
-        // The first PING of our own (interval tick fires at once) and the PONG may come in any order.
         let got = conn.recv().await.unwrap();
         assert_eq!(got.namespace, RECEIVER_NS);
-        let mut saw_pong = false;
-        for _ in 0..2 {
-            let m = framing::read_message(&mut b).await.unwrap();
-            if m.text_payload().unwrap().contains("PONG") {
-                saw_pong = true;
-            }
-        }
-        assert!(saw_pong);
+        let m = framing::read_message(&mut b).await.unwrap();
+        assert!(m.text_payload().unwrap().contains("PONG"));
+    }
+
+    #[tokio::test]
+    async fn the_first_ping_never_overtakes_a_message_queued_right_after_start() {
+        let (a, mut b) = tokio::io::duplex(4096);
+        let conn = Connection::start(
+            a,
+            Heartbeat {
+                interval: Duration::from_millis(150),
+                timeout: Duration::from_secs(5),
+            },
+        );
+        let connect = json_message(
+            PLATFORM_SENDER,
+            PLATFORM_RECEIVER,
+            CONNECTION_NS,
+            &serde_json::json!({"type":"CONNECT"}),
+        );
+        conn.send(connect).await.unwrap();
+        let first = framing::read_message(&mut b).await.unwrap();
+        assert_eq!(first.namespace, CONNECTION_NS);
+        let second = framing::read_message(&mut b).await.unwrap();
+        assert_eq!(second.namespace, HEARTBEAT_NS);
+        assert!(second.text_payload().unwrap().contains("PING"));
     }
 
     #[tokio::test]

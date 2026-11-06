@@ -37,6 +37,6 @@ pub mod tls;
 
 pub use device_auth::{DeviceAuth, TrustAnchors};
 pub use discovery::{CastDevice, discover, find_by_name};
-pub use error::CastError;
+pub use error::{CastError, sanitize_display};
 pub use media::{MirrorConfig, mirror_screen};
 pub use session::{MIRRORING_APP_ID, SessionConfig, negotiate};

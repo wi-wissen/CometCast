@@ -87,6 +87,7 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<CastCmd>, 
         "send" => {
             let [target] = <[String; 1]>::try_from(positional)
                 .map_err(|_| "cast send needs exactly one device name or IP address".to_string())?;
+            check_auth_options(trust_anchors.as_deref(), insecure_skip)?;
             Ok(Some(CastCmd::Send(SendArgs {
                 target,
                 display,
@@ -118,14 +119,7 @@ async fn list(seconds: u64) -> ExitCode {
         Ok(devs) => {
             for d in devs {
                 let ips: Vec<String> = d.addresses.iter().map(ToString::to_string).collect();
-                println!(
-                    "{}\tmodel={}\t{}:{}\tid={}",
-                    d.friendly_name,
-                    d.model,
-                    ips.join(","),
-                    d.port,
-                    d.id
-                );
+                println!("{}", device_line(&d, &ips));
             }
             ExitCode::SUCCESS
         }
@@ -134,6 +128,31 @@ async fn list(seconds: u64) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// One output line for a device. The text fields come from the network (mDNS TXT records of
+/// whoever answers), so control characters are escaped and lengths capped.
+fn device_line(d: &CastDevice, ips: &[String]) -> String {
+    format!(
+        "{}\tmodel={}\t{}:{}\tid={}",
+        cc_cast::sanitize_display(&d.friendly_name, 64),
+        cc_cast::sanitize_display(&d.model, 64),
+        ips.join(","),
+        d.port,
+        cc_cast::sanitize_display(&d.id, 64),
+    )
+}
+
+/// `--insecure-skip-device-auth` together with `--trust-anchors` is contradictory and refused
+/// (at parse time) instead of silently picking one.
+fn check_auth_options(trust_anchors: Option<&str>, insecure_skip: bool) -> Result<(), String> {
+    if insecure_skip && trust_anchors.is_some() {
+        return Err(
+            "--insecure-skip-device-auth and --trust-anchors contradict each other: use one of them"
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 /// An IP address (optionally with `:port`) or a name.
@@ -146,7 +165,14 @@ fn parse_target(t: &str) -> Option<SocketAddr> {
 
 async fn send(a: SendArgs) -> ExitCode {
     let auth = match (&a.trust_anchors, a.insecure_skip) {
-        (_, true) => {
+        (Some(_), true) => {
+            // parse() refuses this combination; kept as a second line of defence.
+            eprintln!(
+                "cast send: --insecure-skip-device-auth and --trust-anchors contradict each other"
+            );
+            return ExitCode::from(2);
+        }
+        (None, true) => {
             eprintln!(
                 "WARNING: --insecure-skip-device-auth: the Cast device will NOT be verified. \
                  Anybody on the network who answers there receives your screen picture."
@@ -223,7 +249,12 @@ async fn send(a: SendArgs) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("cast send: {e}");
+            // Error texts can carry receiver-supplied text (reasons are already escaped by
+            // the library; this is the second line of defence).
+            eprintln!(
+                "cast send: {}",
+                cc_cast::sanitize_display(&e.to_string(), 400)
+            );
             ExitCode::FAILURE
         }
     }
@@ -258,6 +289,37 @@ mod tests {
         assert!(p("list --display :1").is_err());
         assert!(p("bogus").is_err());
         assert!(matches!(p("send x --help"), Ok(None)));
+    }
+
+    #[test]
+    fn insecure_skip_with_trust_anchors_is_an_error() {
+        let e = p("send x --insecure-skip-device-auth --trust-anchors roots.pem")
+            .err()
+            .expect("must be refused");
+        assert!(e.contains("contradict"), "{e}");
+        assert!(p("send x --trust-anchors roots.pem").is_ok());
+        assert!(p("send x --insecure-skip-device-auth").is_ok());
+    }
+
+    #[test]
+    fn device_lines_escape_control_characters_and_cap_lengths() {
+        let d = CastDevice::from_txt(
+            "x._googlecast._tcp.local.",
+            8009,
+            ["192.168.1.2".parse().unwrap()],
+            [
+                ("fn", "Evil\x1b[2J\x1b]0;pwned\x07\nroom"),
+                ("md", &"M".repeat(500)),
+                ("id", "abc\r\ndef"),
+            ],
+        );
+        let line = device_line(&d, &["192.168.1.2".to_string()]);
+        assert!(
+            !line.chars().any(|c| c.is_control() && c != '\t'),
+            "{line:?}"
+        );
+        assert!(line.contains("\\u{1b}[2J"));
+        assert!(line.len() < 300, "{}", line.len());
     }
 
     #[test]

@@ -372,11 +372,11 @@ mod tests {
 
     // ---- chain role checks (certificates generated here; nothing from a product) ----
 
+    use ::time::{Duration as TD, OffsetDateTime};
     use rcgen::{
         BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, Issuer, KeyPair,
         KeyUsagePurpose,
     };
-    use ::time::{Duration as TD, OffsetDateTime};
 
     struct Node {
         params: CertificateParams,
@@ -431,12 +431,8 @@ mod tests {
         }
         let chain: Vec<_> = chain.iter().map(|n| parse(n)).collect();
         let anchors = vec![parse(anchor)];
-        verify_chain(
-            &chain,
-            &anchors,
-            OffsetDateTime::now_utc().unix_timestamp(),
-        )
-        .map_err(|e| e.to_string())
+        verify_chain(&chain, &anchors, OffsetDateTime::now_utc().unix_timestamp())
+            .map_err(|e| e.to_string())
     }
 
     #[test]
@@ -477,7 +473,10 @@ mod tests {
         let not_ca = node(
             "ica-not-ca",
             None,
-            vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::DigitalSignature],
+            vec![
+                KeyUsagePurpose::KeyCertSign,
+                KeyUsagePurpose::DigitalSignature,
+            ],
             Some(&root),
         );
         let dev = leaf("device", &not_ca);

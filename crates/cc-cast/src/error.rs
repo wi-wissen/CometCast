@@ -3,6 +3,27 @@
 
 use std::time::Duration;
 
+/// Make text that came from the network safe to print on a terminal: control characters
+/// (ESC, newlines, C1 controls, ...) and bidirectional-override characters are replaced by an
+/// escape like `\u{1b}`, and the result is cut to at most `max_chars` characters (a cut is
+/// marked with `...`).
+pub fn sanitize_display(s: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for (n, c) in s.chars().enumerate() {
+        if n >= max_chars {
+            out.push_str("...");
+            break;
+        }
+        let bidi = matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}');
+        if c.is_control() || bidi {
+            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Why a Cast operation failed.
 #[derive(Debug, thiserror::Error)]
 pub enum CastError {
@@ -39,4 +60,22 @@ pub enum CastError {
     /// Device discovery failed.
     #[error("discovery error: {0}")]
     Discovery(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_display;
+
+    #[test]
+    fn control_characters_are_escaped_and_length_is_capped() {
+        assert_eq!(sanitize_display("Living Room", 64), "Living Room");
+        assert_eq!(
+            sanitize_display("a\x1b[2Jb\nc\u{202e}d\u{85}", 64),
+            "a\\u{1b}[2Jb\\u{a}c\\u{202e}d\\u{85}"
+        );
+        assert_eq!(sanitize_display("abcdef", 3), "abc...");
+        assert_eq!(sanitize_display("abc", 3), "abc");
+        // Counted in characters, never cut inside one.
+        assert_eq!(sanitize_display("ééé", 2), "éé...");
+    }
 }
