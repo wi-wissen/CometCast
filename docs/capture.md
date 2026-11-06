@@ -188,7 +188,7 @@ here. **Uncertain:** options such as a lower quantiser for the first frame of a 
 of higher bit rate, or avoiding the forced IDR for a PLI when the last IDR is recent, were not tried; real
 text (not noise) was not tried either.
 
-**Browser run (`npm run e2e:screen`)**: Chromium 153.0.8010.12 lists eight H.264 receive variants including
+**Browser run (`npm run e2e:screen`, run again with this revision: the same colours and 6 key frame requests in about 25 s, each answered by a key frame of about 1 KB)**: Chromium 153.0.8010.12 lists eight H.264 receive variants including
 `packetization-mode=1;profile-level-id=42e01f`, decoded the stream at 640x480, and showed mean colour
 (212, 47, 39) for a window of (200, 30, 40) and (13, 81, 195) for (20, 80, 200), i.e. up to 17 off per channel.
 **Uncertain:** the offset is probably the colour matrix and range (no VUI information is written into the
