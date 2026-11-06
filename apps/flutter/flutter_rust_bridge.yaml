@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Settings for `flutter_rust_bridge_codegen generate` (run inside apps/flutter).
+# Reads the Rust API, writes Dart code to lib/src/rust and Rust glue to crates/cc-ffi/src/frb_generated.rs.
+rust_input: crate::api
+rust_root: ../../crates/cc-ffi
+dart_output: lib/src/rust

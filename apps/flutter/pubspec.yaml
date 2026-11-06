@@ -17,11 +17,19 @@ dependencies:
   # UNCERTAIN: intl version must match what flutter_localizations pins; if
   # `flutter pub get` complains, use `intl: any`.
   intl: any
+  # Bridge to the Rust core. Must be the same version as the `flutter_rust_bridge` crate
+  # in crates/cc-ffi/Cargo.toml (checked by the code generator).
+  flutter_rust_bridge: 2.13.0
+  freezed_annotation: ^3.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_lints: ^4.0.0
+  freezed: ^4.0.3
+  build_runner: ^2.17.1
 
 flutter:
   uses-material-design: true
