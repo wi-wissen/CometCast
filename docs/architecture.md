@@ -90,7 +90,7 @@ The full list with reasons is in the planning document (German, kept outside thi
 
 ## Milestones
 
-- [ ] **M0** Project start: repo, translation scaffold (de/en), LICENSE (GPL-3.0), notices for third-party components, CLA text, source file headers. *Partly done: LICENSE, logo, docs, CLA draft and notices exist.*
+- [x] **M0** Project start: repo, translation scaffold (de/en), LICENSE (GPL-3.0), notices for third-party components, CLA text, source file headers. *Done. The CLA text is still a draft that needs a lawyer's review.*
 - [ ] **M1** Own protocol: desktop to desktop and Android TV, direct and with room code
 - [ ] **M2** Toolbar and content mode
 - [ ] **M2b** Web app: sender and receiver in the browser
