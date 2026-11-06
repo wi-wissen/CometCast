@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// "Send": enter the receiver's room code and send the built-in VP8 test video.
-// No screen capture yet (see the notice on the screen).
+// "Send": enter the receiver's room code and send the built-in VP8 test video, or switch on
+// "Share this screen" to send the screen of this computer (Linux/X11 only for now; the Rust
+// core says whether that works on this system).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -37,6 +38,23 @@ class _SendPageState extends State<SendPage> {
   final _secondsFocus = textFieldFocusNode(debugLabel: 'secondsField');
   bool _triedToStart = false;
   bool _serverEmpty = false;
+
+  /// Answer of the Rust capability check; null while it runs.
+  CaptureInfo? _capture;
+  bool _shareScreen = false;
+  String? _monitorId;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.core.captureInfo(display: widget.settings.captureDisplay).then((
+      info,
+    ) {
+      if (mounted) setState(() => _capture = info);
+    }, onError: (Object _) {});
+  }
+
+  bool get _captureSupported => _capture?.support is CaptureSupport_Supported;
 
   @override
   void dispose() {
@@ -77,13 +95,27 @@ class _SendPageState extends State<SendPage> {
     });
     final check = widget.core.checkRoomCode(_code.text);
     final seconds = _parsedSeconds();
-    if (check is! RoomCodeCheck_Valid || seconds == null || _serverEmpty) {
+    final sharing = _shareScreen && _captureSupported;
+    if (check is! RoomCodeCheck_Valid ||
+        (!sharing && seconds == null) ||
+        _serverEmpty) {
       return;
     }
+    widget.settings.rememberServer();
     _controller.start(
       code: check.code,
       server: widget.settings.serverAddress,
-      seconds: seconds,
+      // A screen is shared until the person stops it.
+      seconds: sharing ? null : seconds,
+      screen: sharing
+          ? ScreenRequest(
+              display: widget.settings.captureDisplay,
+              // "root" (the whole desktop) is also what null means; keep null.
+              monitorId: _monitorId == 'root' ? null : _monitorId,
+              fps: 15,
+              bitrateKbps: 2000,
+            )
+          : null,
     );
   }
 
@@ -116,6 +148,7 @@ class _SendPageState extends State<SendPage> {
                     ),
                   ),
                 const SizedBox(height: 16),
+                _buildShareScreen(context, t, active),
                 TextField(
                   key: const Key('codeField'),
                   controller: _code,
@@ -144,24 +177,25 @@ class _SendPageState extends State<SendPage> {
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  key: const Key('secondsField'),
-                  controller: _seconds,
-                  focusNode: _secondsFocus,
-                  enabled: !active,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.done,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: InputDecoration(
-                    labelText: t.durationLabel,
-                    errorText: _triedToStart && _parsedSeconds() == null
-                        ? t.durationInvalid
-                        : null,
-                    border: const OutlineInputBorder(),
+                if (!_shareScreen)
+                  TextField(
+                    key: const Key('secondsField'),
+                    controller: _seconds,
+                    focusNode: _secondsFocus,
+                    enabled: !active,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: t.durationLabel,
+                      errorText: _triedToStart && _parsedSeconds() == null
+                          ? t.durationInvalid
+                          : null,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => active ? null : _start(),
                   ),
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => active ? null : _start(),
-                ),
                 const SizedBox(height: 16),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -202,6 +236,70 @@ class _SendPageState extends State<SendPage> {
     );
   }
 
+  /// The "Share this screen" switch, the monitor list, and the reason if sharing is not
+  /// possible here. All of it comes from `captureInfo` (Rust).
+  Widget _buildShareScreen(
+    BuildContext context,
+    AppLocalizations t,
+    bool active,
+  ) {
+    final info = _capture;
+    final supported = _captureSupported;
+    final reason = switch (info?.support) {
+      null || CaptureSupport_Supported() => null,
+      CaptureSupport_Wayland() => t.sendCaptureUnsupportedWayland,
+      CaptureSupport_NoDisplay() => t.sendCaptureNoDisplay,
+      CaptureSupport_UnsupportedOs() => t.sendCaptureUnsupportedSystem,
+      CaptureSupport_Failed(:final message) => t.sendCaptureFailed(message),
+    };
+    final monitors = info?.monitors ?? const <CaptureMonitor>[];
+    final selected = monitors.any((m) => m.id == _monitorId)
+        ? _monitorId
+        : (monitors.isEmpty ? null : monitors.first.id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          key: const Key('shareScreenSwitch'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(t.sendShareScreen),
+          subtitle: Text(t.sendShareScreenHint),
+          value: _shareScreen && supported,
+          onChanged: (supported && !active)
+              ? (v) => setState(() => _shareScreen = v)
+              : null,
+        ),
+        if (info == null)
+          Text(t.sendCaptureChecking, key: const Key('captureChecking'))
+        else if (reason != null)
+          NoticeBox(noticeKey: const Key('captureUnsupported'), text: reason),
+        if (_shareScreen && supported && monitors.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            key: const Key('monitorDropdown'),
+            initialValue: selected,
+            decoration: InputDecoration(
+              labelText: t.sendMonitorLabel,
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              for (final m in monitors)
+                DropdownMenuItem(
+                  value: m.id,
+                  child: Text(
+                    '${m.id == 'root' ? t.sendMonitorWholeDesktop : m.name}'
+                    ' (${m.width} x ${m.height})',
+                  ),
+                ),
+            ],
+            onChanged: active ? null : (v) => setState(() => _monitorId = v),
+          ),
+        ],
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
   String _statusText(AppLocalizations t) {
     final c = _controller;
     if (c.error != null) return t.statusError(c.error!);
@@ -216,7 +314,11 @@ class _SendPageState extends State<SendPage> {
       case SenderPhase.ended:
         return t.statusEnded;
       case SenderPhase.running:
-        if (c.framesSent > 0) return t.sendStreaming(c.framesSent);
+        if (c.framesSent > 0) {
+          return c.sharingScreen
+              ? t.sendStreamingScreen(c.framesSent)
+              : t.sendStreaming(c.framesSent);
+        }
         if (c.connectionState != null) {
           return connectionStateText(t, c.connectionState);
         }

@@ -6,14 +6,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/main.dart';
+import 'package:cometcast/settings.dart';
 
 import 'fake_core.dart';
 
 Future<FakeCoreApi> openSend(
   WidgetTester tester, {
   String locale = 'en',
+  FakeCoreApi? fake,
 }) async {
-  final core = FakeCoreApi();
+  final core = fake ?? FakeCoreApi();
   // Tall window so the whole (lazily built) page is on screen.
   tester.view.physicalSize = const Size(900, 1800);
   tester.view.devicePixelRatio = 1;
@@ -28,10 +30,10 @@ Future<FakeCoreApi> openSend(
 }
 
 void main() {
-  testWidgets('shows the no-capture notice', (tester) async {
+  testWidgets('shows what is sent without screen sharing', (tester) async {
     await openSend(tester);
     expect(find.byKey(const Key('sendNotice')), findsOneWidget);
-    expect(find.textContaining('not your screen'), findsOneWidget);
+    expect(find.textContaining('built-in test video'), findsOneWidget);
   });
 
   testWidgets('rejects a code with a character outside the alphabet', (
@@ -68,7 +70,7 @@ void main() {
     await tester.tap(find.byKey(const Key('startButton')));
     await tester.pump();
     expect(core.senderCode, 'K7M2QX');
-    expect(core.senderServer, '127.0.0.1:8443');
+    expect(core.senderServer, 'relay.cometcast.de:443');
     expect(core.senderSeconds, 12);
 
     core.senderEvents.add(const SenderUiEvent.joined());
@@ -143,12 +145,152 @@ void main() {
     await openSend(tester, locale: 'de');
     expect(find.text('Raumcode des Empfängers'), findsOneWidget);
     expect(find.text('Senden starten'), findsOneWidget);
-    expect(find.textContaining('nicht Ihren Bildschirm'), findsOneWidget);
+    expect(find.textContaining('statt Ihres Bildschirms'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('codeField')), 'AB0');
     await tester.pump();
     expect(
       find.textContaining('„0“ ist in einem Raumcode nicht erlaubt'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Share this screen: monitor list, no duration, starts a screen', (
+    tester,
+  ) async {
+    final core = await openSend(tester);
+    expect(find.byKey(const Key('captureUnsupported')), findsNothing);
+    // Asked with the (absent) override display.
+    expect(core.captureInfoDisplay, isNull);
+    expect(find.byKey(const Key('monitorDropdown')), findsNothing);
+    await tester.tap(find.byKey(const Key('shareScreenSwitch')));
+    await tester.pump();
+    expect(find.byKey(const Key('monitorDropdown')), findsOneWidget);
+    expect(find.text('Whole desktop (640 x 480)'), findsOneWidget);
+    // The duration only belongs to the test video.
+    expect(find.byKey(const Key('secondsField')), findsNothing);
+
+    // Pick the second entry of the list.
+    await tester.tap(find.byKey(const Key('monitorDropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('HDMI-1 (640 x 480)').last);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+    await tester.tap(find.byKey(const Key('startButton')));
+    await tester.pump();
+    expect(core.senderCode, 'K7M2QX');
+    expect(core.senderSeconds, isNull);
+    expect(core.senderScreen?.monitorId, 'out:HDMI-1');
+    expect(core.senderScreen?.fps, 15);
+
+    core.senderEvents.add(const SenderUiEvent.joined());
+    core.senderEvents.add(SenderUiEvent.streaming(framesSent: BigInt.from(30)));
+    await tester.pump();
+    expect(find.text('Sharing the screen: 30 frames sent'), findsOneWidget);
+  });
+
+  testWidgets('whole desktop is sent as "no monitor chosen"', (tester) async {
+    final core = await openSend(tester);
+    await tester.tap(find.byKey(const Key('shareScreenSwitch')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+    await tester.tap(find.byKey(const Key('startButton')));
+    await tester.pump();
+    expect(core.senderScreen, isNotNull);
+    expect(core.senderScreen!.monitorId, isNull);
+  });
+
+  testWidgets('Wayland: translated "not supported" message, no switch', (
+    tester,
+  ) async {
+    final fake = FakeCoreApi()
+      ..captureInfoResult = const CaptureInfo(
+        support: CaptureSupport.wayland(),
+        monitors: [],
+      );
+    final core = await openSend(tester, fake: fake);
+    expect(find.byKey(const Key('captureUnsupported')), findsOneWidget);
+    expect(
+      find.textContaining('not supported on this system yet'),
+      findsOneWidget,
+    );
+    final sw = tester.widget<SwitchListTile>(
+      find.byKey(const Key('shareScreenSwitch')),
+    );
+    expect(sw.onChanged, isNull);
+    // The test video can still be sent.
+    await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+    await tester.tap(find.byKey(const Key('startButton')));
+    await tester.pump();
+    expect(core.senderScreen, isNull);
+    expect(core.senderSeconds, 30);
+  });
+
+  testWidgets('other systems have their own message', (tester) async {
+    final fake = FakeCoreApi()
+      ..captureInfoResult = const CaptureInfo(
+        support: CaptureSupport.unsupportedOs(),
+        monitors: [],
+      );
+    await openSend(tester, fake: fake);
+    expect(
+      find.text('Sharing this screen is not supported on this system yet.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a failed capture check shows the reason', (tester) async {
+    final failed = FakeCoreApi()
+      ..captureInfoResult = const CaptureInfo(
+        support: CaptureSupport.failed(message: 'cannot open display'),
+        monitors: [],
+      );
+    await openSend(tester, fake: failed);
+    expect(
+      find.text('The screen cannot be read: cannot open display'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('German texts of the screen option', (tester) async {
+    final fake = FakeCoreApi()
+      ..captureInfoResult = const CaptureInfo(
+        support: CaptureSupport.wayland(),
+        monitors: [],
+      );
+    await openSend(tester, locale: 'de', fake: fake);
+    expect(find.text('Diesen Bildschirm teilen'), findsOneWidget);
+    expect(
+      find.textContaining('noch nicht unterstützt: Es verwendet Wayland'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the override display is passed to the capture check', (
+    tester,
+  ) async {
+    final core = FakeCoreApi();
+    tester.view.physicalSize = const Size(900, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      CometCastApp(
+        locale: const Locale('en'),
+        core: core,
+        settings: AppSettings.fromDefaults(
+          core.serverDefaults(),
+          captureDisplay: ':99',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Send screen'));
+    await tester.pumpAndSettle();
+    expect(core.captureInfoDisplay, ':99');
+    await tester.tap(find.byKey(const Key('shareScreenSwitch')));
+    await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
+    await tester.tap(find.byKey(const Key('startButton')));
+    await tester.pump();
+    expect(core.senderScreen?.display, ':99');
   });
 }

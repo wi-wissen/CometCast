@@ -8,6 +8,7 @@
 //! `flutter_rust_bridge_codegen` (do not edit it by hand, see docs/flutter-bridge.md).
 
 pub mod api;
+mod video;
 
 // Generated code uses `unsafe` (C calls) and has no docs, so it opts out of those lints.
 // `rustfmt::skip`: the generator formats the file itself; `cargo fmt` must not fight it.

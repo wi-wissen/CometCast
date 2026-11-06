@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// State of the "Send" screen (synthetic VP8 test stream, no screen capture yet).
+// State of the "Send" screen (synthetic VP8 test stream, or the screen of this computer).
 
 import 'dart:async';
 
@@ -22,20 +22,30 @@ class SenderController extends ChangeNotifier {
   int framesSent = 0;
   bool receiverLeft = false;
 
+  /// True while the screen (not the test video) is being sent.
+  bool sharingScreen = false;
+  int encodedFrames = 0;
+  int encodedBytes = 0;
+
   /// Technical error text in English (shown after a translated "Error:" prefix).
   String? error;
 
   bool get isActive =>
       phase == SenderPhase.starting || phase == SenderPhase.running;
 
-  /// Join room [code] on [server] and send the test video for [seconds] seconds.
+  /// Join room [code] on [server] and send the test video for [seconds] seconds, or with
+  /// [screen] the screen of this computer until stopped.
   void start({
     required String code,
     required String server,
-    required int seconds,
+    int? seconds,
+    ScreenRequest? screen,
   }) {
     _cancel();
     phase = SenderPhase.starting;
+    sharingScreen = screen != null;
+    encodedFrames = 0;
+    encodedBytes = 0;
     connectionState = null;
     framesSent = 0;
     receiverLeft = false;
@@ -47,6 +57,7 @@ class SenderController extends ChangeNotifier {
           server: server.trim(),
           seconds: seconds,
           udpBind: udpBind,
+          screen: screen,
         )
         .listen(
           _onEvent,
@@ -72,6 +83,9 @@ class SenderController extends ChangeNotifier {
         connectionState = state;
       case SenderUiEvent_Streaming(:final framesSent):
         this.framesSent = framesSent.toInt();
+      case SenderUiEvent_ScreenStats(:final encoded, :final encodedBytes):
+        encodedFrames = encoded.toInt();
+        this.encodedBytes = encodedBytes.toInt();
       case SenderUiEvent_Finished(:final framesSent):
         this.framesSent = framesSent.toInt();
         phase = SenderPhase.finished;

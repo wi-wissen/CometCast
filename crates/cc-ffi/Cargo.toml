@@ -29,11 +29,21 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(frb_expand)"] }
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 
+[features]
+# `h264`: the receiver decodes incoming H.264 (OpenH264 through cc-media) and hands RGBA
+# frames to the UI. Without it the receiver still counts packets but shows no picture.
+# UNCERTAIN: H.264 patent/licence questions are open, see docs/capture.md ("H.264 licensing").
+default = ["h264"]
+h264 = ["dep:cc-media"]
+
 [dependencies]
 cc-proto.workspace = true
 cc-transport.workspace = true
 cc-receiver.workspace = true
 cc-sender.workspace = true
+cc-capture.workspace = true
+cc-discovery = { path = "../cc-discovery" }
+cc-media = { workspace = true, optional = true }
 tokio.workspace = true
 # Pinned exactly: the Dart package of the same version must be used (see apps/flutter/pubspec.yaml).
 flutter_rust_bridge = "=2.13.0"

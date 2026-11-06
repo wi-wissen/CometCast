@@ -96,10 +96,23 @@ void main() {
 
     // The server field has the focus (autofocus); arrow down leaves it for the start button.
     expect(focusIsInside(tester, const Key('serverField')), isTrue);
-    await press(tester, LogicalKeyboardKey.arrowDown);
-    expect(focusIsInside(tester, const Key('startButton')), isTrue);
-    await press(tester, LogicalKeyboardKey.arrowUp);
-    expect(focusIsInside(tester, const Key('serverField')), isTrue);
+    // The two suggested servers (chips) come before the start button.
+    for (final key in const [
+      Key('serverSuggestion:relay.cometcast.de:443'),
+      Key('serverSuggestion:127.0.0.1:8443'),
+      Key('startButton'),
+    ]) {
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      expect(focusIsInside(tester, key), isTrue, reason: '$key should be next');
+    }
+    for (final key in const [
+      Key('serverSuggestion:127.0.0.1:8443'),
+      Key('serverSuggestion:relay.cometcast.de:443'),
+      Key('serverField'),
+    ]) {
+      await press(tester, LogicalKeyboardKey.arrowUp);
+      expect(focusIsInside(tester, key), isTrue, reason: '$key should be next');
+    }
   });
 
   testWidgets('send screen: arrow keys walk through all fields to the button', (
@@ -118,15 +131,21 @@ void main() {
     ); // "Send screen" has the focus at start
     await tester.pumpAndSettle();
 
-    // Visit order from the top: server field, code field, duration field, start button.
+    // Visit order from the top: server field, the two suggested servers (chips), the
+    // "Share this screen" switch, code field, duration field, start button.
     final order = <Key>[
       const Key('serverField'),
+      const Key('serverSuggestion:relay.cometcast.de:443'),
+      const Key('serverSuggestion:127.0.0.1:8443'),
+      const Key('shareScreenSwitch'),
       const Key('codeField'),
       const Key('secondsField'),
       const Key('startButton'),
     ];
     // The code field has autofocus; go up to the server field first.
-    await press(tester, LogicalKeyboardKey.arrowUp);
+    for (var i = 0; i < 4; i++) {
+      await press(tester, LogicalKeyboardKey.arrowUp);
+    }
     expect(focusIsInside(tester, order[0]), isTrue);
     for (final key in order.skip(1)) {
       await press(tester, LogicalKeyboardKey.arrowDown);

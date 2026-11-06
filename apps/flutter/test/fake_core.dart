@@ -15,6 +15,38 @@ class FakeCoreApi implements CoreApi {
   int? senderSeconds;
   int stopReceiverCalls = 0;
   int stopSenderCalls = 0;
+  ScreenRequest? senderScreen;
+
+  /// Pictures waiting for takeFrame (the newest is handed out, the others are dropped, like
+  /// the real mailbox).
+  final frames = <VideoFrame>[];
+  int takeFrameCalls = 0;
+  final maxSizes = <(int, int)>[];
+
+  /// What captureInfo answers (default: X11 works, whole desktop plus one monitor).
+  CaptureInfo captureInfoResult = const CaptureInfo(
+    support: CaptureSupport.supported(),
+    display: ':0',
+    monitors: [
+      CaptureMonitor(
+        id: 'root',
+        name: 'Whole desktop',
+        x: 0,
+        y: 0,
+        width: 640,
+        height: 480,
+      ),
+      CaptureMonitor(
+        id: 'out:HDMI-1',
+        name: 'HDMI-1',
+        x: 0,
+        y: 0,
+        width: 640,
+        height: 480,
+      ),
+    ],
+  );
+  String? captureInfoDisplay;
 
   @override
   Stream<ReceiverUiEvent> startReceiver({
@@ -29,12 +61,40 @@ class FakeCoreApi implements CoreApi {
   Future<void> stopReceiver() async => stopReceiverCalls++;
 
   @override
+  Future<VideoFrame?> takeFrame() async {
+    takeFrameCalls++;
+    if (frames.isEmpty) return null;
+    final newest = frames.last;
+    frames.clear();
+    return newest;
+  }
+
+  @override
+  void setVideoMaxSize(int width, int height) => maxSizes.add((width, height));
+
+  @override
+  Future<CaptureInfo> captureInfo({String? display}) async {
+    captureInfoDisplay = display;
+    return captureInfoResult;
+  }
+
+  // Same content as the real list of cc-discovery at the time of writing; the real values
+  // are checked in rust_core_test.dart.
+  @override
+  ServerDefaults serverDefaults() => const ServerDefaults(
+    servers: ['relay.cometcast.de:443'],
+    devFallback: '127.0.0.1:8443',
+  );
+
+  @override
   Stream<SenderUiEvent> startSender({
     required String code,
     required String server,
     int? seconds,
     String? udpBind,
+    ScreenRequest? screen,
   }) {
+    senderScreen = screen;
     senderCode = code;
     senderServer = server;
     senderSeconds = seconds;

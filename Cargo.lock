@@ -471,6 +471,9 @@ version = "0.1.0"
 name = "cc-ffi"
 version = "0.1.0"
 dependencies = [
+ "cc-capture",
+ "cc-discovery",
+ "cc-media",
  "cc-proto",
  "cc-receiver",
  "cc-sender",

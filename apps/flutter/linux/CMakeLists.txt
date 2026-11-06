@@ -81,6 +81,11 @@ endif()
 # Own target dir inside the Flutter build folder, so the result does not depend on the
 # CARGO_TARGET_DIR variable of the person building.
 set(CC_FFI_TARGET_DIR "${CMAKE_BINARY_DIR}/cargo-target")
+# Optional: COMETCAST_CARGO_TARGET_DIR=/some/dir shares one cargo target folder with other
+# builds (saves disk and time; used for the checks in apps/flutter/README.md).
+if(DEFINED ENV{COMETCAST_CARGO_TARGET_DIR} AND NOT "$ENV{COMETCAST_CARGO_TARGET_DIR}" STREQUAL "")
+  set(CC_FFI_TARGET_DIR "$ENV{COMETCAST_CARGO_TARGET_DIR}")
+endif()
 set(CC_FFI_LIB "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/libcc_ffi.so")
 add_custom_target(cc_ffi_build ALL
   COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi ${CC_FFI_CARGO_FLAGS}

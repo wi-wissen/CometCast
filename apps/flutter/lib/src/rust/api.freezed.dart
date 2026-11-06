@@ -13,6 +13,381 @@ part of 'api.dart';
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
+mixin _$CaptureSupport {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSupport);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'CaptureSupport()';
+}
+
+
+}
+
+/// @nodoc
+class $CaptureSupportCopyWith<$Res>  {
+$CaptureSupportCopyWith(CaptureSupport _, $Res Function(CaptureSupport) __);
+}
+
+
+/// Adds pattern-matching-related methods to [CaptureSupport].
+extension CaptureSupportPatterns on CaptureSupport {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( CaptureSupport_Supported value)?  supported,TResult Function( CaptureSupport_Wayland value)?  wayland,TResult Function( CaptureSupport_NoDisplay value)?  noDisplay,TResult Function( CaptureSupport_UnsupportedOs value)?  unsupportedOs,TResult Function( CaptureSupport_Failed value)?  failed,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case CaptureSupport_Supported() when supported != null:
+return supported(_that);case CaptureSupport_Wayland() when wayland != null:
+return wayland(_that);case CaptureSupport_NoDisplay() when noDisplay != null:
+return noDisplay(_that);case CaptureSupport_UnsupportedOs() when unsupportedOs != null:
+return unsupportedOs(_that);case CaptureSupport_Failed() when failed != null:
+return failed(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( CaptureSupport_Supported value)  supported,required TResult Function( CaptureSupport_Wayland value)  wayland,required TResult Function( CaptureSupport_NoDisplay value)  noDisplay,required TResult Function( CaptureSupport_UnsupportedOs value)  unsupportedOs,required TResult Function( CaptureSupport_Failed value)  failed,}){
+final _that = this;
+switch (_that) {
+case CaptureSupport_Supported():
+return supported(_that);case CaptureSupport_Wayland():
+return wayland(_that);case CaptureSupport_NoDisplay():
+return noDisplay(_that);case CaptureSupport_UnsupportedOs():
+return unsupportedOs(_that);case CaptureSupport_Failed():
+return failed(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( CaptureSupport_Supported value)?  supported,TResult? Function( CaptureSupport_Wayland value)?  wayland,TResult? Function( CaptureSupport_NoDisplay value)?  noDisplay,TResult? Function( CaptureSupport_UnsupportedOs value)?  unsupportedOs,TResult? Function( CaptureSupport_Failed value)?  failed,}){
+final _that = this;
+switch (_that) {
+case CaptureSupport_Supported() when supported != null:
+return supported(_that);case CaptureSupport_Wayland() when wayland != null:
+return wayland(_that);case CaptureSupport_NoDisplay() when noDisplay != null:
+return noDisplay(_that);case CaptureSupport_UnsupportedOs() when unsupportedOs != null:
+return unsupportedOs(_that);case CaptureSupport_Failed() when failed != null:
+return failed(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  supported,TResult Function()?  wayland,TResult Function()?  noDisplay,TResult Function()?  unsupportedOs,TResult Function( String message)?  failed,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case CaptureSupport_Supported() when supported != null:
+return supported();case CaptureSupport_Wayland() when wayland != null:
+return wayland();case CaptureSupport_NoDisplay() when noDisplay != null:
+return noDisplay();case CaptureSupport_UnsupportedOs() when unsupportedOs != null:
+return unsupportedOs();case CaptureSupport_Failed() when failed != null:
+return failed(_that.message);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  supported,required TResult Function()  wayland,required TResult Function()  noDisplay,required TResult Function()  unsupportedOs,required TResult Function( String message)  failed,}) {final _that = this;
+switch (_that) {
+case CaptureSupport_Supported():
+return supported();case CaptureSupport_Wayland():
+return wayland();case CaptureSupport_NoDisplay():
+return noDisplay();case CaptureSupport_UnsupportedOs():
+return unsupportedOs();case CaptureSupport_Failed():
+return failed(_that.message);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  supported,TResult? Function()?  wayland,TResult? Function()?  noDisplay,TResult? Function()?  unsupportedOs,TResult? Function( String message)?  failed,}) {final _that = this;
+switch (_that) {
+case CaptureSupport_Supported() when supported != null:
+return supported();case CaptureSupport_Wayland() when wayland != null:
+return wayland();case CaptureSupport_NoDisplay() when noDisplay != null:
+return noDisplay();case CaptureSupport_UnsupportedOs() when unsupportedOs != null:
+return unsupportedOs();case CaptureSupport_Failed() when failed != null:
+return failed(_that.message);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class CaptureSupport_Supported extends CaptureSupport {
+  const CaptureSupport_Supported(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSupport_Supported);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'CaptureSupport.supported()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class CaptureSupport_Wayland extends CaptureSupport {
+  const CaptureSupport_Wayland(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSupport_Wayland);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'CaptureSupport.wayland()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class CaptureSupport_NoDisplay extends CaptureSupport {
+  const CaptureSupport_NoDisplay(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSupport_NoDisplay);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'CaptureSupport.noDisplay()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class CaptureSupport_UnsupportedOs extends CaptureSupport {
+  const CaptureSupport_UnsupportedOs(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSupport_UnsupportedOs);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'CaptureSupport.unsupportedOs()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class CaptureSupport_Failed extends CaptureSupport {
+  const CaptureSupport_Failed({required this.message}): super._();
+  
+
+/// Technical message in English.
+ final  String message;
+
+/// Create a copy of CaptureSupport
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CaptureSupport_FailedCopyWith<CaptureSupport_Failed> get copyWith => _$CaptureSupport_FailedCopyWithImpl<CaptureSupport_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is CaptureSupport_Failed&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,message);
+}
+
+@override
+String toString() {
+    return 'CaptureSupport.failed(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CaptureSupport_FailedCopyWith<$Res> implements $CaptureSupportCopyWith<$Res> {
+  factory $CaptureSupport_FailedCopyWith(CaptureSupport_Failed value, $Res Function(CaptureSupport_Failed) _then) = _$CaptureSupport_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$CaptureSupport_FailedCopyWithImpl<$Res>
+    implements $CaptureSupport_FailedCopyWith<$Res> {
+  _$CaptureSupport_FailedCopyWithImpl(this._self, this._then);
+
+  final CaptureSupport_Failed _self;
+  final $Res Function(CaptureSupport_Failed) _then;
+
+/// Create a copy of CaptureSupport
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(CaptureSupport_Failed(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$ReceiverUiEvent {
 
 
@@ -56,7 +431,7 @@ extension ReceiverUiEventPatterns on ReceiverUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -64,7 +439,9 @@ return roomCode(_that);case ReceiverUiEvent_PeerJoined() when peerJoined != null
 return peerJoined(_that);case ReceiverUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that);case ReceiverUiEvent_Stats() when stats != null:
-return stats(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
+return stats(_that);case ReceiverUiEvent_FrameReady() when frameReady != null:
+return frameReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
+return videoStats(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case ReceiverUiEvent_Error() when error != null:
 return error(_that);case _:
   return orElse();
@@ -84,7 +461,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
@@ -92,7 +469,9 @@ return roomCode(_that);case ReceiverUiEvent_PeerJoined():
 return peerJoined(_that);case ReceiverUiEvent_ConnectionState():
 return connectionState(_that);case ReceiverUiEvent_VideoTrack():
 return videoTrack(_that);case ReceiverUiEvent_Stats():
-return stats(_that);case ReceiverUiEvent_PeerLeft():
+return stats(_that);case ReceiverUiEvent_FrameReady():
+return frameReady(_that);case ReceiverUiEvent_VideoStats():
+return videoStats(_that);case ReceiverUiEvent_PeerLeft():
 return peerLeft(_that);case ReceiverUiEvent_Error():
 return error(_that);}
 }
@@ -108,7 +487,7 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -116,7 +495,9 @@ return roomCode(_that);case ReceiverUiEvent_PeerJoined() when peerJoined != null
 return peerJoined(_that);case ReceiverUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that);case ReceiverUiEvent_Stats() when stats != null:
-return stats(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
+return stats(_that);case ReceiverUiEvent_FrameReady() when frameReady != null:
+return frameReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
+return videoStats(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case ReceiverUiEvent_Error() when error != null:
 return error(_that);case _:
   return null;
@@ -135,14 +516,16 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code)?  roomCode,TResult Function()?  peerJoined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code)?  roomCode,TResult Function()?  peerJoined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
 return peerJoined();case ReceiverUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that.mime,_that.codec);case ReceiverUiEvent_Stats() when stats != null:
-return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
+return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_FrameReady() when frameReady != null:
+return frameReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
+return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case ReceiverUiEvent_Error() when error != null:
 return error(_that.message);case _:
   return orElse();
@@ -162,14 +545,16 @@ return error(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code)  roomCode,required TResult Function()  peerJoined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code)  roomCode,required TResult Function()  peerJoined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
 return roomCode(_that.code);case ReceiverUiEvent_PeerJoined():
 return peerJoined();case ReceiverUiEvent_ConnectionState():
 return connectionState(_that.state);case ReceiverUiEvent_VideoTrack():
 return videoTrack(_that.mime,_that.codec);case ReceiverUiEvent_Stats():
-return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_PeerLeft():
+return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_FrameReady():
+return frameReady();case ReceiverUiEvent_VideoStats():
+return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_PeerLeft():
 return peerLeft();case ReceiverUiEvent_Error():
 return error(_that.message);}
 }
@@ -185,14 +570,16 @@ return error(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code)?  roomCode,TResult? Function()?  peerJoined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code)?  roomCode,TResult? Function()?  peerJoined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
 return peerJoined();case ReceiverUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that.mime,_that.codec);case ReceiverUiEvent_Stats() when stats != null:
-return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
+return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_FrameReady() when frameReady != null:
+return frameReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
+return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case ReceiverUiEvent_Error() when error != null:
 return error(_that.message);case _:
   return null;
@@ -516,6 +903,134 @@ as BigInt,bytes: null == bytes ? _self.bytes : bytes // ignore: cast_nullable_to
 as BigInt,frames: null == frames ? _self.frames : frames // ignore: cast_nullable_to_non_nullable
 as BigInt,keyframes: null == keyframes ? _self.keyframes : keyframes // ignore: cast_nullable_to_non_nullable
 as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ReceiverUiEvent_FrameReady extends ReceiverUiEvent {
+  const ReceiverUiEvent_FrameReady(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_FrameReady);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.frameReady()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ReceiverUiEvent_VideoStats extends ReceiverUiEvent {
+  const ReceiverUiEvent_VideoStats({required this.decoded, required this.delivered, required this.dropped, required this.droppedPackets, required this.decodeErrors, required this.keyframeRequests, required this.width, required this.height, required this.avgDecodeUs, this.error}): super._();
+  
+
+/// Pictures decoded.
+ final  BigInt decoded;
+/// Pictures handed to the UI by `take_frame`.
+ final  BigInt delivered;
+/// Pictures replaced before the UI fetched them (the UI was too slow).
+ final  BigInt dropped;
+/// RTP packets thrown away because the decoder fell behind.
+ final  BigInt droppedPackets;
+/// Decoder errors.
+ final  BigInt decodeErrors;
+/// Key frame requests (PLI) sent to the sender.
+ final  BigInt keyframeRequests;
+/// Size of the last picture handed out (after scaling).
+ final  int width;
+/// Size of the last picture handed out (after scaling).
+ final  int height;
+/// Mean decode + scale time per picture in microseconds.
+ final  BigInt avgDecodeUs;
+/// Last decoder problem in English, or `None`.
+ final  String? error;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ReceiverUiEvent_VideoStatsCopyWith<ReceiverUiEvent_VideoStats> get copyWith => _$ReceiverUiEvent_VideoStatsCopyWithImpl<ReceiverUiEvent_VideoStats>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_VideoStats&&(identical(other.decoded, decoded) || other.decoded == decoded)&&(identical(other.delivered, delivered) || other.delivered == delivered)&&(identical(other.dropped, dropped) || other.dropped == dropped)&&(identical(other.droppedPackets, droppedPackets) || other.droppedPackets == droppedPackets)&&(identical(other.decodeErrors, decodeErrors) || other.decodeErrors == decodeErrors)&&(identical(other.keyframeRequests, keyframeRequests) || other.keyframeRequests == keyframeRequests)&&(identical(other.width, width) || other.width == width)&&(identical(other.height, height) || other.height == height)&&(identical(other.avgDecodeUs, avgDecodeUs) || other.avgDecodeUs == avgDecodeUs)&&(identical(other.error, error) || other.error == error));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,decoded,delivered,dropped,droppedPackets,decodeErrors,keyframeRequests,width,height,avgDecodeUs,error);
+}
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.videoStats(decoded: $decoded, delivered: $delivered, dropped: $dropped, droppedPackets: $droppedPackets, decodeErrors: $decodeErrors, keyframeRequests: $keyframeRequests, width: $width, height: $height, avgDecodeUs: $avgDecodeUs, error: $error)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ReceiverUiEvent_VideoStatsCopyWith<$Res> implements $ReceiverUiEventCopyWith<$Res> {
+  factory $ReceiverUiEvent_VideoStatsCopyWith(ReceiverUiEvent_VideoStats value, $Res Function(ReceiverUiEvent_VideoStats) _then) = _$ReceiverUiEvent_VideoStatsCopyWithImpl;
+@useResult
+$Res call({
+ BigInt decoded, BigInt delivered, BigInt dropped, BigInt droppedPackets, BigInt decodeErrors, BigInt keyframeRequests, int width, int height, BigInt avgDecodeUs, String? error
+});
+
+
+
+
+}
+/// @nodoc
+class _$ReceiverUiEvent_VideoStatsCopyWithImpl<$Res>
+    implements $ReceiverUiEvent_VideoStatsCopyWith<$Res> {
+  _$ReceiverUiEvent_VideoStatsCopyWithImpl(this._self, this._then);
+
+  final ReceiverUiEvent_VideoStats _self;
+  final $Res Function(ReceiverUiEvent_VideoStats) _then;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? decoded = null,Object? delivered = null,Object? dropped = null,Object? droppedPackets = null,Object? decodeErrors = null,Object? keyframeRequests = null,Object? width = null,Object? height = null,Object? avgDecodeUs = null,Object? error = freezed,}) {
+  return _then(ReceiverUiEvent_VideoStats(
+decoded: null == decoded ? _self.decoded : decoded // ignore: cast_nullable_to_non_nullable
+as BigInt,delivered: null == delivered ? _self.delivered : delivered // ignore: cast_nullable_to_non_nullable
+as BigInt,dropped: null == dropped ? _self.dropped : dropped // ignore: cast_nullable_to_non_nullable
+as BigInt,droppedPackets: null == droppedPackets ? _self.droppedPackets : droppedPackets // ignore: cast_nullable_to_non_nullable
+as BigInt,decodeErrors: null == decodeErrors ? _self.decodeErrors : decodeErrors // ignore: cast_nullable_to_non_nullable
+as BigInt,keyframeRequests: null == keyframeRequests ? _self.keyframeRequests : keyframeRequests // ignore: cast_nullable_to_non_nullable
+as BigInt,width: null == width ? _self.width : width // ignore: cast_nullable_to_non_nullable
+as int,height: null == height ? _self.height : height // ignore: cast_nullable_to_non_nullable
+as int,avgDecodeUs: null == avgDecodeUs ? _self.avgDecodeUs : avgDecodeUs // ignore: cast_nullable_to_non_nullable
+as BigInt,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -1003,13 +1518,14 @@ extension SenderUiEventPatterns on SenderUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SenderUiEvent_Joined value)?  joined,TResult Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult Function( SenderUiEvent_Streaming value)?  streaming,TResult Function( SenderUiEvent_Finished value)?  finished,TResult Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult Function( SenderUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SenderUiEvent_Joined value)?  joined,TResult Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult Function( SenderUiEvent_Streaming value)?  streaming,TResult Function( SenderUiEvent_ScreenStats value)?  screenStats,TResult Function( SenderUiEvent_Finished value)?  finished,TResult Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult Function( SenderUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined(_that);case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that);case SenderUiEvent_Finished() when finished != null:
+return streaming(_that);case SenderUiEvent_ScreenStats() when screenStats != null:
+return screenStats(_that);case SenderUiEvent_Finished() when finished != null:
 return finished(_that);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case SenderUiEvent_Error() when error != null:
 return error(_that);case _:
@@ -1030,13 +1546,14 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SenderUiEvent_Joined value)  joined,required TResult Function( SenderUiEvent_ConnectionState value)  connectionState,required TResult Function( SenderUiEvent_Streaming value)  streaming,required TResult Function( SenderUiEvent_Finished value)  finished,required TResult Function( SenderUiEvent_PeerLeft value)  peerLeft,required TResult Function( SenderUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SenderUiEvent_Joined value)  joined,required TResult Function( SenderUiEvent_ConnectionState value)  connectionState,required TResult Function( SenderUiEvent_Streaming value)  streaming,required TResult Function( SenderUiEvent_ScreenStats value)  screenStats,required TResult Function( SenderUiEvent_Finished value)  finished,required TResult Function( SenderUiEvent_PeerLeft value)  peerLeft,required TResult Function( SenderUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined():
 return joined(_that);case SenderUiEvent_ConnectionState():
 return connectionState(_that);case SenderUiEvent_Streaming():
-return streaming(_that);case SenderUiEvent_Finished():
+return streaming(_that);case SenderUiEvent_ScreenStats():
+return screenStats(_that);case SenderUiEvent_Finished():
 return finished(_that);case SenderUiEvent_PeerLeft():
 return peerLeft(_that);case SenderUiEvent_Error():
 return error(_that);}
@@ -1053,13 +1570,14 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SenderUiEvent_Joined value)?  joined,TResult? Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult? Function( SenderUiEvent_Streaming value)?  streaming,TResult? Function( SenderUiEvent_Finished value)?  finished,TResult? Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult? Function( SenderUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SenderUiEvent_Joined value)?  joined,TResult? Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult? Function( SenderUiEvent_Streaming value)?  streaming,TResult? Function( SenderUiEvent_ScreenStats value)?  screenStats,TResult? Function( SenderUiEvent_Finished value)?  finished,TResult? Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult? Function( SenderUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined(_that);case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that);case SenderUiEvent_Finished() when finished != null:
+return streaming(_that);case SenderUiEvent_ScreenStats() when screenStats != null:
+return screenStats(_that);case SenderUiEvent_Finished() when finished != null:
 return finished(_that);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case SenderUiEvent_Error() when error != null:
 return error(_that);case _:
@@ -1079,12 +1597,13 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  joined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( BigInt framesSent)?  streaming,TResult Function( BigInt framesSent)?  finished,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  joined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( BigInt framesSent)?  streaming,TResult Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)?  screenStats,TResult Function( BigInt framesSent)?  finished,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined();case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that.framesSent);case SenderUiEvent_Finished() when finished != null:
+return streaming(_that.framesSent);case SenderUiEvent_ScreenStats() when screenStats != null:
+return screenStats(_that.polls,_that.changed,_that.encoded,_that.keyframes,_that.encodedBytes);case SenderUiEvent_Finished() when finished != null:
 return finished(_that.framesSent);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case SenderUiEvent_Error() when error != null:
 return error(_that.message);case _:
@@ -1105,12 +1624,13 @@ return error(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  joined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( BigInt framesSent)  streaming,required TResult Function( BigInt framesSent)  finished,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  joined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( BigInt framesSent)  streaming,required TResult Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)  screenStats,required TResult Function( BigInt framesSent)  finished,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined():
 return joined();case SenderUiEvent_ConnectionState():
 return connectionState(_that.state);case SenderUiEvent_Streaming():
-return streaming(_that.framesSent);case SenderUiEvent_Finished():
+return streaming(_that.framesSent);case SenderUiEvent_ScreenStats():
+return screenStats(_that.polls,_that.changed,_that.encoded,_that.keyframes,_that.encodedBytes);case SenderUiEvent_Finished():
 return finished(_that.framesSent);case SenderUiEvent_PeerLeft():
 return peerLeft();case SenderUiEvent_Error():
 return error(_that.message);}
@@ -1127,12 +1647,13 @@ return error(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  joined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( BigInt framesSent)?  streaming,TResult? Function( BigInt framesSent)?  finished,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  joined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( BigInt framesSent)?  streaming,TResult? Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)?  screenStats,TResult? Function( BigInt framesSent)?  finished,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined();case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that.framesSent);case SenderUiEvent_Finished() when finished != null:
+return streaming(_that.framesSent);case SenderUiEvent_ScreenStats() when screenStats != null:
+return screenStats(_that.polls,_that.changed,_that.encoded,_that.keyframes,_that.encodedBytes);case SenderUiEvent_Finished() when finished != null:
 return finished(_that.framesSent);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case SenderUiEvent_Error() when error != null:
 return error(_that.message);case _:
@@ -1306,6 +1827,87 @@ class _$SenderUiEvent_StreamingCopyWithImpl<$Res>
 @pragma('vm:prefer-inline') $Res call({Object? framesSent = null,}) {
   return _then(SenderUiEvent_Streaming(
 framesSent: null == framesSent ? _self.framesSent : framesSent // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SenderUiEvent_ScreenStats extends SenderUiEvent {
+  const SenderUiEvent_ScreenStats({required this.polls, required this.changed, required this.encoded, required this.keyframes, required this.encodedBytes}): super._();
+  
+
+/// Times the screen was looked at.
+ final  BigInt polls;
+/// Pictures that differed from the previous one.
+ final  BigInt changed;
+/// Frames produced by the encoder.
+ final  BigInt encoded;
+/// Of those, key frames.
+ final  BigInt keyframes;
+/// Encoded bytes so far.
+ final  BigInt encodedBytes;
+
+/// Create a copy of SenderUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SenderUiEvent_ScreenStatsCopyWith<SenderUiEvent_ScreenStats> get copyWith => _$SenderUiEvent_ScreenStatsCopyWithImpl<SenderUiEvent_ScreenStats>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SenderUiEvent_ScreenStats&&(identical(other.polls, polls) || other.polls == polls)&&(identical(other.changed, changed) || other.changed == changed)&&(identical(other.encoded, encoded) || other.encoded == encoded)&&(identical(other.keyframes, keyframes) || other.keyframes == keyframes)&&(identical(other.encodedBytes, encodedBytes) || other.encodedBytes == encodedBytes));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,polls,changed,encoded,keyframes,encodedBytes);
+}
+
+@override
+String toString() {
+    return 'SenderUiEvent.screenStats(polls: $polls, changed: $changed, encoded: $encoded, keyframes: $keyframes, encodedBytes: $encodedBytes)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SenderUiEvent_ScreenStatsCopyWith<$Res> implements $SenderUiEventCopyWith<$Res> {
+  factory $SenderUiEvent_ScreenStatsCopyWith(SenderUiEvent_ScreenStats value, $Res Function(SenderUiEvent_ScreenStats) _then) = _$SenderUiEvent_ScreenStatsCopyWithImpl;
+@useResult
+$Res call({
+ BigInt polls, BigInt changed, BigInt encoded, BigInt keyframes, BigInt encodedBytes
+});
+
+
+
+
+}
+/// @nodoc
+class _$SenderUiEvent_ScreenStatsCopyWithImpl<$Res>
+    implements $SenderUiEvent_ScreenStatsCopyWith<$Res> {
+  _$SenderUiEvent_ScreenStatsCopyWithImpl(this._self, this._then);
+
+  final SenderUiEvent_ScreenStats _self;
+  final $Res Function(SenderUiEvent_ScreenStats) _then;
+
+/// Create a copy of SenderUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? polls = null,Object? changed = null,Object? encoded = null,Object? keyframes = null,Object? encodedBytes = null,}) {
+  return _then(SenderUiEvent_ScreenStats(
+polls: null == polls ? _self.polls : polls // ignore: cast_nullable_to_non_nullable
+as BigInt,changed: null == changed ? _self.changed : changed // ignore: cast_nullable_to_non_nullable
+as BigInt,encoded: null == encoded ? _self.encoded : encoded // ignore: cast_nullable_to_non_nullable
+as BigInt,keyframes: null == keyframes ? _self.keyframes : keyframes // ignore: cast_nullable_to_non_nullable
+as BigInt,encodedBytes: null == encodedBytes ? _self.encodedBytes : encodedBytes // ignore: cast_nullable_to_non_nullable
 as BigInt,
   ));
 }

@@ -146,13 +146,13 @@
   "@statsKeyframes": {
     "description": "Label: number of received key frames (complete pictures)."
   },
-  "receiveNotice": "This version only counts the incoming video. Showing the picture (decoding and rendering) comes with the native decoder work.",
+  "receiveNotice": "Pictures are shown for H.264 video, for example when a Linux computer shares its screen. The built-in test video (VP8) is only counted.",
   "@receiveNotice": {
-    "description": "Notice on the receive screen: no decoding or rendering yet."
+    "description": "Notice on the receive screen: which video is shown."
   },
-  "sendNotice": "This version sends a built-in test video (VP8), not your screen. Screen capture comes with the native capture work.",
+  "sendNotice": "Without \"Share this screen\", a built-in test video (VP8) is sent instead of your screen.",
   "@sendNotice": {
-    "description": "Notice on the send screen: no screen capture yet."
+    "description": "Notice on the send screen: what is sent when screen sharing is off."
   },
   "roomCodeInputLabel": "Room code of the receiver",
   "@roomCodeInputLabel": {
@@ -241,5 +241,137 @@
   "captureNotificationStop": "Stop",
   "@captureNotificationStop": {
     "description": "Action button of the capture notification: stop sharing."
+  },
+  "sendShareScreen": "Share this screen",
+  "@sendShareScreen": {
+    "description": "Switch on the send screen: send the picture of this computer."
+  },
+  "sendShareScreenHint": "Sends the picture of this computer until you stop.",
+  "@sendShareScreenHint": {
+    "description": "Subtitle of the \"Share this screen\" switch."
+  },
+  "sendMonitorLabel": "What to share",
+  "@sendMonitorLabel": {
+    "description": "Label of the drop-down that lists the whole desktop and the monitors."
+  },
+  "sendMonitorWholeDesktop": "Whole desktop",
+  "@sendMonitorWholeDesktop": {
+    "description": "Entry of the monitor list: all monitors together."
+  },
+  "sendCaptureChecking": "Checking whether this screen can be shared …",
+  "@sendCaptureChecking": {
+    "description": "Shown while the capture check runs."
+  },
+  "sendCaptureUnsupportedSystem": "Sharing this screen is not supported on this system yet.",
+  "@sendCaptureUnsupportedSystem": {
+    "description": "Shown when the operating system has no screen capture in this version."
+  },
+  "sendCaptureUnsupportedWayland": "Sharing this screen is not supported on this system yet: it uses Wayland, and only X11 sessions can be shared.",
+  "@sendCaptureUnsupportedWayland": {
+    "description": "Shown when the desktop session is Wayland."
+  },
+  "sendCaptureNoDisplay": "Sharing this screen is not possible here: no graphical session was found.",
+  "@sendCaptureNoDisplay": {
+    "description": "Shown when no display is available."
+  },
+  "sendCaptureFailed": "The screen cannot be read: {message}",
+  "@sendCaptureFailed": {
+    "description": "Shown when the connection to the X11 display failed. The message is technical and in English.",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "sendStreamingScreen": "Sharing the screen: {frames} frames sent",
+  "@sendStreamingScreen": {
+    "description": "Status text of the sender while it shares the screen.",
+    "placeholders": {
+      "frames": {
+        "type": "int"
+      }
+    }
+  },
+  "serverSuggestionsLabel": "Suggested servers",
+  "@serverSuggestionsLabel": {
+    "description": "Label above the chips with suggested server addresses."
+  },
+  "videoWaiting": "Waiting for the sender's screen …",
+  "@videoWaiting": {
+    "description": "Shown in the receiver while the sender is connected but no picture has arrived yet."
+  },
+  "videoCodecNotShown": "The sender uses {codec}. This version only shows H.264 pictures.",
+  "@videoCodecNotShown": {
+    "description": "Shown in the receiver when the video track is not H.264.",
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      }
+    }
+  },
+  "fullscreenEnter": "Full screen (F11)",
+  "@fullscreenEnter": {
+    "description": "Tooltip of the button that makes the window full screen."
+  },
+  "fullscreenExit": "Leave full screen (Esc)",
+  "@fullscreenExit": {
+    "description": "Tooltip of the button that leaves full screen."
+  },
+  "videoStatsShow": "Show statistics (I)",
+  "@videoStatsShow": {
+    "description": "Tooltip of the button that shows the statistics over the picture."
+  },
+  "videoStatsHide": "Hide statistics (I)",
+  "@videoStatsHide": {
+    "description": "Tooltip of the button that hides the statistics over the picture."
+  },
+  "videoStatsSize": "Picture size",
+  "@videoStatsSize": {
+    "description": "Statistics label."
+  },
+  "videoStatsDisplayRate": "Display rate",
+  "@videoStatsDisplayRate": {
+    "description": "Statistics label: pictures drawn per second."
+  },
+  "videoStatsDecoded": "Decoded",
+  "@videoStatsDecoded": {
+    "description": "Statistics label: number of decoded pictures."
+  },
+  "videoStatsDropped": "Dropped",
+  "@videoStatsDropped": {
+    "description": "Statistics label: pictures that were replaced before they were drawn."
+  },
+  "videoStatsDecodeTime": "Decode time",
+  "@videoStatsDecodeTime": {
+    "description": "Statistics label: mean time to decode one picture."
+  },
+  "videoStatsKeyRequests": "Key frame requests",
+  "@videoStatsKeyRequests": {
+    "description": "Statistics label: how often a new key frame was requested."
+  },
+  "videoStatsDecodeErrors": "Decoder errors",
+  "@videoStatsDecodeErrors": {
+    "description": "Statistics label: how many pictures could not be decoded."
+  },
+  "videoStatsUiTime": "Hand-over to the picture: {fetch} ms, image: {image} ms",
+  "@videoStatsUiTime": {
+    "description": "Statistics line: mean time per picture to fetch it from the core and to turn it into an image.",
+    "placeholders": {
+      "fetch": {
+        "type": "String"
+      },
+      "image": {
+        "type": "String"
+      }
+    }
+  },
+  "videoStatsError": "Decoder: {message}",
+  "@videoStatsError": {
+    "description": "Statistics line with the last decoder problem (technical, in English).",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
   }
 }

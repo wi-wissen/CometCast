@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `begin`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `spawn_guarded`, `stats_event`, `stop`, `store`
+// These functions are ignored because they are not marked as `pub`: `begin`, `capture_info_blocking`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `spawn_guarded`, `stats_event`, `stop`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -42,8 +42,21 @@ Stream<ReceiverUiEvent> startReceiver({
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
 Future<void> stopReceiver() => RustLib.instance.api.crateApiStopReceiver();
 
-/// Start a sender: join the room `code` on `server` and send the built-in VP8 test stream
-/// for `seconds` seconds (`None` = until stopped).
+/// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
+/// without padding), or `None`. Call it after a [`ReceiverUiEvent::FrameReady`].
+///
+/// The picture is at most the size set by [`set_video_max_size`] (and never larger than
+/// 1920 x 1080). Fetching re-arms the `FrameReady` event.
+Future<VideoFrame?> takeFrame() => RustLib.instance.api.crateApiTakeFrame();
+
+/// Tell the decoder how large the picture area is in physical pixels. Pictures larger than
+/// this are scaled down (aspect ratio kept); smaller ones are not enlarged. Values are
+/// clamped to 1..=1920 x 1..=1080. Call it when the window size changes.
+void setVideoMaxSize({required int width, required int height}) =>
+    RustLib.instance.api.crateApiSetVideoMaxSize(width: width, height: height);
+
+/// Start a sender: join the room `code` on `server` and send the built-in VP8 test stream,
+/// or with `screen` the X11 screen as H.264, for `seconds` seconds (`None` = until stopped).
 ///
 /// An invalid code or an unknown room is reported as [`SenderUiEvent::Error`] and the stream
 /// ends (see [`start_receiver`] for why errors are events).
@@ -53,15 +66,141 @@ Stream<SenderUiEvent> startSender({
   required String server,
   int? seconds,
   String? udpBind,
+  ScreenRequest? screen,
 }) => RustLib.instance.api.crateApiStartSender(
   code: code,
   server: server,
   seconds: seconds,
   udpBind: udpBind,
+  screen: screen,
 );
 
 /// Stop the running sender (does nothing if none runs). The Dart stream then ends.
 Future<void> stopSender() => RustLib.instance.api.crateApiStopSender();
+
+/// Check whether screen capture works here and list the monitors.
+///
+/// `display` forces an X11 display such as `:99` (development and tests). Without it, a
+/// session that looks like Wayland (`XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` set) is
+/// reported as [`CaptureSupport::Wayland`] even if `DISPLAY` points at XWayland: X11 capture
+/// would see only X11 windows there. UNCERTAIN: this heuristic was not tried on a real Wayland
+/// desktop.
+Future<CaptureInfo> captureInfo({String? display}) =>
+    RustLib.instance.api.crateApiCaptureInfo(display: display);
+
+/// The server addresses to pre-fill.
+///
+/// UNCERTAIN: `cc-discovery` only has the built-in list so far; the other steps of its lookup
+/// ladder (MDM policy, DNS SRV, display announcement) are not implemented, so this returns just
+/// the list. The host in the list (`relay.cometcast.de`) does not exist yet, which is why the
+/// UI also offers `dev_fallback`.
+ServerDefaults serverDefaults() =>
+    RustLib.instance.api.crateApiServerDefaults();
+
+/// Answer of [`capture_info`].
+class CaptureInfo {
+  /// Can this system share its screen?
+  final CaptureSupport support;
+
+  /// The X11 display that was asked (explicit argument or `$DISPLAY`), if any.
+  final String? display;
+
+  /// "Whole desktop" first, then the monitors. Empty unless `support` is `Supported`.
+  final List<CaptureMonitor> monitors;
+
+  const CaptureInfo({
+    required this.support,
+    this.display,
+    required this.monitors,
+  });
+
+  @override
+  int get hashCode => support.hashCode ^ display.hashCode ^ monitors.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CaptureInfo &&
+          runtimeType == other.runtimeType &&
+          support == other.support &&
+          display == other.display &&
+          monitors == other.monitors;
+}
+
+/// A part of the desktop that can be shared.
+class CaptureMonitor {
+  /// Pass this to [`ScreenRequest::monitor_id`].
+  final String id;
+
+  /// Name from the X server (or "Whole desktop").
+  final String name;
+
+  /// Left edge in desktop coordinates.
+  final int x;
+
+  /// Top edge in desktop coordinates.
+  final int y;
+
+  /// Width in pixels.
+  final int width;
+
+  /// Height in pixels.
+  final int height;
+
+  const CaptureMonitor({
+    required this.id,
+    required this.name,
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      x.hashCode ^
+      y.hashCode ^
+      width.hashCode ^
+      height.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CaptureMonitor &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          x == other.x &&
+          y == other.y &&
+          width == other.width &&
+          height == other.height;
+}
+
+@freezed
+sealed class CaptureSupport with _$CaptureSupport {
+  const CaptureSupport._();
+
+  /// X11 capture works; `CaptureInfo::monitors` is filled.
+  const factory CaptureSupport.supported() = CaptureSupport_Supported;
+
+  /// The session looks like Wayland (and no X11 display was asked for explicitly): only X11
+  /// capture exists, PipeWire / portal capture is not implemented.
+  const factory CaptureSupport.wayland() = CaptureSupport_Wayland;
+
+  /// Linux without any display (`DISPLAY` and `WAYLAND_DISPLAY` unset).
+  const factory CaptureSupport.noDisplay() = CaptureSupport_NoDisplay;
+
+  /// An operating system without a capture backend yet (Windows, macOS, mobile).
+  const factory CaptureSupport.unsupportedOs() = CaptureSupport_UnsupportedOs;
+
+  /// X11 is there but the connection failed.
+  const factory CaptureSupport.failed({
+    /// Technical message in English.
+    required String message,
+  }) = CaptureSupport_Failed;
+}
 
 @freezed
 sealed class ReceiverUiEvent with _$ReceiverUiEvent {
@@ -106,6 +245,43 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     required BigInt keyframes,
   }) = ReceiverUiEvent_Stats;
 
+  /// A decoded picture is waiting: call [`take_frame`]. Sent again only after `take_frame`
+  /// was called (so a slow UI does not build up a queue).
+  const factory ReceiverUiEvent.frameReady() = ReceiverUiEvent_FrameReady;
+
+  /// Counters of the decoder, sent together with `Stats`.
+  const factory ReceiverUiEvent.videoStats({
+    /// Pictures decoded.
+    required BigInt decoded,
+
+    /// Pictures handed to the UI by `take_frame`.
+    required BigInt delivered,
+
+    /// Pictures replaced before the UI fetched them (the UI was too slow).
+    required BigInt dropped,
+
+    /// RTP packets thrown away because the decoder fell behind.
+    required BigInt droppedPackets,
+
+    /// Decoder errors.
+    required BigInt decodeErrors,
+
+    /// Key frame requests (PLI) sent to the sender.
+    required BigInt keyframeRequests,
+
+    /// Size of the last picture handed out (after scaling).
+    required int width,
+
+    /// Size of the last picture handed out (after scaling).
+    required int height,
+
+    /// Mean decode + scale time per picture in microseconds.
+    required BigInt avgDecodeUs,
+
+    /// Last decoder problem in English, or `None`.
+    String? error,
+  }) = ReceiverUiEvent_VideoStats;
+
   /// The sender left. The stream ends after this.
   const factory ReceiverUiEvent.peerLeft() = ReceiverUiEvent_PeerLeft;
 
@@ -136,6 +312,45 @@ sealed class RoomCodeCheck with _$RoomCodeCheck {
   }) = RoomCodeCheck_InvalidChar;
 }
 
+/// Send the screen instead of the test video.
+class ScreenRequest {
+  /// X11 display such as `:99`; `None` = `$DISPLAY`.
+  final String? display;
+
+  /// `CaptureMonitor::id`; `None` = the whole desktop.
+  final String? monitorId;
+
+  /// How often the screen is looked at (1..=60).
+  final int fps;
+
+  /// Encoder target bit rate in kbit/s.
+  final int bitrateKbps;
+
+  const ScreenRequest({
+    this.display,
+    this.monitorId,
+    required this.fps,
+    required this.bitrateKbps,
+  });
+
+  @override
+  int get hashCode =>
+      display.hashCode ^
+      monitorId.hashCode ^
+      fps.hashCode ^
+      bitrateKbps.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ScreenRequest &&
+          runtimeType == other.runtimeType &&
+          display == other.display &&
+          monitorId == other.monitorId &&
+          fps == other.fps &&
+          bitrateKbps == other.bitrateKbps;
+}
+
 @freezed
 sealed class SenderUiEvent with _$SenderUiEvent {
   const SenderUiEvent._();
@@ -155,6 +370,24 @@ sealed class SenderUiEvent with _$SenderUiEvent {
     required BigInt framesSent,
   }) = SenderUiEvent_Streaming;
 
+  /// Counters of the screen pipeline, sent together with `Streaming` in screen mode.
+  const factory SenderUiEvent.screenStats({
+    /// Times the screen was looked at.
+    required BigInt polls,
+
+    /// Pictures that differed from the previous one.
+    required BigInt changed,
+
+    /// Frames produced by the encoder.
+    required BigInt encoded,
+
+    /// Of those, key frames.
+    required BigInt keyframes,
+
+    /// Encoded bytes so far.
+    required BigInt encodedBytes,
+  }) = SenderUiEvent_ScreenStats;
+
   /// The requested duration is over. The stream ends after this.
   const factory SenderUiEvent.finished({
     /// Frames written to the track.
@@ -169,6 +402,28 @@ sealed class SenderUiEvent with _$SenderUiEvent {
     /// Technical message in English.
     required String message,
   }) = SenderUiEvent_Error;
+}
+
+/// Server addresses the UI offers when the person has not chosen one yet.
+class ServerDefaults {
+  /// The built-in list of `cc-discovery` (`DEFAULT_SERVERS`), in order.
+  final List<String> servers;
+
+  /// Address for development on one machine (a local `cometcast-server`).
+  final String devFallback;
+
+  const ServerDefaults({required this.servers, required this.devFallback});
+
+  @override
+  int get hashCode => servers.hashCode ^ devFallback.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ServerDefaults &&
+          runtimeType == other.runtimeType &&
+          servers == other.servers &&
+          devFallback == other.devFallback;
 }
 
 /// WebRTC connection state (a copy of the transport's enum so Dart gets its own type).
@@ -190,4 +445,40 @@ enum UiConnectionState {
 
   /// Closed.
   closed,
+}
+
+/// One decoded picture for the UI.
+class VideoFrame {
+  /// Counts up with every decoded picture (gaps = dropped pictures).
+  final BigInt seq;
+
+  /// Width in pixels.
+  final int width;
+
+  /// Height in pixels.
+  final int height;
+
+  /// RGBA bytes, length = width * height * 4.
+  final Uint8List rgba;
+
+  const VideoFrame({
+    required this.seq,
+    required this.width,
+    required this.height,
+    required this.rgba,
+  });
+
+  @override
+  int get hashCode =>
+      seq.hashCode ^ width.hashCode ^ height.hashCode ^ rgba.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VideoFrame &&
+          runtimeType == other.runtimeType &&
+          seq == other.seq &&
+          width == other.width &&
+          height == other.height &&
+          rgba == other.rgba;
 }

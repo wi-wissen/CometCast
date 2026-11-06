@@ -21,6 +21,7 @@ dependencies:
   # in crates/cc-ffi/Cargo.toml (checked by the code generator).
   flutter_rust_bridge: 2.13.0
   freezed_annotation: ^3.1.0
+  shared_preferences: ^2.5.6
 
 dev_dependencies:
   flutter_test:
