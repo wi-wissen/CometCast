@@ -91,14 +91,14 @@ The full list with reasons is in the planning document (German, kept outside thi
 ## Milestones
 
 - [x] **M0** Project start: repo, translation scaffold (de/en), LICENSE (GPL-3.0), notices for third-party components, CLA text, source file headers. *Done. The CLA text is still a draft that needs a lawyer's review.*
-- [ ] **M1** Own protocol: desktop to desktop and Android TV, direct and with room code. *Partly done: signalling server and protocol, browser and native Rust peers, Flutter Linux app with the Rust core (counters only, synthetic VP8 stream). Not done: real screen capture and decoding in the native apps, Android TV device test, STUN/TURN across networks.*
+- [ ] **M1** Own protocol: desktop to desktop and Android TV, direct and with room code. *Largely done on Linux: server, protocol, browser and native peers, X11 screen capture with H.264, Flutter Linux app, an Android debug APK builds. Not done: capture on Wayland/Windows/macOS, Android TV device test, STUN/TURN across real networks.*
 - [ ] **M2** Toolbar and content mode. *Partly done in the web app: toolbar, annotations, freeze, image and link transfer. Not done: PDF/Office, media links, page control, toolbar in the Flutter apps.*
 - [x] **M2b** Web app: sender and receiver in the browser. *Done for screen sharing over WebRTC, local network only until TURN is used by the clients.*
 - [ ] **M3** AirPlay receiving (UxPlay) on mini PC and Windows. *Partly done: the supervisor library and CLI (`cc-airplay`), tested on Linux with a fake and the real UxPlay 1.68. Not done: app integration, a real iPhone/iPad test, Windows.*
-- [ ] **M4** Cast mirroring sender (Rust rebuild after Open Screen); estimate 9 to 14 PW, with buffer 12 to 17 PW
-- [ ] **M5** Miracast receiving on Windows
+- [ ] **M4** Cast mirroring sender (Rust rebuild after Open Screen). *Not started on purpose: it needs a real Chromecast to verify, and the project rule says no Cast material is taken over. Waiting for a decision (see the open questions).*
+- [ ] **M5** Miracast receiving on Windows. *Partly done: `cc-miracast` (policy, status, Windows backend over the documented WinRT API) is compile-checked only and has never run on Windows. No video surface in the app.*
 - [ ] **M6** iOS broadcast extension and Android capture
-- [ ] **M7** AirPlay sender for the desktop (optional; FairPlay part behind an interface); estimate 12 to 25 PW
+- [ ] **M7** AirPlay sender for the desktop. *Not started on purpose: the plan needs a FairPlay part, which the project rules forbid taking over.*
 - [ ] **M8** Internal and open server. *Server side built and tested (TLS, limits, bans, ALTCHA, TURN credentials). Not built or run: Docker image, coturn. The default host `relay.cometcast.de` does not exist yet.*
 
 Effort figures are estimates. Order of use is given by the milestones; the first content of 0.1 is M1 to M3.
