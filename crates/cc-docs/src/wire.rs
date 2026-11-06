@@ -2,7 +2,7 @@
 //! The byte format between the parent and the render worker process.
 //!
 //! Request (parent to worker stdin), little endian:
-//! `"CCDW" ver:u8 op:u8 index:u64 width:u32 height:u32 <limits: 10 x u64> pdf_len:u64 pdf...`
+//! `"CCDW" ver:u8 op:u8 index:u64 width:u32 height:u32 <limits: 13 x u64> pdf_len:u64 pdf...`
 //!
 //! Reply (worker stdout): a fixed 40 byte head
 //! `"CCDR" ver:u8 kind:u8 code:u16 peak_kib:u64 x:u64 y:u64 z:u64` and then a payload whose
@@ -15,11 +15,11 @@ use crate::error::DocError;
 
 pub(crate) const REQ_MAGIC: &[u8; 4] = b"CCDW";
 pub(crate) const REPLY_MAGIC: &[u8; 4] = b"CCDR";
-pub(crate) const VERSION: u8 = 1;
+pub(crate) const VERSION: u8 = 2;
 pub(crate) const OP_INFO: u8 = 1;
 pub(crate) const OP_RENDER: u8 = 2;
 pub(crate) const REPLY_HEAD: usize = 40;
-const LIMIT_FIELDS: usize = 10;
+const LIMIT_FIELDS: usize = 13;
 pub(crate) const REQ_HEAD: usize = 4 + 1 + 1 + 8 + 4 + 4 + LIMIT_FIELDS * 8 + 8;
 
 pub(crate) const KIND_INFO: u8 = 0;
@@ -29,6 +29,8 @@ pub(crate) const KIND_ERROR: u8 = 2;
 /// A decoded request head.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Request {
+    /// CPU seconds the worker may use (`RLIMIT_CPU`).
+    pub cpu_secs: u64,
     pub op: u8,
     pub index: u64,
     pub width: u32,
@@ -43,6 +45,7 @@ pub(crate) fn encode_request(
     width: u32,
     height: u32,
     limits: &Limits,
+    cpu_secs: u64,
     pdf_len: u64,
 ) -> Vec<u8> {
     let mut v = Vec::with_capacity(REQ_HEAD);
@@ -63,6 +66,9 @@ pub(crate) fn encode_request(
         limits.max_objects as u64,
         limits.max_filter_chain as u64,
         u64::from(limits.inflate_scan),
+        limits.max_worker_memory_bytes,
+        cpu_secs,
+        u64::from(limits.require_os_sandbox),
     ] {
         v.extend_from_slice(&f.to_le_bytes());
     }
@@ -102,10 +108,13 @@ pub(crate) fn decode_request(b: &[u8; REQ_HEAD]) -> Result<Request, DocError> {
         max_objects: us(f(7)),
         max_filter_chain: us(f(8)),
         inflate_scan: f(9) != 0,
-        // Not used inside the worker.
+        max_worker_memory_bytes: f(10),
+        require_os_sandbox: f(12) != 0,
+        // The timeouts are enforced by the parent; the worker only gets `cpu_secs`.
         ..Limits::default()
     };
     Ok(Request {
+        cpu_secs: f(11),
         op: b[5],
         index: u64_at(b, 6),
         width: u32_at(b, 14),
@@ -161,6 +170,16 @@ const REJECT_REASONS: [&str; 5] = [
     "filter chain is too long",
 ];
 
+/// Reasons the worker gives when it cannot restrict itself (the index travels as `x`).
+const WORKER_FAILED: [&str; 6] = [
+    "the renderer could not restrict itself",
+    "core dumps could not be disabled",
+    "the file size limit could not be applied",
+    "the open files limit could not be applied",
+    "the CPU time limit could not be applied",
+    "the memory limit could not be applied",
+];
+
 /// Error to `(code, x, y)`.
 pub(crate) fn error_to_wire(e: &DocError) -> (u16, u64, u64) {
     match e {
@@ -182,6 +201,11 @@ pub(crate) fn error_to_wire(e: &DocError) -> (u16, u64, u64) {
         DocError::NotPdf => (14, 0, 0),
         DocError::Empty => (15, 0, 0),
         DocError::OutputTooLarge { width, height } => (16, *width, *height),
+        DocError::SandboxUnavailable(_) => (17, 0, 0),
+        DocError::WorkerFailed(w) => {
+            let i = WORKER_FAILED.iter().position(|x| x == w).unwrap_or(0);
+            (18, i as u64, 0)
+        }
         _ => (13, 0, 0),
     }
 }
@@ -222,6 +246,15 @@ pub(crate) fn error_from_wire(code: u16, x: u64, y: u64) -> DocError {
             width: x,
             height: y,
         },
+        17 => {
+            DocError::SandboxUnavailable("Landlock and seccomp are required but not both available")
+        }
+        18 => DocError::WorkerFailed(
+            WORKER_FAILED
+                .get(us(x))
+                .copied()
+                .unwrap_or("the renderer could not restrict itself"),
+        ),
         _ => DocError::Internal("render worker reported an internal error"),
     }
 }
@@ -237,7 +270,7 @@ mod tests {
             max_image_pixels: 12345,
             ..Limits::default()
         };
-        let b = encode_request(OP_RENDER, 5, 640, 480, &l, 999);
+        let b = encode_request(OP_RENDER, 5, 640, 480, &l, 12, 999);
         let arr: [u8; REQ_HEAD] = b.try_into().unwrap();
         let r = decode_request(&arr).unwrap();
         assert_eq!(
@@ -247,6 +280,9 @@ mod tests {
         assert_eq!(r.limits.max_pages, 77);
         assert_eq!(r.limits.max_image_pixels, 12345);
         assert_eq!(r.limits.max_objects, l.max_objects);
+        assert_eq!(r.cpu_secs, 12);
+        assert_eq!(r.limits.max_worker_memory_bytes, l.max_worker_memory_bytes);
+        assert!(!r.limits.require_os_sandbox);
         let mut bad = arr;
         bad[0] = b'X';
         assert!(decode_request(&bad).is_err());

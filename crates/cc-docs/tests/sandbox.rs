@@ -22,7 +22,7 @@ fn worker() -> Isolation {
 /// `false` (with a note on stdout) where `sh` or `ulimit -v` is missing.
 fn have_sandbox() -> bool {
     let ok =
-        cfg!(any(target_os = "linux", target_os = "android")) && cc_docs::sandbox_tools_available();
+        cfg!(any(target_os = "linux", target_os = "android")) && cc_docs::worker_limits_available();
     if !ok {
         println!("NOTE: skipped, `sh` with `ulimit -v` is not available on this platform");
     }

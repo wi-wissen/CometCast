@@ -261,8 +261,9 @@ fn page_count_over_the_limit_is_refused() {
     };
     assert!(matches!(
         Document::open_with_limits(bytes.clone(), small),
+        // The raw pre-check stops counting as soon as the limit is passed.
         Err(DocError::TooManyPages {
-            count: 300,
+            count: 101..=300,
             max: 100
         })
     ));

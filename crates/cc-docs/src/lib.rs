@@ -34,6 +34,8 @@ mod clamp;
 mod document;
 mod encode;
 mod error;
+#[cfg(not(target_arch = "wasm32"))]
+mod hardening;
 mod isolation;
 mod prescan;
 #[cfg(all(
@@ -44,6 +46,7 @@ mod prescan;
 mod process;
 #[cfg(not(target_arch = "wasm32"))]
 mod process_stats;
+mod protection;
 mod session;
 #[cfg(not(target_arch = "wasm32"))]
 mod wire;
@@ -58,9 +61,27 @@ pub use isolation::{Isolation, WORKER_ENV, WORKER_FILE_NAME, WorkerSpec};
     not(target_os = "ios"),
     not(target_os = "tvos")
 ))]
-pub use process::sandbox_tools_available;
+pub use process::{
+    active_workers, max_concurrent_workers, set_max_concurrent_workers, worker_limits_available,
+};
+pub use protection::Protection;
 #[cfg(not(target_arch = "wasm32"))]
 pub use worker_main::worker_main;
+
+/// Restrict the **calling process** the way the render worker restricts itself (resource
+/// limits, Landlock, seccomp) and report what was applied. Only for the tests of this crate,
+/// which run it in a child copy of the test program; do not call it from an application:
+/// the limits and filters cannot be undone.
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub fn enter_worker_sandbox_for_tests(limits: &Limits) -> Result<Vec<Protection>, DocError> {
+    hardening::apply(hardening::Plan {
+        memory_bytes: limits.max_worker_memory_bytes,
+        cpu_secs: 60,
+        require_os_sandbox: limits.require_os_sandbox,
+    })
+    .map(|m| m.list())
+}
 
 /// There is no render worker process on `wasm32`; returns 2.
 #[cfg(target_arch = "wasm32")]

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The document type: limits first, then parsing and rendering in a child process (default)
-//! or on a guarded thread.
+//! The document type: limits first, then parsing and rendering in a resource-limited child
+//! process (default) or on a guarded thread.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::error::DocError;
 use crate::isolation::Isolation;
+use crate::protection::{Mask, Protection};
 use crate::worker::{Engine, Job};
 
 /// Hard limits. They are checked before a file is parsed (size, page claims) or before work
@@ -35,8 +36,9 @@ pub struct Limits {
     /// Time allowed for one render (default 10 s). Same consequence as for `open_timeout`.
     pub render_timeout: Duration,
     /// Memory of the render worker process in bytes (default 1 GiB). On Linux and Android
-    /// this is the address-space limit (`ulimit -v`) and also the resident-memory cap that
-    /// the parent watches; elsewhere only the watched cap. Not used by the in-process engine.
+    /// this is the address-space limit (`RLIMIT_AS`, set by the worker itself, fail closed)
+    /// and also the resident-memory cap that the parent watches; elsewhere only the watched
+    /// cap. Not used by the in-process engine.
     pub max_worker_memory_bytes: u64,
     /// Largest declared image area (`Width * Height`) in pixels (default 64 Mpx = 8000 x
     /// 8000). A 10 000 x 10 000 scan is refused: the price of the bomb check.
@@ -58,6 +60,13 @@ pub struct Limits {
     /// Deepest nesting of dictionaries and arrays in the file body, checked on the raw bytes
     /// before parsing (default 256; real files stay far below 50).
     pub max_nesting_depth: usize,
+    /// Refuse to parse unless the worker could restrict itself with **both** Landlock (no
+    /// file system access) and seccomp (no `fork`, `exec`, `socket`) (default `false`). With
+    /// `false` a worker on a system without them (old kernel, container that forbids them,
+    /// macOS, Windows, Android) still runs with its resource limits only, and
+    /// [`Document::protections`] says what was in place. With `true` such a system gives
+    /// [`DocError::SandboxUnavailable`] before the PDF is parsed.
+    pub require_os_sandbox: bool,
 }
 
 impl Default for Limits {
@@ -77,6 +86,7 @@ impl Default for Limits {
             max_filter_chain: 8,
             inflate_scan: true,
             max_nesting_depth: 256,
+            require_os_sandbox: false,
         }
     }
 }
@@ -177,6 +187,8 @@ pub struct Document {
     key: u64,
     /// Highest memory (KiB) seen from the last worker process, 0 if unknown.
     last_peak_kib: AtomicU64,
+    /// Protections the last worker process reported (bit mask, see `protection.rs`).
+    last_protections: AtomicU64,
 }
 
 impl std::fmt::Debug for Document {
@@ -184,7 +196,7 @@ impl std::fmt::Debug for Document {
         f.debug_struct("Document")
             .field("bytes", &self.bytes.len())
             .field("pages", &self.sizes.len())
-            .field("sandboxed", &self.is_sandboxed())
+            .field("isolated", &self.is_isolated())
             .finish()
     }
 }
@@ -216,15 +228,9 @@ fn resolve(isolation: Isolation) -> Result<Resolved, DocError> {
         match isolation {
             Isolation::InProcess => Ok(Resolved::Thread),
             Isolation::Process(spec) => Ok(Resolved::Process(spec)),
-            Isolation::Auto => crate::isolation::WorkerSpec::discover()
+            Isolation::Auto => crate::isolation::WorkerSpec::discover_checked()
                 .map(Resolved::Process)
-                .ok_or_else(|| {
-                    DocError::WorkerUnavailable(format!(
-                        "no worker found: set {} or put {} next to the program",
-                        crate::isolation::WORKER_ENV,
-                        crate::isolation::WORKER_FILE_NAME
-                    ))
-                }),
+                .map_err(DocError::WorkerUnavailable),
         }
     }
     #[cfg(not(all(
@@ -282,6 +288,7 @@ impl Document {
         let resolved = resolve(isolation)?;
         let bytes = Arc::new(bytes);
         let last_peak_kib = AtomicU64::new(0);
+        let last_protections = AtomicU64::new(0);
         let (backend, sizes, key) = match resolved {
             #[cfg(all(
                 not(target_arch = "wasm32"),
@@ -289,7 +296,7 @@ impl Document {
                 not(target_os = "tvos")
             ))]
             Resolved::Process(spec) => {
-                let (r, peak) = crate::process::run(
+                let done = crate::process::run(
                     &spec,
                     &bytes,
                     &limits,
@@ -297,8 +304,9 @@ impl Document {
                     limits.open_timeout,
                     None,
                 );
-                last_peak_kib.store(peak, Ordering::Relaxed);
-                let sizes = match r? {
+                last_peak_kib.store(done.peak_kib, Ordering::Relaxed);
+                last_protections.store(done.protections.0, Ordering::Relaxed);
+                let sizes = match done.result? {
                     crate::process::Output::Info(s) => s,
                     crate::process::Output::Page(_) => {
                         return Err(DocError::Internal("unexpected reply"));
@@ -330,13 +338,28 @@ impl Document {
             backend,
             key,
             last_peak_kib,
+            last_protections,
         })
     }
 
-    /// `true` when pages are rendered in a child process with memory and CPU limits,
-    /// `false` for the in-process engine (no memory bound).
-    pub fn is_sandboxed(&self) -> bool {
+    /// `true` when pages are rendered in a resource-limited child process, `false` for the
+    /// in-process engine (no memory bound, no separation at all).
+    ///
+    /// This does **not** mean "sandboxed" in the full sense: the child has the same user id
+    /// and, unless [`protections`](Self::protections) lists `Landlock` and `Seccomp`, can
+    /// still read the user's files and use the network. See `docs/documents.md`.
+    pub fn is_isolated(&self) -> bool {
         !matches!(self.backend, Backend::Thread(_))
+    }
+
+    /// The protections that were really in place around the worker of the last call: those
+    /// the parent provides (own process group, clean environment, memory watchdog) and the
+    /// ones the worker reported after applying them to itself (limits, Landlock, seccomp).
+    /// Empty for the in-process engine and before the first call finished. Landlock and
+    /// seccomp are best effort (see [`Limits::require_os_sandbox`]); this is how an
+    /// application finds out whether they were available.
+    pub fn protections(&self) -> Vec<Protection> {
+        Mask(self.last_protections.load(Ordering::Relaxed)).list()
     }
 
     /// Highest memory (KiB) seen from the worker process of the last call, as far as the
@@ -476,7 +499,7 @@ impl Document {
             ))]
             Backend::Process { spec, lock } => {
                 let _one_at_a_time = lock.lock().unwrap_or_else(|p| p.into_inner());
-                let (r, peak) = crate::process::run(
+                let done = crate::process::run(
                     spec,
                     &self.bytes,
                     &self.limits,
@@ -488,8 +511,10 @@ impl Document {
                     timeout,
                     options.cancel.as_deref(),
                 );
-                self.last_peak_kib.store(peak, Ordering::Relaxed);
-                match r? {
+                self.last_peak_kib.store(done.peak_kib, Ordering::Relaxed);
+                self.last_protections
+                    .store(done.protections.0, Ordering::Relaxed);
+                match done.result? {
                     crate::process::Output::Page(p) => Ok(p),
                     crate::process::Output::Info(_) => Err(DocError::Internal("unexpected reply")),
                 }

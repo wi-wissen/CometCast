@@ -2,9 +2,11 @@
 //! The entry point of the render worker process: read one request from stdin, parse and
 //! render, write one reply to stdout, exit.
 //!
-//! The process is started by the parent with limits on address space and CPU time (see
-//! `process.rs`); this code only does the work and keeps stdout clean. Nothing here prints
-//! anything but the reply.
+//! The process is started by the parent in its own process group with an empty environment
+//! (see `process.rs`). Right after the fixed-size request head, and **before the PDF is
+//! read**, it restricts itself (`hardening.rs`: resource limits, Landlock, seccomp). This
+//! code only does the work and keeps stdout clean. Nothing here prints anything but the
+//! reply.
 
 use std::io::{Read, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -12,7 +14,9 @@ use std::sync::Arc;
 
 use crate::document::Limits;
 use crate::error::DocError;
+use crate::hardening::{self, Plan};
 use crate::prescan::ScanLevel;
+use crate::protection::Mask;
 use crate::wire::{
     self, KIND_ERROR, KIND_INFO, KIND_PAGE, OP_INFO, OP_RENDER, REQ_HEAD, ReplyHead, Request,
 };
@@ -40,7 +44,15 @@ pub fn worker_main() -> i32 {
     if stdin.read_exact(&mut head).is_err() {
         return 3;
     }
+    let mut mask = Mask::default();
     let result = wire::decode_request(&head).and_then(|req| {
+        // First restrict this process, then touch the hostile bytes. A mandatory limit that
+        // cannot be set ends the job here.
+        mask = hardening::apply(Plan {
+            memory_bytes: req.limits.max_worker_memory_bytes,
+            cpu_secs: req.cpu_secs,
+            require_os_sandbox: req.limits.require_os_sandbox,
+        })?;
         if req.pdf_len > req.limits.max_file_bytes as u64 {
             return Err(DocError::TooLarge {
                 size: usize::try_from(req.pdf_len).unwrap_or(usize::MAX),
@@ -59,7 +71,7 @@ pub fn worker_main() -> i32 {
         }
         compute(req, pdf)
     });
-    write_reply(result)
+    write_reply(result, mask)
 }
 
 fn compute(req: Request, pdf: Vec<u8>) -> Result<Done, DocError> {
@@ -116,13 +128,8 @@ fn compute_inner(req: &Request, pdf: Vec<u8>) -> Result<Done, DocError> {
     }
 }
 
-/// Peak resident memory of this process in KiB where `/proc` has it, else 0.
-fn own_peak_kib() -> u64 {
-    crate::process_stats::read_vm_hwm_kib("/proc/self/status").unwrap_or(0)
-}
-
-fn write_reply(result: Result<Done, DocError>) -> i32 {
-    let peak_kib = own_peak_kib();
+fn write_reply(result: Result<Done, DocError>, mask: Mask) -> i32 {
+    let peak_kib = hardening::own_peak_kib();
     let mut out = std::io::stdout().lock();
     let written = match result {
         Ok(Done::Info(sizes)) => {
@@ -132,7 +139,7 @@ fn write_reply(result: Result<Done, DocError>) -> i32 {
                 peak_kib,
                 x: sizes.len() as u64,
                 y: 0,
-                z: 0,
+                z: mask.0,
             });
             let mut payload = Vec::with_capacity(sizes.len() * 8);
             for s in &sizes {
@@ -148,7 +155,7 @@ fn write_reply(result: Result<Done, DocError>) -> i32 {
                 peak_kib,
                 x: u64::from(p.width),
                 y: u64::from(p.height),
-                z: 0,
+                z: mask.0,
             });
             out.write_all(&head).and_then(|()| out.write_all(&p.rgba))
         }
@@ -160,7 +167,7 @@ fn write_reply(result: Result<Done, DocError>) -> i32 {
                 peak_kib,
                 x,
                 y,
-                z: 0,
+                z: mask.0,
             });
             out.write_all(&head)
         }

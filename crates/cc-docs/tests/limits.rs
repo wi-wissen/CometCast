@@ -238,7 +238,7 @@ fn in_process_timeout_poisons_the_document_and_the_counter_recovers() {
     // thread ends within seconds and the counter can be checked (fan 60 runs for minutes).
     let bytes = blowup_pdf(15);
     let d = Document::open_with_options(bytes.clone(), quick(), Isolation::InProcess).unwrap();
-    assert!(!d.is_sandboxed());
+    assert!(!d.is_isolated());
     let t = Instant::now();
     let r = d.render_page_with(0, 400, &short(150));
     let took = t.elapsed();
@@ -276,7 +276,7 @@ fn process_timeout_kills_the_worker_and_the_next_render_works() {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     wait_idle();
     let d = Document::open_with_options(blowup_pdf(60), quick(), worker()).unwrap();
-    assert!(d.is_sandboxed());
+    assert!(d.is_isolated());
     let t = Instant::now();
     let r = d.render_page_with(0, 400, &short(150));
     let took = t.elapsed();

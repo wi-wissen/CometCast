@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! How a [`Document`](crate::Document) is rendered: in a child process (default) or in this
-//! process (weak; for `wasm32`, iOS and tvOS, which cannot start child processes).
+//! How a [`Document`](crate::Document) is rendered: in a resource-limited child process
+//! (default) or in this process (weak; for `wasm32`, iOS and tvOS, which cannot start child
+//! processes).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -18,19 +19,27 @@ pub const WORKER_FILE_NAME: &str = if cfg!(windows) {
 /// The program that renders in a child process: a path and its fixed arguments. The program
 /// must call [`worker_main`](crate::worker_main) (the `cc-docs-worker` binary of this crate
 /// does; so does `cometcast-cli docs-worker`).
+///
+/// The path is made **absolute** when the spec is made ([`WorkerSpec::new`]): the child is
+/// started from exactly that path, never through a `PATH` search at spawn time (so what
+/// [`discover`](WorkerSpec::discover) found is what runs).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerSpec {
-    /// Program to start.
+    /// Program to start (absolute).
     pub program: PathBuf,
     /// Arguments placed before nothing else (the request travels on stdin).
     pub args: Vec<OsString>,
 }
 
 impl WorkerSpec {
-    /// A worker that is started as `program` without arguments.
+    /// A worker that is started as `program` without arguments. A bare name (`"sleep"`) is
+    /// looked up once in this process's `PATH` (absolute entries only); the directory part
+    /// of the result is canonicalised, the file name is kept as it is (a symbolic link such
+    /// as `/bin/sleep` -> `busybox` must keep its own name). A path that does not exist is
+    /// made absolute lexically; starting it then fails with `WorkerUnavailable`.
     pub fn new(program: impl Into<PathBuf>) -> Self {
         Self {
-            program: program.into(),
+            program: absolutize(program.into()),
             args: Vec::new(),
         }
     }
@@ -50,21 +59,43 @@ impl WorkerSpec {
     }
 
     /// Find a worker without help from the caller. In this order:
-    /// 1. the program named by the environment variable `COMETCAST_DOCS_WORKER`;
+    /// 1. the program named by the environment variable `COMETCAST_DOCS_WORKER`, **only if
+    ///    it passes the trust check** (see below; if the variable is set and the check
+    ///    fails, nothing else is tried);
     /// 2. a file `cc-docs-worker` next to the running executable;
     /// 3. the same file one directory up when the executable is in a `deps` directory (the
     ///    layout of Cargo test binaries).
     ///
-    /// `None` when nothing is found. Applications that cannot guarantee any of these (for
-    /// example a Flutter app) should ship the worker and pass the path explicitly with
+    /// Trust check for the environment variable (Unix): the path is absolute, a regular
+    /// file, owned by the current user or by root, not writable by group or others, and its
+    /// directory is not writable by others (unless it has the sticky bit). The variable is
+    /// honoured in every build, release too: an attacker who can set the environment of the
+    /// application can already do more harm than choose a worker, but a worker program that
+    /// anyone else could have replaced is refused. On other platforms only "absolute and a
+    /// regular file" is checked (UNCERTAIN: no ownership check on Windows).
+    ///
+    /// `None` when nothing is found or the variable is refused; [`discover_checked`]
+    /// (Self::discover_checked) says why. Applications that cannot guarantee any of these
+    /// (for example a Flutter app) should ship the worker and pass the path explicitly with
     /// [`Isolation::Process`].
     pub fn discover() -> Option<Self> {
+        Self::discover_checked().ok()
+    }
+
+    /// Like [`discover`](Self::discover) with the reason when nothing usable is found.
+    pub fn discover_checked() -> Result<Self, String> {
         if let Some(p) = std::env::var_os(WORKER_ENV).filter(|p| !p.is_empty()) {
             let p = PathBuf::from(p);
-            return p.is_file().then(|| Self::new(p));
+            check_env_worker(&p).map_err(|why| format!("{WORKER_ENV} is not used: {why}"))?;
+            return Ok(Self::new(p));
         }
-        let exe = std::env::current_exe().ok()?;
-        let dir = exe.parent()?;
+        let none = || {
+            format!(
+                "no worker found: set {WORKER_ENV} (absolute path) or put {WORKER_FILE_NAME} next to the program"
+            )
+        };
+        let exe = std::env::current_exe().map_err(|_| none())?;
+        let dir = exe.parent().ok_or_else(none)?;
         let mut candidates = vec![dir.join(WORKER_FILE_NAME)];
         if dir.file_name().is_some_and(|n| n == "deps")
             && let Some(up) = dir.parent()
@@ -75,7 +106,77 @@ impl WorkerSpec {
             .into_iter()
             .find(|c| Path::new(c).is_file())
             .map(Self::new)
+            .ok_or_else(none)
     }
+}
+
+/// Make `p` absolute without depending on `PATH` at spawn time (see [`WorkerSpec::new`]).
+fn absolutize(p: PathBuf) -> PathBuf {
+    let bare = p.components().count() == 1 && !p.is_absolute();
+    let found = if bare { search_path(&p) } else { None };
+    let candidate = found.unwrap_or(p);
+    let abs = std::path::absolute(&candidate).unwrap_or(candidate);
+    match (
+        abs.parent().and_then(|d| d.canonicalize().ok()),
+        abs.file_name(),
+    ) {
+        (Some(dir), Some(name)) => dir.join(name),
+        _ => abs,
+    }
+}
+
+/// First executable file called `name` in the absolute entries of `PATH`.
+fn search_path(name: &Path) -> Option<PathBuf> {
+    let paths = std::env::var_os("PATH")?;
+    std::env::split_paths(&paths)
+        .filter(|d| d.is_absolute())
+        .flat_map(|d| {
+            let plain = d.join(name);
+            let exe = cfg!(windows).then(|| d.join(name).with_extension("exe"));
+            std::iter::once(plain).chain(exe)
+        })
+        .find(|c| is_executable_file(c))
+}
+
+#[cfg(unix)]
+fn is_executable_file(p: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    p.metadata()
+        .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(p: &Path) -> bool {
+    p.is_file()
+}
+
+/// The trust check for `COMETCAST_DOCS_WORKER`.
+fn check_env_worker(p: &Path) -> Result<(), &'static str> {
+    if !p.is_absolute() {
+        return Err("the path is not absolute");
+    }
+    let meta = p.metadata().map_err(|_| "the file cannot be read")?;
+    if !meta.is_file() {
+        return Err("it is not a regular file");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let me = rustix::process::getuid().as_raw();
+        if meta.uid() != me && meta.uid() != 0 {
+            return Err("it is owned by another user");
+        }
+        if meta.permissions().mode() & 0o022 != 0 {
+            return Err("it is writable by group or others");
+        }
+        let dir = p.parent().ok_or("it has no directory")?;
+        let dm = dir.metadata().map_err(|_| "its directory cannot be read")?;
+        let mode = dm.permissions().mode();
+        if mode & 0o002 != 0 && mode & 0o1000 == 0 {
+            return Err("its directory is writable by others");
+        }
+    }
+    Ok(())
 }
 
 /// Where the renderer runs.

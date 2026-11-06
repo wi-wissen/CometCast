@@ -89,6 +89,14 @@ pub enum DocError {
     /// The render process could not be started or found.
     #[error("the render worker is not available: {0}")]
     WorkerUnavailable(String),
+    /// [`Limits::require_os_sandbox`](crate::Limits) is set and this system cannot restrict the
+    /// worker with Landlock and seccomp (old kernel, container, other platform).
+    #[error("the operating system cannot sandbox the render worker: {0}")]
+    SandboxUnavailable(&'static str),
+    /// The global cap on render worker processes running at the same time is reached (see
+    /// [`set_max_concurrent_workers`](crate::set_max_concurrent_workers)); try again later.
+    #[error("too many render workers are running at the same time")]
+    TooManyWorkers,
     /// A worker thread could not be started or died unexpectedly.
     #[error("internal error: {0}")]
     Internal(&'static str),

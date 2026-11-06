@@ -32,5 +32,21 @@ thiserror.workspace = true
 # Inflate pre-scan of PDF streams (pure Rust backend, no C code).
 flate2 = { workspace = true }
 
+# Worker hardening on Unix: resource limits (`setrlimit`, safe wrapper), process-group kill and
+# the safe `getuid` (rustix, no C code). MIT OR Apache-2.0 / Apache-2.0 WITH LLVM-exception.
+[target.'cfg(unix)'.dependencies]
+rlimit = "0.11"
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
+# Self-sandboxing inside the worker on Linux (x86_64 and aarch64 only, the architectures
+# `seccompiler` supports): Landlock (`landlock`, MIT OR Apache-2.0) and a seccomp-bpf
+# allowlist (`seccompiler`, Apache-2.0 OR BSD-3-Clause). Both contain their own `unsafe`
+# for the system calls; this crate stays `unsafe_code = forbid`.
+[target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
+landlock = "0.4"
+seccompiler = "0.5"
+# Syscall numbers and constants for the seccomp filter (MIT OR Apache-2.0; already in the tree).
+libc = "0.2"
+
 [dev-dependencies]
 serde_json.workspace = true
