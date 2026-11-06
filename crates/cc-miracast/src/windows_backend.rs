@@ -9,8 +9,10 @@
 //! friends) is touched.
 
 use std::collections::HashMap;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use windows::ApplicationModel::Core::CoreApplicationView;
 use windows::Foundation::{Deferral, TypedEventHandler};
@@ -25,10 +27,16 @@ use windows::Media::Miracast::{
 use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize};
 use windows::core::{HSTRING, IInspectable};
 
+use crate::deadline::DeadlineQueue;
 use crate::{
     CONFIRM_TIMEOUT, ConnectionId, ConnectionPolicy, Decision, MiracastConfig, MiracastError,
-    MiracastEvent, MiracastStatus, PairingPolicy, StreamHandle, status_after,
+    MiracastEvent, MiracastStatus, PairingPolicy, RejectLimiter, RejectReason, StreamHandle,
+    sanitize_device_name, status_after,
 };
+
+/// Capacity of the event channel. When the consumer is slower than this, further events are
+/// dropped (the status in `Shared` is still updated) instead of growing without bound.
+const EVENT_QUEUE: usize = 64;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -66,10 +74,15 @@ struct State {
 }
 
 struct Shared {
-    tx: Mutex<Sender<MiracastEvent>>,
+    tx: SyncSender<MiracastEvent>,
     status: Mutex<MiracastStatus>,
     state: Mutex<State>,
     max_sessions: usize,
+    /// Set first thing in `Drop`; handlers that still run afterwards do nothing.
+    closed: AtomicBool,
+    /// Deadlines of the pending confirmations (one timer thread for all).
+    deadlines: DeadlineQueue,
+    reject_limiter: Mutex<RejectLimiter>,
 }
 
 impl Shared {
@@ -78,25 +91,60 @@ impl Shared {
             let mut s = lock(&self.status);
             *s = status_after(*s, &event);
         }
-        // The receiving side may be gone already; nothing to do then.
-        let _ = lock(&self.tx).send(event);
+        // The receiving side may be gone, or the queue full (consumer stuck): drop the event.
+        if let Err(TrySendError::Full(_)) = self.tx.try_send(event) {
+            // Nothing sensible to do; a pending request is rejected by its timeout anyway.
+        }
+    }
+
+    /// Report a rejected connection, at most once per interval and reason.
+    fn report_rejection(&self, reason: RejectReason, device_name: Option<String>) {
+        if lock(&self.reject_limiter).allow(reason, Instant::now()) {
+            self.emit(MiracastEvent::ConnectionRejected {
+                reason,
+                device_name,
+            });
+        }
     }
 
     /// Accept or reject a pending connection.
     fn answer(&self, id: ConnectionId, accept: bool) -> Result<(), MiracastError> {
-        let pending = lock(&self.state)
-            .pending
-            .remove(&id.0)
-            .ok_or(MiracastError::UnknownConnection)?;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(MiracastError::UnknownConnection);
+        }
+        // pending -> active under ONE guard, so the number of sessions in use never drops
+        // to zero in between (a second sender could otherwise slip in).
+        let pending = {
+            let mut st = lock(&self.state);
+            let pending = st
+                .pending
+                .remove(&id.0)
+                .ok_or(MiracastError::UnknownConnection)?;
+            if accept {
+                st.active.insert(
+                    id.0,
+                    Active {
+                        connection: pending.connection.clone(),
+                    },
+                );
+            }
+            pending
+        };
+        self.deadlines.cancel(id.0);
         if accept {
-            lock(&self.state).active.insert(
-                id.0,
-                Active {
-                    connection: pending.connection.clone(),
-                },
-            );
-            if let Some(d) = &pending.deferral {
-                d.Complete().map_err(werr("Deferral.Complete"))?;
+            if let Some(d) = &pending.deferral
+                && let Err(e) = d.Complete()
+            {
+                lock(&self.state).active.remove(&id.0);
+                let _ = pending
+                    .connection
+                    .Disconnect(MiracastReceiverDisconnectReason::ConnectionNotAccepted);
+                self.emit(MiracastEvent::ConnectionFailed {
+                    id: Some(id),
+                    message: format!("could not complete the confirmation: {e}"),
+                });
+                self.emit(MiracastEvent::Disconnected { id });
+                return Err(MiracastError::Windows(format!("Deferral.Complete: {e}")));
             }
             self.emit(MiracastEvent::Connected {
                 id,
@@ -134,7 +182,11 @@ impl Shared {
         args: &MiracastReceiverConnectionCreatedEventArgs,
     ) -> windows::core::Result<()> {
         let connection = args.Connection()?;
-        let name = connection
+        if self.closed.load(Ordering::SeqCst) {
+            let _ = connection.Disconnect(MiracastReceiverDisconnectReason::ConnectionNotAccepted);
+            return Ok(());
+        }
+        let raw_name = connection
             .Transmitter()
             .and_then(|t| t.Name())
             .map(|h| h.to_string_lossy())
@@ -148,39 +200,50 @@ impl Shared {
 
         let mut st = lock(&self.state);
         let in_use = st.pending.len() + st.active.len();
-        match ConnectionPolicy::evaluate(in_use, self.max_sessions, &name) {
+        match ConnectionPolicy::evaluate(in_use, self.max_sessions, &raw_name) {
             Decision::Reject(reason) => {
                 drop(st);
                 let _ =
                     connection.Disconnect(MiracastReceiverDisconnectReason::ConnectionNotAccepted);
-                self.emit(MiracastEvent::Error(format!(
-                    "connection from {name:?} rejected: {reason:?}"
-                )));
+                self.report_rejection(reason, sanitize_device_name(&raw_name));
             }
-            Decision::AskPerson => {
+            Decision::AskPerson { device_name: name } => {
                 // Hold the connection open until a person answers (or the timeout hits).
-                let deferral = args.GetDeferral().ok();
+                // Without a deferral Windows might finish the connection by itself, so a
+                // failure here must reject (fail closed).
+                let deferral = match args.GetDeferral() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        drop(st);
+                        let _ = connection
+                            .Disconnect(MiracastReceiverDisconnectReason::ConnectionNotAccepted);
+                        self.report_rejection(
+                            RejectReason::ConfirmationUnavailable,
+                            Some(name.clone()),
+                        );
+                        self.emit(MiracastEvent::ConnectionFailed {
+                            id: None,
+                            message: format!("no deferral for {name:?}, connection refused: {e}"),
+                        });
+                        return Ok(());
+                    }
+                };
                 st.next_id += 1;
                 let id = ConnectionId(st.next_id);
                 st.pending.insert(
                     id.0,
                     Pending {
                         connection,
-                        deferral,
+                        deferral: Some(deferral),
                         name: name.clone(),
                     },
                 );
                 drop(st);
+                self.deadlines.add(id.0, Instant::now() + CONFIRM_TIMEOUT);
                 self.emit(MiracastEvent::ConnectionRequested {
                     id,
                     device_name: name,
                     pin,
-                });
-                let shared = Arc::clone(self);
-                std::thread::spawn(move || {
-                    std::thread::sleep(CONFIRM_TIMEOUT);
-                    // Already answered is the normal case: the error is ignored.
-                    let _ = shared.answer(id, false);
                 });
             }
         }
@@ -192,6 +255,9 @@ impl Shared {
         args: &MiracastReceiverMediaSourceCreatedEventArgs,
     ) -> windows::core::Result<()> {
         let connection = args.Connection()?;
+        if self.closed.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         let source = args.MediaSource()?;
         match self.find_id(&connection) {
             Some((id, true)) => {
@@ -207,9 +273,10 @@ impl Shared {
                 // A stream for a connection nobody accepted: refuse it.
                 let _ =
                     connection.Disconnect(MiracastReceiverDisconnectReason::ConnectionNotAccepted);
-                self.emit(MiracastEvent::Error(
-                    "media source for an unconfirmed connection ignored".into(),
-                ));
+                self.emit(MiracastEvent::ConnectionFailed {
+                    id: None,
+                    message: "media source for an unconfirmed connection ignored".into(),
+                });
             }
         }
         Ok(())
@@ -220,12 +287,16 @@ impl Shared {
         args: &MiracastReceiverDisconnectedEventArgs,
     ) -> windows::core::Result<()> {
         let connection = args.Connection()?;
+        if self.closed.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         if let Some((id, _)) = self.find_id(&connection) {
             let pending = {
                 let mut st = lock(&self.state);
                 st.active.remove(&id.0);
                 st.pending.remove(&id.0)
             };
+            self.deadlines.cancel(id.0);
             if let Some(d) = pending.and_then(|p| p.deferral) {
                 let _ = d.Complete();
             }
@@ -235,6 +306,9 @@ impl Shared {
     }
 
     fn on_status_changed(&self, receiver: &WinReceiver) -> windows::core::Result<()> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         let st = receiver.GetStatus()?;
         let mapped = if st.WiFiStatus()? == MiracastReceiverWiFiStatus::MiracastNotSupported {
             MiracastStatus::Unsupported
@@ -257,19 +331,29 @@ impl Shared {
     }
 }
 
-/// Registered handler tokens (needed to unsubscribe).
+/// Registered handler tokens (needed to unsubscribe). Filled in as handlers are registered,
+/// so `Drop` removes exactly what exists, also after a failed start.
+#[derive(Default)]
 struct Tokens {
-    status: i64,
-    created: i64,
-    media: i64,
-    disconnected: i64,
+    status: Option<i64>,
+    created: Option<i64>,
+    media: Option<i64>,
+    disconnected: Option<i64>,
+}
+
+/// The settings Windows had before we changed them, restored on drop (best effort).
+struct SavedSettings {
+    friendly_name: HSTRING,
+    authorization: MiracastReceiverAuthorizationMethod,
+    require_known: bool,
 }
 
 pub(crate) struct Backend {
     shared: Arc<Shared>,
     receiver: WinReceiver,
-    session: MiracastReceiverSession,
+    session: Option<MiracastReceiverSession>,
     tokens: Tokens,
+    saved: Option<SavedSettings>,
 }
 
 impl Backend {
@@ -277,21 +361,42 @@ impl Backend {
         config: &MiracastConfig,
     ) -> Result<(Self, Receiver<MiracastEvent>), MiracastError> {
         init_winrt();
-        let (tx, rx) = channel();
+        let (tx, rx) = sync_channel(EVENT_QUEUE);
         let shared = Arc::new(Shared {
-            tx: Mutex::new(tx),
+            tx,
             status: Mutex::new(MiracastStatus::Starting),
             state: Mutex::new(State::default()),
             max_sessions: config.max_sessions,
+            closed: AtomicBool::new(false),
+            deadlines: DeadlineQueue::default(),
+            reject_limiter: Mutex::new(RejectLimiter::default()),
         });
 
         let receiver = WinReceiver::new().map_err(werr("MiracastReceiver activation"))?;
+        // From here on `Drop` cleans up, also on every error path below.
+        let mut backend = Self {
+            shared: Arc::clone(&shared),
+            receiver,
+            session: None,
+            tokens: Tokens::default(),
+            saved: None,
+        };
+        let receiver = &backend.receiver;
 
         // Settings: start from what Windows has now, else from the defaults.
         let settings = receiver
             .GetCurrentSettings()
             .or_else(|_| receiver.GetDefaultSettings())
             .map_err(werr("GetCurrentSettings/GetDefaultSettings"))?;
+        let saved = SavedSettings {
+            friendly_name: settings.FriendlyName().unwrap_or_default(),
+            authorization: settings
+                .AuthorizationMethod()
+                .unwrap_or(MiracastReceiverAuthorizationMethod::ConfirmConnection),
+            require_known: settings
+                .RequireAuthorizationFromKnownTransmitters()
+                .unwrap_or(true),
+        };
         settings
             .SetFriendlyName(&HSTRING::from(config.display_name.trim()))
             .map_err(werr("SetFriendlyName"))?;
@@ -309,9 +414,13 @@ impl Backend {
         settings
             .SetRequireAuthorizationFromKnownTransmitters(true)
             .map_err(werr("SetRequireAuthorizationFromKnownTransmitters"))?;
+        // UNCERTAIN: this disconnects Miracast sessions of OTHER apps machine-wide and the new
+        // settings may persist after we exit (docs/miracast.md). We remember the old values
+        // and try to put them back on drop.
         let applied = receiver
             .DisconnectAllAndApplySettings(&settings)
             .map_err(werr("DisconnectAllAndApplySettings"))?;
+        backend.saved = Some(saved);
         let status = applied.Status().map_err(werr("ApplySettings status"))?;
         if status != MiracastReceiverApplySettingsStatus::Success {
             return Err(match status {
@@ -327,22 +436,27 @@ impl Backend {
         }
 
         let s = Arc::clone(&shared);
-        let status_token = receiver
-            .StatusChanged(&TypedEventHandler::<WinReceiver, IInspectable>::new(
-                move |sender, _| {
-                    if let Some(r) = sender.as_ref() {
-                        s.on_status_changed(r)?;
-                    }
-                    Ok(())
-                },
-            ))
-            .map_err(werr("StatusChanged"))?;
+        backend.tokens.status = Some(
+            backend
+                .receiver
+                .StatusChanged(&TypedEventHandler::<WinReceiver, IInspectable>::new(
+                    move |sender, _| {
+                        if let Some(r) = sender.as_ref() {
+                            s.on_status_changed(r)?;
+                        }
+                        Ok(())
+                    },
+                ))
+                .map_err(werr("StatusChanged"))?,
+        );
 
         // The plan says `CreateSession(None)`: no CoreApplicationView (unpackaged app).
         // UNCERTAIN: whether this is accepted outside a packaged app is assumption A4.
-        let session = receiver
+        let session = backend
+            .receiver
             .CreateSession(None::<&CoreApplicationView>)
             .map_err(werr("CreateSession"))?;
+        backend.session = Some(session.clone());
         session
             .SetAllowConnectionTakeover(false)
             .map_err(werr("SetAllowConnectionTakeover"))?;
@@ -351,48 +465,49 @@ impl Backend {
             .map_err(werr("SetMaxSimultaneousConnections"))?;
 
         let s = Arc::clone(&shared);
-        let created = session
-            .ConnectionCreated(&TypedEventHandler::<
-                MiracastReceiverSession,
-                MiracastReceiverConnectionCreatedEventArgs,
-            >::new(move |_, args| {
-                s.on_connection_created(args.ok()?)
-            }))
-            .map_err(werr("ConnectionCreated"))?;
+        backend.tokens.created = Some(
+            session
+                .ConnectionCreated(&TypedEventHandler::<
+                    MiracastReceiverSession,
+                    MiracastReceiverConnectionCreatedEventArgs,
+                >::new(move |_, args| {
+                    s.on_connection_created(args.ok()?)
+                }))
+                .map_err(werr("ConnectionCreated"))?,
+        );
         let s = Arc::clone(&shared);
-        let media = session
-            .MediaSourceCreated(&TypedEventHandler::<
-                MiracastReceiverSession,
-                MiracastReceiverMediaSourceCreatedEventArgs,
-            >::new(move |_, args| {
-                s.on_media_source_created(args.ok()?)
-            }))
-            .map_err(werr("MediaSourceCreated"))?;
+        backend.tokens.media = Some(
+            session
+                .MediaSourceCreated(&TypedEventHandler::<
+                    MiracastReceiverSession,
+                    MiracastReceiverMediaSourceCreatedEventArgs,
+                >::new(move |_, args| {
+                    s.on_media_source_created(args.ok()?)
+                }))
+                .map_err(werr("MediaSourceCreated"))?,
+        );
         let s = Arc::clone(&shared);
-        let disconnected = session
-            .Disconnected(&TypedEventHandler::<
-                MiracastReceiverSession,
-                MiracastReceiverDisconnectedEventArgs,
-            >::new(move |_, args| {
-                s.on_disconnected(args.ok()?)
-            }))
-            .map_err(werr("Disconnected"))?;
+        backend.tokens.disconnected = Some(
+            session
+                .Disconnected(&TypedEventHandler::<
+                    MiracastReceiverSession,
+                    MiracastReceiverDisconnectedEventArgs,
+                >::new(move |_, args| {
+                    s.on_disconnected(args.ok()?)
+                }))
+                .map_err(werr("Disconnected"))?,
+        );
 
-        let tokens = Tokens {
-            status: status_token,
-            created,
-            media,
-            disconnected,
-        };
-        // From here on `Drop` cleans up, also on the error paths below.
-        let backend = Self {
-            shared: Arc::clone(&shared),
-            receiver,
-            session,
-            tokens,
-        };
+        // One timer thread for all confirmation timeouts. It ends when `Drop` closes the queue.
+        let timer = Arc::clone(&shared);
+        std::thread::spawn(move || {
+            while let Some(id) = timer.deadlines.wait_next() {
+                // Already answered is the normal case: the error is ignored.
+                let _ = timer.answer(ConnectionId(id), false);
+            }
+        });
 
-        let started = backend.session.Start().map_err(werr("Session.Start"))?;
+        let started = session.Start().map_err(werr("Session.Start"))?;
         match started.Status().map_err(werr("Start status"))? {
             MiracastReceiverSessionStartStatus::Success => {}
             MiracastReceiverSessionStartStatus::MiracastNotSupported => {
@@ -421,11 +536,24 @@ impl Backend {
 
 impl Drop for Backend {
     fn drop(&mut self) {
+        // Handlers that are already running see this and do nothing; the timer thread ends.
+        self.shared.closed.store(true, Ordering::SeqCst);
+        self.shared.deadlines.close();
         // Unsubscribe first so no handler runs while we tear down.
-        let _ = self.receiver.RemoveStatusChanged(self.tokens.status);
-        let _ = self.session.RemoveConnectionCreated(self.tokens.created);
-        let _ = self.session.RemoveMediaSourceCreated(self.tokens.media);
-        let _ = self.session.RemoveDisconnected(self.tokens.disconnected);
+        if let Some(t) = self.tokens.status.take() {
+            let _ = self.receiver.RemoveStatusChanged(t);
+        }
+        if let Some(session) = &self.session {
+            if let Some(t) = self.tokens.created.take() {
+                let _ = session.RemoveConnectionCreated(t);
+            }
+            if let Some(t) = self.tokens.media.take() {
+                let _ = session.RemoveMediaSourceCreated(t);
+            }
+            if let Some(t) = self.tokens.disconnected.take() {
+                let _ = session.RemoveDisconnected(t);
+            }
+        }
 
         let (pending, active) = {
             let mut st = lock(&self.shared.state);
@@ -448,7 +576,23 @@ impl Drop for Backend {
                 .Disconnect(MiracastReceiverDisconnectReason::Finished);
         }
         // UNCERTAIN: Close() is assumed to stop listening and release the Wi-Fi Direct role.
-        let _ = self.session.Close();
+        if let Some(session) = self.session.take() {
+            let _ = session.Close();
+        }
+        // UNCERTAIN: put back the settings Windows had before (best effort). This again
+        // disconnects every Miracast session on the machine, and whether the values we set
+        // persist beyond our process was not measured.
+        if let Some(saved) = self.saved.take() {
+            let restore = || -> windows::core::Result<()> {
+                let settings = self.receiver.GetCurrentSettings()?;
+                settings.SetFriendlyName(&saved.friendly_name)?;
+                settings.SetAuthorizationMethod(saved.authorization)?;
+                settings.SetRequireAuthorizationFromKnownTransmitters(saved.require_known)?;
+                self.receiver.DisconnectAllAndApplySettings(&settings)?;
+                Ok(())
+            };
+            let _ = restore();
+        }
         self.shared
             .emit(MiracastEvent::StatusChanged(MiracastStatus::Off));
     }

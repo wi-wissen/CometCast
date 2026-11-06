@@ -19,10 +19,19 @@ On the mini PC the app uses the documented Windows Runtime API `Windows.Media.Mi
 
 ### Rules of our own (`ConnectionPolicy`, tested on Linux)
 
-* Every foreign device needs a confirmation by a person. There is no "accept all" setting and no input that makes the policy accept without asking.
+* Every foreign device needs a confirmation by a person. There is no "accept all" setting and no input that makes the policy accept without asking. This holds **assuming the `Deferral` really keeps the connection waiting** (checklist item 8, **Uncertain**). If Windows gives no `Deferral`, the connection is refused (fail closed) and reported as `ConnectionRejected { ConfirmationUnavailable }`.
+* The sender's name is attacker-controlled text. `sanitize_device_name` removes control, format, bidi and zero-width characters, collapses white space (so no fake extra lines), cuts it to 64 characters and rejects names that are empty afterwards. Only the cleaned name reaches `ConnectionRequested`.
 * At most one session at a time (active or waiting). A second request is rejected.
-* A sender without a name is rejected (nothing to show to the person).
+* A sender without a usable name is rejected (nothing to show to the person).
+* A rejected extra sender is reported as the informational event `ConnectionRejected`, which does not change the status, so a nearby second sender cannot knock an active receiver into `Failed`. The same reason is reported at most once every 5 seconds. Only `Error` means the receiver itself failed. The event channel holds 64 events; further events are dropped while the consumer is stuck.
+* The CLI reads the answer from stdin only when stdin is a terminal, throws away input typed before a request arrives, and rejects every request at once when stdin is piped (so `yes | cometcast-cli miracast` accepts nothing).
+* Confirmation timeouts use one timer thread for all requests.
 * Constants (name length 32, timeout 30 s, one session) are guesses or product decisions. **Uncertain:** the real limits of Windows were not measured.
+
+### Side effects on the machine (all **Uncertain**)
+
+* `DisconnectAllAndApplySettings` disconnects **every** Miracast receiver session on the machine, including sessions of other applications, not only ours. Starting the receiver can therefore interrupt another app's Miracast session.
+* It may change `FriendlyName`, `AuthorizationMethod` and `RequireAuthorizationFromKnownTransmitters` persistently, i.e. beyond the life of our process. On drop the backend remembers the values it read at start and tries to put them back with a second `DisconnectAllAndApplySettings` (best effort, errors ignored; this too disconnects everything). Whether Windows persists the settings and whether the restore works was not measured; check the receiver name and authorization setting in Windows after a run.
 
 ## What is NOT done
 
@@ -59,6 +68,7 @@ Build: `cargo build -p cometcast-cli --target x86_64-pc-windows-msvc` on Windows
 11. [ ] A second sender while one is connected is rejected, and the first one stays up.
 12. [ ] `AllowConnectionTakeover` off: confirm that a second sender cannot take over.
 13. [ ] The sender stops mirroring: `Disconnected` arrives. Unplug the Wi-Fi: what events appear?
+13b. [ ] After a restart of the program: are the receiver name and authorization setting back to what they were before (restore on drop)? Was another app's Miracast session interrupted at start?
 14. [ ] Ctrl-C: the program exits, the sender sees the receiver disappear, the receiver name is gone from the list after a few seconds. Run it again right away: does it start cleanly (no leftover session)?
 15. [ ] Windows Firewall: was a prompt shown at first start? Does it work after "allow"? Does it work without any rule? Which ports and which profile (private/public)?
 16. [ ] MS-MICE: with both machines on the same LAN and no Wi-Fi Direct, does the sender find the receiver? Which setting enables it?
@@ -72,7 +82,7 @@ If items 1 to 4 fail only unpackaged, the fallback is MSIX packaging (a package 
 
 | Check | Result |
 | --- | --- |
-| `cargo test -p cc-miracast` on Linux (policy, status, config, "Unsupported" on non-Windows) | passed (10 tests) |
+| `cargo test -p cc-miracast` on Linux (policy incl. name sanitising, status, config, deadline queue, "Unsupported" on non-Windows) | passed (21 tests) |
 | `cargo check` for `x86_64-pc-windows-gnu` (`cc-miracast`, `cometcast-cli`) | passed. The `ring` C code could not be compiled in this Linux sandbox (no MinGW); a stub compiler was used only so the check could pass the build script. Nothing was linked |
 | `cargo clippy -p cc-miracast -p cometcast-cli --target x86_64-pc-windows-gnu -- -D warnings` | passed |
 | Run on Windows | **never done** |

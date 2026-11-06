@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Status and events for the UI.
 
-use crate::StreamHandle;
+use crate::{StreamHandle, policy::RejectReason};
 
 /// Status of the Miracast receiver, for the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -65,7 +65,23 @@ pub enum MiracastEvent {
         /// Connection handle.
         id: ConnectionId,
     },
-    /// Something went wrong.
+    /// A foreign connection was turned away without asking the person. Informational: it
+    /// never changes the status (a nearby second sender must not disturb an active receiver).
+    ConnectionRejected {
+        /// Why it was rejected.
+        reason: RejectReason,
+        /// The cleaned sender name, if it had a usable one.
+        device_name: Option<String>,
+    },
+    /// One connection failed (for example the confirmation could not be completed). The
+    /// receiver itself keeps running, so this does not change the status.
+    ConnectionFailed {
+        /// The connection, if it had been registered.
+        id: Option<ConnectionId>,
+        /// What failed.
+        message: String,
+    },
+    /// The receiver itself failed; the status becomes [`MiracastStatus::Failed`].
     Error(String),
 }
 
@@ -78,10 +94,15 @@ pub fn status_after(current: MiracastStatus, event: &MiracastEvent) -> MiracastS
         MiracastEvent::StatusChanged(s) => *s,
         MiracastEvent::ConnectionRequested { .. } => S::ConnectionPending,
         MiracastEvent::Connected { .. } | MiracastEvent::StreamReady { .. } => S::Connected,
+        // Only a live connection falls back to listening. Off, Starting, Unavailable,
+        // Unsupported and Failed are not revived by a late disconnect.
         MiracastEvent::Disconnected { .. } => match current {
-            S::Off | S::Failed | S::Unsupported => current,
-            _ => S::Listening,
+            S::Connected | S::ConnectionPending => S::Listening,
+            other => other,
         },
+        MiracastEvent::ConnectionRejected { .. } | MiracastEvent::ConnectionFailed { .. } => {
+            current
+        }
         MiracastEvent::Error(_) => S::Failed,
     }
 }
@@ -120,5 +141,48 @@ mod tests {
         // A late disconnect does not revive a failed receiver.
         s = status_after(s, &MiracastEvent::Disconnected { id });
         assert_eq!(s, MiracastStatus::Failed);
+    }
+
+    #[test]
+    fn informational_events_keep_the_status() {
+        use MiracastStatus as S;
+        let rejected = MiracastEvent::ConnectionRejected {
+            reason: RejectReason::Busy,
+            device_name: Some("Other".into()),
+        };
+        let failed = MiracastEvent::ConnectionFailed {
+            id: None,
+            message: "x".into(),
+        };
+        for s in [
+            S::Listening,
+            S::ConnectionPending,
+            S::Connected,
+            S::Unavailable,
+            S::Failed,
+        ] {
+            assert_eq!(status_after(s, &rejected), s);
+            assert_eq!(status_after(s, &failed), s);
+        }
+    }
+
+    #[test]
+    fn disconnected_only_recovers_live_connections() {
+        use MiracastStatus as S;
+        let d = MiracastEvent::Disconnected {
+            id: ConnectionId(1),
+        };
+        assert_eq!(status_after(S::Connected, &d), S::Listening);
+        assert_eq!(status_after(S::ConnectionPending, &d), S::Listening);
+        for s in [
+            S::Off,
+            S::Starting,
+            S::Unavailable,
+            S::Unsupported,
+            S::Failed,
+            S::Listening,
+        ] {
+            assert_eq!(status_after(s, &d), s);
+        }
     }
 }

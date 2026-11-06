@@ -298,6 +298,7 @@ async fn miracast(_name: Option<String>) -> ExitCode {
 /// COMPILE-CHECKED ONLY: never run on a real Windows machine.
 #[cfg(windows)]
 async fn miracast(name: Option<String>) -> ExitCode {
+    use std::io::IsTerminal;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, mpsc};
 
@@ -329,6 +330,15 @@ async fn miracast(name: Option<String>) -> ExitCode {
             }
         };
         println!("Miracast receiver started (Ctrl-C to quit).");
+        // Confirmation is typed by a person. Piped or redirected input (`yes | ...`) must
+        // never count as an answer.
+        let interactive = std::io::stdin().is_terminal();
+        if !interactive {
+            println!(
+                "stdin is not a terminal: confirming a connection needs an interactive \
+                 terminal, so every connection request will be rejected."
+            );
+        }
         // Answers to connection requests come from stdin lines.
         let (line_tx, lines) = mpsc::channel::<String>();
         std::thread::spawn(move || {
@@ -359,12 +369,18 @@ async fn miracast(name: Option<String>) -> ExitCode {
                             device_name,
                             pin,
                         } => {
-                            asking = Some(*id);
                             println!("event: connection requested by {device_name:?}");
                             if let Some(pin) = pin {
                                 println!("PIN to show/enter: {pin}");
                             }
-                            println!("Accept? [y/N] (rejected after 30 seconds)");
+                            if interactive {
+                                // Throw away anything typed before this request.
+                                while lines.try_recv().is_ok() {}
+                                asking = Some(*id);
+                                println!("Accept? [y/N] (rejected after 30 seconds)");
+                            } else if let Err(e) = receiver.respond(*id, false) {
+                                println!("answer failed: {e}");
+                            }
                         }
                         MiracastEvent::Disconnected { id } if asking == Some(*id) => asking = None,
                         _ => println!("event: {ev:?}"),

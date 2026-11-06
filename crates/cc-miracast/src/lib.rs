@@ -16,6 +16,7 @@
 //! which does not exist yet.
 
 pub mod config;
+mod deadline;
 pub mod policy;
 pub mod status;
 
@@ -24,7 +25,8 @@ mod windows_backend;
 
 pub use config::{ConfigError, MiracastConfig, PairingPolicy};
 pub use policy::{
-    CONFIRM_TIMEOUT, ConnectionPolicy, DEFAULT_MAX_SESSIONS, Decision, MAX_NAME_CHARS, RejectReason,
+    CONFIRM_TIMEOUT, ConnectionPolicy, DEFAULT_MAX_SESSIONS, Decision, MAX_DEVICE_NAME_CHARS,
+    MAX_NAME_CHARS, REJECT_REPORT_INTERVAL, RejectLimiter, RejectReason, sanitize_device_name,
 };
 pub use status::{ConnectionId, MiracastEvent, MiracastStatus, status_after};
 
