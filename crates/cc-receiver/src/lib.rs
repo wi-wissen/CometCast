@@ -82,7 +82,7 @@ impl ReceiverCore {
     /// Connect to the server, create a room and start answering. Returns once the room code is known.
     pub async fn start(options: ReceiverOptions) -> Result<Self, TransportError> {
         let mut sig = SignalingClient::connect(&options.server, Role::Receiver).await?;
-        sig.send(ClientMsg::CreateRoom).await?;
+        sig.send(ClientMsg::CreateRoom { altcha: None }).await?;
         let code = tokio::time::timeout(ROOM_TIMEOUT, async {
             match sig.recv().await {
                 Some(ServerMsg::RoomCreated { code }) => Ok(code),

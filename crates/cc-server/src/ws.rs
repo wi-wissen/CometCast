@@ -4,32 +4,50 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use std::net::IpAddr;
+use std::time::Instant as StdInstant;
+
+use axum::Extension;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
-use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg};
+use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg, error_codes};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio::time::Instant;
 
 use crate::AppState;
+use crate::limits::{ConnSlot, Deny};
+use crate::net::ClientIp;
+use crate::puzzle::PuzzleError;
 use crate::rooms::{Gone, JoinError, Outgoing, Tx};
 
 /// Source of unique connection numbers.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-pub(crate) async fn ws_handler(State(state): State<AppState>, ws: WebSocketUpgrade) -> Response {
+pub(crate) async fn ws_handler(
+    State(state): State<AppState>,
+    Extension(ClientIp(ip)): Extension<ClientIp>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    // Refuse before upgrading: banned, too many connections per minute, server full.
+    let slot = match state.guard.admit_connection(ip, StdInstant::now()) {
+        Ok(slot) => slot,
+        Err(deny) => return crate::deny_response(deny),
+    };
     let max = state.config.max_message_bytes;
     // Messages or frames bigger than `max` make the connection fail and close.
     ws.max_message_size(max)
         .max_frame_size(max)
-        .on_upgrade(move |socket| handle_socket(socket, state))
+        .on_upgrade(move |socket| handle_socket(socket, state, ip, slot))
 }
 
 /// Per-connection state.
 struct Conn {
     id: u64,
+    /// Client address (after proxy handling); limits and bans are counted under it.
+    ip: IpAddr,
     tx: Tx,
     role: Option<Role>,
     room: Option<RoomCode>,
@@ -60,7 +78,8 @@ impl Conn {
     }
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState) {
+async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: ConnSlot) {
+    // `_slot` is kept until this function ends: it counts the open connection.
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx, kill) = Tx::new(state.config.outgoing_queue_len);
 
@@ -91,6 +110,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let mut conn = Conn {
         id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+        ip,
         tx,
         role: None,
         room: None,
@@ -211,7 +231,11 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
             // characters) behaves like an unknown code. Valid messages are unaffected.
             if is_join_with_string_code(text) {
                 if role == Role::Sender {
-                    conn.error("room_not_found", "no room with this code");
+                    // Guessing with malformed codes counts like any failed join.
+                    if let Some(step) = join_precheck(conn, state) {
+                        return step;
+                    }
+                    return failed_join(conn, state, "room_not_found", "no room with this code");
                 } else {
                     conn.error("wrong_role", "only a sender can join a room");
                 }
@@ -232,16 +256,44 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
 
     match msg {
         ClientMsg::Hello { .. } => conn.error("bad_message", "hello was already sent"),
-        ClientMsg::CreateRoom => {
+        ClientMsg::CreateRoom { altcha } => {
             if role != Role::Receiver {
                 conn.error("wrong_role", "only a receiver can create a room");
             } else if conn.room.is_some() {
                 conn.error("bad_message", "already in a room");
+            } else if let Err(deny) = state.guard.check_create(conn.ip, StdInstant::now()) {
+                deny_error(conn, deny);
+                return after_deny(deny);
             } else {
-                let (code, cancel) = lock(state).create(conn.id, conn.tx.clone());
-                conn.room = Some(code.clone());
-                tokio::spawn(expire_when_idle(state.clone(), code.clone(), cancel));
-                conn.send(ServerMsg::RoomCreated { code });
+                // Proof-of-work first (cheap to check), then the room table.
+                match state.puzzle.check(altcha.as_deref()) {
+                    Ok(()) => {}
+                    Err(PuzzleError::Missing) => {
+                        conn.error(
+                            error_codes::ALTCHA_REQUIRED,
+                            "solve the ALTCHA puzzle from /altcha/challenge first",
+                        );
+                        return Step::Continue;
+                    }
+                    Err(PuzzleError::Invalid) => {
+                        state.guard.note_event(StdInstant::now());
+                        conn.error(
+                            error_codes::ALTCHA_INVALID,
+                            "the ALTCHA solution is wrong, expired or was already used",
+                        );
+                        return Step::Continue;
+                    }
+                }
+                let max_rooms = state.guard.max_rooms();
+                let created = lock(state).create(conn.id, conn.tx.clone(), max_rooms);
+                match created {
+                    Some((code, cancel)) => {
+                        conn.room = Some(code.clone());
+                        tokio::spawn(expire_when_idle(state.clone(), code.clone(), cancel));
+                        conn.send(ServerMsg::RoomCreated { code });
+                    }
+                    None => conn.error(error_codes::RATE_LIMITED, "the server has too many rooms"),
+                }
             }
         }
         ClientMsg::JoinRoom { code } => {
@@ -249,6 +301,8 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 conn.error("wrong_role", "only a sender can join a room");
             } else if conn.room.is_some() {
                 conn.error("bad_message", "already in a room");
+            } else if let Some(step) = join_precheck(conn, state) {
+                return step;
             } else {
                 let result = lock(state).join(&code, conn.id, conn.tx.clone());
                 match result {
@@ -258,10 +312,20 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         receiver.send(Outgoing::Msg(ServerMsg::PeerJoined));
                     }
                     Err(JoinError::NotFound) => {
-                        conn.error("room_not_found", "no room with this code")
+                        return failed_join(
+                            conn,
+                            state,
+                            "room_not_found",
+                            "no room with this code",
+                        );
                     }
                     Err(JoinError::Full) => {
-                        conn.error("room_full", "this room already has a sender")
+                        return failed_join(
+                            conn,
+                            state,
+                            "room_full",
+                            "this room already has a sender",
+                        );
                     }
                 }
             }
@@ -274,6 +338,57 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
         }
         ClientMsg::Control { cmd } => relay(conn, state, ServerMsg::Control { cmd }),
     }
+    Step::Continue
+}
+
+/// Send the error that belongs to a refusal.
+fn deny_error(conn: &Conn, deny: Deny) {
+    match deny {
+        Deny::RateLimited(after) => conn.error(
+            error_codes::RATE_LIMITED,
+            &format!("too many requests, try again in {} s", after.as_secs()),
+        ),
+        Deny::Banned(left) => conn.error(
+            error_codes::BANNED,
+            &format!("temporarily banned for {} s", left.as_secs()),
+        ),
+        Deny::Busy => conn.error(error_codes::RATE_LIMITED, "the server is busy"),
+    }
+}
+
+/// A ban ends the connection, other refusals do not.
+fn after_deny(deny: Deny) -> Step {
+    match deny {
+        Deny::Banned(_) => Step::Close,
+        _ => Step::Continue,
+    }
+}
+
+/// Before a join attempt: banned or too many attempts? Returns the step to take if refused.
+fn join_precheck(conn: &Conn, state: &AppState) -> Option<Step> {
+    match state.guard.check_join(conn.ip, StdInstant::now()) {
+        Ok(()) => None,
+        Err(deny) => {
+            deny_error(conn, deny);
+            if let Deny::Banned(_) = deny {
+                conn.tx.send(Outgoing::Close("banned"));
+            }
+            Some(after_deny(deny))
+        }
+    }
+}
+
+/// A join did not work: count it, maybe ban, and tell the client.
+fn failed_join(conn: &Conn, state: &AppState, code: &str, message: &str) -> Step {
+    if let Some(len) = state.guard.record_failed_join(conn.ip, StdInstant::now()) {
+        conn.error(
+            error_codes::BANNED,
+            &format!("too many failed joins; banned for {} s", len.as_secs()),
+        );
+        conn.tx.send(Outgoing::Close("banned"));
+        return Step::Close;
+    }
+    conn.error(code, message);
     Step::Continue
 }
 

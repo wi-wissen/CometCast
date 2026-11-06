@@ -19,6 +19,20 @@ tower-http.workspace = true
 futures-util.workspace = true
 rand.workspace = true
 serde_json.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+ipnet.workspace = true
+governor.workspace = true
+moka.workspace = true
+altcha.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+base64.workspace = true
+rustls.workspace = true
+axum-server.workspace = true
+rcgen.workspace = true
 
 [dev-dependencies]
-tokio-tungstenite.workspace = true
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
+tokio-rustls.workspace = true

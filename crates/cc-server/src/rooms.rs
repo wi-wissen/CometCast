@@ -76,9 +76,23 @@ pub(crate) enum JoinError {
 }
 
 impl Rooms {
+    /// How many rooms exist.
+    pub(crate) fn len(&self) -> usize {
+        self.map.len()
+    }
+
     /// Create a room with a fresh random code (retry on collision).
     /// Also returns a signal that fires when the room is removed.
-    pub(crate) fn create(&mut self, receiver_id: u64, receiver: Tx) -> (RoomCode, Arc<Notify>) {
+    /// Returns `None` when `max_rooms` rooms exist already.
+    pub(crate) fn create(
+        &mut self,
+        receiver_id: u64,
+        receiver: Tx,
+        max_rooms: usize,
+    ) -> Option<(RoomCode, Arc<Notify>)> {
+        if self.map.len() >= max_rooms {
+            return None;
+        }
         let mut rng = rand::rng();
         loop {
             let mut idx = [0u8; RoomCode::LEN];
@@ -103,7 +117,7 @@ impl Rooms {
                     cancel: cancel.clone(),
                 },
             );
-            return (code, cancel);
+            return Some((code, cancel));
         }
     }
 
