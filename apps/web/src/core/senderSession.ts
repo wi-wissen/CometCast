@@ -2,6 +2,7 @@
 //
 // Sender state machine: capture the screen, join the room, send the offer, stream until stopped.
 import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
+import { CONTROL_CHANNEL_LABEL, ControlSender, type ControlCmd, type ImageSource } from './control'
 import { SignalingClient, type ServerMessage, type SocketFactory } from './signaling'
 
 export type SenderPhase =
@@ -19,18 +20,23 @@ export interface SenderState {
   phase: SenderPhase
   /** Server error code or a local one: capture_denied, capture_failed, connection_lost, peer_failed. */
   errorCode: string | null
+  /** True while the control data channel is open (content can be sent). */
+  channelOpen: boolean
 }
 
 export interface SenderDeps {
   url: string
   onChange: (s: SenderState) => void
-  getStream: () => Promise<MediaStream>
+  /** Omit for content-only sessions (images, links): no screen is captured, only the data channel is used. */
+  getStream?: () => Promise<MediaStream>
   socketFactory?: SocketFactory
   peerFactory?: PeerFactory
 }
 
 export class SenderSession {
-  private state: SenderState = { phase: 'idle', errorCode: null }
+  private state: SenderState = { phase: 'idle', errorCode: null, channelOpen: false }
+  private control: ControlSender | null = null
+  private channelOpen = false
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private stream: MediaStream | null = null
@@ -46,34 +52,61 @@ export class SenderSession {
   }
 
   private set(phase: SenderPhase, errorCode: string | null = null): void {
-    this.state = { phase, errorCode }
+    this.state = { phase, errorCode, channelOpen: this.channelOpen }
     this.deps.onChange(this.state)
+  }
+
+  private setChannelOpen(open: boolean): void {
+    if (this.channelOpen === open) return
+    this.channelOpen = open
+    this.state = { ...this.state, channelOpen: open }
+    this.deps.onChange(this.state)
+  }
+
+  private requireControl(): ControlSender {
+    if (!this.control) throw new Error('control channel not open')
+    return this.control
+  }
+
+  sendImage(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    return this.requireControl().sendImage(file, onProgress)
+  }
+
+  /** Returns false if the URL is not an acceptable http(s) link. */
+  sendLink(url: string): boolean {
+    return this.requireControl().sendLink(url)
+  }
+
+  sendCmd(cmd: ControlCmd): void {
+    this.requireControl().sendCmd(cmd)
   }
 
   /** Must be called from a user gesture (getDisplayMedia requires one). */
   async start(code: string): Promise<void> {
     this.teardown()
     const run = ++this.run
-    this.set('capturing')
-    let stream: MediaStream
-    try {
-      // Capture first, so the user gesture is still fresh; the network comes after.
-      stream = await this.deps.getStream()
-    } catch (e) {
-      if (run !== this.run) return
-      const denied = e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')
-      this.set('error', denied ? 'capture_denied' : 'capture_failed')
-      return
+    if (this.deps.getStream) {
+      this.set('capturing')
+      let stream: MediaStream
+      try {
+        // Capture first, so the user gesture is still fresh; the network comes after.
+        stream = await this.deps.getStream()
+      } catch (e) {
+        if (run !== this.run) return
+        const denied = e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')
+        this.set('error', denied ? 'capture_denied' : 'capture_failed')
+        return
+      }
+      if (run !== this.run) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
+      this.stream = stream
+      // The browser's own "stop sharing" button ends the track.
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (run === this.run) this.stop()
+      })
     }
-    if (run !== this.run) {
-      stream.getTracks().forEach((t) => t.stop())
-      return
-    }
-    this.stream = stream
-    // The browser's own "stop sharing" button ends the track.
-    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-      if (run === this.run) this.stop()
-    })
     this.set('connecting')
     this.client = new SignalingClient(
       this.deps.url,
@@ -98,6 +131,8 @@ export class SenderSession {
   }
 
   private teardown(): void {
+    this.control = null
+    this.channelOpen = false
     this.peer?.close()
     this.peer = null
     this.client?.close()
@@ -128,6 +163,8 @@ export class SenderSession {
         })
         break
       case 'peer_left':
+        this.control = null
+        this.channelOpen = false
         this.peer?.close()
         this.peer = null
         this.client?.close()
@@ -157,6 +194,16 @@ export class SenderSession {
       })
       this.peer = peer
       if (this.stream) peer.addStream(this.stream)
+      // Created before the offer so that the offer contains the data section.
+      const ch = peer.openChannel(CONTROL_CHANNEL_LABEL)
+      ch.binaryType = 'arraybuffer'
+      this.control = new ControlSender(ch)
+      ch.onopen = () => {
+        if (run === this.run) this.setChannelOpen(true)
+      }
+      ch.onclose = () => {
+        if (run === this.run) this.setChannelOpen(false)
+      }
       const sdp = await peer.createOffer()
       if (run !== this.run) return
       this.client?.send({ type: 'offer', sdp })

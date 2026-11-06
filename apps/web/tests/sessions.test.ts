@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { ReceiverSession, type ReceiverState } from '../src/core/receiverSession'
 import { SenderSession, type SenderState } from '../src/core/senderSession'
 import type { Peer, PeerHandlers } from '../src/core/peer'
+import type { ControlChannel } from '../src/core/control'
+import { FakeChannel } from './helpers/fakeChannel'
 import { FakeSocket } from './helpers/fakeSocket'
 
 class FakePeer implements Peer {
@@ -10,6 +12,7 @@ class FakePeer implements Peer {
   closed = false
   constructor(public h: PeerHandlers) {}
   addStream() { this.calls.push('addStream') }
+  openChannel(): ControlChannel { return new FakeChannel() }
   async createOffer() { return 'OFFER' }
   async acceptOffer(sdp: string) { this.calls.push('acceptOffer:' + sdp); return 'ANSWER' }
   async acceptAnswer(sdp: string) { this.calls.push('acceptAnswer:' + sdp) }

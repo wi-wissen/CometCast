@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
-    "e2e": "node e2e/e2e.spec.mjs"
+    "e2e": "node e2e/e2e.spec.mjs",
+    "e2e:m2": "node e2e/m2.spec.mjs"
   },
   "dependencies": {
     "vue": "3.5.45",

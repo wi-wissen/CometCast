@@ -3,7 +3,8 @@
 The no-install variant of Comet Cast: runs in a browser. Early version (v0.1): a browser
 receiver and a browser sender work end to end (screen video over WebRTC, signalling over WebSocket
 `/ws`, protocol in `docs/protocol.md`). There are no STUN/TURN servers yet, so it works over the local
-network only and may not work across networks. Sending files and links (M2) is not implemented. The
+network only and may not work across networks. The receiver has a local annotation toolbar, and images and links can be sent over a WebRTC DataChannel
+(milestone M2, see `docs/web-m2.md`; PDF/Office are not implemented). The
 Rust-WASM core will be added later (see `src/core/index.ts`).
 
 Stack: Vue 3, TypeScript, Vite, Tailwind CSS 4, vue-i18n (English and German).
@@ -19,6 +20,7 @@ cd apps/web && npm ci && npm run dev
 - `npm run build` - production build into `dist/`
 - `npm run preview` - serve the production build (no signalling server; use the Rust server below)
 - `npm run e2e` - end-to-end test, see below (not part of `npm test`)
+- `npm run e2e:m2` - end-to-end test for toolbar, freeze, images and links (needs `npm run build` first)
 
 ## Trying it
 
@@ -36,6 +38,8 @@ other one choose "Send screen", enter the code and share. For development with `
 - `src/core/signaling.ts` - WebSocket client and typed messages (mirrors `cc-proto`)
 - `src/core/peer.ts` - RTCPeerConnection wrapper (no STUN/TURN by default)
 - `src/core/receiverSession.ts`, `senderSession.ts` - explicit state machines
+- `src/core/control.ts` - DataChannel "control": message format, chunking, reassembly, link validation
+- `src/core/annotations.ts`, `toolbarState.ts` - local annotation model and toolbar state (pure, unit-tested)
 - `src/composables/useReceiver.ts`, `useSender.ts` - Vue glue
 
 ## End-to-end test
