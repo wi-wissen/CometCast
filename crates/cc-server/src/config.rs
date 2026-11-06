@@ -119,11 +119,14 @@ pub struct LimitsConfig {
     /// A connection that sent nothing (no pong either) for `ping_interval + pong_timeout`
     /// is closed.
     pub pong_timeout: Duration,
-    /// A room with a sender in it is closed when nothing was relayed for this long.
-    /// Media goes peer to peer, so a quiet signalling channel is normal; if this is too
-    /// small, clients see `peer_left` although the video is still running.
+    /// A connection in a room is closed when nothing was relayed for this long AND it
+    /// has not answered the server's WebSocket pings for `ping_interval + pong_timeout`.
+    /// A connection that keeps answering pings is alive, however quiet the signalling
+    /// channel is (media goes peer to peer, so quiet is normal during a presentation).
     pub paired_idle: Duration,
-    /// Longest life of any room, however busy.
+    /// Longest life of any room, however busy and however alive its connections are.
+    /// This is a hard cap; clients see the room end (`peer_left` / closed connection)
+    /// even if the video is still running.
     pub max_room_lifetime: Duration,
     /// Messages per second one connection may send (refill rate).
     pub msg_rate_per_sec: u32,
@@ -140,7 +143,15 @@ pub struct LimitsConfig {
     /// All failed joins of the whole server in one minute above this number
     /// slow down every join attempt (emergency brake against distributed guessing).
     pub global_failed_joins_per_min: u32,
+    /// An IPv6 /48 network is banned after `ban_after_failed_joins * wide_failure_factor`
+    /// failures (a /48 has many more users than a /64). UNCERTAIN: the default is a
+    /// placeholder.
+    pub wide_failure_factor: u32,
 }
+
+/// UNCERTAIN: factor 10 is a placeholder (the first version used 4, which is probably too
+/// low for a school or company network that owns a whole /48).
+pub const DEFAULT_WIDE_FAILURE_FACTOR: u32 = 10;
 
 impl LimitsConfig {
     /// Defaults of one mode. UNCERTAIN: all numbers are placeholders.
@@ -173,6 +184,7 @@ impl LimitsConfig {
                 max_room_relay_bytes: 8 * 1024 * 1024,
                 max_bad_messages: 20,
                 global_failed_joins_per_min: 300,
+                wide_failure_factor: DEFAULT_WIDE_FAILURE_FACTOR,
             },
             Mode::Internal => Self {
                 connections_per_min: 300,
@@ -199,6 +211,7 @@ impl LimitsConfig {
                 max_room_relay_bytes: 64 * 1024 * 1024,
                 max_bad_messages: 50,
                 global_failed_joins_per_min: 1000,
+                wide_failure_factor: DEFAULT_WIDE_FAILURE_FACTOR,
             },
         }
     }
@@ -359,6 +372,7 @@ impl ServerConfig {
                 "limits.global_failed_joins_per_min",
                 l.global_failed_joins_per_min,
             ),
+            ("limits.wide_failure_factor", l.wide_failure_factor),
             ("altcha.cost", self.altcha.cost),
             ("altcha.base_counter", self.altcha.base_counter),
             (
@@ -370,6 +384,13 @@ impl ServerConfig {
             if value == 0 {
                 return Err(ConfigError::new(format!("{name} must be at least 1")));
             }
+        }
+        if l.global_failed_joins_per_min as usize > crate::limits::EVENT_CAP {
+            // Only this many events are remembered, so a higher number could never be reached.
+            return Err(ConfigError::new(format!(
+                "limits.global_failed_joins_per_min must be at most {} (the number of remembered events)",
+                crate::limits::EVENT_CAP
+            )));
         }
         if l.max_rooms == 0 || l.max_connections == 0 {
             return Err(ConfigError::new(

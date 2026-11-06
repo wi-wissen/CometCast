@@ -339,7 +339,9 @@ async fn pings_do_not_keep_a_silent_client_alive() {
                 break;
             }
             Ok(None) | Ok(Some(Err(_))) => return,
-            _ => {}
+            // A pong comes back at once; keep to one ping per 50 ms (a faster flood is
+            // cut off by the message budget, see ping_flood_closes_the_connection).
+            _ => tokio::time::sleep(Duration::from_millis(50)).await,
         }
     }
     expect_closed(&mut c).await;

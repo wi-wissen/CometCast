@@ -28,6 +28,30 @@ pub(crate) fn canonical(ip: IpAddr) -> IpAddr {
     ip.to_canonical()
 }
 
+/// A network written with an IPv4-mapped IPv6 address (`::ffff:192.0.2.0/120`) becomes the
+/// plain IPv4 network (`192.0.2.0/24`), because client addresses are made canonical (IPv4)
+/// before they are compared. Networks shorter than `/96` are kept as they are.
+pub(crate) fn canonical_net(net: IpNet) -> IpNet {
+    if let IpNet::V6(n) = net
+        && let Some(v4) = n.addr().to_ipv4_mapped()
+        && n.prefix_len() >= 96
+        && let Ok(v4net) = ipnet::Ipv4Net::new(v4, n.prefix_len() - 96)
+    {
+        return IpNet::V4(v4net);
+    }
+    net
+}
+
+/// The lists of a configuration with every network made canonical.
+pub(crate) fn canonical_network(mut net: NetworkConfig) -> NetworkConfig {
+    for list in [&mut net.trusted_proxies, &mut net.allow, &mut net.deny] {
+        for n in list.iter_mut() {
+            *n = canonical_net(*n);
+        }
+    }
+    net
+}
+
 fn in_any(nets: &[IpNet], ip: IpAddr) -> bool {
     nets.iter().any(|n| n.contains(&ip))
 }
@@ -112,7 +136,10 @@ pub(crate) async fn access_middleware(
         return (StatusCode::BAD_REQUEST, "bad X-Forwarded-For\n").into_response();
     };
     // The health check from the same computer (e.g. a Docker health check) always works.
-    let local_health = req.uri().path() == "/healthz" && canonical(peer.ip()).is_loopback();
+    // Not for a request that a trusted proxy forwards for somebody else: its client address
+    // differs from the peer, and that client is checked like any other.
+    let peer_ip = canonical(peer.ip());
+    let local_health = req.uri().path() == "/healthz" && peer_ip.is_loopback() && ip == peer_ip;
     if !local_health && !is_permitted(&state.config.network, ip) {
         let mut resp = (StatusCode::FORBIDDEN, "forbidden\n").into_response();
         resp.headers_mut()
@@ -222,6 +249,42 @@ mod tests {
         assert_eq!(
             resolve_client_ip(ip("::ffff:198.51.100.7"), &[], &[]),
             Ok(ip("198.51.100.7"))
+        );
+    }
+
+    #[test]
+    fn mapped_networks_are_made_canonical() {
+        let c = |s: &str| canonical_net(s.parse().unwrap()).to_string();
+        assert_eq!(c("::ffff:192.0.2.0/120"), "192.0.2.0/24");
+        assert_eq!(c("::ffff:192.0.2.1/128"), "192.0.2.1/32");
+        assert_eq!(c("::ffff:0:0/96"), "0.0.0.0/0");
+        assert_eq!(
+            c("::ffff:10.0.0.0/64"),
+            "::ffff:10.0.0.0/64",
+            "shorter than /96 is not an IPv4 net"
+        );
+        assert_eq!(c("2001:db8::/32"), "2001:db8::/32");
+        assert_eq!(c("10.0.0.0/8"), "10.0.0.0/8");
+        // And the lists match after that.
+        let n = NetworkConfig {
+            deny: vec!["::ffff:192.0.2.0/120".parse().unwrap()],
+            ..NetworkConfig::default()
+        };
+        assert!(
+            is_permitted(&n, ip("192.0.2.9")),
+            "uncanonical list does not match"
+        );
+        let n = canonical_network(n);
+        assert!(!is_permitted(&n, ip("192.0.2.9")));
+        // A trusted proxy given in mapped form is recognised.
+        let trusted = canonical_network(NetworkConfig {
+            trusted_proxies: vec!["::ffff:10.0.0.0/104".parse().unwrap()],
+            ..NetworkConfig::default()
+        })
+        .trusted_proxies;
+        assert_eq!(
+            resolve_client_ip(ip("10.0.0.1"), &x(&["203.0.113.9"]), &trusted),
+            Ok(ip("203.0.113.9"))
         );
     }
 

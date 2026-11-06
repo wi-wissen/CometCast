@@ -44,6 +44,9 @@ ignored). The file is optional; every key is optional.
   always read as text (never as numbers), must have at least 16 characters (UNCERTAIN:
   placeholder minimum), are never printed, and are removed from error messages. The debug
   output shows `<hidden>`.
+  In the TOML file every key containing `secret` must be text in quotes; a number or list
+  there is refused with a message that names the key and never shows the value. Syntax errors
+  of the file are reported with line and column only, without quoting the line.
 - The settings are checked at start; an invalid combination stops the server with an
   error message (exit code 2).
 
@@ -80,14 +83,15 @@ UNCERTAIN: every number is a placeholder.
 | `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. |
 | `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because a school may sit behind one NAT address. |
 | `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address. |
-| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection silent for the sum is closed (close reason `ping_timeout`). |
-| `limits.paired_idle_secs` | 3600 | 14400 | A room where nothing was relayed for this long is closed (`idle_timeout`). See the warning below. |
-| `limits.max_room_lifetime_secs` | 43200 | 86400 | Longest life of any room (`room_lifetime`). |
+| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. |
+| `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". |
+| `limits.max_room_lifetime_secs` | 43200 | 86400 | Hard cap: longest life of any room, however busy and alive (`room_lifetime`). UNCERTAIN: 12 h / 24 h are placeholders; clients see `peer_left` when it is reached even if the video still runs. |
 | `limits.msg_rate_per_sec` / `msg_burst` | 20 / 100 | 50 / 200 | Per connection: messages per second and burst. |
 | `limits.bytes_per_sec` / `bytes_burst` | 65536 / 262144 | 262144 / 1048576 | Per connection: bytes per second and burst (burst must be at least `max_message_bytes`). |
 | `limits.max_room_relay_bytes` | 8388608 | 67108864 | Total bytes relayed through one room. |
 | `limits.max_bad_messages` | 20 | 50 | Garbage or wrong-role messages before the connection is closed. |
-| `limits.global_failed_joins_per_min` | 300 | 1000 | Emergency brake: more failures than this in a minute (whole server) slow down every `join_room`. |
+| `limits.global_failed_joins_per_min` | 300 | 1000 | Emergency brake: more failures than this in a minute (whole server) slow down every `join_room`. At most 10000 (the server remembers only that many events; a higher value is refused at start because the brake could never trigger). |
+| `limits.wide_failure_factor` | 10 | 10 | An IPv6 /48 is banned after `ban_after_failed_joins` times this many failures. UNCERTAIN: placeholder (the first version used 4, which is probably too low for a school or company network that owns a /48). |
 | `altcha.mode` | `always` (forced) | `optional` | See ALTCHA. |
 | `altcha.secret` / `secret_file` | | random at start | HMAC secret for puzzles, at least 16 characters. |
 | `altcha.cost` | 1000 | 1000 | PBKDF2 iterations per attempt. |
@@ -119,7 +123,7 @@ Both modes: rooms live in memory only; nothing is written to disk.
 | Path | Meaning |
 | --- | --- |
 | `GET /ws` | WebSocket signalling ([protocol.md](protocol.md)). |
-| `GET /healthz` | `200 ok`. Always allowed from the same computer (loopback), even if `allow` would refuse it, so health checks keep working. |
+| `GET /healthz` | `200 ok`. Always allowed for a request that comes from the same computer (loopback) and is not forwarded for somebody else, even if `allow` would refuse it, so health checks keep working. A request that a trusted proxy forwards with `X-Forwarded-For` is checked like any other request against its forwarded client address (a denied client gets `403` on `/healthz` too). |
 | `GET /altcha/challenge` | A new puzzle (JSON), `Cache-Control: no-store`. |
 | `GET /ice-servers` | TURN credentials (JSON); `404` when TURN is not configured. |
 | anything else | Static files from `web_dir`, if set. |
@@ -166,8 +170,11 @@ All limits, bans and lists work on the **client address**:
    `400`**. The server never falls back to the proxy's address then. Only when the header is
    missing altogether is the proxy itself the client. If every hop is a trusted proxy, the
    left-most hop counts. From a peer that is not trusted the header is ignored completely.
-3. IPv4-in-IPv6 (`::ffff:1.2.3.4`) is treated as IPv4. For counting, an IPv6 address is
-   reduced to its /64 network.
+3. IPv4-in-IPv6 (`::ffff:1.2.3.4`) is treated as IPv4. Networks in `allow`, `deny` and
+   `trusted_proxies` written that way (`::ffff:192.0.2.0/120`) are converted to IPv4
+   (`192.0.2.0/24`) when the configuration is read, so they match; mapped networks shorter
+   than `/96` are kept as they are. For counting, an IPv6 address is reduced to its /64
+   network.
 
 `network.deny` wins over `network.allow`; an empty `allow` lets everybody in. Refused
 clients get `403` for every path.
@@ -209,15 +216,27 @@ failure toward a ban. Every `bad_message` / `wrong_role` also counts as a failur
 `max_room_relay_bytes` in total. Signalling messages are small, so the defaults should be far
 above normal use; UNCERTAIN: they are not measured.
 
-**Liveness and lifetime:** the server pings every `ping_interval_secs`; a client that does
-not answer (any frame counts) within the pong timeout is closed. A room in which nothing was
-relayed for `paired_idle_secs` is closed, and no room lives longer than
-`max_room_lifetime_secs`. **Warning:** media flows peer to peer, so a quiet signalling channel
-is normal during a long presentation. When the room is closed, clients get `peer_left` or a
-closed connection although the video may still be running. The defaults are therefore long
-(1 h open, 4 h internal), and what clients should do on `peer_left` is not decided. UNCERTAIN.
-When a receiver leaves, the sender's connection stays open (as before); it can create or
-join another room.
+**Liveness and lifetime:** the server sends a WebSocket ping every `ping_interval_secs`. A
+connection that sends neither data nor a pong for `ping_interval_secs + pong_timeout_secs` is
+closed (`ping_timeout`); a ping sent by the client does not count, anybody can send those
+without reading. Browsers and normal WebSocket libraries answer pings automatically.
+
+A room stays open as long as **both** of its connections keep answering pings, however
+quiet the signalling channel is: media flows peer to peer, so a long presentation without any
+relayed message is normal, and closing such a room would make the clients treat `peer_left`
+as the end of a healthy presentation. The idle rule therefore applies only to a connection
+that has stopped answering pings: if nothing was relayed for `paired_idle_secs` **and** the
+connection has not answered a ping for `ping_interval_secs + pong_timeout_secs`, it is closed
+(`idle_timeout`) and its peer is told `peer_left`. Both sides check themselves, so a dead side
+goes and the other side learns about it. `max_room_lifetime_secs` stays a hard cap for every
+room (`room_lifetime`); it should be well above the longest session you expect (defaults 12 h
+open, 24 h internal; UNCERTAIN: placeholders). When it is reached, clients see the room end
+although the video may still be running. When a receiver leaves, the sender's connection
+stays open; it can create or join another room.
+
+Control frames are not free: every ping and pong frame a client sends uses the same
+per-connection message budget as a text message, so a flood of them is cut off like any other
+flood (`rate_limited`, closed, counted as a failure).
 
 **Per-address caps:** open connections (`max_connections_per_ip`) and rooms
 (`max_rooms_per_ip`) per client address.
@@ -227,9 +246,9 @@ ban the address. The sender gets `banned`, its connection is closed, and new con
 joins and HTTP requests from that address are refused. The first ban lasts `ban_secs[0]`,
 the next one `ban_secs[1]`, and so on (the last value repeats); the history is forgotten
 after `ban_memory_secs`. Failures are counted per address (IPv6: /64) and also per IPv6 /48, where the threshold is
-four times higher (UNCERTAIN: factor), so moving to another /64 does not escape a ban.
+`wide_failure_factor` times higher (default 10, UNCERTAIN), so moving to another /64 does not escape a ban.
 `create_room` is refused for banned addresses too. The failure table has a hard size cap
-(200 000 entries); when it is full and nothing can be dropped, new addresses are not tracked
+(200 000 entries); when it is full, entries that no longer matter are dropped (at most one sweep per second, because a sweep locks the table); if nothing can be dropped, new addresses are not tracked
 (a counter records this; no metrics endpoint exists yet). Bans and counters are in memory and
 are lost at a restart.
 
@@ -303,13 +322,14 @@ The HMAC is tested against values computed independently with Python's `hmac`/`h
 id is a random value, not the room code, is our choice (the endpoint knows no room).
 
 The coturn template is `deploy/coturn/turnserver.conf.template` (render it with
-`deploy/coturn/render.sh`). It follows the plan's hardening list: narrow relay port range,
+`deploy/coturn/render.sh`; the script checks every value, refuses a `turn_secret` file with more than one line, validates ports (1-65535, min <= max) and addresses, and writes the result with mode 600; `deploy/coturn/test-render.sh` tests it with hostile inputs and is run by `cargo test -p cc-server`). It follows the plan's hardening list: narrow relay port range,
 `use-auth-secret`, `no-multicast-peers`, `no-tcp-relay`, quotas, `no-cli`, TLS port 5349, and
 `denied-peer-ip` for private and special ranges. Pitfall from the plan: if you deny all private
 ranges, relaying between two devices in the same private network breaks, because the TURN
 server's own relay address is private; therefore `allowed-peer-ip=<relay IP>` is set.
-Further denied ranges were added after a security review: documentation ranges, `::`,
-IPv4-mapped `::ffff:0:0/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`, `fec0::/10`.
+Further denied ranges were added after security reviews: documentation ranges, `::`,
+IPv4-mapped `::ffff:0:0/96`, NAT64 `64:ff9b::/96` and `64:ff9b:1::/48`, 6to4 `2002::/16`
+and `192.88.99.0/24`, Teredo `2001::/32`, discard-only `100::/64`, `fec0::/10`.
 **Host networking:** the compose file runs coturn with `network_mode: host`, so the
 `allowed-peer-ip` address is the host itself. A client with valid credentials can then
 send packets to whatever listens on that address. Use a relay address without other

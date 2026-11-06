@@ -57,10 +57,6 @@ fn mask_v6(ip: IpAddr, keep: usize) -> IpAddr {
     }
 }
 
-/// A /48 network has many more users than a /64, so its failure threshold is higher.
-/// UNCERTAIN: factor 4 is a placeholder.
-const WIDE_FACTOR: u32 = 4;
-
 /// Key of the failure table: (address or /64, is it the wide /48 entry?).
 type StateKey = (IpAddr, bool);
 
@@ -77,6 +73,15 @@ struct IpState {
     ban_level: usize,
     /// When the last ban ended or was set (for forgetting the history).
     last_ban: Option<Instant>,
+}
+
+/// The failure table and the time of its last full sweep.
+#[derive(Default)]
+struct StateTable {
+    map: HashMap<StateKey, IpState>,
+    /// When `retain` last ran over the whole table. Sweeping 200 000 entries while
+    /// holding the lock is costly, so it is done at most once per `SWEEP_EVERY`.
+    last_sweep: Option<Instant>,
 }
 
 /// Counts of recent events within the last minute.
@@ -112,14 +117,19 @@ pub(crate) struct Guard {
     create: Keyed,
     join: Keyed,
     http: Keyed,
-    state: Mutex<HashMap<StateKey, IpState>>,
+    state: Mutex<StateTable>,
     per_ip_connections: Mutex<HashMap<IpAddr, usize>>,
     /// All bad events (for the ALTCHA difficulty).
     events: Mutex<EventWindow>,
     /// Failed joins and abuse of the whole server (for the global brake).
     failures: Mutex<EventWindow>,
     open_connections: AtomicUsize,
-    calls: AtomicU64,
+    /// Start of the guard; `last_housekeeping_ms` counts from here.
+    epoch: Instant,
+    /// Milliseconds after `epoch` of the last housekeeping run.
+    last_housekeeping_ms: AtomicU64,
+    /// Full sweeps of the failure table (a metric, used by tests).
+    sweeps: AtomicU64,
     /// Failures that could not be tracked because the table was full.
     untracked: AtomicU64,
 }
@@ -154,8 +164,15 @@ const STATE_SOFT_LIMIT: usize = 50_000;
 const STATE_HARD_LIMIT: usize = 200_000;
 /// How long a bad event counts as "recent" for the difficulty.
 const EVENT_WINDOW: Duration = Duration::from_secs(60);
-/// Remembered events are capped to keep memory small.
-const EVENT_CAP: usize = 10_000;
+/// Remembered events are capped to keep memory small. `global_failed_joins_per_min`
+/// must not be above this, or the global brake could never trigger (checked in
+/// `ServerConfig::validate`).
+pub(crate) const EVENT_CAP: usize = 10_000;
+/// The failure table is swept at most this often (the sweep locks the table).
+const SWEEP_EVERY: Duration = Duration::from_secs(1);
+/// The keyed rate limiters are pruned on this timer.
+/// UNCERTAIN: 10 seconds is a placeholder.
+const HOUSEKEEPING_EVERY: Duration = Duration::from_secs(10);
 
 fn per_minute(n: u32) -> Keyed {
     RateLimiter::keyed(Quota::per_minute(
@@ -176,24 +193,34 @@ impl Guard {
             join: per_minute(cfg.join_attempts_per_min),
             http: per_minute(cfg.http_per_min),
             cfg,
-            state: Mutex::new(HashMap::new()),
+            state: Mutex::new(StateTable::default()),
             per_ip_connections: Mutex::new(HashMap::new()),
             events: Mutex::new(EventWindow::default()),
             failures: Mutex::new(EventWindow::default()),
             open_connections: AtomicUsize::new(0),
-            calls: AtomicU64::new(0),
+            epoch: Instant::now(),
+            last_housekeeping_ms: AtomicU64::new(0),
+            sweeps: AtomicU64::new(0),
             untracked: AtomicU64::new(0),
         })
     }
 
-    fn lock_state(&self) -> std::sync::MutexGuard<'_, HashMap<StateKey, IpState>> {
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, StateTable> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Now and then, drop memory about addresses that are no longer interesting.
+    /// Every `HOUSEKEEPING_EVERY` (a timer, not a call counter): prune the keyed limiters
+    /// and drop memory about addresses that are no longer interesting.
     fn housekeeping(&self) {
-        // Only every 1024th call does the cleanup.
-        if self.calls.fetch_add(1, Ordering::Relaxed) % 1024 != 0 {
+        let ms_now = u64::try_from(self.epoch.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let last = self.last_housekeeping_ms.load(Ordering::Relaxed);
+        let every = u64::try_from(HOUSEKEEPING_EVERY.as_millis()).unwrap_or(u64::MAX);
+        if ms_now.saturating_sub(last) < every
+            || self
+                .last_housekeeping_ms
+                .compare_exchange(last, ms_now, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
+        {
             return;
         }
         for l in [&self.connections, &self.create, &self.join, &self.http] {
@@ -201,10 +228,27 @@ impl Guard {
             l.shrink_to_fit();
         }
         let now = Instant::now();
-        let mut map = self.lock_state();
-        if map.len() > STATE_SOFT_LIMIT {
-            map.retain(|_, s| Self::still_relevant(&self.cfg, s, now));
+        let mut table = self.lock_state();
+        if table.map.len() > STATE_SOFT_LIMIT {
+            self.sweep(&mut table, now);
         }
+    }
+
+    /// Drop table entries that no longer matter. At most once per `SWEEP_EVERY`;
+    /// returns whether the sweep ran.
+    fn sweep(&self, table: &mut StateTable, now: Instant) -> bool {
+        if table
+            .last_sweep
+            .is_some_and(|t| now.saturating_duration_since(t) < SWEEP_EVERY)
+        {
+            return false;
+        }
+        table.last_sweep = Some(now);
+        self.sweeps.fetch_add(1, Ordering::Relaxed);
+        table
+            .map
+            .retain(|_, s| Self::still_relevant(&self.cfg, s, now));
+        true
     }
 
     fn still_relevant(cfg: &LimitsConfig, s: &IpState, now: Instant) -> bool {
@@ -243,7 +287,7 @@ impl Guard {
     /// Does this client currently have failures in the window?
     pub(crate) fn has_recent_failures(&self, ip: IpAddr, now: Instant) -> bool {
         let key = (limit_key(ip), false);
-        self.lock_state().get(&key).is_some_and(|s| {
+        self.lock_state().map.get(&key).is_some_and(|s| {
             s.failures > 0
                 && s.window_start
                     .is_some_and(|w| now.duration_since(w) < self.cfg.failed_join_window)
@@ -252,9 +296,11 @@ impl Guard {
 
     /// Remaining ban time, if this client (or its IPv6 /48) is banned.
     pub(crate) fn banned_for(&self, ip: IpAddr, now: Instant) -> Option<Duration> {
-        let map = self.lock_state();
+        let table = self.lock_state();
         let left = |key: StateKey| {
-            map.get(&key)
+            table
+                .map
+                .get(&key)
                 .and_then(|s| s.banned_until)
                 .and_then(|until| until.checked_duration_since(now))
         };
@@ -389,7 +435,9 @@ impl Guard {
         let wide = wide_key(ip).and_then(|w| {
             self.fail_one(
                 (w, true),
-                self.cfg.ban_after_failed_joins.saturating_mul(WIDE_FACTOR),
+                self.cfg
+                    .ban_after_failed_joins
+                    .saturating_mul(self.cfg.wide_failure_factor),
                 now,
             )
         });
@@ -398,16 +446,18 @@ impl Guard {
 
     /// Count one failure in one table entry; ban when `threshold` is reached.
     fn fail_one(&self, key: StateKey, threshold: u32, now: Instant) -> Option<Duration> {
-        let mut map = self.lock_state();
-        if !map.contains_key(&key) && map.len() >= STATE_HARD_LIMIT {
-            // Table full: drop entries that no longer matter, else do not track this one.
-            map.retain(|_, s| Self::still_relevant(&self.cfg, s, now));
-            if map.len() >= STATE_HARD_LIMIT {
+        let mut table = self.lock_state();
+        if !table.map.contains_key(&key) && table.map.len() >= STATE_HARD_LIMIT {
+            // Table full: drop entries that no longer matter (rate-limited, because a
+            // sweep over the whole table under the lock is expensive), else do not track
+            // this one.
+            self.sweep(&mut table, now);
+            if table.map.len() >= STATE_HARD_LIMIT {
                 self.untracked.fetch_add(1, Ordering::Relaxed);
                 return None;
             }
         }
-        let s = map.entry(key).or_default();
+        let s = table.map.entry(key).or_default();
         let window = self.cfg.failed_join_window;
         if s.window_start
             .is_none_or(|w| now.duration_since(w) >= window)
@@ -715,7 +765,10 @@ mod tests {
     #[test]
     fn moving_between_slash_64s_does_not_escape_the_ban() {
         // Threshold 3 per /64, 12 per /48. Every failure comes from a new /64 of one /48.
-        let g = Guard::new(limits());
+        let g = Guard::new(LimitsConfig {
+            wide_failure_factor: 4,
+            ..limits()
+        });
         let t0 = Instant::now();
         let mut banned = None;
         for i in 0..12u16 {
@@ -774,10 +827,10 @@ mod tests {
         let now = Instant::now();
         // Fill the table to its limit with live entries.
         {
-            let mut map = g.lock_state();
+            let mut table = g.lock_state();
             for i in 0..STATE_HARD_LIMIT {
                 let ip = IpAddr::V6(Ipv6Addr::from((i as u128 + 1) << 64));
-                map.insert(
+                table.map.insert(
                     (ip, false),
                     IpState {
                         failures: 1,
@@ -790,11 +843,90 @@ mod tests {
         // A new address is not tracked (and counted in the metric) ...
         assert_eq!(g.record_failure(ip("192.0.2.1"), now), None);
         assert!(g.untracked_failures() >= 1);
-        assert_eq!(g.lock_state().len(), STATE_HARD_LIMIT);
+        assert_eq!(g.lock_state().map.len(), STATE_HARD_LIMIT);
         // ... but once old entries expire, room is made again.
         let later = now + Duration::from_secs(700);
         g.record_failure(ip("192.0.2.1"), later);
-        assert!(g.lock_state().len() < STATE_HARD_LIMIT);
+        assert!(g.lock_state().map.len() < STATE_HARD_LIMIT);
+    }
+
+    #[test]
+    fn full_table_is_swept_at_most_once_per_second() {
+        let g = Guard::new(LimitsConfig {
+            ban_after_failed_joins: u32::MAX,
+            ..limits()
+        });
+        let now = Instant::now();
+        {
+            let mut table = g.lock_state();
+            for i in 0..STATE_HARD_LIMIT {
+                let ip = IpAddr::V6(Ipv6Addr::from((i as u128 + 1) << 64));
+                table.map.insert(
+                    (ip, false),
+                    IpState {
+                        failures: 1,
+                        window_start: Some(now),
+                        ..IpState::default()
+                    },
+                );
+            }
+        }
+        // 500 failures of new addresses in the same second: none fits, but the 200 000
+        // entries were walked only once, not 500 times.
+        for i in 0..500u32 {
+            let a = IpAddr::from(std::net::Ipv4Addr::from(0xC000_0200 + i));
+            assert_eq!(g.record_failure(a, now), None);
+        }
+        assert_eq!(g.untracked_failures(), 500);
+        assert_eq!(g.sweeps.load(Ordering::Relaxed), 1);
+        // A second later it may sweep again.
+        g.record_failure(ip("198.51.100.1"), now + Duration::from_millis(1500));
+        assert_eq!(g.sweeps.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn wide_threshold_is_configurable() {
+        // Threshold 3 per /64; with factor 2 a /48 bans at 6 failures from different /64s.
+        let g = Guard::new(LimitsConfig {
+            wide_failure_factor: 2,
+            ..limits()
+        });
+        let t0 = Instant::now();
+        let mut banned = None;
+        for i in 0..6u16 {
+            let who: IpAddr = format!("2001:db8:1:{i}::1").parse().unwrap();
+            assert!(banned.is_none(), "banned too early");
+            banned = g.record_failure(who, t0);
+        }
+        assert!(banned.is_some());
+        let g = Guard::new(LimitsConfig {
+            wide_failure_factor: 100,
+            ..limits()
+        });
+        for i in 0..12u16 {
+            let who: IpAddr = format!("2001:db8:1:{i}::1").parse().unwrap();
+            assert_eq!(g.record_failure(who, t0), None);
+        }
+    }
+
+    #[test]
+    fn limiters_are_pruned_on_a_timer_not_a_call_count() {
+        let g = Guard::new(limits());
+        // Within the timer interval of creation: many calls, no pruning run.
+        for _ in 0..3000 {
+            g.housekeeping();
+        }
+        assert_eq!(g.last_housekeeping_ms.load(Ordering::Relaxed), 0);
+        // A guard that is older than the interval prunes on the next call, once.
+        let old = Guard {
+            epoch: Instant::now() - HOUSEKEEPING_EVERY - Duration::from_secs(1),
+            ..Arc::try_unwrap(Guard::new(limits())).ok().unwrap()
+        };
+        old.housekeeping();
+        let stamp = old.last_housekeeping_ms.load(Ordering::Relaxed);
+        assert!(stamp >= 10_000, "{stamp}");
+        old.housekeeping();
+        assert_eq!(old.last_housekeeping_ms.load(Ordering::Relaxed), stamp);
     }
 
     #[test]

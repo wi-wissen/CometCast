@@ -832,17 +832,80 @@ async fn answering_connection_stays_open_past_the_ping_timeout() {
     assert_eq!(error_code(&recv(&mut r).await), "bad_message");
 }
 
-#[tokio::test]
-async fn quiet_paired_room_is_closed() {
+/// Read frames for `dur` (the library answers pings meanwhile) and return the text
+/// messages seen. A closed connection shows up as a `{"type":"__closed"}` entry.
+async fn pump(ws: &mut Ws, dur: Duration) -> Vec<Value> {
+    let until = tokio::time::Instant::now() + dur;
+    let mut out = Vec::new();
+    loop {
+        let left = until.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(left, ws.next()).await {
+            Err(_) => break,
+            Ok(Some(Ok(Message::Text(t)))) => out.push(serde_json::from_str(t.as_str()).unwrap()),
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) | Ok(Some(Err(_))) => {
+                out.push(json!({"type":"__closed"}));
+                break;
+            }
+            Ok(Some(Ok(_))) => {}
+        }
+    }
+    out
+}
+
+fn types(msgs: &[Value]) -> Vec<&str> {
+    msgs.iter().map(|m| m["type"].as_str().unwrap()).collect()
+}
+
+/// Tiny timeouts: ping every second, 1 s to answer, 1 s of relay silence is "idle".
+fn tiny_liveness() -> ServerConfig {
     let mut c = ServerConfig::default();
+    c.limits.ping_interval = Duration::from_secs(1);
+    c.limits.pong_timeout = Duration::from_secs(1);
     c.limits.paired_idle = Duration::from_secs(1);
-    let addr = start(c).await;
+    c
+}
+
+#[tokio::test]
+async fn quiet_paired_room_stays_open_while_both_sides_answer_pings() {
+    let addr = start(tiny_liveness()).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    // 5 s without any relayed message: far past paired_idle and past interval + timeout.
+    let (rm, sm) = tokio::join!(
+        pump(&mut r, Duration::from_secs(5)),
+        pump(&mut s, Duration::from_secs(5))
+    );
+    assert!(rm.is_empty(), "receiver saw {:?}", types(&rm));
+    assert!(sm.is_empty(), "sender saw {:?}", types(&sm));
+    // The room still works.
+    send(&mut s, json!({"type":"control","cmd":"stop"})).await;
+    let got = pump(&mut r, Duration::from_millis(700)).await;
+    assert_eq!(types(&got), ["control"]);
+}
+
+#[tokio::test]
+async fn paired_side_that_stops_answering_pings_is_closed_and_peer_told() {
+    let addr = start(tiny_liveness()).await;
     let (mut r, s, _) = paired(addr).await;
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-    // The receiver (and with it the room) ends. The sender stays connected and may be
-    // told `peer_left`; it can open another room on the same connection.
-    expect_closed(&mut r).await;
+    // The sender never reads, so it never answers a ping. The receiver does.
+    let got = pump(&mut r, Duration::from_secs(6)).await;
+    assert_eq!(types(&got), ["peer_left"], "receiver should be told once");
+    // The receiver stays connected and in a working state.
+    send(&mut r, json!({"type":"nonsense"})).await;
+    let got = pump(&mut r, Duration::from_millis(500)).await;
+    assert_eq!(error_code(&got[0]), "bad_message");
     drop(s);
+}
+
+#[tokio::test]
+async fn receiver_that_stops_answering_pings_ends_the_room() {
+    let addr = start(tiny_liveness()).await;
+    let (r, mut s, _) = paired(addr).await;
+    let got = pump(&mut s, Duration::from_secs(6)).await;
+    assert_eq!(types(&got), ["peer_left"]);
+    drop(r);
 }
 
 #[tokio::test]
@@ -1037,4 +1100,76 @@ async fn unreadable_key_file_gives_a_helpful_error() {
     assert!(text.contains("missing-privkey.pem"), "{text}");
     assert!(text.contains("tls.key_file"), "{text}");
     std::fs::remove_dir_all(dir).ok();
+}
+
+// ---------- control frames are not free ----------
+
+#[tokio::test]
+async fn ping_flood_closes_the_connection() {
+    let mut c = ServerConfig::default();
+    c.limits.msg_burst = 5;
+    c.limits.msg_rate_per_sec = 1;
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    for _ in 0..12 {
+        if r.send(Message::Ping(Vec::new().into())).await.is_err() {
+            break;
+        }
+    }
+    expect_closed(&mut r).await;
+}
+
+#[tokio::test]
+async fn pong_flood_counts_toward_a_ban() {
+    let mut c = ServerConfig::default();
+    c.limits.msg_burst = 3;
+    c.limits.msg_rate_per_sec = 1;
+    c.limits.ban_after_failed_joins = 1;
+    let addr = start(c).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    for _ in 0..10 {
+        if r.send(Message::Pong(Vec::new().into())).await.is_err() {
+            break;
+        }
+    }
+    expect_closed(&mut r).await;
+    assert_eq!(connect_with(addr, &[]).await.err(), Some(403));
+}
+
+// ---------- IPv4-mapped networks, health check behind a proxy ----------
+
+#[tokio::test]
+async fn mapped_ipv6_networks_match_and_healthz_is_not_a_bypass_for_proxied_clients() {
+    let mut c = ServerConfig::default();
+    // All three written as IPv4-mapped IPv6; they must act like the IPv4 networks.
+    c.network.trusted_proxies = nets(&["::ffff:127.0.0.1/128"]);
+    c.network.deny = nets(&["::ffff:203.0.113.0/120"]);
+    let addr = start(c).await;
+    // A denied client behind the trusted proxy is refused, even on /healthz.
+    let denied = [("X-Forwarded-For", "203.0.113.9")];
+    assert_eq!(
+        http_get(addr, "/altcha/challenge", &denied).await.status,
+        403
+    );
+    assert_eq!(http_get(addr, "/healthz", &denied).await.status, 403);
+    // Another client behind the proxy is fine.
+    let other = [("X-Forwarded-For", "198.51.100.1")];
+    assert_eq!(http_get(addr, "/healthz", &other).await.status, 200);
+    // The proxy's own health check (no forwarded header) works.
+    assert_eq!(http_get(addr, "/healthz", &[]).await.status, 200);
+}
+
+#[tokio::test]
+async fn healthz_bypass_needs_no_forwarded_header_even_with_an_allow_list() {
+    let mut c = ServerConfig::default();
+    c.network.allow = nets(&["10.0.0.0/8"]);
+    c.network.trusted_proxies = nets(&["127.0.0.1/32"]);
+    let addr = start(c).await;
+    assert_eq!(http_get(addr, "/healthz", &[]).await.status, 200);
+    let outsider = [("X-Forwarded-For", "198.51.100.1")];
+    assert_eq!(http_get(addr, "/healthz", &outsider).await.status, 403);
+    let insider = [("X-Forwarded-For", "10.1.2.3")];
+    assert_eq!(http_get(addr, "/healthz", &insider).await.status, 200);
 }

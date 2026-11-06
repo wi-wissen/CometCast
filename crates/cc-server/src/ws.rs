@@ -142,7 +142,10 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
         .clamp(Duration::from_millis(50), Duration::from_secs(1));
     let mut ticker = tokio::time::interval(tick);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // Last sign of life: data or a pong (a client's own ping does not count, it is free).
     let mut last_seen = connected;
+    // Last time this client answered one of our pings.
+    let mut last_pong = connected;
     let mut last_ping = connected;
 
     loop {
@@ -167,7 +170,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             _ = &mut writer => { writer_done = true; break; }
             _ = kill.notified() => { killed = true; break; }
             _ = ticker.tick() => {
-                if let Some(reason) = tick_check(&conn, &state, last_seen, &mut last_ping) {
+                if let Some(reason) = tick_check(&conn, &state, last_seen, last_pong, &mut last_ping) {
                     conn.tx.send(Outgoing::Close(reason));
                     break;
                 }
@@ -187,13 +190,23 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             Ok(None) | Ok(Some(Err(_))) => break,
             Ok(Some(Ok(m))) => m,
         };
-        // Any frame (data, ping, pong) shows that the client is alive.
-        last_seen = Instant::now();
-        // One connection may not send faster than its budget, whatever it sends.
+        // Data and pongs show that the client is alive. A ping from the client does not:
+        // anybody can send those without reading anything.
+        match &msg {
+            Message::Text(_) | Message::Binary(_) => last_seen = Instant::now(),
+            Message::Pong(_) => {
+                last_seen = Instant::now();
+                last_pong = last_seen;
+            }
+            _ => {}
+        }
+        // One connection may not send faster than its budget, whatever it sends. Control
+        // frames (ping/pong) count as messages too, so a flood of them is not free.
         let data_len = match &msg {
             Message::Text(t) => Some(t.len()),
             Message::Binary(b) => Some(b.len()),
-            _ => None,
+            Message::Ping(p) | Message::Pong(p) => Some(p.len()),
+            Message::Close(_) => None,
         };
         if let Some(len) = data_len
             && !conn.budget.allow(len, StdInstant::now())
@@ -255,6 +268,7 @@ fn tick_check(
     conn: &Conn,
     state: &AppState,
     last_seen: Instant,
+    last_pong: Instant,
     last_ping: &mut Instant,
 ) -> Option<&'static str> {
     let l = state.guard.cfg();
@@ -267,14 +281,32 @@ fn tick_check(
         conn.tx.send(Outgoing::Ping);
     }
     let code = conn.room.as_ref()?;
-    let rooms = lock(state);
-    let (created, last_activity) = rooms.times(code)?;
+    let (created, last_activity) = lock(state).times(code)?;
+    room_verdict(l, now, created, last_activity, last_pong)
+}
+
+/// Should a connection in a room be closed? `last_pong` is when this connection last
+/// answered a ping.
+///
+/// - Past `max_room_lifetime` the room always ends (hard cap).
+/// - A connection that keeps answering pings is alive: media flows peer to peer, so a
+///   quiet signalling channel is normal, and closing the room would make clients treat
+///   `peer_left` as the end of a healthy presentation.
+/// - Only a connection that has stopped answering pings, in a room where nothing was
+///   relayed for `paired_idle`, is closed. Both sides check themselves, so a dead side
+///   goes and the other is told `peer_left`.
+fn room_verdict(
+    l: &crate::config::LimitsConfig,
+    now: Instant,
+    created: Instant,
+    last_activity: Instant,
+    last_pong: Instant,
+) -> Option<&'static str> {
     if now.duration_since(created) > l.max_room_lifetime {
         return Some("room_lifetime");
     }
-    // Quiet for too long (nothing relayed, nobody joined). Both sides check this, so
-    // whichever tick comes first, the room ends.
-    if now.duration_since(last_activity) > l.paired_idle {
+    let not_answering = now.duration_since(last_pong) > l.ping_interval + l.pong_timeout;
+    if not_answering && now.duration_since(last_activity) > l.paired_idle {
         return Some("idle_timeout");
     }
     None
@@ -571,5 +603,60 @@ async fn expire_when_idle(state: AppState, code: RoomCode, cancel: Arc<Notify>) 
             Ok(next) => wait = next,
             Err(Gone) => return,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{LimitsConfig, Mode};
+
+    fn limits() -> LimitsConfig {
+        LimitsConfig {
+            ping_interval: Duration::from_secs(10),
+            pong_timeout: Duration::from_secs(10),
+            paired_idle: Duration::from_secs(100),
+            max_room_lifetime: Duration::from_secs(1000),
+            ..LimitsConfig::for_mode(Mode::Internal)
+        }
+    }
+
+    #[test]
+    fn quiet_room_stays_while_the_connection_answers_pings() {
+        let l = limits();
+        let t0 = Instant::now();
+        let now = t0 + Duration::from_secs(500);
+        // Nothing relayed for 500 s, but the last pong was 5 s ago.
+        assert_eq!(
+            room_verdict(&l, now, t0, t0, now - Duration::from_secs(5)),
+            None
+        );
+    }
+
+    #[test]
+    fn quiet_room_ends_when_the_connection_stops_answering() {
+        let l = limits();
+        let t0 = Instant::now();
+        let now = t0 + Duration::from_secs(500);
+        let stale = now - Duration::from_secs(21);
+        assert_eq!(room_verdict(&l, now, t0, t0, stale), Some("idle_timeout"));
+        // Not answering, but the room was busy recently: stays (ping_timeout handles silence).
+        assert_eq!(
+            room_verdict(&l, now, t0, now - Duration::from_secs(5), stale),
+            None
+        );
+        // Not answering for less than interval + timeout: stays.
+        assert_eq!(
+            room_verdict(&l, now, t0, t0, now - Duration::from_secs(15)),
+            None
+        );
+    }
+
+    #[test]
+    fn lifetime_is_a_hard_cap_even_for_a_live_room() {
+        let l = limits();
+        let t0 = Instant::now();
+        let now = t0 + Duration::from_secs(1001);
+        assert_eq!(room_verdict(&l, now, t0, now, now), Some("room_lifetime"));
     }
 }

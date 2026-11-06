@@ -47,6 +47,7 @@ fn parse_nets(what: &str, list: StringList) -> Result<Vec<IpNet>, ConfigError> {
             // A bare address such as "10.0.0.5" counts as a /32 (or /128).
             s.parse::<IpNet>()
                 .or_else(|_| s.parse::<std::net::IpAddr>().map(IpNet::from))
+                .map(crate::net::canonical_net)
                 .map_err(|_| {
                     ConfigError::new(format!("{what}: {s:?} is not an address or CIDR network"))
                 })
@@ -99,6 +100,7 @@ struct FileLimits {
     max_room_relay_bytes: Option<u64>,
     max_bad_messages: Option<u32>,
     global_failed_joins_per_min: Option<u32>,
+    wide_failure_factor: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -296,6 +298,9 @@ impl FileConfig {
             if let Some(v) = l.global_failed_joins_per_min {
                 d.global_failed_joins_per_min = v;
             }
+            if let Some(v) = l.wide_failure_factor {
+                d.wide_failure_factor = v;
+            }
         }
         if let Some(a) = self.altcha {
             let d = &mut c.altcha;
@@ -409,14 +414,56 @@ fn redact(text: &str, secrets: &[String]) -> String {
     out
 }
 
-/// Collect the values of all keys named `*secret*` of a TOML table (one level of sections).
+/// Collect the values of all keys named `*secret*` of a TOML table (all levels of
+/// sections), so they can be removed from error texts. Numbers are collected as text too:
+/// a secret written without quotes (`secret = 1234567890123456`) is a number to TOML.
 fn collect_file_secrets(table: &toml::Table, out: &mut Vec<String>) {
     for (k, v) in table {
         match v {
             toml::Value::String(s) if k.contains("secret") => out.push(s.clone()),
+            toml::Value::Integer(n) if k.contains("secret") => out.push(n.to_string()),
+            toml::Value::Float(n) if k.contains("secret") => out.push(n.to_string()),
             toml::Value::Table(t) => collect_file_secrets(t, out),
             _ => {}
         }
+    }
+}
+
+/// Every key containing `secret` must hold text. Checked before the typed read, so a
+/// wrongly typed secret (a bare number, a list, a section) gives a message that names the key
+/// and never prints the value.
+fn check_secret_types(table: &toml::Table, path: &str) -> Result<(), ConfigError> {
+    for (k, v) in table {
+        let here = if path.is_empty() {
+            k.clone()
+        } else {
+            format!("{path}.{k}")
+        };
+        match v {
+            toml::Value::String(_) => {}
+            _ if k.contains("secret") => {
+                return Err(ConfigError::new(format!(
+                    "{here} must be text in quotes (the value is not shown)"
+                )));
+            }
+            toml::Value::Table(t) => check_secret_types(t, &here)?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// The text of a TOML syntax error without the quoted source line (that line may be a
+/// secret): only the position and the short reason.
+fn describe_parse_error(text: &str, e: &toml::de::Error) -> String {
+    match e.span() {
+        Some(span) => {
+            let before = &text[..span.start.min(text.len())];
+            let line = before.matches('\n').count() + 1;
+            let col = before.rsplit('\n').next().map_or(0, str::len) + 1;
+            format!("line {line}, column {col}: {}", e.message())
+        }
+        None => e.message().to_string(),
     }
 }
 
@@ -430,8 +477,13 @@ pub fn load_config(
             let text = fs::read_to_string(path).map_err(|e| {
                 ConfigError::new(format!("cannot read config file {}: {e}", path.display()))
             })?;
-            text.parse::<toml::Table>()
-                .map_err(|e| ConfigError::new(format!("{}: {e}", path.display())))?
+            text.parse::<toml::Table>().map_err(|e| {
+                ConfigError::new(format!(
+                    "{}: {}",
+                    path.display(),
+                    describe_parse_error(&text, &e)
+                ))
+            })?
         }
         None => toml::Table::new(),
     };
@@ -446,6 +498,7 @@ pub fn load_config(
     for (k, v) in overrides {
         apply_override(&mut table, k, v).map_err(hide)?;
     }
+    check_secret_types(&table, "").map_err(hide)?;
     let file_config: FileConfig = table
         .try_into()
         .map_err(|e| hide(ConfigError::new(format!("configuration: {e}"))))?;
@@ -604,6 +657,86 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(!err.contains("hunter2"), "{err}");
+    }
+
+    fn write_temp(name: &str, text: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cc-cfg-{}-{name}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("c.toml");
+        fs::write(&file, text).unwrap();
+        file
+    }
+
+    #[test]
+    fn a_numeric_or_mistyped_secret_in_the_file_is_never_printed() {
+        for (name, text) in [
+            (
+                "int",
+                "[turn]\nurls = [\"turn:x\"]\nsecret = 1234567890123456\n",
+            ),
+            ("float", "[altcha]\nsecret = 1234.5678\n"),
+            ("list", "[altcha]\nsecret = [\"leaky-secret-value-1\"]\n"),
+            (
+                "table",
+                "[altcha.secret]\nvalue = \"leaky-secret-value-2\"\n",
+            ),
+            ("bool", "[altcha]\nsecret_file = true\n"),
+        ] {
+            let file = write_temp(name, text);
+            let err = load_config(Some(&file), &[]).unwrap_err().to_string();
+            assert!(err.contains("secret"), "{name}: {err}");
+            assert!(err.contains("must be text"), "{name}: {err}");
+            for leak in ["1234567890123456", "1234.5678", "leaky-secret-value"] {
+                assert!(!err.contains(leak), "{name}: {err}");
+            }
+            fs::remove_dir_all(file.parent().unwrap()).ok();
+        }
+    }
+
+    #[test]
+    fn a_syntax_error_does_not_quote_the_source_line() {
+        let file = write_temp("syntax", "[altcha]\nsecret = leaky-secret-value-3 oops\n");
+        let err = load_config(Some(&file), &[]).unwrap_err().to_string();
+        assert!(err.contains("line 2"), "{err}");
+        assert!(!err.contains("leaky-secret-value"), "{err}");
+        fs::remove_dir_all(file.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn mapped_ipv4_networks_become_ipv4() {
+        let c = load_config(
+            None,
+            &[
+                (
+                    "network.deny".into(),
+                    "::ffff:192.0.2.0/120, ::ffff:10.1.2.3".into(),
+                ),
+                (
+                    "network.trusted_proxies".into(),
+                    "::ffff:127.0.0.1/128".into(),
+                ),
+                ("network.allow".into(), "2001:db8::/32".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(c.network.deny[0].to_string(), "192.0.2.0/24");
+        assert_eq!(c.network.deny[1].to_string(), "10.1.2.3/32");
+        assert_eq!(c.network.trusted_proxies[0].to_string(), "127.0.0.1/32");
+        assert_eq!(c.network.allow[0].to_string(), "2001:db8::/32");
+    }
+
+    #[test]
+    fn global_brake_above_the_event_cap_is_refused() {
+        let ok = |v: &str| {
+            load_config(
+                None,
+                &[("limits.global_failed_joins_per_min".into(), v.into())],
+            )
+        };
+        assert!(ok("10000").is_ok());
+        let err = ok("10001").unwrap_err().to_string();
+        assert!(err.contains("global_failed_joins_per_min"), "{err}");
+        assert!(load_config(None, &[("limits.wide_failure_factor".into(), "0".into())]).is_err());
     }
 
     #[test]

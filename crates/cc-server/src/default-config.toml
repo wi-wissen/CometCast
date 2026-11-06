@@ -58,15 +58,16 @@ max_connections_per_ip = 500    # open connections from one address
 max_rooms_per_ip = 100          # rooms owned by one address
 ping_interval_secs = 20         # server pings; no answer for ping_interval + pong_timeout = closed
 pong_timeout_secs = 20
-paired_idle_secs = 14400        # a room where nothing was relayed for this long is closed
-max_room_lifetime_secs = 86400  # longest life of any room
+paired_idle_secs = 14400        # idle this long AND not answering pings: closed (rooms that answer pings stay)
+max_room_lifetime_secs = 86400  # hard cap: longest life of any room
 msg_rate_per_sec = 50           # per connection: messages per second ...
 msg_burst = 200                 # ... with this burst
 bytes_per_sec = 262144          # per connection: bytes per second ...
 bytes_burst = 1048576           # ... with this burst (at least max_message_bytes)
 max_room_relay_bytes = 67108864 # relayed through one room over its whole life
 max_bad_messages = 50           # garbage / wrong-role messages before the connection is closed
-global_failed_joins_per_min = 1000  # whole server: above this, joins are slowed for everybody
+global_failed_joins_per_min = 1000  # whole server: above this, joins are slowed for everybody (at most 10000)
+wide_failure_factor = 10        # an IPv6 /48 is banned after ban_after_failed_joins * this many failures
 
 # Proof-of-work (ALTCHA) for creating a room.
 [altcha]

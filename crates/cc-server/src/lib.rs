@@ -35,8 +35,9 @@ use tower_http::services::ServeDir;
 
 pub use config::{
     AltchaConfig, AltchaMode, ConfigError, DEFAULT_HELLO_TIMEOUT, DEFAULT_IDLE_ROOM_TIMEOUT,
-    DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_NO_ROOM_TIMEOUT, DEFAULT_OUTGOING_QUEUE_LEN, LimitsConfig,
-    Mode, NetworkConfig, Secret, ServerConfig, TlsConfig, TurnConfig,
+    DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_NO_ROOM_TIMEOUT, DEFAULT_OUTGOING_QUEUE_LEN,
+    DEFAULT_WIDE_FAILURE_FACTOR, LimitsConfig, Mode, NetworkConfig, Secret, ServerConfig,
+    TlsConfig, TurnConfig,
 };
 pub use file_config::{DEFAULT_CONFIG_TOML, load_config, overrides_from_env};
 pub use turn::{IceServer, credential_for, ice_servers};
@@ -76,7 +77,10 @@ pub(crate) fn deny_response(deny: limits::Deny) -> Response {
 ///
 /// The router needs the peer address of each connection, so serve it with
 /// `into_make_service_with_connect_info::<SocketAddr>()` (as [`run`] does).
-pub fn build_app(config: ServerConfig) -> Router {
+pub fn build_app(mut config: ServerConfig) -> Router {
+    // Networks written as IPv4-mapped IPv6 (`::ffff:a.b.c.d/N`) are turned into IPv4 ones,
+    // because client addresses are compared in their IPv4 form.
+    config.network = net::canonical_network(config.network);
     let web_dir = config.web_dir.clone();
     let state = AppState {
         guard: limits::Guard::new(config.limits.clone()),
