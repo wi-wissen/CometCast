@@ -27,24 +27,29 @@ cc-receiver (ReceiverCore) / cc-sender (SenderCore) / cc-proto (RoomCode)
 | `take_frame()` | `Future<VideoFrame?> takeFrame()` | The newest decoded picture (RGBA) the UI has not fetched yet |
 | `set_video_max_size(width, height)` | sync | Size of the picture area in physical pixels; pictures are scaled down to it (never up, at most 1920x1080) |
 | `start_sender(code, server, seconds, udp_bind, screen, sink)` | `Stream<SenderUiEvent> startSender(...)` | Join a room and send the built-in VP8 test stream, or with `screen` (`ScreenRequest`: display, monitor id, fps, kbit/s) the X11 screen as H.264 |
-| `capture_info(display)` | `Future<CaptureInfo> captureInfo(...)` | Can this system share its screen (`Supported`, `Wayland`, `NoDisplay`, `UnsupportedOs`, `Failed`) and which monitors exist (RandR, "root" = whole desktop) |
+| `capture_info(display)` | `Future<CaptureInfo> captureInfo(...)` | Can this system share its screen (`Supported`, `Wayland`, `NoDisplay`, `UnsupportedOs`, `Failed`) and which monitors exist (RandR, "root" = whole desktop). On Android: `Supported` with one monitor `android-projection` (the Kotlin capture does the work) |
+| `start_encoded_sender(code, server, udp_bind, sink)` | `Stream<SenderUiEvent> startEncodedSender(...)` | Join a room and send the H.264 access units the host pushes (Android `MediaCodec`); see [android.md](android.md) |
+| `push_encoded_frame(data, is_key, pts_us)` | sync, returns `PushResult` | Hand one access unit (Annex B or AVCC) to the encoded sender. The bytes are **copied**, the call never blocks, the queue is bounded and drops are counted |
+| `push_codec_config(data)` / `keyframe_requested()` | sync | SPS/PPS (Annex B or `avcC`) / poll: true once per key frame request (the host should ask its encoder for a sync frame) |
 | `server_defaults()` | sync | Server list of `cc-discovery` plus the development fallback `127.0.0.1:8443` |
 | `stop_sender()` | `Future<void> stopSender()` | Stop |
 | `check_room_code(input)` | `RoomCodeCheck checkRoomCode(...)` (sync) | Same rules as `cc_proto::RoomCode::parse` |
 | `room_code_length()` / `room_code_alphabet()` | sync | Constants from `cc-proto` |
 
-Events: `ReceiverUiEvent` = room code, peer joined, connection state, video track (MIME and codec), stats (packets, bytes, frames, key frames), **frame ready**, **video stats** (decoded, delivered, dropped, dropped packets, decode errors, key frame requests, size, mean decode time, last error), peer left, error. `SenderUiEvent` = joined, connection state, streaming (frames sent), **screen stats** (looks, changed, encoded, key frames, bytes), finished, peer left, error.
+Events: `ReceiverUiEvent` = room code, peer joined, connection state, video track (MIME and codec), stats (packets, bytes, frames, key frames), **frame ready**, **video stats** (decoded, delivered, dropped, dropped packets, decode errors, key frame requests, size, mean decode time, last error), peer left, error. `SenderUiEvent` = joined, connection state, streaming (frames sent), **screen stats** (looks, changed, encoded, key frames, bytes), **encoded stats** (pushed, sent, dropped, key frames, key frame requests, bytes; encoded sender only), finished, peer left, error.
 
 ## The picture path (receiver)
 
 ```
-WebRTC task --video_tap (RTP payloads, unbounded channel)--> decoder thread "cc-video-decode"
+WebRTC task --video_tap (RTP payloads, bounded channel of 4096 packets)--> decoder thread "cc-video-decode"
    H264Assembler -> OpenH264 (cc-media, feature `h264` of cc-ffi, default on) -> RGB -> scale -> RGBA
    -> mailbox with ONE slot (newest wins)  --FrameReady event-->  Dart --take_frame()--> ui.Image -> RawImage
 ```
 
 Implemented in `crates/cc-ffi/src/video.rs`; no change to `cc-receiver` was needed (the session already had the packet tap and `request_keyframe`). Why it is a pull model: a `StreamSink` queues without limit, and a pushed 8 MB picture per frame would grow memory when Dart is slow. Instead only a tiny `FrameReady` event is pushed, and only while the previous one was not answered by `take_frame`. Bounds:
 
+- packets that the bounded tap drops (decoder too slow) are counted in `dropped_packets`, like those the decoder thread throws away;
+- a decoder thread of a stopped session can no longer publish pictures or touch counters of a newer session (generation checked under the mailbox lock);
 - one picture waits in the mailbox; a newer one replaces it and is counted in `dropped` (the UI was too slow);
 - the decoder thread drops everything, waits for the next IDR frame and asks for a key frame if more than 2000 packets pile up (`dropped_packets`; placeholder value, not tuned); the same happens after a lost RTP packet or a decode error (`decode_errors`); key frame requests are rate limited to one per second and sent as PLI by the receiver task;
 - pictures are scaled (nearest neighbour) to the size the UI reports with `set_video_max_size`, at most 1920x1080; only H.264 is decoded (other codecs, such as the VP8 test video, are only counted).

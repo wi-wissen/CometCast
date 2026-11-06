@@ -250,6 +250,22 @@
   "@sendShareScreenHint": {
     "description": "Subtitle of the \"Share this screen\" switch."
   },
+  "sendShareScreenHintAndroid": "Android asks for your permission first. Sending ends when you stop it here or in the notification.",
+  "@sendShareScreenHintAndroid": {
+    "description": "Subtitle of the \"Share this screen\" switch on Android."
+  },
+  "sendCaptureWaitingForConsent": "Waiting for your permission to capture the screen …",
+  "@sendCaptureWaitingForConsent": {
+    "description": "Status text on Android while the system dialog that asks for permission to capture the screen is open."
+  },
+  "sendCaptureDenied": "Screen sharing was not allowed. Nothing is sent.",
+  "@sendCaptureDenied": {
+    "description": "Status text on Android after the person refused the system dialog for screen capture."
+  },
+  "sendCaptureStopped": "Screen sharing was stopped.",
+  "@sendCaptureStopped": {
+    "description": "Status text on Android when the system or the person ended the screen capture (for example with the notification button)."
+  },
   "sendMonitorLabel": "What to share",
   "@sendMonitorLabel": {
     "description": "Label of the drop-down that lists the whole desktop and the monitors."
@@ -316,6 +332,14 @@
   "fullscreenExit": "Leave full screen (Esc)",
   "@fullscreenExit": {
     "description": "Tooltip of the button that leaves full screen."
+  },
+  "videoViewLabel": "Shared screen of the sender",
+  "@videoViewLabel": {
+    "description": "Screen reader label of the received picture of the sender's screen."
+  },
+  "videoStatsLabel": "Video statistics",
+  "@videoStatsLabel": {
+    "description": "Screen reader label of the statistics shown over the received picture."
   },
   "videoStatsShow": "Show statistics (I)",
   "@videoStatsShow": {

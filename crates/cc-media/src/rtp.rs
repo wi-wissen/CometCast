@@ -34,6 +34,11 @@ pub struct H264Assembler {
 
 const START_CODE: [u8; 4] = [0, 0, 0, 1];
 
+/// Largest access unit that is collected. A bigger one (packets of one timestamp without a
+/// marker bit, or a hostile sender) is dropped and the assembler waits for the next picture.
+/// UNCERTAIN: 8 MiB is a placeholder; a 4K IDR frame at a high bit rate is well below it.
+pub const MAX_ACCESS_UNIT_BYTES: usize = 8 * 1024 * 1024;
+
 impl H264Assembler {
     /// A new, empty assembler.
     pub fn new() -> Self {
@@ -68,6 +73,10 @@ impl H264Assembler {
 
         if !self.broken {
             self.append(payload);
+            if self.buf.len() > MAX_ACCESS_UNIT_BYTES {
+                // Counts as a dropped unit, so the caller waits for an IDR frame.
+                self.mark_broken();
+            }
         }
         if marker {
             let done = !self.broken && !self.buf.is_empty() && !self.in_fragment;
@@ -188,5 +197,22 @@ mod tests {
         let au = a.push(&[0x41, 2], true, 2, 2).unwrap();
         assert_eq!(au.data, [0, 0, 0, 1, 0x41, 2]);
         assert_eq!(a.dropped_units, 1);
+    }
+
+    #[test]
+    fn an_endless_unit_without_marker_is_capped() {
+        let mut a = H264Assembler::new();
+        let payload = vec![0x41u8; 1200];
+        // 12k packets of 1200 bytes (14 MB) with one timestamp and never a marker bit.
+        for seq in 0..12_000u16 {
+            assert_eq!(a.push(&payload, false, 7, seq), None);
+            assert!(a.buf.len() <= MAX_ACCESS_UNIT_BYTES + 2 * payload.len());
+        }
+        assert_eq!(a.dropped_units, 1, "the oversized unit counts once");
+        assert!(a.buf.is_empty());
+        // The marker packet of the broken unit yields nothing; the next picture is fine.
+        assert_eq!(a.push(&[0x41, 1], true, 7, 12_000), None);
+        let au = a.push(&[0x65, 2], true, 8, 12_001).unwrap();
+        assert_eq!(au.data, [0, 0, 0, 1, 0x65, 2]);
     }
 }

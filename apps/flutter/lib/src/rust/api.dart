@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `begin`, `capture_info_blocking`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `spawn_guarded`, `stats_event`, `stop`, `store`, `video_stats_event`
+// These functions are ignored because they are not marked as `pub`: `android_capture_info`, `begin`, `capture_info_blocking`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `spawn_guarded`, `stats_event`, `stop`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -75,8 +75,56 @@ Stream<SenderUiEvent> startSender({
   screen: screen,
 );
 
+/// Start a sender whose video the host pushes: join the room `code` on `server` and send the
+/// H.264 access units given to [`push_encoded_frame`] (until stopped). Meant for platforms whose
+/// own encoder makes the H.264 (Android `MediaCodec`).
+///
+/// Same event rules as [`start_sender`]; the first event is [`SenderUiEvent::Joined`]. Frames
+/// pushed before the WebRTC connection is up are refused ([`PushResult::NotStreaming`]); when it
+/// comes up the host is asked for a key frame ([`keyframe_requested`]). The counters arrive once
+/// per second as [`SenderUiEvent::EncodedStats`].
+Stream<SenderUiEvent> startEncodedSender({
+  required String code,
+  required String server,
+  String? udpBind,
+}) => RustLib.instance.api.crateApiStartEncodedSender(
+  code: code,
+  server: server,
+  udpBind: udpBind,
+);
+
 /// Stop the running sender (does nothing if none runs). The Dart stream then ends.
 Future<void> stopSender() => RustLib.instance.api.crateApiStopSender();
+
+/// Give one H.264 access unit to the sender started with [`start_encoded_sender`].
+///
+/// `data` is Annex B (start codes) or AVCC (length-prefixed NAL units; both are detected) and is
+/// **copied**: Dart keeps its buffer. `is_key` is the encoder's key frame flag (an IDR slice in
+/// the data counts too). `pts_us` is the presentation time in microseconds (negative = unknown);
+/// it sets the RTP time step. The call never blocks: the queue is bounded (3 units) and a unit
+/// that does not fit is dropped and counted, see [`PushResult`] and
+/// [`SenderUiEvent::EncodedStats`]. Key frames without SPS/PPS get the ones from
+/// [`push_codec_config`] (or seen earlier in the stream) in front.
+PushResult pushEncodedFrame({
+  required List<int> data,
+  required bool isKey,
+  required PlatformInt64 ptsUs,
+}) => RustLib.instance.api.crateApiPushEncodedFrame(
+  data: data,
+  isKey: isKey,
+  ptsUs: ptsUs,
+);
+
+/// Give the codec configuration (the H.264 SPS/PPS): Annex B, or an `avcC` record. Returns
+/// `false` if there is no sender or `data` contains neither an SPS nor a PPS. Copied, like
+/// [`push_encoded_frame`].
+bool pushCodecConfig({required List<int> data}) =>
+    RustLib.instance.api.crateApiPushCodecConfig(data: data);
+
+/// True once per key frame request (the peer connected, the peer lost a picture, or frames were
+/// dropped): the host should make its encoder produce a sync frame now. Poll it (every 100 ms is
+/// plenty; requests are rate limited to one per second). `false` if no encoded sender runs.
+bool keyframeRequested() => RustLib.instance.api.crateApiKeyframeRequested();
 
 /// Check whether screen capture works here and list the monitors.
 ///
@@ -182,7 +230,11 @@ class CaptureMonitor {
 sealed class CaptureSupport with _$CaptureSupport {
   const CaptureSupport._();
 
-  /// X11 capture works; `CaptureInfo::monitors` is filled.
+  /// Capture works; `CaptureInfo::monitors` is filled. On Linux it is X11 capture; on Android
+  /// it means "built for Android": the Kotlin capture service of the app does the capture and
+  /// its H.264 is pushed with [`push_encoded_frame`]; the single monitor has the id
+  /// [`ANDROID_PROJECTION_ID`]. UNCERTAIN: not run on a device, and some Android TV devices
+  /// may have no screen capture at all.
   const factory CaptureSupport.supported() = CaptureSupport_Supported;
 
   /// The session looks like Wayland (and no X11 display was asked for explicitly): only X11
@@ -200,6 +252,31 @@ sealed class CaptureSupport with _$CaptureSupport {
     /// Technical message in English.
     required String message,
   }) = CaptureSupport_Failed;
+}
+
+/// What happened to an access unit given to [`push_encoded_frame`].
+enum PushResult {
+  /// Queued for sending.
+  queued,
+
+  /// No sender started with [`start_encoded_sender`] is running (or it ended).
+  noSender,
+
+  /// The peer is not connected yet: dropped. Wait for [`keyframe_requested`].
+  notStreaming,
+
+  /// The bounded queue was full: dropped; the next frames are dropped until a key frame.
+  queueFull,
+
+  /// A delta frame while a key frame is awaited after a drop: dropped.
+  waitingForKeyFrame,
+
+  /// A key frame without SPS/PPS and none known yet: dropped. Give the codec config
+  /// ([`push_codec_config`]) before the first frame.
+  missingParameterSets,
+
+  /// Not H.264 in Annex B or AVCC form, empty, or too large: dropped.
+  invalid,
 }
 
 @freezed
@@ -369,6 +446,28 @@ sealed class SenderUiEvent with _$SenderUiEvent {
     /// Frames written to the track.
     required BigInt framesSent,
   }) = SenderUiEvent_Streaming;
+
+  /// Counters of the external H.264 input, sent together with `Streaming` in that mode.
+  const factory SenderUiEvent.encodedStats({
+    /// Access units handed to [`push_encoded_frame`].
+    required BigInt pushed,
+
+    /// Units written to the transport.
+    required BigInt sent,
+
+    /// Units dropped (no peer yet, queue full, waiting for a key frame, no SPS/PPS,
+    /// replaced by a newer key frame, invalid).
+    required BigInt dropped,
+
+    /// Key frames written to the transport.
+    required BigInt keyframes,
+
+    /// Key frame requests (PLI, new peer, drop policy).
+    required BigInt keyframeRequests,
+
+    /// Bytes written to the transport.
+    required BigInt bytes,
+  }) = SenderUiEvent_EncodedStats;
 
   /// Counters of the screen pipeline, sent together with `Streaming` in screen mode.
   const factory SenderUiEvent.screenStats({

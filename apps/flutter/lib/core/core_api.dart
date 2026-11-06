@@ -4,10 +4,13 @@
 // Why an interface: widget tests plug in a fake (no native library needed), the real app
 // plugs in [RustCoreApi], which calls the generated flutter_rust_bridge code.
 
+import 'dart:typed_data';
+
 import 'package:cometcast/src/rust/api.dart' as rust;
 import 'package:cometcast/src/rust/api.dart'
     show
         CaptureInfo,
+        PushResult,
         ReceiverUiEvent,
         RoomCodeCheck,
         ScreenRequest,
@@ -21,6 +24,10 @@ export 'package:cometcast/src/rust/api.dart'
         startReceiver,
         stopReceiver,
         startSender,
+        startEncodedSender,
+        pushEncodedFrame,
+        pushCodecConfig,
+        keyframeRequested,
         stopSender,
         checkRoomCode,
         roomCodeAlphabet,
@@ -56,6 +63,30 @@ abstract class CoreApi {
     String? udpBind,
     ScreenRequest? screen,
   });
+
+  /// Join the room [code] and send the H.264 access units that the host pushes with
+  /// [pushEncodedFrame] (Android: the output of the native screen encoder) until stopped.
+  /// Same event rules as [startSender].
+  Stream<SenderUiEvent> startEncodedSender({
+    required String code,
+    required String server,
+    String? udpBind,
+  });
+
+  /// Hand one H.264 access unit (Annex B or AVCC) to the encoded sender. The bytes are copied.
+  /// Never blocks; a unit that cannot be taken is dropped and the result says why.
+  PushResult pushEncodedFrame(
+    Uint8List data, {
+    required bool isKey,
+    required int ptsUs,
+  });
+
+  /// Hand the codec configuration (SPS/PPS, Annex B or avcC) to the encoded sender. False if
+  /// no encoded sender runs or the data has no parameter sets.
+  bool pushCodecConfig(Uint8List data);
+
+  /// True once per key frame request of the Rust core: ask the encoder for a sync frame.
+  bool keyframeRequested();
 
   /// Can this system share its screen, and which monitors exist? [display] forces an X11
   /// display such as `:99` (development and tests).
@@ -117,6 +148,26 @@ class RustCoreApi implements CoreApi {
     udpBind: udpBind,
     screen: screen,
   );
+
+  @override
+  Stream<SenderUiEvent> startEncodedSender({
+    required String code,
+    required String server,
+    String? udpBind,
+  }) => rust.startEncodedSender(code: code, server: server, udpBind: udpBind);
+
+  @override
+  PushResult pushEncodedFrame(
+    Uint8List data, {
+    required bool isKey,
+    required int ptsUs,
+  }) => rust.pushEncodedFrame(data: data, isKey: isKey, ptsUs: ptsUs);
+
+  @override
+  bool pushCodecConfig(Uint8List data) => rust.pushCodecConfig(data: data);
+
+  @override
+  bool keyframeRequested() => rust.keyframeRequested();
 
   @override
   Future<void> stopSender() => rust.stopSender();

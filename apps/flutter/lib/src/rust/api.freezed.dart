@@ -1518,13 +1518,14 @@ extension SenderUiEventPatterns on SenderUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SenderUiEvent_Joined value)?  joined,TResult Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult Function( SenderUiEvent_Streaming value)?  streaming,TResult Function( SenderUiEvent_ScreenStats value)?  screenStats,TResult Function( SenderUiEvent_Finished value)?  finished,TResult Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult Function( SenderUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SenderUiEvent_Joined value)?  joined,TResult Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult Function( SenderUiEvent_Streaming value)?  streaming,TResult Function( SenderUiEvent_EncodedStats value)?  encodedStats,TResult Function( SenderUiEvent_ScreenStats value)?  screenStats,TResult Function( SenderUiEvent_Finished value)?  finished,TResult Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult Function( SenderUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined(_that);case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that);case SenderUiEvent_ScreenStats() when screenStats != null:
+return streaming(_that);case SenderUiEvent_EncodedStats() when encodedStats != null:
+return encodedStats(_that);case SenderUiEvent_ScreenStats() when screenStats != null:
 return screenStats(_that);case SenderUiEvent_Finished() when finished != null:
 return finished(_that);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case SenderUiEvent_Error() when error != null:
@@ -1546,13 +1547,14 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SenderUiEvent_Joined value)  joined,required TResult Function( SenderUiEvent_ConnectionState value)  connectionState,required TResult Function( SenderUiEvent_Streaming value)  streaming,required TResult Function( SenderUiEvent_ScreenStats value)  screenStats,required TResult Function( SenderUiEvent_Finished value)  finished,required TResult Function( SenderUiEvent_PeerLeft value)  peerLeft,required TResult Function( SenderUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SenderUiEvent_Joined value)  joined,required TResult Function( SenderUiEvent_ConnectionState value)  connectionState,required TResult Function( SenderUiEvent_Streaming value)  streaming,required TResult Function( SenderUiEvent_EncodedStats value)  encodedStats,required TResult Function( SenderUiEvent_ScreenStats value)  screenStats,required TResult Function( SenderUiEvent_Finished value)  finished,required TResult Function( SenderUiEvent_PeerLeft value)  peerLeft,required TResult Function( SenderUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined():
 return joined(_that);case SenderUiEvent_ConnectionState():
 return connectionState(_that);case SenderUiEvent_Streaming():
-return streaming(_that);case SenderUiEvent_ScreenStats():
+return streaming(_that);case SenderUiEvent_EncodedStats():
+return encodedStats(_that);case SenderUiEvent_ScreenStats():
 return screenStats(_that);case SenderUiEvent_Finished():
 return finished(_that);case SenderUiEvent_PeerLeft():
 return peerLeft(_that);case SenderUiEvent_Error():
@@ -1570,13 +1572,14 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SenderUiEvent_Joined value)?  joined,TResult? Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult? Function( SenderUiEvent_Streaming value)?  streaming,TResult? Function( SenderUiEvent_ScreenStats value)?  screenStats,TResult? Function( SenderUiEvent_Finished value)?  finished,TResult? Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult? Function( SenderUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SenderUiEvent_Joined value)?  joined,TResult? Function( SenderUiEvent_ConnectionState value)?  connectionState,TResult? Function( SenderUiEvent_Streaming value)?  streaming,TResult? Function( SenderUiEvent_EncodedStats value)?  encodedStats,TResult? Function( SenderUiEvent_ScreenStats value)?  screenStats,TResult? Function( SenderUiEvent_Finished value)?  finished,TResult? Function( SenderUiEvent_PeerLeft value)?  peerLeft,TResult? Function( SenderUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined(_that);case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that);case SenderUiEvent_ScreenStats() when screenStats != null:
+return streaming(_that);case SenderUiEvent_EncodedStats() when encodedStats != null:
+return encodedStats(_that);case SenderUiEvent_ScreenStats() when screenStats != null:
 return screenStats(_that);case SenderUiEvent_Finished() when finished != null:
 return finished(_that);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case SenderUiEvent_Error() when error != null:
@@ -1597,12 +1600,13 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  joined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( BigInt framesSent)?  streaming,TResult Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)?  screenStats,TResult Function( BigInt framesSent)?  finished,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  joined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( BigInt framesSent)?  streaming,TResult Function( BigInt pushed,  BigInt sent,  BigInt dropped,  BigInt keyframes,  BigInt keyframeRequests,  BigInt bytes)?  encodedStats,TResult Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)?  screenStats,TResult Function( BigInt framesSent)?  finished,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined();case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that.framesSent);case SenderUiEvent_ScreenStats() when screenStats != null:
+return streaming(_that.framesSent);case SenderUiEvent_EncodedStats() when encodedStats != null:
+return encodedStats(_that.pushed,_that.sent,_that.dropped,_that.keyframes,_that.keyframeRequests,_that.bytes);case SenderUiEvent_ScreenStats() when screenStats != null:
 return screenStats(_that.polls,_that.changed,_that.encoded,_that.keyframes,_that.encodedBytes);case SenderUiEvent_Finished() when finished != null:
 return finished(_that.framesSent);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case SenderUiEvent_Error() when error != null:
@@ -1624,12 +1628,13 @@ return error(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  joined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( BigInt framesSent)  streaming,required TResult Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)  screenStats,required TResult Function( BigInt framesSent)  finished,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  joined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( BigInt framesSent)  streaming,required TResult Function( BigInt pushed,  BigInt sent,  BigInt dropped,  BigInt keyframes,  BigInt keyframeRequests,  BigInt bytes)  encodedStats,required TResult Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)  screenStats,required TResult Function( BigInt framesSent)  finished,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined():
 return joined();case SenderUiEvent_ConnectionState():
 return connectionState(_that.state);case SenderUiEvent_Streaming():
-return streaming(_that.framesSent);case SenderUiEvent_ScreenStats():
+return streaming(_that.framesSent);case SenderUiEvent_EncodedStats():
+return encodedStats(_that.pushed,_that.sent,_that.dropped,_that.keyframes,_that.keyframeRequests,_that.bytes);case SenderUiEvent_ScreenStats():
 return screenStats(_that.polls,_that.changed,_that.encoded,_that.keyframes,_that.encodedBytes);case SenderUiEvent_Finished():
 return finished(_that.framesSent);case SenderUiEvent_PeerLeft():
 return peerLeft();case SenderUiEvent_Error():
@@ -1647,12 +1652,13 @@ return error(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  joined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( BigInt framesSent)?  streaming,TResult? Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)?  screenStats,TResult? Function( BigInt framesSent)?  finished,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  joined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( BigInt framesSent)?  streaming,TResult? Function( BigInt pushed,  BigInt sent,  BigInt dropped,  BigInt keyframes,  BigInt keyframeRequests,  BigInt bytes)?  encodedStats,TResult? Function( BigInt polls,  BigInt changed,  BigInt encoded,  BigInt keyframes,  BigInt encodedBytes)?  screenStats,TResult? Function( BigInt framesSent)?  finished,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
 switch (_that) {
 case SenderUiEvent_Joined() when joined != null:
 return joined();case SenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case SenderUiEvent_Streaming() when streaming != null:
-return streaming(_that.framesSent);case SenderUiEvent_ScreenStats() when screenStats != null:
+return streaming(_that.framesSent);case SenderUiEvent_EncodedStats() when encodedStats != null:
+return encodedStats(_that.pushed,_that.sent,_that.dropped,_that.keyframes,_that.keyframeRequests,_that.bytes);case SenderUiEvent_ScreenStats() when screenStats != null:
 return screenStats(_that.polls,_that.changed,_that.encoded,_that.keyframes,_that.encodedBytes);case SenderUiEvent_Finished() when finished != null:
 return finished(_that.framesSent);case SenderUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case SenderUiEvent_Error() when error != null:
@@ -1827,6 +1833,91 @@ class _$SenderUiEvent_StreamingCopyWithImpl<$Res>
 @pragma('vm:prefer-inline') $Res call({Object? framesSent = null,}) {
   return _then(SenderUiEvent_Streaming(
 framesSent: null == framesSent ? _self.framesSent : framesSent // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SenderUiEvent_EncodedStats extends SenderUiEvent {
+  const SenderUiEvent_EncodedStats({required this.pushed, required this.sent, required this.dropped, required this.keyframes, required this.keyframeRequests, required this.bytes}): super._();
+  
+
+/// Access units handed to [`push_encoded_frame`].
+ final  BigInt pushed;
+/// Units written to the transport.
+ final  BigInt sent;
+/// Units dropped (no peer yet, queue full, waiting for a key frame, no SPS/PPS,
+/// replaced by a newer key frame, invalid).
+ final  BigInt dropped;
+/// Key frames written to the transport.
+ final  BigInt keyframes;
+/// Key frame requests (PLI, new peer, drop policy).
+ final  BigInt keyframeRequests;
+/// Bytes written to the transport.
+ final  BigInt bytes;
+
+/// Create a copy of SenderUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SenderUiEvent_EncodedStatsCopyWith<SenderUiEvent_EncodedStats> get copyWith => _$SenderUiEvent_EncodedStatsCopyWithImpl<SenderUiEvent_EncodedStats>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SenderUiEvent_EncodedStats&&(identical(other.pushed, pushed) || other.pushed == pushed)&&(identical(other.sent, sent) || other.sent == sent)&&(identical(other.dropped, dropped) || other.dropped == dropped)&&(identical(other.keyframes, keyframes) || other.keyframes == keyframes)&&(identical(other.keyframeRequests, keyframeRequests) || other.keyframeRequests == keyframeRequests)&&(identical(other.bytes, bytes) || other.bytes == bytes));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,pushed,sent,dropped,keyframes,keyframeRequests,bytes);
+}
+
+@override
+String toString() {
+    return 'SenderUiEvent.encodedStats(pushed: $pushed, sent: $sent, dropped: $dropped, keyframes: $keyframes, keyframeRequests: $keyframeRequests, bytes: $bytes)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SenderUiEvent_EncodedStatsCopyWith<$Res> implements $SenderUiEventCopyWith<$Res> {
+  factory $SenderUiEvent_EncodedStatsCopyWith(SenderUiEvent_EncodedStats value, $Res Function(SenderUiEvent_EncodedStats) _then) = _$SenderUiEvent_EncodedStatsCopyWithImpl;
+@useResult
+$Res call({
+ BigInt pushed, BigInt sent, BigInt dropped, BigInt keyframes, BigInt keyframeRequests, BigInt bytes
+});
+
+
+
+
+}
+/// @nodoc
+class _$SenderUiEvent_EncodedStatsCopyWithImpl<$Res>
+    implements $SenderUiEvent_EncodedStatsCopyWith<$Res> {
+  _$SenderUiEvent_EncodedStatsCopyWithImpl(this._self, this._then);
+
+  final SenderUiEvent_EncodedStats _self;
+  final $Res Function(SenderUiEvent_EncodedStats) _then;
+
+/// Create a copy of SenderUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? pushed = null,Object? sent = null,Object? dropped = null,Object? keyframes = null,Object? keyframeRequests = null,Object? bytes = null,}) {
+  return _then(SenderUiEvent_EncodedStats(
+pushed: null == pushed ? _self.pushed : pushed // ignore: cast_nullable_to_non_nullable
+as BigInt,sent: null == sent ? _self.sent : sent // ignore: cast_nullable_to_non_nullable
+as BigInt,dropped: null == dropped ? _self.dropped : dropped // ignore: cast_nullable_to_non_nullable
+as BigInt,keyframes: null == keyframes ? _self.keyframes : keyframes // ignore: cast_nullable_to_non_nullable
+as BigInt,keyframeRequests: null == keyframeRequests ? _self.keyframeRequests : keyframeRequests // ignore: cast_nullable_to_non_nullable
+as BigInt,bytes: null == bytes ? _self.bytes : bytes // ignore: cast_nullable_to_non_nullable
 as BigInt,
   ));
 }

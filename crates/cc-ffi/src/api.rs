@@ -11,7 +11,9 @@
 //! * Receiver: counts the incoming video and, for H.264, decodes it (OpenH264, feature `h264`)
 //!   and offers RGBA pictures to the UI: a `FrameReady` event, then [`take_frame`]. See
 //!   `video.rs` for the bounds (one pending picture, drops are counted).
-//! * Sender: the built-in VP8 test stream, or ([`ScreenRequest`]) the X11 screen as H.264.
+//! * Sender: the built-in VP8 test stream, or ([`ScreenRequest`]) the X11 screen as H.264, or
+//!   ([`start_encoded_sender`]) H.264 access units that the host pushes with
+//!   [`push_encoded_frame`] (Android: `MediaCodec` output, see docs/android.md).
 //!   [`capture_info`] says whether screen capture works on this system and lists the monitors.
 //! * [`server_defaults`]: the server addresses the UI pre-fills.
 //!
@@ -25,11 +27,14 @@ use std::time::Duration;
 
 use cc_proto::{RoomCode, RoomCodeError};
 use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
-use cc_sender::{ScreenOptions, SenderCore, SenderEvent, SenderOptions};
+use cc_sender::{
+    ExternalInput, PushOutcome, ScreenOptions, SenderCore, SenderEvent, SenderOptions,
+};
 use cc_transport::{ConnectionState, MediaSnapshot};
 use flutter_rust_bridge::frb;
 use tokio::sync::oneshot;
 
+use crate::encoded;
 use crate::frb_generated::StreamSink;
 use crate::video::{self, VIDEO};
 
@@ -465,6 +470,22 @@ pub enum SenderUiEvent {
         /// Frames written to the track.
         frames_sent: u64,
     },
+    /// Counters of the external H.264 input, sent together with `Streaming` in that mode.
+    EncodedStats {
+        /// Access units handed to [`push_encoded_frame`].
+        pushed: u64,
+        /// Units written to the transport.
+        sent: u64,
+        /// Units dropped (no peer yet, queue full, waiting for a key frame, no SPS/PPS,
+        /// replaced by a newer key frame, invalid).
+        dropped: u64,
+        /// Key frames written to the transport.
+        keyframes: u64,
+        /// Key frame requests (PLI, new peer, drop policy).
+        keyframe_requests: u64,
+        /// Bytes written to the transport.
+        bytes: u64,
+    },
     /// Counters of the screen pipeline, sent together with `Streaming` in screen mode.
     ScreenStats {
         /// Times the screen was looked at.
@@ -529,7 +550,39 @@ pub async fn start_sender(
     screen: Option<ScreenRequest>,
     events: StreamSink<SenderUiEvent>,
 ) {
+    run_sender(code, server, seconds, udp_bind, screen, None, events).await;
+}
+
+/// Start a sender whose video the host pushes: join the room `code` on `server` and send the
+/// H.264 access units given to [`push_encoded_frame`] (until stopped). Meant for platforms whose
+/// own encoder makes the H.264 (Android `MediaCodec`).
+///
+/// Same event rules as [`start_sender`]; the first event is [`SenderUiEvent::Joined`]. Frames
+/// pushed before the WebRTC connection is up are refused ([`PushResult::NotStreaming`]); when it
+/// comes up the host is asked for a key frame ([`keyframe_requested`]). The counters arrive once
+/// per second as [`SenderUiEvent::EncodedStats`].
+pub async fn start_encoded_sender(
+    code: String,
+    server: String,
+    udp_bind: Option<String>,
+    events: StreamSink<SenderUiEvent>,
+) {
+    let input = ExternalInput::default();
+    run_sender(code, server, None, udp_bind, None, Some(input), events).await;
+}
+
+async fn run_sender(
+    code: String,
+    server: String,
+    seconds: Option<u32>,
+    udp_bind: Option<String>,
+    screen: Option<ScreenRequest>,
+    external: Option<ExternalInput>,
+    events: StreamSink<SenderUiEvent>,
+) {
     let generation = SENDER.begin();
+    // The previous encoded input (if any) is closed, so a late push cannot reach this session.
+    encoded::replace(external.clone());
     let code = match RoomCode::parse(&code) {
         Ok(code) => code,
         Err(e) => {
@@ -545,6 +598,8 @@ pub async fn start_sender(
         options.session.udp_bind = vec![b];
     }
     let screen_mode = screen.is_some();
+    let encoded_mode = external.is_some();
+    options.external = external.clone();
     options.screen = screen.map(|r| ScreenOptions {
         display: r.display,
         source_id: r.monitor_id,
@@ -558,17 +613,20 @@ pub async fn start_sender(
             let _ = events.add(SenderUiEvent::Error {
                 message: e.to_string(),
             });
+            encoded::clear_if(external.as_ref());
             return;
         }
     };
     if !SENDER.is_current(generation) || events.add(SenderUiEvent::Joined).is_err() {
         core.stop().await;
+        encoded::clear_if(external.as_ref());
         return;
     }
     let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
     SENDER.store(stop_tx);
     if !SENDER.is_current(generation) {
         core.stop().await;
+        encoded::clear_if(external.as_ref());
         return;
     }
     let panic_sink = events.clone();
@@ -587,6 +645,21 @@ pub async fn start_sender(
                             core.stop().await;
                             break;
                         }
+                        if encoded_mode && is_streaming {
+                            let st = core.external_stats();
+                            let stats = SenderUiEvent::EncodedStats {
+                                pushed: st.pushed,
+                                sent: st.sent,
+                                dropped: st.dropped() + st.invalid,
+                                keyframes: st.keyframes_sent,
+                                keyframe_requests: st.keyframe_requests,
+                                bytes: st.bytes_sent,
+                            };
+                            if events.add(stats).is_err() {
+                                core.stop().await;
+                                break;
+                            }
+                        }
                         if screen_mode && is_streaming {
                             let st = core.screen_stats();
                             let stats = SenderUiEvent::ScreenStats {
@@ -604,6 +677,7 @@ pub async fn start_sender(
                     }
                 }
             }
+            encoded::clear_if(external.as_ref());
         },
         move || {
             let _ = panic_sink.add(SenderUiEvent::Error {
@@ -616,6 +690,78 @@ pub async fn start_sender(
 /// Stop the running sender (does nothing if none runs). The Dart stream then ends.
 pub fn stop_sender() {
     SENDER.stop();
+    encoded::replace(None);
+}
+
+// ---------------------------------------------------------------------------
+// Host-encoded video (Android MediaCodec): push access units, read key frame requests
+// ---------------------------------------------------------------------------
+
+/// What happened to an access unit given to [`push_encoded_frame`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushResult {
+    /// Queued for sending.
+    Queued,
+    /// No sender started with [`start_encoded_sender`] is running (or it ended).
+    NoSender,
+    /// The peer is not connected yet: dropped. Wait for [`keyframe_requested`].
+    NotStreaming,
+    /// The bounded queue was full: dropped; the next frames are dropped until a key frame.
+    QueueFull,
+    /// A delta frame while a key frame is awaited after a drop: dropped.
+    WaitingForKeyFrame,
+    /// A key frame without SPS/PPS and none known yet: dropped. Give the codec config
+    /// ([`push_codec_config`]) before the first frame.
+    MissingParameterSets,
+    /// Not H.264 in Annex B or AVCC form, empty, or too large: dropped.
+    Invalid,
+}
+
+impl From<PushOutcome> for PushResult {
+    fn from(o: PushOutcome) -> Self {
+        match o {
+            PushOutcome::Queued => Self::Queued,
+            PushOutcome::NotStreaming => Self::NotStreaming,
+            PushOutcome::QueueFull => Self::QueueFull,
+            PushOutcome::WaitingForKeyFrame => Self::WaitingForKeyFrame,
+            PushOutcome::MissingParameterSets => Self::MissingParameterSets,
+            PushOutcome::Invalid => Self::Invalid,
+            PushOutcome::Closed => Self::NoSender,
+        }
+    }
+}
+
+/// Give one H.264 access unit to the sender started with [`start_encoded_sender`].
+///
+/// `data` is Annex B (start codes) or AVCC (length-prefixed NAL units; both are detected) and is
+/// **copied**: Dart keeps its buffer. `is_key` is the encoder's key frame flag (an IDR slice in
+/// the data counts too). `pts_us` is the presentation time in microseconds (negative = unknown);
+/// it sets the RTP time step. The call never blocks: the queue is bounded (3 units) and a unit
+/// that does not fit is dropped and counted, see [`PushResult`] and
+/// [`SenderUiEvent::EncodedStats`]. Key frames without SPS/PPS get the ones from
+/// [`push_codec_config`] (or seen earlier in the stream) in front.
+#[frb(sync)]
+pub fn push_encoded_frame(data: Vec<u8>, is_key: bool, pts_us: i64) -> PushResult {
+    match encoded::current() {
+        Some(input) => input.push(&data, is_key, u64::try_from(pts_us).ok()).into(),
+        None => PushResult::NoSender,
+    }
+}
+
+/// Give the codec configuration (the H.264 SPS/PPS): Annex B, or an `avcC` record. Returns
+/// `false` if there is no sender or `data` contains neither an SPS nor a PPS. Copied, like
+/// [`push_encoded_frame`].
+#[frb(sync)]
+pub fn push_codec_config(data: Vec<u8>) -> bool {
+    encoded::current().is_some_and(|input| input.set_config(&data))
+}
+
+/// True once per key frame request (the peer connected, the peer lost a picture, or frames were
+/// dropped): the host should make its encoder produce a sync frame now. Poll it (every 100 ms is
+/// plenty; requests are rate limited to one per second). `false` if no encoded sender runs.
+#[frb(sync)]
+pub fn keyframe_requested() -> bool {
+    encoded::current().is_some_and(|input| input.keyframe_requested())
 }
 
 // ---------------------------------------------------------------------------
@@ -625,7 +771,11 @@ pub fn stop_sender() {
 /// Whether this system can share its screen with this version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureSupport {
-    /// X11 capture works; `CaptureInfo::monitors` is filled.
+    /// Capture works; `CaptureInfo::monitors` is filled. On Linux it is X11 capture; on Android
+    /// it means "built for Android": the Kotlin capture service of the app does the capture and
+    /// its H.264 is pushed with [`push_encoded_frame`]; the single monitor has the id
+    /// [`ANDROID_PROJECTION_ID`]. UNCERTAIN: not run on a device, and some Android TV devices
+    /// may have no screen capture at all.
     Supported,
     /// The session looks like Wayland (and no X11 display was asked for explicitly): only X11
     /// capture exists, PipeWire / portal capture is not implemented.
@@ -688,6 +838,33 @@ pub async fn capture_info(display: Option<String>) -> CaptureInfo {
         })
 }
 
+/// The id of the single entry in the monitor list on Android: the screen that the system's
+/// screen capture consent dialog lets the person pick. The Rust core cannot list monitors there.
+pub const ANDROID_PROJECTION_ID: &str = "android-projection";
+
+/// What [`capture_info`] answers on Android. Compiled everywhere so a test can check it.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn android_capture_info() -> CaptureInfo {
+    CaptureInfo {
+        support: CaptureSupport::Supported,
+        display: None,
+        monitors: vec![CaptureMonitor {
+            id: ANDROID_PROJECTION_ID.to_owned(),
+            name: "Screen".to_owned(),
+            x: 0,
+            y: 0,
+            // Unknown here: the size is decided by the capture service of the app.
+            width: 0,
+            height: 0,
+        }],
+    }
+}
+
+#[cfg(target_os = "android")]
+fn capture_info_blocking(_display: Option<String>) -> CaptureInfo {
+    android_capture_info()
+}
+
 #[cfg(target_os = "linux")]
 fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
     use cc_capture::ScreenSource;
@@ -735,7 +912,7 @@ fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
 fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
     CaptureInfo {
         support: CaptureSupport::UnsupportedOs,
@@ -888,6 +1065,60 @@ mod tests {
             info.support,
             CaptureSupport::Failed { .. } | CaptureSupport::UnsupportedOs
         ));
+    }
+
+    #[test]
+    fn android_capture_info_lists_the_projection_only() {
+        let info = android_capture_info();
+        assert_eq!(info.support, CaptureSupport::Supported);
+        assert_eq!(info.monitors.len(), 1);
+        assert_eq!(info.monitors[0].id, ANDROID_PROJECTION_ID);
+        // The Dart side (lib/core/android_capture.dart) compares with this literal.
+        assert_eq!(ANDROID_PROJECTION_ID, "android-projection");
+    }
+
+    /// The tests below share the process-wide slot: one test at a time.
+    static SLOT_TESTS: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn push_without_a_sender_is_refused() {
+        let _g = SLOT_TESTS.lock().unwrap_or_else(|p| p.into_inner());
+        encoded::replace(None);
+        assert_eq!(
+            push_encoded_frame(vec![0, 0, 0, 1, 0x65, 1], true, 0),
+            PushResult::NoSender
+        );
+        assert!(!push_codec_config(vec![0, 0, 0, 1, 0x67, 1]));
+        assert!(!keyframe_requested());
+    }
+
+    #[test]
+    fn push_reaches_the_current_input_and_stop_clears_it() {
+        let _g = SLOT_TESTS.lock().unwrap_or_else(|p| p.into_inner());
+        let input = ExternalInput::default();
+        encoded::replace(Some(input.clone()));
+        // No peer yet: refused, counted by the core.
+        assert_eq!(
+            push_encoded_frame(vec![0, 0, 0, 1, 0x65, 1], true, 5),
+            PushResult::NotStreaming
+        );
+        assert_eq!(
+            push_encoded_frame(vec![1, 2], true, -1),
+            PushResult::Invalid
+        );
+        assert!(input.request_keyframe());
+        assert!(keyframe_requested());
+        assert!(!keyframe_requested(), "reading clears the request");
+        stop_sender();
+        assert_eq!(
+            push_encoded_frame(vec![0, 0, 0, 1, 0x65, 1], true, 5),
+            PushResult::NoSender
+        );
+        assert_eq!(
+            input.push(&[0, 0, 0, 1, 0x65, 1], true, None),
+            PushOutcome::Closed,
+            "the closed input refuses late pushes"
+        );
     }
 
     #[test]

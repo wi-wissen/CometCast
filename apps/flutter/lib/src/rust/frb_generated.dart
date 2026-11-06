@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1937907326;
+  int get rustContentHash => -1336415586;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -87,6 +87,16 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiInitApp();
 
+  bool crateApiKeyframeRequested();
+
+  bool crateApiPushCodecConfig({required List<int> data});
+
+  PushResult crateApiPushEncodedFrame({
+    required List<int> data,
+    required bool isKey,
+    required PlatformInt64 ptsUs,
+  });
+
   String crateApiRoomCodeAlphabet();
 
   int crateApiRoomCodeLength();
@@ -94,6 +104,12 @@ abstract class RustLibApi extends BaseApi {
   ServerDefaults crateApiServerDefaults();
 
   void crateApiSetVideoMaxSize({required int width, required int height});
+
+  Stream<SenderUiEvent> crateApiStartEncodedSender({
+    required String code,
+    required String server,
+    String? udpBind,
+  });
 
   Stream<ReceiverUiEvent> crateApiStartReceiver({
     required String server,
@@ -202,12 +218,88 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
-  String crateApiRoomCodeAlphabet() {
+  bool crateApiKeyframeRequested() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiKeyframeRequestedConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiKeyframeRequestedConstMeta =>
+      const TaskConstMeta(debugName: "keyframe_requested", argNames: []);
+
+  @override
+  bool crateApiPushCodecConfig({required List<int> data}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(data, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPushCodecConfigConstMeta,
+        argValues: [data],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPushCodecConfigConstMeta =>
+      const TaskConstMeta(debugName: "push_codec_config", argNames: ["data"]);
+
+  @override
+  PushResult crateApiPushEncodedFrame({
+    required List<int> data,
+    required bool isKey,
+    required PlatformInt64 ptsUs,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(data, serializer);
+          sse_encode_bool(isKey, serializer);
+          sse_encode_i_64(ptsUs, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_push_result,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPushEncodedFrameConstMeta,
+        argValues: [data, isKey, ptsUs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPushEncodedFrameConstMeta => const TaskConstMeta(
+    debugName: "push_encoded_frame",
+    argNames: ["data", "isKey", "ptsUs"],
+  );
+
+  @override
+  String crateApiRoomCodeAlphabet() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -229,7 +321,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_32,
@@ -251,7 +343,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_server_defaults,
@@ -275,7 +367,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_u_32(width, serializer);
           sse_encode_u_32(height, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -291,6 +383,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSetVideoMaxSizeConstMeta => const TaskConstMeta(
     debugName: "set_video_max_size",
     argNames: ["width", "height"],
+  );
+
+  @override
+  Stream<SenderUiEvent> crateApiStartEncodedSender({
+    required String code,
+    required String server,
+    String? udpBind,
+  }) {
+    final events = RustStreamSink<SenderUiEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_String(code, serializer);
+            sse_encode_String(server, serializer);
+            sse_encode_opt_String(udpBind, serializer);
+            sse_encode_StreamSink_sender_ui_event_Sse(events, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 11,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiStartEncodedSenderConstMeta,
+          argValues: [code, server, udpBind, events],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return events.stream;
+  }
+
+  TaskConstMeta get kCrateApiStartEncodedSenderConstMeta => const TaskConstMeta(
+    debugName: "start_encoded_sender",
+    argNames: ["code", "server", "udpBind", "events"],
   );
 
   @override
@@ -310,7 +443,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 8,
+              funcId: 12,
               port: port_,
             );
           },
@@ -355,7 +488,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 9,
+              funcId: 13,
               port: port_,
             );
           },
@@ -386,7 +519,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 14,
             port: port_,
           );
         },
@@ -413,7 +546,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 15,
             port: port_,
           );
         },
@@ -440,7 +573,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 16,
             port: port_,
           );
         },
@@ -484,6 +617,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
   }
 
   @protected
@@ -559,6 +698,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeI64(raw);
+  }
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
@@ -568,6 +713,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<CaptureMonitor> dco_decode_list_capture_monitor(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_capture_monitor).toList();
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
   }
 
   @protected
@@ -598,6 +749,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   VideoFrame? dco_decode_opt_box_autoadd_video_frame(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_video_frame(raw);
+  }
+
+  @protected
+  PushResult dco_decode_push_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PushResult.values[raw as int];
   }
 
   @protected
@@ -690,6 +847,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 2:
         return SenderUiEvent_Streaming(framesSent: dco_decode_u_64(raw[1]));
       case 3:
+        return SenderUiEvent_EncodedStats(
+          pushed: dco_decode_u_64(raw[1]),
+          sent: dco_decode_u_64(raw[2]),
+          dropped: dco_decode_u_64(raw[3]),
+          keyframes: dco_decode_u_64(raw[4]),
+          keyframeRequests: dco_decode_u_64(raw[5]),
+          bytes: dco_decode_u_64(raw[6]),
+        );
+      case 4:
         return SenderUiEvent_ScreenStats(
           polls: dco_decode_u_64(raw[1]),
           changed: dco_decode_u_64(raw[2]),
@@ -697,11 +863,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           keyframes: dco_decode_u_64(raw[4]),
           encodedBytes: dco_decode_u_64(raw[5]),
         );
-      case 4:
-        return SenderUiEvent_Finished(framesSent: dco_decode_u_64(raw[1]));
       case 5:
-        return SenderUiEvent_PeerLeft();
+        return SenderUiEvent_Finished(framesSent: dco_decode_u_64(raw[1]));
       case 6:
+        return SenderUiEvent_PeerLeft();
+      case 7:
         return SenderUiEvent_Error(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
@@ -795,6 +961,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
   ScreenRequest sse_decode_box_autoadd_screen_request(
     SseDeserializer deserializer,
   ) {
@@ -875,6 +1047,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -898,6 +1076,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_capture_monitor(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
   }
 
   @protected
@@ -953,6 +1138,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     } else {
       return null;
     }
+  }
+
+  @protected
+  PushResult sse_decode_push_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PushResult.values[inner];
   }
 
   @protected
@@ -1068,6 +1260,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_framesSent = sse_decode_u_64(deserializer);
         return SenderUiEvent_Streaming(framesSent: var_framesSent);
       case 3:
+        var var_pushed = sse_decode_u_64(deserializer);
+        var var_sent = sse_decode_u_64(deserializer);
+        var var_dropped = sse_decode_u_64(deserializer);
+        var var_keyframes = sse_decode_u_64(deserializer);
+        var var_keyframeRequests = sse_decode_u_64(deserializer);
+        var var_bytes = sse_decode_u_64(deserializer);
+        return SenderUiEvent_EncodedStats(
+          pushed: var_pushed,
+          sent: var_sent,
+          dropped: var_dropped,
+          keyframes: var_keyframes,
+          keyframeRequests: var_keyframeRequests,
+          bytes: var_bytes,
+        );
+      case 4:
         var var_polls = sse_decode_u_64(deserializer);
         var var_changed = sse_decode_u_64(deserializer);
         var var_encoded = sse_decode_u_64(deserializer);
@@ -1080,12 +1287,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           keyframes: var_keyframes,
           encodedBytes: var_encodedBytes,
         );
-      case 4:
+      case 5:
         var var_framesSent = sse_decode_u_64(deserializer);
         return SenderUiEvent_Finished(framesSent: var_framesSent);
-      case 5:
-        return SenderUiEvent_PeerLeft();
       case 6:
+        return SenderUiEvent_PeerLeft();
+      case 7:
         var var_message = sse_decode_String(deserializer);
         return SenderUiEvent_Error(message: var_message);
       default:
@@ -1149,12 +1356,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
-  }
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
@@ -1201,6 +1402,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
   }
 
   @protected
@@ -1277,6 +1484,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -1295,6 +1508,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     for (final item in self) {
       sse_encode_capture_monitor(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(
+      self is Uint8List ? self : Uint8List.fromList(self),
+    );
   }
 
   @protected
@@ -1351,6 +1576,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     if (self != null) {
       sse_encode_box_autoadd_video_frame(self, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_push_result(PushResult self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -1458,6 +1689,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case SenderUiEvent_Streaming(framesSent: final framesSent):
         sse_encode_i_32(2, serializer);
         sse_encode_u_64(framesSent, serializer);
+      case SenderUiEvent_EncodedStats(
+        pushed: final pushed,
+        sent: final sent,
+        dropped: final dropped,
+        keyframes: final keyframes,
+        keyframeRequests: final keyframeRequests,
+        bytes: final bytes,
+      ):
+        sse_encode_i_32(3, serializer);
+        sse_encode_u_64(pushed, serializer);
+        sse_encode_u_64(sent, serializer);
+        sse_encode_u_64(dropped, serializer);
+        sse_encode_u_64(keyframes, serializer);
+        sse_encode_u_64(keyframeRequests, serializer);
+        sse_encode_u_64(bytes, serializer);
       case SenderUiEvent_ScreenStats(
         polls: final polls,
         changed: final changed,
@@ -1465,19 +1711,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         keyframes: final keyframes,
         encodedBytes: final encodedBytes,
       ):
-        sse_encode_i_32(3, serializer);
+        sse_encode_i_32(4, serializer);
         sse_encode_u_64(polls, serializer);
         sse_encode_u_64(changed, serializer);
         sse_encode_u_64(encoded, serializer);
         sse_encode_u_64(keyframes, serializer);
         sse_encode_u_64(encodedBytes, serializer);
       case SenderUiEvent_Finished(framesSent: final framesSent):
-        sse_encode_i_32(4, serializer);
+        sse_encode_i_32(5, serializer);
         sse_encode_u_64(framesSent, serializer);
       case SenderUiEvent_PeerLeft():
-        sse_encode_i_32(5, serializer);
-      case SenderUiEvent_Error(message: final message):
         sse_encode_i_32(6, serializer);
+      case SenderUiEvent_Error(message: final message):
+        sse_encode_i_32(7, serializer);
         sse_encode_String(message, serializer);
     }
   }
@@ -1531,11 +1777,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.width, serializer);
     sse_encode_u_32(self.height, serializer);
     sse_encode_list_prim_u_8_strict(self.rgba, serializer);
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }
