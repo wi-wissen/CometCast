@@ -189,20 +189,18 @@ async fn airplay(args: AirplayArgs) -> ExitCode {
     }
     config.video_sink = args.video_sink;
     // Ask the installed program which of our flags it does not list in its help text.
-    if let (Ok(out), Ok(flags)) = (
-        std::process::Command::new(&config.uxplay_path)
-            .arg("-h")
-            .output(),
-        config.build_args(),
-    ) {
-        let help = format!(
-            "{}{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let missing = cc_airplay::unsupported_flags(&help, &flags);
-        if !missing.is_empty() {
-            eprintln!("warning: this uxplay does not list these options in -h: {missing:?}");
+    // The probe gets 3 seconds; a program that hangs is killed.
+    if let Ok(flags) = config.build_args() {
+        let path = config.uxplay_path.clone();
+        let help = tokio::task::spawn_blocking(move || help_text(&path))
+            .await
+            .ok()
+            .flatten();
+        if let Some(help) = help {
+            let missing = cc_airplay::unsupported_flags(&help, &flags);
+            if !missing.is_empty() {
+                eprintln!("warning: this uxplay does not list these options in -h: {missing:?}");
+            }
         }
     }
     let (mut sup, rx) = match Supervisor::start(config, SupervisorOptions::default()) {
@@ -266,6 +264,42 @@ async fn airplay(args: AirplayArgs) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// Run `PROGRAM -h` and return its output, or `None` if it fails or takes over 3 seconds.
+fn help_text(path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = std::process::Command::new(path)
+        .arg("-h")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let end = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < end => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    // The help text is small, so it fits in the pipes while we waited.
+    let mut text = String::new();
+    if let Some(mut o) = child.stdout.take() {
+        let _ = o.read_to_string(&mut text);
+    }
+    if let Some(mut e) = child.stderr.take() {
+        let _ = e.read_to_string(&mut text);
+    }
+    Some(text)
 }
 
 async fn receive(common: Common) -> ExitCode {

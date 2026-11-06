@@ -28,8 +28,9 @@ fn launcher(test: &str, mode: &str) -> (PathBuf, PathBuf) {
     fs::write(
         &script,
         format!(
-            "#!/bin/sh\nFAKE_UXPLAY_MODE={mode} FAKE_UXPLAY_COUNTER={} exec bash {FAKE} \"$@\"\n",
-            counter.display()
+            "#!/bin/sh\nFAKE_UXPLAY_MODE={mode} FAKE_UXPLAY_COUNTER={} FAKE_UXPLAY_HELPER_PID={} exec bash {FAKE} \"$@\"\n",
+            counter.display(),
+            dir.join("helper.pid").display()
         ),
     )
     .unwrap();
@@ -128,6 +129,7 @@ fn starts_extracts_events_and_stops_cleanly() {
         pid,
         expected,
         code,
+        signal,
     }) = rest
         .iter()
         .find(|e| matches!(e, AirplayEvent::ProcessExited { .. }))
@@ -137,6 +139,7 @@ fn starts_extracts_events_and_stops_cleanly() {
     };
     assert!(expected);
     assert_eq!(code, Some(0)); // the fake exits 0 on SIGTERM
+    assert_eq!(signal, None);
     assert_eq!(rest.last(), Some(&AirplayEvent::Stopped));
     assert!(
         is_reaped(pid.unwrap()),
@@ -159,6 +162,7 @@ fn unexpected_exit_restarts_with_backoff() {
                 expected: false,
                 code,
                 pid,
+                ..
             } => Some((*code, *pid)),
             _ => None,
         })
@@ -191,7 +195,7 @@ fn gives_up_after_too_many_failures() {
         .iter()
         .filter(|e| matches!(e, AirplayEvent::Starting { .. }))
         .count();
-    assert_eq!(starts, 3); // first start plus two restarts
+    assert_eq!(starts, 2); // max_failures = 2: the 2nd failure in a row is the last
     assert!(
         seen.iter()
             .any(|e| matches!(e, AirplayEvent::Error(m) if m.contains("fake failure")))
@@ -357,4 +361,195 @@ fn real_uxplay_shows_pin_through_the_pty() {
         panic!("no ProcessExited in {rest:?}");
     };
     assert!(is_reaped(pid.unwrap()));
+}
+
+/// Pids written by the fake's background helpers, one per line.
+fn helper_pids(dir: &std::path::Path) -> Vec<u32> {
+    fs::read_to_string(dir.join("helper.pid"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.trim().parse().ok())
+        .collect()
+}
+
+/// True if the process does not exist or is only a zombie of someone else's child
+/// (an orphan that its new parent has not collected yet is dead for our purpose).
+fn is_dead(pid: u32) -> bool {
+    match fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Err(_) => true,
+        Ok(stat) => stat
+            .rsplit(')')
+            .next()
+            .is_some_and(|rest| rest.trim_start().starts_with('Z')),
+    }
+}
+
+fn wait_dead(pid: u32) -> bool {
+    let end = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < end {
+        if is_dead(pid) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
+#[test]
+fn helper_processes_do_not_survive_a_stop() {
+    let (path, dir) = launcher("helper", "helper");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    collect_until(&rx, Duration::from_secs(5), |e| {
+        *e == AirplayEvent::ServerStarted
+    });
+    let pids = helper_pids(&dir);
+    assert_eq!(pids.len(), 1, "fake did not start its helper");
+    assert!(!is_dead(pids[0]), "helper should be alive while running");
+    sup.stop();
+    assert!(wait_dead(pids[0]), "helper {} survived the stop", pids[0]);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn helper_processes_do_not_survive_a_crash() {
+    let (path, dir) = launcher("helpercrash", "helper-crash");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    collect_until(&rx, Duration::from_secs(5), |e| {
+        matches!(e, AirplayEvent::Restarting { .. })
+    });
+    let first = helper_pids(&dir)[0];
+    assert!(wait_dead(first), "helper {first} survived the crash");
+    sup.stop();
+    for pid in helper_pids(&dir) {
+        assert!(wait_dead(pid), "helper {pid} survived");
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_pin_line_without_pairing_line_is_not_believed() {
+    let (path, dir) = launcher("spoof", "spoof");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
+        matches!(e, AirplayEvent::PinShown { .. })
+    });
+    // The first PIN line (1111) came before any pairing line and must be dropped.
+    let pins: Vec<_> = seen
+        .iter()
+        .filter_map(|e| match e {
+            AirplayEvent::PinShown { pin } => Some(pin.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(pins, ["9876"]);
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// A dialog that counts its calls and stays open until released.
+struct SlowHook {
+    calls: std::sync::atomic::AtomicUsize,
+    release: std::sync::Mutex<Receiver<Decision>>,
+}
+impl ConfirmHook for SlowHook {
+    fn confirm(&self, _r: &ConfirmRequest) -> Decision {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.release
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or(Decision::Accept)
+    }
+}
+
+fn slow_hook() -> (Arc<SlowHook>, std::sync::mpsc::Sender<Decision>) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let hook = Arc::new(SlowHook {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+        release: std::sync::Mutex::new(rx),
+    });
+    (hook, tx)
+}
+
+#[test]
+fn only_one_confirm_dialog_is_open_at_a_time() {
+    let (path, dir) = launcher("twopins", "twopins");
+    let (hook, release) = slow_hook();
+    let mut opts = fast_options();
+    opts.confirm = Some(hook.clone());
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    // Wait for both PINs (9876 and 5432).
+    let mut pins = 0;
+    collect_until(&rx, Duration::from_secs(8), |e| {
+        if matches!(e, AirplayEvent::PinShown { .. }) {
+            pins += 1;
+        }
+        pins == 2
+    });
+    assert_eq!(hook.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    release.send(Decision::Accept).unwrap();
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn no_dialog_and_no_restart_while_a_session_is_active() {
+    let (path, dir) = launcher("active", "normal");
+    let (hook, _release) = slow_hook();
+    let mut opts = fast_options();
+    opts.confirm = Some(hook.clone());
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    sup.set_session_active(true);
+    collect_until(&rx, Duration::from_secs(5), |e| {
+        matches!(e, AirplayEvent::PinShown { .. })
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(hook.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(!rx.try_iter().any(|e| matches!(
+        e,
+        AirplayEvent::Denied | AirplayEvent::Starting { attempt: 2 }
+    )));
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn deny_after_a_session_started_is_ignored() {
+    let (path, dir) = launcher("lateden", "normal");
+    let (hook, release) = slow_hook();
+    let mut opts = fast_options();
+    opts.confirm = Some(hook.clone());
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    collect_until(&rx, Duration::from_secs(5), |e| {
+        matches!(e, AirplayEvent::PinShown { .. })
+    });
+    sup.set_session_active(true); // dialog is open, now a session starts
+    release.send(Decision::Deny).unwrap();
+    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
+        *e == AirplayEvent::DenyIgnored
+    });
+    assert!(!seen.contains(&AirplayEvent::Denied));
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !rx.try_iter()
+            .any(|e| matches!(e, AirplayEvent::Starting { attempt: 2 }))
+    );
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn death_by_signal_is_reported_as_signal() {
+    let (path, dir) = launcher("sigkill", "self-kill");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    let seen = collect_until(&rx, Duration::from_secs(5), |e| {
+        matches!(e, AirplayEvent::ProcessExited { .. })
+    });
+    let Some(AirplayEvent::ProcessExited { code, signal, .. }) = seen.last() else {
+        panic!("{seen:?}");
+    };
+    assert_eq!(*code, None);
+    assert!(signal.is_some());
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
 }

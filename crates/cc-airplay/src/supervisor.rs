@@ -10,16 +10,22 @@
 //!   [`AirplayEvent`]s to the channel the app listens on.
 //! * If UxPlay dies without being asked, the manager waits a growing time ([`Backoff`]) and
 //!   starts it again.
-//! * Stopping sends SIGTERM, waits up to `stop_timeout`, then kills, then reaps the process
-//!   (so no zombie is left).
+//! * Stopping sends SIGTERM to the whole process group, waits up to `stop_timeout`, then
+//!   kills, then reaps the process (so no zombie is left). After the leader has ended, the
+//!   rest of its group gets SIGKILL, so helper processes do not survive.
 //!
 //! Why a PTY: when UxPlay's output goes into a normal pipe, its C library collects the
 //! text in a block buffer, so a line like the PIN only arrives when UxPlay exits. We saw
 //! this with the real UxPlay 1.68 (see docs/airplay.md). A PTY looks like a terminal, so
 //! the lines are written at once.
+//!
+//! Policy is the app's job: this supervisor enforces nothing by itself (with
+//! `confirm: None` every device that knows the PIN gets in). The app tells us whether a
+//! mirroring session is active with [`Supervisor::set_session_active`].
 
 use std::io::Read;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -33,7 +39,7 @@ use crate::policy::{AirplayStatus, ConfirmHook, ConfirmRequest, Decision};
 /// An event from the supervisor, for the app and its UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AirplayEvent {
-    /// The UxPlay program was started (attempt 1 = first start).
+    /// The UxPlay program was started (attempt 1 = first start; planned restarts count).
     Starting {
         /// Count of starts so far, beginning with 1.
         attempt: u32,
@@ -42,29 +48,42 @@ pub enum AirplayEvent {
     ServerStarted,
     /// A device asked to pair (before its PIN is shown).
     PairingRequested,
-    /// UxPlay shows a PIN. The app must show it on the display device.
+    /// UxPlay shows a PIN, right after a pairing request. The app shows it on the display
+    /// device. The PIN comes from the program's text output only: never treat it as proof
+    /// of anything, and never let a UI show a PIN that was not announced by this event.
     PinShown {
         /// Four digits. Display only, not a decision of ours.
         pin: String,
     },
     /// A network connection to UxPlay appeared (the count went from 0 to more).
-    /// UNCERTAIN: this is TCP level. A short probe also counts, as the real log shows.
+    /// UNCERTAIN: this is TCP level, not "a screen is mirrored". A pairing request itself
+    /// is such a connection, and the line only appears when UxPlay runs with `-d`.
     ClientConnected {
         /// UxPlay's number of open connections.
         open_connections: u32,
     },
-    /// All connections are closed again.
+    /// All connections are closed again (same limits as above).
     ClientDisconnected,
     /// UxPlay printed an error.
     Error(String),
-    /// UxPlay seems to get no data from the device (wording of the line is UNCERTAIN).
+    /// Hint only: UxPlay may get no data from the device (line wording is UNCERTAIN).
     StreamStalled,
     /// The operator denied a device in the confirmation dialog; UxPlay is restarted.
     Denied,
+    /// The operator denied a device, but a session is active, so nothing was done.
+    DenyIgnored,
+    /// The app told us a session became active or inactive (see
+    /// [`Supervisor::set_session_active`]).
+    SessionChanged {
+        /// True = a session is active.
+        active: bool,
+    },
     /// The UxPlay process ended.
     ProcessExited {
-        /// Exit code if known.
+        /// Exit code, if it ended by itself. `None` when it was killed by a signal.
         code: Option<u32>,
+        /// Name of the signal that ended it, if any (as text from the system).
+        signal: Option<String>,
         /// Process id of the run that ended (it is already reaped when you see this).
         pid: Option<u32>,
         /// True when we asked for it (stop, restart, denial); false = it died by itself.
@@ -72,7 +91,7 @@ pub enum AirplayEvent {
     },
     /// UxPlay will be started again after the delay.
     Restarting {
-        /// Which restart this is (1 = first).
+        /// Number of failures in a row so far (1 = first). Planned restarts do not count.
         attempt: u32,
         /// The wait before the start.
         delay: Duration,
@@ -84,12 +103,22 @@ pub enum AirplayEvent {
 }
 
 /// Fold an event into the status the UI shows.
+///
+/// `Connected` is set only by [`AirplayEvent::SessionChanged`] (the app knows when a
+/// session is really active). A PIN seen while `Connected` never overwrites that status.
 pub fn status_after(prev: &AirplayStatus, ev: &AirplayEvent) -> AirplayStatus {
     match ev {
         AirplayEvent::Starting { .. } => AirplayStatus::Starting,
-        AirplayEvent::ServerStarted | AirplayEvent::ClientDisconnected => AirplayStatus::Waiting,
-        AirplayEvent::PinShown { pin } => AirplayStatus::PinShown { pin: pin.clone() },
-        AirplayEvent::ClientConnected { .. } => AirplayStatus::Connected,
+        AirplayEvent::ServerStarted => AirplayStatus::Waiting,
+        AirplayEvent::PinShown { pin } => {
+            if *prev == AirplayStatus::Connected {
+                prev.clone()
+            } else {
+                AirplayStatus::PinShown { pin: pin.clone() }
+            }
+        }
+        AirplayEvent::SessionChanged { active: true } => AirplayStatus::Connected,
+        AirplayEvent::SessionChanged { active: false } => AirplayStatus::Waiting,
         AirplayEvent::Restarting { attempt, .. } => AirplayStatus::Restarting { attempt: *attempt },
         AirplayEvent::Failed(r) => AirplayStatus::Failed { reason: r.clone() },
         AirplayEvent::Stopped => AirplayStatus::Off,
@@ -106,7 +135,7 @@ pub struct Backoff {
     pub max: Duration,
     /// A run at least this long counts as healthy and resets the wait.
     pub healthy_after: Duration,
-    /// After this many failed runs in a row we give up.
+    /// We give up at this many failed runs in a row (the 10th failure is the last).
     pub max_failures: u32,
     current: Duration,
     failures: u32,
@@ -147,15 +176,21 @@ impl Backoff {
         self.failures = 0;
     }
 
+    /// Failures in a row so far.
+    pub fn failures(&self) -> u32 {
+        self.failures
+    }
+
     /// Call after an unexpected exit. `ran_for` = how long the process lived.
-    /// Returns the wait before the next start, or `None` to give up.
+    /// Returns the wait before the next start, or `None` to give up (when this was the
+    /// `max_failures`-th failure in a row).
     pub fn on_unexpected_exit(&mut self, ran_for: Duration) -> Option<Duration> {
         if ran_for >= self.healthy_after {
             self.current = self.initial;
             self.failures = 0;
         }
         self.failures += 1;
-        if self.failures > self.max_failures {
+        if self.failures >= self.max_failures {
             return None;
         }
         let wait = self.current;
@@ -172,7 +207,10 @@ pub struct SupervisorOptions {
     pub stop_timeout: Duration,
     /// Restart timing.
     pub backoff: Backoff,
-    /// The confirmation dialog of the app. `None` = no dialog.
+    /// The confirmation dialog of the app. `None` = no dialog, and then nothing here
+    /// enforces any policy: every device that knows the PIN is accepted by UxPlay.
+    /// Only one dialog is open at a time; a PIN that appears while a dialog is open gets
+    /// no dialog of its own (it is dropped, not queued).
     pub confirm: Option<Arc<dyn ConfirmHook>>,
 }
 
@@ -196,9 +234,21 @@ enum Cmd {
     },
 }
 
+/// State shared between the handle, the manager and the reader threads.
+struct Shared {
+    /// The app says a session is active.
+    session_active: AtomicBool,
+    /// A confirmation dialog is open.
+    confirm_pending: AtomicBool,
+    /// Number of the current run. Events of older runs are dropped.
+    generation: AtomicU32,
+}
+
 /// Handle to a running supervisor. Dropping it stops UxPlay.
 pub struct Supervisor {
     ctl: Sender<Cmd>,
+    tx: Sender<AirplayEvent>,
+    shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -212,21 +262,42 @@ impl Supervisor {
         let args = config.build_args()?;
         let (tx, rx) = mpsc::channel();
         let (ctl, ctl_rx) = mpsc::channel();
-        let ctl2 = ctl.clone();
+        let shared = Arc::new(Shared {
+            session_active: AtomicBool::new(false),
+            confirm_pending: AtomicBool::new(false),
+            generation: AtomicU32::new(0),
+        });
+        let ctx = ManagerCtx {
+            tx: tx.clone(),
+            ctl: ctl.clone(),
+            shared: Arc::clone(&shared),
+        };
         let thread = thread::Builder::new()
             .name("cc-airplay-supervisor".into())
-            .spawn(move || manage(&config, &args, options, &tx, &ctl_rx, &ctl2))
+            .spawn(move || manage(&config, &args, options, &ctx, &ctl_rx))
             .expect("could not start the supervisor thread");
         Ok((
             Self {
                 ctl,
+                tx,
+                shared,
                 thread: Some(thread),
             },
             rx,
         ))
     }
 
+    /// Tell the supervisor whether a mirroring session is active. The app decides this
+    /// (UxPlay's output has no line we can trust for it). While it is active, a denial
+    /// from the confirmation dialog changes nothing and no dialog is opened for new PINs,
+    /// so a running picture is never cut by the dialog.
+    pub fn set_session_active(&self, active: bool) {
+        self.shared.session_active.store(active, Ordering::SeqCst);
+        let _ = self.tx.send(AirplayEvent::SessionChanged { active });
+    }
+
     /// Restart UxPlay now (no waiting time). Does nothing if the supervisor has ended.
+    /// This also ends a running session: the app should call it only on purpose.
     pub fn restart(&self) {
         let _ = self.ctl.send(Cmd::Restart);
     }
@@ -237,8 +308,8 @@ impl Supervisor {
         let _ = self.ctl.send(Cmd::Stop);
     }
 
-    /// Stop UxPlay (SIGTERM, then kill after the timeout) and wait until it is gone.
-    /// Safe to call twice.
+    /// Stop UxPlay (SIGTERM to its group, kill after the timeout) and wait until it is
+    /// gone. Safe to call twice.
     pub fn stop(&mut self) {
         let _ = self.ctl.send(Cmd::Stop);
         if let Some(t) = self.thread.take() {
@@ -251,6 +322,14 @@ impl Drop for Supervisor {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+/// What the manager and reader threads need to talk to the outside.
+#[derive(Clone)]
+struct ManagerCtx {
+    tx: Sender<AirplayEvent>,
+    ctl: Sender<Cmd>,
+    shared: Arc<Shared>,
 }
 
 /// One running UxPlay.
@@ -269,8 +348,7 @@ fn spawn_uxplay(
     args: &[String],
     generation: u32,
     options: &SupervisorOptions,
-    tx: &Sender<AirplayEvent>,
-    ctl: &Sender<Cmd>,
+    ctx: &ManagerCtx,
 ) -> Result<Running, String> {
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -297,13 +375,15 @@ fn spawn_uxplay(
         .try_clone_reader()
         .map_err(|e| format!("cannot read the output: {e}"))?;
     let (done_tx, reader_done) = mpsc::channel();
-    let tx2 = tx.clone();
-    let ctl2 = ctl.clone();
-    let confirm = options.confirm.clone();
+    let reader_ctx = ReaderCtx {
+        ctx: ctx.clone(),
+        confirm: options.confirm.clone(),
+        generation,
+    };
     thread::Builder::new()
         .name("cc-airplay-reader".into())
         .spawn(move || {
-            read_lines(reader, &tx2, &ctl2, confirm, generation);
+            read_lines(reader, &reader_ctx);
             let _ = done_tx.send(());
         })
         .map_err(|e| format!("cannot start the reader thread: {e}"))?;
@@ -319,14 +399,23 @@ fn spawn_uxplay(
 /// Longest line we keep. Longer lines are cut (the rest is thrown away).
 const MAX_LINE: usize = 8192;
 
-/// Read the output, split it into lines and send events.
-fn read_lines(
-    mut reader: Box<dyn Read + Send>,
-    tx: &Sender<AirplayEvent>,
-    ctl: &Sender<Cmd>,
+struct ReaderCtx {
+    ctx: ManagerCtx,
     confirm: Option<Arc<dyn ConfirmHook>>,
     generation: u32,
-) {
+}
+
+impl ReaderCtx {
+    /// Send an event, unless a newer run has started (a late reader must stay silent).
+    fn emit(&self, ev: AirplayEvent) {
+        if self.ctx.shared.generation.load(Ordering::SeqCst) == self.generation {
+            let _ = self.ctx.tx.send(ev);
+        }
+    }
+}
+
+/// Read the output, split it into lines and send events.
+fn read_lines(mut reader: Box<dyn Read + Send>, rc: &ReaderCtx) {
     let mut state = LineState::default();
     let mut buf = [0u8; 4096];
     let mut line: Vec<u8> = Vec::new();
@@ -337,7 +426,7 @@ fn read_lines(
         }
         for &b in &buf[..n] {
             if b == b'\n' {
-                handle_line(&line, &mut state, tx, ctl, confirm.as_ref(), generation);
+                handle_line(&line, &mut state, rc);
                 line.clear();
             } else if line.len() < MAX_LINE {
                 line.push(b);
@@ -345,7 +434,7 @@ fn read_lines(
         }
     }
     if !line.is_empty() {
-        handle_line(&line, &mut state, tx, ctl, confirm.as_ref(), generation);
+        handle_line(&line, &mut state, rc);
     }
 }
 
@@ -353,35 +442,27 @@ fn read_lines(
 #[derive(Default)]
 struct LineState {
     connected: bool,
+    /// A pairing request was seen and its PIN line has not come yet.
+    pairing: bool,
 }
 
-fn handle_line(
-    raw: &[u8],
-    state: &mut LineState,
-    tx: &Sender<AirplayEvent>,
-    ctl: &Sender<Cmd>,
-    confirm: Option<&Arc<dyn ConfirmHook>>,
-    generation: u32,
-) {
+fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
     let text = String::from_utf8_lossy(raw);
     let Some(rec) = parse_line(text.trim_end_matches('\r')) else {
         return;
     };
     let ev = match rec {
         Recognized::ServerReady => AirplayEvent::ServerStarted,
-        Recognized::PairingRequested => AirplayEvent::PairingRequested,
+        Recognized::PairingRequested => {
+            state.pairing = true;
+            AirplayEvent::PairingRequested
+        }
         Recognized::PinShown { pin } => {
-            if let Some(hook) = confirm {
-                // The dialog may block, so it gets its own thread.
-                let hook = Arc::clone(hook);
-                let ctl = ctl.clone();
-                let req = ConfirmRequest { pin: pin.clone() };
-                thread::spawn(move || {
-                    if hook.confirm(&req) == Decision::Deny {
-                        let _ = ctl.send(Cmd::Deny { generation });
-                    }
-                });
+            // A PIN line without a pairing request just before it is not believed.
+            if !std::mem::take(&mut state.pairing) {
+                return;
             }
+            maybe_ask_operator(&pin, rc);
             AirplayEvent::PinShown { pin }
         }
         Recognized::OpenConnections(n) => {
@@ -401,43 +482,109 @@ fn handle_line(
         Recognized::StreamStalled => AirplayEvent::StreamStalled,
         Recognized::Stopping => return,
     };
-    let _ = tx.send(ev);
+    rc.emit(ev);
+}
+
+/// Open the confirmation dialog on its own thread, but only if there is a hook, no session
+/// is active and no other dialog is open.
+fn maybe_ask_operator(pin: &str, rc: &ReaderCtx) {
+    let Some(hook) = &rc.confirm else { return };
+    let shared = &rc.ctx.shared;
+    if shared.session_active.load(Ordering::SeqCst) {
+        return;
+    }
+    if shared
+        .confirm_pending
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return; // a dialog is open already: drop this one
+    }
+    let hook = Arc::clone(hook);
+    let ctx = rc.ctx.clone();
+    let generation = rc.generation;
+    let req = ConfirmRequest {
+        pin: pin.to_string(),
+    };
+    let spawned = thread::Builder::new()
+        .name("cc-airplay-confirm".into())
+        .spawn(move || {
+            let decision = hook.confirm(&req);
+            ctx.shared.confirm_pending.store(false, Ordering::SeqCst);
+            if decision == Decision::Deny {
+                if ctx.shared.session_active.load(Ordering::SeqCst) {
+                    let _ = ctx.tx.send(AirplayEvent::DenyIgnored);
+                } else {
+                    let _ = ctx.ctl.send(Cmd::Deny { generation });
+                }
+            }
+        });
+    if spawned.is_err() {
+        shared.confirm_pending.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Exit code and signal name of an ended process.
+type ExitInfo = (Option<u32>, Option<String>);
+
+fn exit_info(status: &portable_pty::ExitStatus) -> ExitInfo {
+    match status.signal() {
+        Some(sig) => (None, Some(sig.to_string())),
+        None => (Some(status.exit_code()), None),
+    }
+}
+
+/// Send a signal to the whole process group of the child (the PTY makes the child a
+/// session leader, so its group id is its pid). Unix only.
+#[cfg(unix)]
+fn signal_group(pid: Option<u32>, sig: nix::sys::signal::Signal) {
+    if let Some(pid) = pid.and_then(|p| i32::try_from(p).ok()) {
+        let pid = nix::unistd::Pid::from_raw(pid);
+        if nix::sys::signal::killpg(pid, sig).is_err() {
+            let _ = nix::sys::signal::kill(pid, sig);
+        }
+    }
+}
+
+/// Kill whatever is left of the child's group after the leader has ended.
+/// UNCERTAIN: once the leader is reaped, its number could in theory be reused by another
+/// process group before this call; this needs the pid space to wrap within milliseconds,
+/// and while any group member is alive the number cannot be reused.
+fn kill_leftovers(pid: Option<u32>) {
+    #[cfg(unix)]
+    signal_group(pid, nix::sys::signal::SIGKILL);
+    #[cfg(not(unix))]
+    let _ = pid;
 }
 
 /// Ask the process to end; kill it if it does not within `timeout`. Always reaps it.
-/// Returns the exit code if known.
-fn terminate(run: &mut Running, timeout: Duration) -> Option<u32> {
+fn terminate(run: &mut Running, timeout: Duration) -> ExitInfo {
     #[cfg(unix)]
-    if let Some(pid) = run.child.process_id().and_then(|p| i32::try_from(p).ok()) {
-        let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::SIGTERM);
-    }
+    signal_group(run.pid, nix::sys::signal::SIGTERM);
     #[cfg(not(unix))]
     let _ = run.child.kill();
 
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if let Ok(Some(status)) = run.child.try_wait() {
-            return Some(status.exit_code());
+            kill_leftovers(run.pid);
+            return exit_info(&status);
         }
         thread::sleep(Duration::from_millis(20));
     }
-    // Too slow: kill the whole process group (UxPlay may have helper processes), then reap.
-    // The child is a session leader (the PTY does that), so its group id is its pid.
-    // The process is not reaped yet, so the pid cannot have been reused.
-    // Note: portable-pty's own kill() sends SIGHUP on Unix (read in its source), which a
-    // program can ignore, so we send SIGKILL ourselves.
-    #[cfg(unix)]
-    if let Some(pid) = run.child.process_id().and_then(|p| i32::try_from(p).ok()) {
-        let pid = nix::unistd::Pid::from_raw(pid);
-        let _ = nix::sys::signal::killpg(pid, nix::sys::signal::SIGKILL);
-        let _ = nix::sys::signal::kill(pid, nix::sys::signal::SIGKILL);
-    }
+    // Too slow. Note: portable-pty's own kill() sends SIGHUP on Unix (read in its source),
+    // which a program can ignore, so we send SIGKILL ourselves, then reap.
+    kill_leftovers(run.pid);
     #[cfg(not(unix))]
     let _ = run.child.kill();
-    run.child.wait().ok().map(|s| s.exit_code())
+    match run.child.wait() {
+        Ok(status) => exit_info(&status),
+        Err(_) => (None, None),
+    }
 }
 
-/// Wait (bounded) for the reader thread, so late lines are not mixed into the next run.
+/// Wait (bounded) for the reader thread. If a helper outside our group still holds the
+/// terminal, the reader may live on; its events are dropped by the generation check.
 fn finish_reader(run: &Running) {
     let _ = run.reader_done.recv_timeout(Duration::from_secs(1));
 }
@@ -445,8 +592,8 @@ fn finish_reader(run: &Running) {
 /// Why the inner loop of one run ended.
 enum RunEnd {
     /// The process ended by itself.
-    Died(Option<u32>),
-    /// We ended it on request; `true` = the app wants a stop, `false` = restart.
+    Died(ExitInfo),
+    /// We ended it on request; `stop` = the app wants a stop, otherwise a restart.
     Asked { stop: bool, denied: bool },
 }
 
@@ -454,18 +601,20 @@ fn manage(
     config: &AirplayConfig,
     args: &[String],
     mut options: SupervisorOptions,
-    tx: &Sender<AirplayEvent>,
+    ctx: &ManagerCtx,
     ctl_rx: &Receiver<Cmd>,
-    ctl: &Sender<Cmd>,
 ) {
     let send = |ev: AirplayEvent| {
-        let _ = tx.send(ev);
+        let _ = ctx.tx.send(ev);
     };
-    let mut attempt: u32 = 0;
+    let mut generation: u32 = 0;
     'outer: loop {
-        attempt += 1;
-        send(AirplayEvent::Starting { attempt });
-        let mut run = match spawn_uxplay(config, args, attempt, &options, tx, ctl) {
+        generation += 1;
+        ctx.shared.generation.store(generation, Ordering::SeqCst);
+        send(AirplayEvent::Starting {
+            attempt: generation,
+        });
+        let mut run = match spawn_uxplay(config, args, generation, &options, ctx) {
             Ok(r) => r,
             Err(msg) => {
                 // Most likely "program not found". Trying again would not help.
@@ -488,54 +637,68 @@ fn manage(
                         denied: false,
                     };
                 }
-                Ok(Cmd::Deny { generation }) if generation == attempt => {
-                    break RunEnd::Asked {
-                        stop: false,
-                        denied: true,
-                    };
+                Ok(Cmd::Deny { generation: g }) => {
+                    // Ignore answers about older runs, and never cut a running session.
+                    if g == generation && !ctx.shared.session_active.load(Ordering::SeqCst) {
+                        break RunEnd::Asked {
+                            stop: false,
+                            denied: true,
+                        };
+                    }
                 }
-                Ok(Cmd::Deny { .. }) => {} // about an older run: ignore
                 Err(RecvTimeoutError::Timeout) => {}
             }
             if let Ok(Some(status)) = run.child.try_wait() {
-                break RunEnd::Died(Some(status.exit_code()));
+                kill_leftovers(run.pid);
+                break RunEnd::Died(exit_info(&status));
             }
         };
 
         let ran_for = run.started.elapsed();
         match end {
-            RunEnd::Asked { stop, denied } => {
-                let code = terminate(&mut run, options.stop_timeout);
+            RunEnd::Asked { mut stop, denied } => {
+                let (code, signal) = terminate(&mut run, options.stop_timeout);
                 finish_reader(&run);
                 if denied {
                     send(AirplayEvent::Denied);
                 }
                 send(AirplayEvent::ProcessExited {
                     code,
+                    signal,
                     pid: run.pid,
                     expected: true,
                 });
+                // Commands that piled up while we were busy are stale, except a stop.
+                while let Ok(c) = ctl_rx.try_recv() {
+                    if matches!(c, Cmd::Stop) {
+                        stop = true;
+                    }
+                }
                 if stop {
                     break 'outer;
                 }
                 options.backoff.reset(); // a planned restart starts fresh
             }
-            RunEnd::Died(code) => {
+            RunEnd::Died((code, signal)) => {
                 // Already reaped by try_wait. Clean up the output thread.
                 finish_reader(&run);
                 send(AirplayEvent::ProcessExited {
                     code,
+                    signal,
                     pid: run.pid,
                     expected: false,
                 });
                 let Some(delay) = options.backoff.on_unexpected_exit(ran_for) else {
                     send(AirplayEvent::Failed(format!(
                         "UxPlay failed {} times in a row; giving up",
-                        options.backoff.max_failures
+                        options.backoff.failures()
                     )));
                     break 'outer;
                 };
-                send(AirplayEvent::Restarting { attempt, delay });
+                send(AirplayEvent::Restarting {
+                    attempt: options.backoff.failures(),
+                    delay,
+                });
                 // Wait, but stay responsive to stop and restart.
                 let until = Instant::now() + delay;
                 while Instant::now() < until {
@@ -581,11 +744,17 @@ mod tests {
     }
 
     #[test]
-    fn backoff_gives_up() {
-        let mut b = Backoff::new(ms(1), ms(2), ms(1000), 2);
+    fn backoff_gives_up_at_the_max_failure() {
+        // max_failures = 3: failures 1 and 2 restart, the 3rd failure in a row gives up.
+        let mut b = Backoff::new(ms(1), ms(2), ms(1000), 3);
         assert!(b.on_unexpected_exit(ms(1)).is_some());
         assert!(b.on_unexpected_exit(ms(1)).is_some());
         assert_eq!(b.on_unexpected_exit(ms(1)), None);
+        assert_eq!(b.failures(), 3);
+        // Default is 10: the 10th failure is the last.
+        let mut d = Backoff::default();
+        let n = (1..=20).find(|_| d.on_unexpected_exit(ms(1)).is_none());
+        assert_eq!(n, Some(10));
     }
 
     #[test]
@@ -598,17 +767,30 @@ mod tests {
             ),
             (AirplayEvent::ServerStarted, AirplayStatus::Waiting),
             (
+                AirplayEvent::ClientConnected {
+                    open_connections: 1,
+                },
+                AirplayStatus::Waiting,
+            ),
+            (
                 AirplayEvent::PinShown { pin: "1234".into() },
                 AirplayStatus::PinShown { pin: "1234".into() },
             ),
             (
-                AirplayEvent::ClientConnected {
-                    open_connections: 1,
-                },
+                AirplayEvent::SessionChanged { active: true },
+                AirplayStatus::Connected,
+            ),
+            // A PIN or a stall hint while a session is active does not change the status.
+            (
+                AirplayEvent::PinShown { pin: "5555".into() },
                 AirplayStatus::Connected,
             ),
             (AirplayEvent::StreamStalled, AirplayStatus::Connected),
-            (AirplayEvent::ClientDisconnected, AirplayStatus::Waiting),
+            (AirplayEvent::DenyIgnored, AirplayStatus::Connected),
+            (
+                AirplayEvent::SessionChanged { active: false },
+                AirplayStatus::Waiting,
+            ),
             (
                 AirplayEvent::Restarting {
                     attempt: 2,

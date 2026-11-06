@@ -12,6 +12,11 @@
 #                 later runs behave like "normal"
 #   always-crash  exits with code 1 right after the banner
 #   ignore-term   like "normal" but ignores SIGTERM (so the supervisor must kill it)
+#   spoof         like "normal" but first prints a PIN line with no pairing line before it
+#   twopins       like "normal" but prints a second pairing and PIN (5432) at the end
+#   helper        like "normal" but starts a background helper (pid in FAKE_UXPLAY_HELPER_PID)
+#   helper-crash  starts a background helper, then exits with code 3
+#   self-kill     kills itself with SIGKILL after the banner
 #   chatty        prints a very long line and some junk, then behaves like "normal"
 
 mode=${FAKE_UXPLAY_MODE:-normal}
@@ -34,6 +39,28 @@ crash-once)
 ignore-term)
     trap '' TERM
     ;;
+spoof)
+    trap 'echo "Stopping..."; exit 0' TERM
+    echo '*** CLIENT MUST NOW ENTER PIN = "1111" AS AIRPLAY PASSWORD'
+    ;;
+twopins)
+    trap 'echo "Stopping..."; exit 0' TERM
+    ;;
+helper)
+    trap 'echo "Stopping..."; exit 0' TERM
+    sleep 300 &
+    echo $! >>"$FAKE_UXPLAY_HELPER_PID"
+    ;;
+helper-crash)
+    sleep 300 &
+    echo $! >>"$FAKE_UXPLAY_HELPER_PID"
+    sleep 0.3
+    exit 3
+    ;;
+self-kill)
+    sleep 0.2
+    kill -KILL $$
+    ;;
 chatty)
     printf 'x%.0s' $(seq 1 20000)
     echo
@@ -52,6 +79,11 @@ echo '*** CLIENT MUST NOW ENTER PIN = "9876" AS AIRPLAY PASSWORD'
 echo "Open connections: 1"
 sleep 0.3
 echo "Open connections: 0"
+
+if [ "$mode" = twopins ]; then
+    echo "client sent PAIR-PIN-START request"
+    echo '*** CLIENT MUST NOW ENTER PIN = "5432" AS AIRPLAY PASSWORD'
+fi
 
 # Wait until we get a signal. Short sleeps so that a signal is handled quickly.
 while true; do
