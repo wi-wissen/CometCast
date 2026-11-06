@@ -66,6 +66,8 @@
   "videoCodecNotShown": "Der Sender verwendet {codec}. Diese Version zeigt nur H.264-Bilder an.",
   "fullscreenEnter": "Vollbild (F11)",
   "fullscreenExit": "Vollbild beenden (Esc)",
+  "videoViewLabel": "Geteilter Bildschirm des Senders",
+  "videoStatsLabel": "Videostatistik",
   "videoStatsShow": "Statistik anzeigen (I)",
   "videoStatsHide": "Statistik ausblenden (I)",
   "videoStatsSize": "Bildgröße",

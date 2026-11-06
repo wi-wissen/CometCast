@@ -2,7 +2,7 @@
 //! The path from received H.264 packets to RGBA pictures that the Flutter UI draws.
 //!
 //! ```text
-//! cc-transport video tap (RTP payloads)   unbounded channel, filled by the WebRTC task
+//! cc-transport video tap (RTP payloads)   bounded channel (4096), filled by the WebRTC task
 //!        v
 //! decoder thread ("cc-video-decode")      H264Assembler -> OpenH264 -> RGB -> scale -> RGBA
 //!        v
@@ -16,6 +16,15 @@
 //! "a frame is ready" event is pushed, and only while the previous one was not yet answered by
 //! `take_frame`. So the memory is bounded by one pending picture plus the one being built.
 //!
+//! Packets that the tap itself drops because the channel is full are added to
+//! `dropped_packets` (read through [`cc_transport::VideoTap::dropped_handle`]).
+//!
+//! Generations: every receiver start/stop bumps a generation number. A decoder thread of an
+//! older generation may still be running for a moment; everything it does to the shared state
+//! (publishing a picture, counters, key frame requests, errors) is checked against the
+//! current generation while holding the mailbox lock, which `reset`/`stop` also hold, so a
+//! stale thread can never touch the state of a newer session.
+//!
 //! Other bounds: the decoder thread works on the packets as they come; if more than
 //! [`MAX_BACKLOG_PACKETS`] pile up (decoder slower than the network) the backlog is thrown
 //! away, the decoder waits for the next IDR frame and a key frame is requested. Pictures are
@@ -23,8 +32,8 @@
 //!
 //! The hand-written API of this module is `pub(crate)`; `api.rs` exposes what Dart may call.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 /// Largest picture handed to the UI.
@@ -90,6 +99,8 @@ pub(crate) struct Video {
     dropped_packets: AtomicU64,
     decode_errors: AtomicU64,
     keyframe_requests: AtomicU64,
+    /// Drop counter of the current session's video tap.
+    tap_dropped: Mutex<Option<Arc<AtomicU64>>>,
     last_w: AtomicU32,
     last_h: AtomicU32,
     decode_us_total: AtomicU64,
@@ -123,6 +134,7 @@ impl Video {
             dropped_packets: AtomicU64::new(0),
             decode_errors: AtomicU64::new(0),
             keyframe_requests: AtomicU64::new(0),
+            tap_dropped: Mutex::new(None),
             last_w: AtomicU32::new(0),
             last_h: AtomicU32::new(0),
             decode_us_total: AtomicU64::new(0),
@@ -133,11 +145,14 @@ impl Video {
     /// Forget everything of the previous receiver and return the new generation number.
     /// The size limit set by the UI is kept (it describes the window, not the receiver).
     pub(crate) fn reset(&self) -> u64 {
+        // The generation changes while the mailbox lock is held, see `current`.
+        let mut slot = lock(&self.slot);
         let g = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        *lock(&self.slot) = MailSlot::default();
+        *slot = MailSlot::default();
         self.h264.store(false, Ordering::SeqCst);
         self.want_keyframe.store(false, Ordering::SeqCst);
         *lock(&self.last_keyframe_request) = None;
+        *lock(&self.tap_dropped) = None;
         for c in [
             &self.decoded,
             &self.delivered,
@@ -157,8 +172,18 @@ impl Video {
 
     /// Stop the decoder thread of the current generation (and forget the waiting picture).
     pub(crate) fn stop(&self) {
+        let mut slot = lock(&self.slot);
         self.generation.fetch_add(1, Ordering::SeqCst);
-        *lock(&self.slot) = MailSlot::default();
+        *slot = MailSlot::default();
+        *lock(&self.tap_dropped) = None;
+    }
+
+    /// The mailbox lock, but only if `generation` is still the current one. While the guard
+    /// lives, `reset` and `stop` cannot run, so a decoder thread of an older session never
+    /// changes the state of a newer one.
+    fn current(&self, generation: u64) -> Option<MutexGuard<'_, MailSlot>> {
+        let slot = lock(&self.slot);
+        (self.generation.load(Ordering::SeqCst) == generation).then_some(slot)
     }
 
     pub(crate) fn is_current(&self, generation: u64) -> bool {
@@ -211,13 +236,16 @@ impl Video {
         wanted
     }
 
-    /// Put a finished picture into the mailbox. Returns true if the caller must send a
-    /// `FrameReady` event (none is outstanding).
-    pub(crate) fn publish(&self, width: u32, height: u32, rgba: Vec<u8>) -> bool {
+    /// Put a finished picture of decoder `generation` into the mailbox. Returns true if the
+    /// caller must send a `FrameReady` event (none is outstanding). Returns false and drops
+    /// the picture if the generation is not current any more (that session was stopped).
+    pub(crate) fn publish(&self, generation: u64, width: u32, height: u32, rgba: Vec<u8>) -> bool {
+        let Some(mut slot) = self.current(generation) else {
+            return false;
+        };
         self.decoded.fetch_add(1, Ordering::Relaxed);
         self.last_w.store(width, Ordering::Relaxed);
         self.last_h.store(height, Ordering::Relaxed);
-        let mut slot = lock(&self.slot);
         slot.seq += 1;
         let frame = Frame {
             seq: slot.seq,
@@ -234,6 +262,45 @@ impl Video {
         send
     }
 
+    /// Like [`Self::request_keyframe`], for a decoder thread: ignored if stale.
+    pub(crate) fn request_keyframe_for(&self, generation: u64) {
+        if let Some(_slot) = self.current(generation) {
+            self.request_keyframe();
+        }
+    }
+
+    /// Count packets that a decoder thread threw away. Ignored if stale.
+    #[cfg(feature = "h264")]
+    pub(crate) fn add_dropped_packets(&self, generation: u64, n: u64) {
+        if let Some(_slot) = self.current(generation) {
+            self.dropped_packets.fetch_add(n, Ordering::Relaxed);
+        }
+    }
+
+    /// Count a decode error and remember its text. Ignored if stale.
+    #[cfg(feature = "h264")]
+    pub(crate) fn record_decode_error(&self, generation: u64, message: String) {
+        if let Some(_slot) = self.current(generation) {
+            self.decode_errors.fetch_add(1, Ordering::Relaxed);
+            *lock(&self.error) = Some(message);
+        }
+    }
+
+    /// Remember a decoder problem for the statistics. Ignored if stale.
+    pub(crate) fn record_error_for(&self, generation: u64, message: String) {
+        if let Some(_slot) = self.current(generation) {
+            *lock(&self.error) = Some(message);
+        }
+    }
+
+    /// Remember where to read the tap's own drop count. Ignored if stale.
+    #[cfg(feature = "h264")]
+    pub(crate) fn set_tap_dropped(&self, generation: u64, counter: Arc<AtomicU64>) {
+        if let Some(_slot) = self.current(generation) {
+            *lock(&self.tap_dropped) = Some(counter);
+        }
+    }
+
     /// The newest picture, if Dart has not seen it yet. Also re-arms the `FrameReady` event.
     pub(crate) fn take(&self) -> Option<Frame> {
         let mut slot = lock(&self.slot);
@@ -245,14 +312,12 @@ impl Video {
         f
     }
 
-    pub(crate) fn record_error(&self, message: String) {
-        *lock(&self.error) = Some(message);
-    }
-
     #[cfg(feature = "h264")]
-    fn add_decode_time(&self, d: Duration) {
-        let us = u64::try_from(d.as_micros()).unwrap_or(u64::MAX);
-        self.decode_us_total.fetch_add(us, Ordering::Relaxed);
+    fn add_decode_time(&self, generation: u64, d: Duration) {
+        if let Some(_slot) = self.current(generation) {
+            let us = u64::try_from(d.as_micros()).unwrap_or(u64::MAX);
+            self.decode_us_total.fetch_add(us, Ordering::Relaxed);
+        }
     }
 
     pub(crate) fn counters(&self) -> VideoCounters {
@@ -262,7 +327,10 @@ impl Video {
             decoded,
             delivered: g(&self.delivered),
             dropped: g(&self.dropped),
-            dropped_packets: g(&self.dropped_packets),
+            dropped_packets: g(&self.dropped_packets)
+                + lock(&self.tap_dropped)
+                    .as_ref()
+                    .map_or(0, |t| t.load(Ordering::Relaxed)),
             decode_errors: g(&self.decode_errors),
             keyframe_requests: g(&self.keyframe_requests),
             width: self.last_w.load(Ordering::Relaxed),
@@ -324,6 +392,7 @@ pub(crate) fn spawn_decoder(
     // Bounded tap: when the decoder is too slow, packets are dropped and counted in the tap
     // (the decoder then waits for the next IDR frame). UNCERTAIN: capacity is a placeholder.
     let (tx, rx) = cc_transport::VideoTap::channel(4096);
+    VIDEO.set_tap_dropped(generation, tx.dropped_handle());
     std::thread::Builder::new()
         .name("cc-video-decode".into())
         .spawn(move || run_decoder(rx, generation, notify))
@@ -334,10 +403,13 @@ pub(crate) fn spawn_decoder(
 /// Without the `h264` feature there is no decoder: the tap is not installed.
 #[cfg(not(feature = "h264"))]
 pub(crate) fn spawn_decoder(
-    _generation: u64,
+    generation: u64,
     _notify: impl Fn() + Send + 'static,
 ) -> Option<cc_transport::VideoTap> {
-    VIDEO.record_error("this build has no H.264 decoder (feature `h264` is off)".into());
+    VIDEO.record_error_for(
+        generation,
+        "this build has no H.264 decoder (feature `h264` is off)".into(),
+    );
     None
 }
 
@@ -353,7 +425,7 @@ fn run_decoder(
     let mut decoder = match H264Decoder::new(&H264Backend::from_env()) {
         Ok(d) => d,
         Err(e) => {
-            VIDEO.record_error(format!("cannot start the H.264 decoder: {e}"));
+            VIDEO.record_error_for(generation, format!("cannot start the H.264 decoder: {e}"));
             return;
         }
     };
@@ -375,11 +447,11 @@ fn run_decoder(
             while rx.try_recv().is_ok() {
                 n += 1;
             }
-            VIDEO.dropped_packets.fetch_add(n, Ordering::Relaxed);
+            VIDEO.add_dropped_packets(generation, n);
             assembler = H264Assembler::new();
             seen_dropped_units = 0;
             wait_idr = true;
-            VIDEO.request_keyframe();
+            VIDEO.request_keyframe_for(generation);
             continue;
         }
         let unit = assembler.push(&p.payload, p.marker, p.timestamp, p.sequence);
@@ -387,12 +459,12 @@ fn run_decoder(
             // A packet was lost: pictures after this one would be wrong until the next IDR.
             seen_dropped_units = assembler.dropped_units;
             wait_idr = true;
-            VIDEO.request_keyframe();
+            VIDEO.request_keyframe_for(generation);
         }
         let Some(unit) = unit else { continue };
         if wait_idr {
             if !annexb_nal_types(&unit.data).contains(&5) {
-                VIDEO.request_keyframe();
+                VIDEO.request_keyframe_for(generation);
                 continue;
             }
             wait_idr = false;
@@ -403,21 +475,23 @@ fn run_decoder(
                 let (max_w, max_h) = VIDEO.max_size();
                 let (dw, dh) = fit(pic.width, pic.height, max_w, max_h);
                 let rgba = rgb_to_rgba_scaled(&pic.rgb, pic.width, pic.height, dw, dh);
-                VIDEO.add_decode_time(started.elapsed());
-                if VIDEO.publish(dw, dh, rgba) {
+                VIDEO.add_decode_time(generation, started.elapsed());
+                if VIDEO.publish(generation, dw, dh, rgba) {
                     notify();
                 }
             }
             Ok(None) => {}
             Err(e) => {
-                VIDEO.decode_errors.fetch_add(1, Ordering::Relaxed);
-                VIDEO.record_error(format!(
-                    "H.264 decode error: {e} (NAL types {:?}, {} bytes)",
-                    annexb_nal_types(&unit.data),
-                    unit.data.len()
-                ));
+                VIDEO.record_decode_error(
+                    generation,
+                    format!(
+                        "H.264 decode error: {e} (NAL types {:?}, {} bytes)",
+                        annexb_nal_types(&unit.data),
+                        unit.data.len()
+                    ),
+                );
                 wait_idr = true;
-                VIDEO.request_keyframe();
+                VIDEO.request_keyframe_for(generation);
             }
         }
     }
@@ -450,10 +524,11 @@ mod tests {
     #[test]
     fn mailbox_keeps_the_newest_frame_and_counts_drops() {
         let v = Video::new();
+        let g = v.reset();
         // First picture: an event must be sent. Second and third: one is outstanding.
-        assert!(v.publish(1, 1, vec![1, 1, 1, 255]));
-        assert!(!v.publish(1, 1, vec![2, 2, 2, 255]));
-        assert!(!v.publish(1, 1, vec![3, 3, 3, 255]));
+        assert!(v.publish(g, 1, 1, vec![1, 1, 1, 255]));
+        assert!(!v.publish(g, 1, 1, vec![2, 2, 2, 255]));
+        assert!(!v.publish(g, 1, 1, vec![3, 3, 3, 255]));
         let f = v.take().expect("a frame");
         assert_eq!(f.rgba, [3, 3, 3, 255]);
         assert_eq!(f.seq, 3);
@@ -461,7 +536,7 @@ mod tests {
         let c = v.counters();
         assert_eq!((c.decoded, c.delivered, c.dropped), (3, 1, 2));
         // After take the next picture raises an event again.
-        assert!(v.publish(1, 1, vec![4, 4, 4, 255]));
+        assert!(v.publish(g, 1, 1, vec![4, 4, 4, 255]));
     }
 
     #[test]
@@ -472,6 +547,33 @@ mod tests {
         v.request_keyframe();
         assert!(!v.take_keyframe_request(), "second request within a second");
         assert_eq!(v.counters().keyframe_requests, 1);
+    }
+
+    #[test]
+    fn a_stale_generation_cannot_publish_into_a_newer_session() {
+        let v = Video::new();
+        let old = v.reset();
+        v.stop();
+        let new = v.reset();
+        // The old decoder finishes a picture after the new session started: dropped.
+        assert!(!v.publish(old, 1, 1, vec![9, 9, 9, 255]));
+        v.request_keyframe_for(old);
+        assert!(!v.take_keyframe_request());
+        v.record_error_for(old, "stale".into());
+        assert_eq!(v.counters(), VideoCounters::default());
+        // Nothing is waiting, and the first picture of the new session still raises an event.
+        assert!(v.take().is_none());
+        assert!(v.publish(new, 1, 1, vec![1, 1, 1, 255]));
+        assert_eq!(v.take().expect("frame").rgba, [1, 1, 1, 255]);
+    }
+
+    #[test]
+    fn tap_drops_are_part_of_dropped_packets() {
+        let v = Video::new();
+        v.reset();
+        *lock(&v.tap_dropped) = Some(Arc::new(AtomicU64::new(7)));
+        v.dropped_packets.fetch_add(2, Ordering::Relaxed);
+        assert_eq!(v.counters().dropped_packets, 9);
     }
 
     #[test]

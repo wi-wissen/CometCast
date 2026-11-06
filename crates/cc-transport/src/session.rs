@@ -97,6 +97,11 @@ impl VideoTap {
         self.dropped.load(Ordering::Relaxed)
     }
 
+    /// A shared handle on the drop counter, to read it after the tap itself was moved away.
+    pub fn dropped_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.dropped)
+    }
+
     fn offer(&self, packet: VideoPacket) {
         if self.tx.try_send(packet).is_err() {
             self.dropped.fetch_add(1, Ordering::Relaxed);

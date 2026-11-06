@@ -38,13 +38,15 @@ Events: `ReceiverUiEvent` = room code, peer joined, connection state, video trac
 ## The picture path (receiver)
 
 ```
-WebRTC task --video_tap (RTP payloads, unbounded channel)--> decoder thread "cc-video-decode"
+WebRTC task --video_tap (RTP payloads, bounded channel of 4096 packets)--> decoder thread "cc-video-decode"
    H264Assembler -> OpenH264 (cc-media, feature `h264` of cc-ffi, default on) -> RGB -> scale -> RGBA
    -> mailbox with ONE slot (newest wins)  --FrameReady event-->  Dart --take_frame()--> ui.Image -> RawImage
 ```
 
 Implemented in `crates/cc-ffi/src/video.rs`; no change to `cc-receiver` was needed (the session already had the packet tap and `request_keyframe`). Why it is a pull model: a `StreamSink` queues without limit, and a pushed 8 MB picture per frame would grow memory when Dart is slow. Instead only a tiny `FrameReady` event is pushed, and only while the previous one was not answered by `take_frame`. Bounds:
 
+- packets that the bounded tap drops (decoder too slow) are counted in `dropped_packets`, like those the decoder thread throws away;
+- a decoder thread of a stopped session can no longer publish pictures or touch counters of a newer session (generation checked under the mailbox lock);
 - one picture waits in the mailbox; a newer one replaces it and is counted in `dropped` (the UI was too slow);
 - the decoder thread drops everything, waits for the next IDR frame and asks for a key frame if more than 2000 packets pile up (`dropped_packets`; placeholder value, not tuned); the same happens after a lost RTP packet or a decode error (`decode_errors`); key frame requests are rate limited to one per second and sent as PLI by the receiver task;
 - pictures are scaled (nearest neighbour) to the size the UI reports with `set_video_max_size`, at most 1920x1080; only H.264 is decoded (other codecs, such as the VP8 test video, are only counted).
