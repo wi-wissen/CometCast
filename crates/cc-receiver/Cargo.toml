@@ -20,3 +20,5 @@ thiserror.workspace = true
 [dev-dependencies]
 cc-server.workspace = true
 cc-sender.workspace = true
+cc-media.workspace = true
+cc-capture = { workspace = true, features = ["test-support"] }

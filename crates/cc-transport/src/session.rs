@@ -13,7 +13,9 @@ use bytes::Bytes;
 use rtc::interceptor::Registry;
 use rtc::media::Sample;
 use rtc::peer_connection::configuration::interceptor_registry::register_default_interceptors;
-use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_VP8, MediaEngine};
+use rtc::peer_connection::configuration::media_engine::{
+    MIME_TYPE_H264, MIME_TYPE_VP8, MediaEngine,
+};
 use rtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use rtc::rtp_transceiver::rtp_sender::{
     RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters, RTCRtpEncodingParameters,
@@ -21,8 +23,8 @@ use rtc::rtp_transceiver::rtp_sender::{
 };
 use tokio::sync::{Mutex, OnceCell, mpsc};
 use webrtc::media_stream::MediaStreamTrack;
-use webrtc::media_stream::track_local::TrackLocal;
 use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
+use webrtc::media_stream::track_local::{TrackLocal, TrackLocalEvent};
 use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
 use webrtc::peer_connection::{
     PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler, RTCConfigurationBuilder,
@@ -52,6 +54,23 @@ pub struct SessionConfig {
     /// Empty = host candidates only. Entries that are not usable (no URL, or `turn:` without
     /// user name and credential) are skipped.
     pub ice_servers: Vec<IceServerConfig>,
+    /// If set, every RTP packet of incoming video is also sent to this channel (payload, marker
+    /// bit, RTP timestamp). Meant for tests and tools that decode what arrives; the receiver
+    /// apps do not use it. The channel is unbounded, so the reader must keep up.
+    pub video_tap: Option<mpsc::UnboundedSender<VideoPacket>>,
+}
+
+/// One incoming RTP video packet, as handed to [`SessionConfig::video_tap`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoPacket {
+    /// RTP payload (codec payload format, e.g. RFC 6184 for H.264).
+    pub payload: Bytes,
+    /// RTP marker bit: set on the last packet of a frame.
+    pub marker: bool,
+    /// RTP timestamp (90 kHz clock for video).
+    pub timestamp: u32,
+    /// RTP sequence number.
+    pub sequence: u16,
 }
 
 impl Default for SessionConfig {
@@ -61,6 +80,7 @@ impl Default for SessionConfig {
             udp_bind: vec!["0.0.0.0:0".to_string()],
             video_codecs: None,
             ice_servers: Vec::new(),
+            video_tap: None,
         }
     }
 }
@@ -105,7 +125,12 @@ pub struct Session {
     pc: Arc<dyn PeerConnection>,
     stats: Arc<MediaStats>,
     ice: Mutex<IceQueue>,
+    /// The incoming video track and its SSRC, once it exists (for key frame requests).
+    remote_video: RemoteVideo,
 }
+
+/// The incoming video track and its SSRC, once it exists.
+type RemoteVideo = Arc<Mutex<Option<(Arc<dyn TrackRemote>, u32)>>>;
 
 /// Remote candidates may arrive before the remote description; they wait here.
 #[derive(Default)]
@@ -134,6 +159,11 @@ impl Session {
             }
         }
         let registry = register_default_interceptors(Registry::new(), &mut media_engine)?;
+        // Key frame requests (PLI/FIR) must reach the sending application.
+        let registry = registry.with(
+            crate::keyframe::slot(),
+            crate::keyframe::KeyframeForwarder::default(),
+        );
 
         // UNCERTAIN: relaying through TURN was not tried against a real coturn; only that the
         // list reaches the library configuration is tested (docs/transport.md).
@@ -143,9 +173,12 @@ impl Session {
 
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let stats = Arc::new(MediaStats::default());
+        let remote_video = Arc::new(Mutex::new(None));
         let handler = Arc::new(Handler {
+            remote_video: Arc::clone(&remote_video),
             events: events_tx,
             stats: Arc::clone(&stats),
+            tap: config.video_tap.clone(),
         });
         let pc = PeerConnectionBuilder::new()
             .with_configuration(rtc_config)
@@ -160,13 +193,16 @@ impl Session {
                 pc: Arc::new(pc),
                 stats,
                 ice: Mutex::new(IceQueue::default()),
+                remote_video,
             },
             events_rx,
         ))
     }
 
     /// Add a video track that this side will send. Call before [`Session::create_offer`].
-    /// Only VP8 can be sent for now.
+    /// VP8 and H.264 can be sent. H.264 is offered as `packetization-mode=1` with
+    /// `profile-level-id=42e01f` (Constrained Baseline, level 3.1), the profile browsers
+    /// announce for WebRTC. Frames are given to [`VideoSender::send_frame`] in Annex-B form.
     pub async fn add_video_track(&self, codec: VideoCodec) -> Result<VideoSender, TransportError> {
         let params = codec_parameters(codec)?;
         let ssrc: u32 = rand_u32();
@@ -197,6 +233,7 @@ impl Session {
             sender,
             ssrc,
             payload_type: OnceCell::new(),
+            rtcp_events: Mutex::new(()),
         })
     }
 
@@ -270,6 +307,23 @@ impl Session {
         self.stats.snapshot()
     }
 
+    /// Ask the sender for a new key frame (RTCP PLI), for example after a decoding error.
+    /// Fails if no video track has arrived yet.
+    pub async fn request_keyframe(&self) -> Result<(), TransportError> {
+        let guard = self.remote_video.lock().await;
+        let Some((track, media_ssrc)) = guard.as_ref() else {
+            return Err(TransportError::Invalid(
+                "no incoming video track yet".into(),
+            ));
+        };
+        let pli = PictureLossIndication {
+            sender_ssrc: 0,
+            media_ssrc: *media_ssrc,
+        };
+        track.write_rtcp(vec![Box::new(pli)]).await?;
+        Ok(())
+    }
+
     /// Close the connection.
     pub async fn close(&self) -> Result<(), TransportError> {
         self.pc.close().await?;
@@ -283,10 +337,29 @@ pub struct VideoSender {
     sender: Arc<dyn RtpSender>,
     ssrc: u32,
     payload_type: OnceCell<u8>,
+    /// Only one task at a time may wait for RTCP events.
+    rtcp_events: Mutex<()>,
 }
 
 impl VideoSender {
-    /// Send one encoded frame (a whole VP8 frame). `duration` is the time this frame lasts;
+    /// Wait for the next key frame request (RTCP PLI or FIR) from the receiver. Returns
+    /// `false` when no more feedback can arrive (the connection closed, or the track is not
+    /// connected yet: call this only after the connection state is `Connected`).
+    pub async fn next_keyframe_request(&self) -> bool {
+        let _one_waiter = self.rtcp_events.lock().await;
+        while let Some(event) = self.track.poll().await {
+            // Only requests for a key frame get through the interceptor, see `keyframe.rs`.
+            let TrackLocalEvent::OnRtcpPacket(packets) = event else {
+                continue;
+            };
+            if !packets.is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Send one encoded frame (a whole VP8 frame, or one H.264 access unit in Annex-B form). `duration` is the time this frame lasts;
     /// it sets the RTP timestamp step. Fails until the offer/answer exchange is done.
     pub async fn send_frame(&self, data: Bytes, duration: Duration) -> Result<(), TransportError> {
         let pt = *self
@@ -359,16 +432,30 @@ fn codec_parameters(codec: VideoCodec) -> Result<RTCRtpCodecParameters, Transpor
             },
             payload_type: 96,
         }),
+        VideoCodec::H264 => Ok(RTCRtpCodecParameters {
+            rtp_codec: RTCRtpCodec {
+                mime_type: MIME_TYPE_H264.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line:
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+                        .to_owned(),
+                rtcp_feedback: vec![],
+            },
+            payload_type: 102,
+        }),
         _ => Err(TransportError::Unsupported(
-            "only VP8 can be registered explicitly; use default codecs to receive others",
+            "only VP8 and H.264 can be registered explicitly; use default codecs to receive others",
         )),
     }
 }
 
 /// Library callbacks -> events and counters.
 struct Handler {
+    remote_video: RemoteVideo,
     events: mpsc::UnboundedSender<SessionEvent>,
     stats: Arc<MediaStats>,
+    tap: Option<mpsc::UnboundedSender<VideoPacket>>,
 }
 
 #[async_trait]
@@ -420,11 +507,13 @@ impl PeerConnectionEventHandler for Handler {
             let _ = self.events.send(SessionEvent::VideoTrack { mime, codec });
         }
         let stats = Arc::clone(&self.stats);
+        let tap = self.tap.clone();
 
         // Ask for a key frame now and every 2 s until one arrived, so a late joiner
         // does not wait for the sender's next regular key frame.
         // UNCERTAIN: the 2 s interval is a placeholder.
         if let (true, Some(media_ssrc)) = (is_video, ssrc) {
+            *self.remote_video.lock().await = Some((Arc::clone(&track), media_ssrc));
             let t = Arc::clone(&track);
             let st = Arc::clone(&stats);
             tokio::spawn(async move {
@@ -449,6 +538,14 @@ impl PeerConnectionEventHandler for Handler {
                 {
                     let key = codec.is_some_and(|c| starts_key_frame(c, &p.payload));
                     stats.record(p.payload.len(), p.header.marker, key);
+                    if let Some(tap) = &tap {
+                        let _ = tap.send(VideoPacket {
+                            payload: p.payload.clone(),
+                            marker: p.header.marker,
+                            timestamp: p.header.timestamp,
+                            sequence: p.header.sequence_number,
+                        });
+                    }
                 }
             }
         });

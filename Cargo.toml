@@ -74,6 +74,13 @@ cc-transport = { path = "crates/cc-transport" }
 cc-receiver = { path = "crates/cc-receiver" }
 cc-sender = { path = "crates/cc-sender" }
 cc-airplay = { path = "crates/cc-airplay" }
+cc-capture = { path = "crates/cc-capture" }
+cc-media = { path = "crates/cc-media" }
+# Screen capture on X11: pure-Rust protocol implementation (no libxcb, no unsafe in our code).
+x11rb = { version = "0.14", default-features = false, features = ["damage", "randr"] }
+# H.264 (BSD-2-Clause bindings around Cisco's OpenH264). The build mode is chosen by the
+# cc-media features.
+openh264 = { version = "0.9", default-features = false }
 
 # Lints every crate inherits with `[lints] workspace = true`.
 [workspace.lints.rust]
@@ -91,3 +98,13 @@ lto = true
 opt-level = "s"
 strip = true
 codegen-units = 1
+
+# The H.264 code is C++ that would be very slow at opt-level 0 (tests, debug runs).
+[profile.dev.package.openh264-sys2]
+opt-level = 3
+[profile.dev.package.openh264]
+opt-level = 3
+[profile.dev.package.cc-capture]
+opt-level = 3
+[profile.dev.package.cc-media]
+opt-level = 3

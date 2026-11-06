@@ -1,6 +1,6 @@
 [package]
 name = "cc-capture"
-description = "Screen capture traits"
+description = "Screen capture trait and an X11 backend"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,3 +11,14 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+thiserror.workspace = true
+x11rb.workspace = true
+
+[features]
+# Helpers that start Xvfb and draw test windows; used by tests of other crates.
+test-support = []
+
+[[example]]
+name = "xanim"
+required-features = ["test-support"]

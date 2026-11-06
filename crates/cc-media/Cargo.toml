@@ -1,6 +1,6 @@
 [package]
 name = "cc-media"
-description = "Video codec traits"
+description = "Video codec traits and an H.264 encoder/decoder (OpenH264)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,3 +11,14 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+# UNCERTAIN: which build mode the releases use is an open legal/packaging decision (see
+# docs/capture.md, "H.264 licensing"). `h264-source` builds and tests here without a
+# download; `h264-libloading` loads Cisco's prebuilt library at run time.
+default = ["h264-source"]
+h264-source = ["openh264/source"]
+h264-libloading = ["openh264/libloading"]
+
+[dependencies]
+openh264.workspace = true
+thiserror.workspace = true

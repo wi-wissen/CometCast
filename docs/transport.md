@@ -11,7 +11,7 @@ the Rust core's WebRTC path (assumptions A1/A2, measurement point 2 in
 | --- | --- |
 | `crates/cc-transport` | `SignalingClient` (WebSocket, `cc-proto` message types, plain or TLS), `net` (server address parsing, TLS trust, a minimal HTTP GET), `altcha` (proof-of-work solver), `ice` (`/ice-servers` client), `Session` (wrapper over the `webrtc` crate), `Route`, RTP counters and key frame check |
 | `crates/cc-receiver` | `ReceiverCore`: creates a room (solves ALTCHA when the server asks), exposes the code, answers the offer, reports video through events |
-| `crates/cc-sender` | `SenderCore`: joins by code, offers, sends a synthetic VP8 stream |
+| `crates/cc-sender` | `SenderCore`: joins by code, offers, sends a synthetic VP8 stream, or the real screen as H.264 (see [capture.md](capture.md)) |
 | `bins/cometcast-cli` | `receive` and `send` commands (developer tool, English output only) |
 | `tools/gen-test-frames.py` | Dev-time script that made `crates/cc-sender/assets/test-frames.ivf` |
 
@@ -53,7 +53,7 @@ an `RTCIceCandidateInit` (no protocol change; see protocol.md).
 
 - Receiver: registers the library's default codecs, so it can answer what a browser offers
   (by reading the library source: VP8, VP9, H.264 in several profiles, AV1 and H.265; only VP8 was observed in the tests, so the others are untested).
-- Sender: registers VP8 only, payload type 96.
+- Sender: registers VP8 only (payload type 96) in test pattern mode, or H.264 only (`packetization-mode=1`, `profile-level-id=42e01f`, payload type 102) in screen mode; see [capture.md](capture.md).
 - Reported by the receiver: packets, payload bytes, frames (RTP marker bit) and key frames.
   Key frame detection is a quick check of payload headers for VP8 and H.264 (unit tested), a rough check for VP9, and
   not available for AV1. There is no decoding or rendering.
@@ -73,6 +73,8 @@ It is a dev-time tool whose output is committed. The frames contain only rectang
 cargo run -p cometcast-server -- --listen 127.0.0.1:8443
 cargo run -p cometcast-cli -- receive [--server ADDRESS] [--bind ADDR] [--ca-file PEM]
 cargo run -p cometcast-cli -- send <CODE> [--server ADDRESS] [--seconds N] [--bind ADDR] [--ca-file PEM]
+cargo run -p cometcast-cli -- send <CODE> --screen [--display :99] [--fps 15] [--bitrate-kbps 2000]
+cargo run -p cometcast-cli -- receive --decode   # also decodes H.264 and prints size and mean colour
 ```
 
 `ADDRESS` is `HOST:PORT` (plain `ws://`) or a `ws://`, `wss://`, `http://` or `https://` URL.

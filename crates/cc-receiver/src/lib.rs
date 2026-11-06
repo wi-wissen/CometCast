@@ -181,6 +181,12 @@ impl ReceiverCore {
         &self.code
     }
 
+    /// Ask the sender for a new key frame (picture loss indication), for example after a
+    /// decoding error. Fails if no video track has arrived yet.
+    pub async fn request_keyframe(&self) -> Result<(), TransportError> {
+        self.session.request_keyframe().await
+    }
+
     /// Current video counters.
     pub fn stats(&self) -> MediaSnapshot {
         self.session.stats()
