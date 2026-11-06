@@ -9,7 +9,8 @@
 //! * Annex B (start codes `00 00 01` / `00 00 00 01`) or AVCC (length-prefixed NAL units, 4 byte
 //!   lengths; other sizes only after an `avcC` config record announced them). Both are turned into Annex B, which is what the packetiser wants.
 //! * Codec configuration separately ([`ExternalInput::set_config`]): Annex B with SPS/PPS, or an
-//!   `avcC` record. SPS/PPS found inside access units update the cache too.
+//!   `avcC` record. SPS/PPS found inside key-frame units update the cache too (not those of delta
+//!   frames, and not implausibly short ones, see [`MIN_PARAMETER_SET_BYTES`]).
 //! * Key frames without SPS/PPS get the cached ones in front (after a leading access unit
 //!   delimiter), so a receiver that joins at any key frame can decode. A key frame that cannot be
 //!   completed (no parameter sets known yet) is dropped and a new one is requested.
@@ -38,6 +39,11 @@ use tokio::sync::Notify;
 /// Largest access unit accepted (a 4K key frame is far below this).
 /// UNCERTAIN: placeholder, not derived from a measurement.
 pub const MAX_ACCESS_UNIT_BYTES: usize = 8 * 1024 * 1024;
+
+/// Shortest SPS/PPS accepted (header byte included). A real SPS has at least the profile, the
+/// constraint flags and the level besides the header byte; anything shorter (for example a lone
+/// `0x67`) is a damaged or hostile unit and must not replace the cached parameter sets.
+pub const MIN_PARAMETER_SET_BYTES: usize = 4;
 
 /// Settings of the `ExternalH264` input.
 #[derive(Debug, Clone)]
@@ -243,25 +249,36 @@ impl ExternalInput {
         if self.inner.closed.load(Ordering::Relaxed) {
             return PushOutcome::Closed;
         }
-        let mut st = self.state();
-        // Normalise before anything else: parameter sets in the unit update the cache even if
-        // the unit itself is dropped below.
-        let au = match normalize(&mut st, data) {
+        // Normalise outside the state lock (it copies the whole unit); only the length size of
+        // AVCC input is read under it.
+        let length_size = self.state().nal_length_size.unwrap_or(4);
+        let au = match normalize(data, length_size) {
             Ok(au) => au,
             Err(_) => {
                 c.invalid.fetch_add(1, Ordering::Relaxed);
                 return PushOutcome::Invalid;
             }
         };
+        let mut st = self.state();
         let has_idr = au.has_idr;
         let key = is_key || has_idr;
+        // Parameter sets of key-frame units update the cache, even if the unit itself is dropped
+        // below. Those of delta frames do not (a delta frame carries none in a sane stream).
+        if key {
+            if !au.sps.is_empty() {
+                st.sps = au.sps.clone();
+            }
+            if !au.pps.is_empty() {
+                st.pps = au.pps.clone();
+            }
+        }
         if !st.streaming {
             c.dropped_not_streaming.fetch_add(1, Ordering::Relaxed);
             return PushOutcome::NotStreaming;
         }
         if st.need_key && !key {
             c.dropped_waiting_key.fetch_add(1, Ordering::Relaxed);
-            self.request_locked(&mut st, now);
+            self.request_internal(&mut st, now);
             return PushOutcome::WaitingForKeyFrame;
         }
         let out = if key {
@@ -270,7 +287,7 @@ impl ExternalInput {
                 None => {
                     c.dropped_no_params.fetch_add(1, Ordering::Relaxed);
                     st.need_key = true;
-                    self.request_locked(&mut st, now);
+                    self.request_internal(&mut st, now);
                     return PushOutcome::MissingParameterSets;
                 }
             }
@@ -286,7 +303,7 @@ impl ExternalInput {
         if st.queue.len() >= self.inner.options.max_queue {
             c.dropped_queue_full.fetch_add(1, Ordering::Relaxed);
             st.need_key = true;
-            self.request_locked(&mut st, now);
+            self.request_internal(&mut st, now);
             return PushOutcome::QueueFull;
         }
         if key {
@@ -316,6 +333,19 @@ impl ExternalInput {
     pub fn request_keyframe_at(&self, now: Instant) -> bool {
         let mut st = self.state();
         self.request_locked(&mut st, now)
+    }
+
+    /// A request made by the drop policy itself (not by the receiver). While one is pending or
+    /// the rate limit blocks it, nothing is counted: otherwise every delta frame dropped while a
+    /// key frame is awaited would inflate `keyframe_requests`.
+    fn request_internal(&self, st: &mut State, now: Instant) -> bool {
+        let too_soon = st.last_key_request.is_some_and(|t| {
+            now.saturating_duration_since(t) < self.inner.options.keyframe_min_interval
+        });
+        if too_soon || self.inner.key_flag.load(Ordering::Relaxed) {
+            return false;
+        }
+        self.request_locked(st, now)
     }
 
     fn request_locked(&self, st: &mut State, now: Instant) -> bool {
@@ -431,11 +461,18 @@ impl ExternalInput {
 }
 
 /// The RTP time step for a frame: the difference of the presentation times when both are known
-/// and plausible (1 ms to 1 s), otherwise the wall-clock time since the previous frame, clamped
-/// the same way.
+/// and increasing, otherwise the wall-clock time since the previous frame; clamped to 1 ms ..=
+/// 500 ms.
+///
+/// The upper bound matters on a static screen: the encoder emits nothing (or a repeated frame
+/// after about a second), and a long gap must not become a long gap on the receiver's playout
+/// timeline, where the next frame would then be held back by that much. The pts rule is kept
+/// (rather than always using the wall clock) because the pts is the encoder's own cadence and is
+/// free of the jitter of the Dart/FFI hop. UNCERTAIN: 500 ms is a placeholder; neither the
+/// repeat behaviour of real encoders nor the receiver's reaction was measured.
 pub(crate) fn rtp_step(prev_pts: Option<u64>, pts: Option<u64>, wall: Duration) -> Duration {
     const MIN: Duration = Duration::from_millis(1);
-    const MAX: Duration = Duration::from_secs(1);
+    const MAX: Duration = Duration::from_millis(500);
     let from_pts = match (prev_pts, pts) {
         (Some(a), Some(b)) if b > a => Some(Duration::from_micros(b - a)),
         _ => None,
@@ -465,6 +502,9 @@ struct AccessUnit {
     has_idr: bool,
     has_sps: bool,
     has_pps: bool,
+    /// Plausible SPS/PPS found in the unit (the caller decides whether they update the cache).
+    sps: Vec<Vec<u8>>,
+    pps: Vec<Vec<u8>>,
     /// The first NAL is an access unit delimiter (type 9).
     leading_aud: bool,
 }
@@ -551,22 +591,27 @@ fn split_any(data: &[u8], preferred_length_size: usize) -> Option<Vec<&[u8]>> {
 
 const START_CODE: [u8; 4] = [0, 0, 0, 1];
 
-fn normalize(st: &mut State, data: &[u8]) -> Result<AccessUnit, FormatError> {
+/// Pure: touches no shared state, so it can run outside the lock.
+fn normalize(data: &[u8], length_size: usize) -> Result<AccessUnit, FormatError> {
     if data.is_empty() {
         return Err(FormatError::Empty);
     }
     if data.len() > MAX_ACCESS_UNIT_BYTES {
         return Err(FormatError::TooLarge);
     }
-    let nals =
-        split_any(data, st.nal_length_size.unwrap_or(4)).ok_or(FormatError::UnknownFormat)?;
+    let nals = split_any(data, length_size).ok_or(FormatError::UnknownFormat)?;
     let mut annex_b = Vec::with_capacity(data.len() + 4 * nals.len());
     let (mut has_idr, mut has_sps, mut has_pps) = (false, false, false);
     let mut sps = Vec::new();
     let mut pps = Vec::new();
+    let mut first_is_aud = false;
     for nal in &nals {
         match nal[0] & 0x1f {
             5 => has_idr = true,
+            7 | 8 if nal.len() < MIN_PARAMETER_SET_BYTES => {
+                // Implausibly short: neither used nor forwarded.
+                continue;
+            }
             7 => {
                 has_sps = true;
                 sps.push(nal.to_vec());
@@ -577,22 +622,23 @@ fn normalize(st: &mut State, data: &[u8]) -> Result<AccessUnit, FormatError> {
             }
             _ => {}
         }
+        if annex_b.is_empty() {
+            first_is_aud = nal[0] & 0x1f == 9;
+        }
         annex_b.extend_from_slice(&START_CODE);
         annex_b.extend_from_slice(nal);
     }
-    // Parameter sets inside the stream replace the cached ones.
-    if has_sps {
-        st.sps = sps;
-    }
-    if has_pps {
-        st.pps = pps;
+    if annex_b.is_empty() {
+        return Err(FormatError::UnknownFormat);
     }
     Ok(AccessUnit {
         annex_b,
         has_idr,
         has_sps,
         has_pps,
-        leading_aud: nals[0][0] & 0x1f == 9,
+        sps,
+        pps,
+        leading_aud: first_is_aud,
     })
 }
 
@@ -638,13 +684,16 @@ fn parse_avcc_record(d: &[u8]) -> Option<(usize, NalSets, NalSets)> {
     }
     let length_size = usize::from(d[4] & 3) + 1;
     let mut pos = 5;
-    let read_sets = |count: usize, pos: &mut usize| -> Option<Vec<Vec<u8>>> {
+    let read_sets = |count: usize, pos: &mut usize, nal_type: u8| -> Option<Vec<Vec<u8>>> {
         let mut v = Vec::new();
         for _ in 0..count {
             let len = usize::from(u16::from_be_bytes([*d.get(*pos)?, *d.get(*pos + 1)?]));
             *pos += 2;
             let nal = d.get(*pos..*pos + len)?;
-            if !is_plausible_nal(nal) {
+            if !is_plausible_nal(nal)
+                || nal[0] & 0x1f != nal_type
+                || nal.len() < MIN_PARAMETER_SET_BYTES
+            {
                 return None;
             }
             v.push(nal.to_vec());
@@ -654,10 +703,10 @@ fn parse_avcc_record(d: &[u8]) -> Option<(usize, NalSets, NalSets)> {
     };
     let n_sps = usize::from(d[pos] & 0x1f);
     pos += 1;
-    let sps = read_sets(n_sps, &mut pos)?;
+    let sps = read_sets(n_sps, &mut pos, 7)?;
     let n_pps = usize::from(*d.get(pos)?);
     pos += 1;
-    let pps = read_sets(n_pps, &mut pos)?;
+    let pps = read_sets(n_pps, &mut pos, 8)?;
     Some((length_size, sps, pps))
 }
 
@@ -679,12 +728,12 @@ fn apply_config(st: &mut State, data: &[u8]) -> bool {
     let nals = split_annex_b(data);
     let sps: Vec<Vec<u8>> = nals
         .iter()
-        .filter(|n| n[0] & 0x1f == 7)
+        .filter(|n| n[0] & 0x1f == 7 && n.len() >= MIN_PARAMETER_SET_BYTES)
         .map(|n| n.to_vec())
         .collect();
     let pps: Vec<Vec<u8>> = nals
         .iter()
-        .filter(|n| n[0] & 0x1f == 8)
+        .filter(|n| n[0] & 0x1f == 8 && n.len() >= MIN_PARAMETER_SET_BYTES)
         .map(|n| n.to_vec())
         .collect();
     if sps.is_empty() && pps.is_empty() {
@@ -887,6 +936,76 @@ mod tests {
     }
 
     #[test]
+    fn avcc_record_lists_must_hold_the_right_nal_types() {
+        let mut rec = avcc_record(4);
+        let e = ExternalInput::default();
+        assert!(e.set_config(&rec));
+        // A PPS (type 8) in the SPS list.
+        let mut bad = vec![1, SPS[1], SPS[2], SPS[3], 0xff, 0xe1];
+        bad.extend_from_slice(&(PPS.len() as u16).to_be_bytes());
+        bad.extend_from_slice(PPS);
+        bad.push(1);
+        bad.extend_from_slice(&(PPS.len() as u16).to_be_bytes());
+        bad.extend_from_slice(PPS);
+        assert!(parse_avcc_record(&bad).is_none());
+        // An SPS in the PPS list.
+        let keep = rec.len() - PPS.len() - 2;
+        rec.truncate(keep);
+        rec.extend_from_slice(&(SPS.len() as u16).to_be_bytes());
+        rec.extend_from_slice(SPS);
+        assert!(parse_avcc_record(&rec).is_none());
+    }
+
+    #[test]
+    fn short_or_delta_frame_parameter_sets_do_not_replace_the_cache() {
+        let e = streaming(ExternalOptions::default());
+        e.set_config(&annex_b(&[SPS, PPS]));
+        // A lone 0x67 / 0x68 in a key frame is ignored and not forwarded.
+        assert_eq!(
+            e.push(&annex_b(&[&[0x67], &[0x68], IDR]), true, None),
+            PushOutcome::Queued
+        );
+        assert_eq!(pop(&e).unwrap().data, annex_b(&[SPS, PPS, IDR]));
+        // A full SPS in a delta frame does not replace the cache either.
+        let sps2: &[u8] = &[0x67, 0x42, 0xc0, 0x28, 0xaa];
+        assert_eq!(
+            e.push(&annex_b(&[sps2, DELTA]), false, None),
+            PushOutcome::Queued
+        );
+        pop(&e);
+        assert_eq!(e.push(&annex_b(&[IDR]), true, None), PushOutcome::Queued);
+        assert_eq!(pop(&e).unwrap().data, annex_b(&[SPS, PPS, IDR]));
+        // A dropped delta unit does not update it either.
+        let e = streaming(ExternalOptions::default());
+        e.set_config(&annex_b(&[SPS, PPS]));
+        assert_eq!(
+            e.push(&annex_b(&[sps2, DELTA]), false, None),
+            PushOutcome::WaitingForKeyFrame
+        );
+        assert_eq!(e.push(&annex_b(&[IDR]), true, None), PushOutcome::Queued);
+        assert_eq!(pop(&e).unwrap().data, annex_b(&[SPS, PPS, IDR]));
+    }
+
+    #[test]
+    fn dropped_deltas_do_not_inflate_the_key_frame_request_count() {
+        let e = streaming(ExternalOptions::default());
+        let before = e.stats().keyframe_requests;
+        for _ in 0..50 {
+            assert_eq!(
+                e.push(&annex_b(&[DELTA]), false, None),
+                PushOutcome::WaitingForKeyFrame
+            );
+        }
+        let s = e.stats();
+        assert_eq!(
+            s.keyframe_requests, before,
+            "the pending request covers them"
+        );
+        assert_eq!(s.keyframe_requests_ignored, 0);
+        assert_eq!(s.dropped_waiting_key, 50);
+    }
+
+    #[test]
     fn nothing_is_accepted_before_a_peer_is_connected() {
         let e = ExternalInput::default();
         assert_eq!(
@@ -996,7 +1115,12 @@ mod tests {
         );
         assert_eq!(
             rtp_step(Some(0), Some(60_000_000), wall),
-            Duration::from_secs(1)
+            Duration::from_millis(500),
+            "a static screen must not stretch the timeline"
+        );
+        assert_eq!(
+            rtp_step(None, None, Duration::from_secs(30)),
+            Duration::from_millis(500)
         );
         assert_eq!(rtp_step(Some(0), Some(10), wall), Duration::from_millis(1));
     }

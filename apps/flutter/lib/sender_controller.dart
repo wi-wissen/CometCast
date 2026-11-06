@@ -122,6 +122,8 @@ class SenderController extends ChangeNotifier {
       throw StateError('no Android capture on this platform');
     }
     _cancel();
+    // The previous feeder (if any) must not leak or keep the service: release it first.
+    _releaseCapture();
     final generation = _generation;
     _resetState(sharing: true);
     phase = SenderPhase.starting;
@@ -130,6 +132,8 @@ class SenderController extends ChangeNotifier {
     final feeder = CaptureFeeder(
       core: core,
       capture: cap,
+      // Only the newest session may stop the singleton capture service.
+      ownsCapture: () => _generation == generation || _feeder == null,
       onStopped: (_) {
         if (_generation != generation) return;
         captureStopped = true;
