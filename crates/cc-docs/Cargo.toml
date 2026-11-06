@@ -12,3 +12,13 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+cc-proto.workspace = true
+hayro.workspace = true
+png.workspace = true
+image-webp.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+flate2 = "1"

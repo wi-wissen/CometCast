@@ -30,10 +30,10 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-# UNCERTAIN: 1.88 is what hickory-resolver 0.26 declares and what let-chains in edition 2024
-# need (stable since 1.88); it is not measured by a CI job with exactly this toolchain
-# (CI uses the stable toolchain). It will be raised when heavier dependencies are added.
-rust-version = "1.88"
+# UNCERTAIN: raised from 1.88 to 1.92 because hayro 0.8 and 0.9 (cc-docs) declare
+# rust-version 1.92 in their crate metadata. Not measured with exactly a 1.92 toolchain
+# (development used 1.97; CI uses the stable toolchain).
+rust-version = "1.92"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/wi-wissen/CometCast"
 authors = ["Comet Cast contributors"]
@@ -96,6 +96,12 @@ x11rb = { version = "0.14", default-features = false, features = ["damage", "ran
 openh264 = { version = "0.9", default-features = false }
 cc-miracast = { path = "crates/cc-miracast" }
 cc-cast = { path = "crates/cc-cast", default-features = false }
+cc-docs = { path = "crates/cc-docs" }
+# PDF rendering (cc-docs). Pure Rust, Apache-2.0 OR MIT; needs Rust 1.92 (see rust-version above).
+hayro = "0.9"
+# Pure-Rust image encoders for rendered pages (cc-docs): PNG and lossless WebP. No C code.
+png = "0.18"
+image-webp = "0.2"
 
 # Lints every crate inherits with `[lints] workspace = true`.
 [workspace.lints.rust]

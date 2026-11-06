@@ -16,6 +16,7 @@ use std::time::Duration;
 
 mod cast;
 mod discover;
+mod docs;
 
 use cc_airplay::{AirplayConfig, AirplayEvent, AirplayStatus, Supervisor, SupervisorOptions};
 use cc_proto::RoomCode;
@@ -36,6 +37,7 @@ Usage:
                     [--bitrate-kbps N] [--seconds N] [--trust-anchors PEM]
                     [--insecure-skip-device-auth]
   cometcast-cli discover [--seconds N] [--policy-file PATH] [--announce HOST:PORT]
+  cometcast-cli docs info|render ... (PDF pages, see `docs --help`)
   cometcast-cli --version
 
 Options:
@@ -101,12 +103,14 @@ enum Command {
     Airplay(AirplayArgs),
     Cast(cast::CastCmd),
     Discover(discover::DiscoverArgs),
+    Docs(docs::DocsArgs),
     AirplaySend(airplay_send::Sub),
     Miracast {
         name: Option<String>,
     },
     Version,
     Help,
+    DocsHelp,
 }
 
 struct AirplayArgs {
@@ -207,6 +211,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "miracast" => return parse_miracast(args),
         "cast" => return Ok(cast::parse(args)?.map_or(Command::Help, Command::Cast)),
         "discover" => return Ok(discover::parse(args)?.map_or(Command::Help, Command::Discover)),
+        "docs" => return Ok(docs::parse(args)?.map_or(Command::DocsHelp, Command::Docs)),
         "receive" | "send" => {}
         other => return Err(format!("unknown command {other:?}")),
     }
@@ -299,6 +304,11 @@ async fn main() -> ExitCode {
             println!("{USAGE}\n\n{}", airplay_send::USAGE);
             ExitCode::SUCCESS
         }
+        Command::DocsHelp => {
+            println!("{}", docs::USAGE);
+            ExitCode::SUCCESS
+        }
+        Command::Docs(d) => docs::run(d),
         Command::Airplay(a) => airplay(a).await,
         Command::AirplaySend(a) => airplay_send::run(a).await,
         Command::Miracast { name } => miracast(name).await,
