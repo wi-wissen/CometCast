@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an idea
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please write in English. Please do not ask for features on the "what we do not do" list in the README (for example AirDrop, DLNA, DRM circumvention).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: Describe the situation (for example a classroom, an office, a club) and what is hard today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: How could Comet Cast help?
+  - type: dropdown
+    id: install
+    attributes:
+      label: Does it need an app install on a side that has none today?
+      options:
+        - No
+        - Yes
+        - Not sure
+  - type: textarea
+    id: devices
+    attributes:
+      label: Devices involved
+      placeholder: "e.g. iPad to Google TV"

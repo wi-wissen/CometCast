@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please write in English. Do not report security problems here, see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: sender
+    attributes:
+      label: Sender device and app version
+      placeholder: "e.g. Windows 11, Comet Cast commit abc1234"
+  - type: input
+    id: receiver
+    attributes:
+      label: Receiver device and app version
+      placeholder: "e.g. Apple TV 4K, tvOS 26"
+  - type: dropdown
+    id: route
+    attributes:
+      label: Connection path, if known
+      options:
+        - Direct WebRTC
+        - Internal server (TURN/SFU)
+        - Receiver's own Wi-Fi
+        - Not sure
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      render: shell
+  - type: input
+    id: assumption
+    attributes:
+      label: Related assumption (optional)
+      description: "If this looks like a failed beta assumption, give its number from docs/measurement-points.md, e.g. A3."
