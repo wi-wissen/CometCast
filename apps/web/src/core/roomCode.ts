@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// UNCERTAIN: final alphabet/length is defined in cc-proto
-export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+// Mirrors RoomCode::ALPHABET in crates/cc-proto (32 characters; no 0, O, 1, I).
+export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export const ROOM_CODE_LENGTH = 6
 
 /** Uppercase, drop characters outside the alphabet, cut to length. */
