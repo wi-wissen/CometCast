@@ -8,7 +8,8 @@ export type Role = 'sender' | 'receiver'
 
 export type ClientMessage =
   | { type: 'hello'; proto_version: number; role: Role }
-  | { type: 'create_room' }
+  // altcha: base64 of {challenge, solution}; only needed when the server answers altcha_required (docs/server.md)
+  | { type: 'create_room'; altcha?: string }
   | { type: 'join_room'; code: string }
   | { type: 'offer'; sdp: string }
   | { type: 'answer'; sdp: string }
@@ -37,6 +38,15 @@ export const SERVER_ERROR_CODES = [
   'room_full',
   'not_in_room',
   'bad_message',
+  // Added with the server's M8 (docs/protocol.md). HTTP-side refusals of /altcha/challenge use
+  // the same words (see altchaClient.ts), plus 'forbidden', 'server_full' and 'altcha_failed'.
+  'altcha_required',
+  'altcha_invalid',
+  'rate_limited',
+  'banned',
+  'forbidden',
+  'server_full',
+  'altcha_failed',
 ] as const
 
 export function encodeClientMessage(m: ClientMessage): string {

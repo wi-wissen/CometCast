@@ -2,8 +2,9 @@
 
 The no-install variant of Comet Cast: runs in a browser. Early version (v0.1): a browser
 receiver and a browser sender work end to end (screen video over WebRTC, signalling over WebSocket
-`/ws`, protocol in `docs/protocol.md`). There are no STUN/TURN servers yet, so it works over the local
-network only and may not work across networks. The receiver has a local annotation toolbar, and images and links can be sent over a WebRTC DataChannel
+`/ws`, protocol in `docs/protocol.md`). Without a STUN/TURN list from the server it works over the local
+network only and may not work across networks. Servers in open mode require a small proof-of-work
+(ALTCHA) before a room is created; the page solves it by itself (see "Open servers and TURN" below). The receiver has a local annotation toolbar, and images and links can be sent over a WebRTC DataChannel
 (milestone M2, see `docs/web-m2.md`; PDF/Office are not implemented). The
 Rust-WASM core will be added later (see `src/core/index.ts`).
 
@@ -37,11 +38,36 @@ other one choose "Send screen", enter the code and share. For development with `
 ## Code layout
 
 - `src/core/signaling.ts` - WebSocket client and typed messages (mirrors `cc-proto`)
-- `src/core/peer.ts` - RTCPeerConnection wrapper (no STUN/TURN by default)
+- `src/core/peer.ts` - RTCPeerConnection wrapper (takes the STUN/TURN list from the server; none by default)
+- `src/core/altcha.ts`, `altchaWorker.ts`, `altchaClient.ts` - ALTCHA solver (WebCrypto PBKDF2, runs in a Web Worker), `GET /altcha/challenge` and `GET /ice-servers`
 - `src/core/receiverSession.ts`, `senderSession.ts` - explicit state machines
 - `src/core/control.ts` - DataChannel "control": message format, chunking, reassembly, link validation
 - `src/core/annotations.ts`, `toolbarState.ts` - local annotation model and toolbar state (pure, unit-tested)
 - `src/composables/useReceiver.ts`, `useSender.ts` - Vue glue
+
+## Open servers and TURN
+
+- **ALTCHA.** The receiver sends `create_room` as before. If the server answers `altcha_required` (open
+  mode always does), the page fetches `GET /altcha/challenge`, solves it and sends `create_room` again
+  with the `altcha` field. While it works the status reads "Checking your browser..." (`receive.status.checking`).
+  The scheme (read from the `altcha` crate 1.1.0 that the server uses): password = nonce bytes followed by
+  the counter as 4 bytes big-endian; `PBKDF2-HMAC-SHA256(password, salt, cost iterations, keyLength bytes)`;
+  the first counter from 0 whose result starts with `keyPrefix` is the answer. Each attempt is one WebCrypto
+  derivation, in a module Web Worker (`altchaWorker.ts`); if workers are unavailable the same code runs on the
+  main thread. The payload is the base64 of `{"challenge": ..., "solution": {counter, derivedKey, time}}`.
+  Refusals map to translated messages: `altcha_invalid`, `rate_limited`, `banned` (also from HTTP 429 and 403 with
+  `Retry-After` on the challenge request), plus `forbidden` (403 without `Retry-After`), `server_full` (503) and
+  `altcha_failed` (network problem or solver failure).
+  UNCERTAIN: how long solving takes on weak devices is not measured (docs/measurement-points.md, point 8);
+  the 60 s give-up time is a placeholder. The server closes a connection that is in no room after 60 s by default
+  (`no_room_secs`), so a very slow device could be cut off while solving.
+- **STUN/TURN.** Both sender and receiver ask `GET /ice-servers` once per session and pass the list to
+  `RTCPeerConnection` (`iceServers`). `404` (no TURN configured, always the case in open mode), a failed request or
+  an unusable answer all mean "no list"; the page then connects as before. Entries with a `turn:` URL but without
+  user name and credential are dropped. UNCERTAIN: relaying through a real coturn was not tried; the end-to-end test
+  only checks that the list reaches the peer connection (with correct credentials).
+- **Web app on another origin.** The two endpoints are fetched from the page's own origin (the server sends no CORS
+  headers, see docs/server.md). A `?server=` override in development builds changes the origin used for both.
 
 ## End-to-end test
 
@@ -54,7 +80,7 @@ stopping on the sender shows "peer left" on the receiver. It also checks the tra
 
 What it proves: signalling, offer/answer/ICE and media over one machine's loopback/host candidates.
 What it does not prove: behaviour across networks/NAT (no STUN/TURN), other browsers, real screen
-content, audio, or encryption on the wire (no TLS yet). It uses the launch flag
+content, audio, or encryption on the wire (the test server speaks plain HTTP). It uses the launch flag
 `--disable-features=WebRtcHideLocalIpsWithMdns` so that host candidates are usable in a sandbox.
 
 getDisplayMedia worked headless in the preinstalled Chromium with
@@ -63,6 +89,19 @@ getDisplayMedia worked headless in the preinstalled Chromium with
 browser offers, not a real desktop). As a fallback there is a **TEST-ONLY** query flag `?testVideo=1`
 on the page: the sender then sends an animated canvas instead of the screen. Run
 `E2E_TEST_VIDEO=1 npm run e2e` to use it. Do not use it for anything else.
+
+## Open mode and TURN test
+
+`npm run build && npm run e2e:open` starts real servers (several processes) and checks, with headless Chromium and
+the real `cometcast-cli`: a raw client without ALTCHA gets `altcha_required`; the web receiver shows the translated
+"Checking your browser..." status (English and German), solves the puzzle in a Web Worker and creates a room on an
+open-mode server, a web sender joins and video plays; `cometcast-cli receive` creates a room on the open server and
+receives from a web sender; `cometcast-cli send` reaches a web receiver; repeated room creation ends in the translated
+`rate_limited` message and failed joins in the translated `banned` message; on an internal-mode server with a TURN
+secret both web pages put the server's list (with credentials that match HMAC-SHA1 of the user name) into their
+`RTCPeerConnection` (read by wrapping the constructor in the test page) and the CLI reports the list; the CLI connects
+over `wss://` to a self-signed server with `--ca-file`. TURN is tested on a separate internal-mode server because open
+mode refuses a `[turn]` section. The TURN host in the test does not exist: nothing is relayed.
 
 ## Interop test with the native Rust peers
 

@@ -2,6 +2,7 @@
 import { onBeforeUnmount, shallowRef } from 'vue'
 import { ReceiverSession, type ReceiverState } from '../core/receiverSession'
 import { signalingUrl } from '../core/signaling'
+import { fetchIceServers, httpBaseUrl, obtainAltchaPayload } from '../core/altchaClient'
 
 export function useReceiver() {
   // shallowRef: MediaStream must not be wrapped in a reactive proxy.
@@ -14,7 +15,14 @@ export function useReceiver() {
     transfer: null,
     contentError: null,
   })
-  const session = new ReceiverSession({ url: signalingUrl(location), onChange: (s) => (state.value = s) })
+  const url = signalingUrl(location)
+  const base = httpBaseUrl(url)
+  const session = new ReceiverSession({
+    url,
+    onChange: (s) => (state.value = s),
+    altcha: (signal) => obtainAltchaPayload(base, { signal }),
+    iceServers: () => fetchIceServers(base),
+  })
   onBeforeUnmount(() => session.stop())
   return { state, start: () => session.start(), stop: () => session.stop(), clearContent: () => session.clearContent() }
 }

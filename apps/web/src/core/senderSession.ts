@@ -31,6 +31,8 @@ export interface SenderDeps {
   getStream?: () => Promise<MediaStream>
   socketFactory?: SocketFactory
   peerFactory?: PeerFactory
+  /** STUN/TURN list (GET /ice-servers). Must not reject; an empty list means none. */
+  iceServers?: () => Promise<RTCIceServer[]>
 }
 
 export class SenderSession {
@@ -41,10 +43,11 @@ export class SenderSession {
   private peer: Peer | null = null
   private stream: MediaStream | null = null
   private run = 0 // invalidates async work of an earlier start()/stop()
+  private icePromise: Promise<RTCIceServer[]> = Promise.resolve([])
   private readonly peerFactory: PeerFactory
 
   constructor(private readonly deps: SenderDeps) {
-    this.peerFactory = deps.peerFactory ?? ((h) => createPeer(h))
+    this.peerFactory = deps.peerFactory ?? ((h, c) => createPeer(h, c))
   }
 
   get snapshot(): SenderState {
@@ -85,6 +88,8 @@ export class SenderSession {
   async start(code: string): Promise<void> {
     this.teardown()
     const run = ++this.run
+    // Started first, so it runs while the screen picker is open. Failure means "no list".
+    this.icePromise = this.deps.iceServers ? this.deps.iceServers().catch(() => []) : Promise.resolve([])
     if (this.deps.getStream) {
       this.set('capturing')
       let stream: MediaStream
@@ -184,14 +189,19 @@ export class SenderSession {
   private async sendOffer(): Promise<void> {
     const run = this.run
     try {
-      const peer = this.peerFactory({
-        onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
-        onTrack: () => {},
-        onState: (s: PeerState) => {
-          if (s === 'connected') this.set('sharing')
-          else if (s === 'failed') this.fail('peer_failed')
+      const iceServers = await this.icePromise
+      if (run !== this.run || !this.client) return // stopped, or the receiver left meanwhile
+      const peer = this.peerFactory(
+        {
+          onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
+          onTrack: () => {},
+          onState: (s: PeerState) => {
+            if (s === 'connected') this.set('sharing')
+            else if (s === 'failed') this.fail('peer_failed')
+          },
         },
-      })
+        { iceServers },
+      )
       this.peer = peer
       if (this.stream) peer.addStream(this.stream)
       // Created before the offer so that the offer contains the data section.

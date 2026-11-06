@@ -8,6 +8,7 @@ import { SignalingClient, type ServerMessage, type SocketFactory } from './signa
 export type ReceiverPhase =
   | 'idle'
   | 'connecting' // opening the WebSocket / handshake / room creation
+  | 'checking' // the server asked for a proof-of-work puzzle ("Checking your browser..."); solving it
   | 'waiting_sender' // room code is shown
   | 'negotiating' // a sender joined, WebRTC is being set up
   | 'receiving' // media is flowing
@@ -22,7 +23,7 @@ export type ReceivedContent =
 export interface ReceiverState {
   phase: ReceiverPhase
   code: string | null
-  /** Server error code or a local one (connection_lost, peer_failed). Set when phase is 'error'. */
+  /** Server error code or a local one (connection_lost, peer_failed, altcha_failed). Set when phase is 'error'. */
   errorCode: string | null
   stream: MediaStream | null
   content: ReceivedContent | null
@@ -37,6 +38,14 @@ export interface ReceiverDeps {
   onChange: (s: ReceiverState) => void
   socketFactory?: SocketFactory
   peerFactory?: PeerFactory
+  /**
+   * Fetches and solves an ALTCHA puzzle; returns the text for create_room.altcha. Called only after
+   * the server answered altcha_required. Reject with an object that has a string `code`
+   * (rate_limited, banned, ...) to show that error; any other rejection becomes altcha_failed.
+   */
+  altcha?: (signal: AbortSignal) => Promise<string>
+  /** STUN/TURN list (GET /ice-servers). Must not reject; an empty list means none. */
+  iceServers?: () => Promise<RTCIceServer[]>
   /** Test seam; defaults to URL.createObjectURL / revokeObjectURL. */
   objectUrl?: { create(b: Blob): string; revoke(u: string): void }
 }
@@ -75,9 +84,15 @@ export class ReceiverSession {
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private readonly peerFactory: PeerFactory
+  private run = 0 // invalidates async work of an earlier start()/stop()
+  private iceServers: RTCIceServer[] = []
+  private iceReady = true
+  private held: ServerMessage[] = [] // messages that arrived before the ICE server list
+  private altchaTried = false
+  private altchaAbort: AbortController | null = null
 
   constructor(private readonly deps: ReceiverDeps) {
-    this.peerFactory = deps.peerFactory ?? ((h) => createPeer(h))
+    this.peerFactory = deps.peerFactory ?? ((h, c) => createPeer(h, c))
   }
 
   get snapshot(): ReceiverState {
@@ -98,7 +113,20 @@ export class ReceiverSession {
 
   start(): void {
     this.teardown()
+    const run = ++this.run
+    this.altchaTried = false
+    this.iceServers = []
+    this.iceReady = !this.deps.iceServers
+    this.held = []
     this.set({ ...EMPTY, phase: 'connecting' })
+    if (this.deps.iceServers) {
+      // Fetched while the room is being created; a sender needs a person to type the code,
+      // so the list is normally there long before the first peer is made.
+      void this.deps.iceServers().then(
+        (list) => this.iceLoaded(run, list),
+        () => this.iceLoaded(run, []),
+      )
+    }
     this.client = new SignalingClient(
       this.deps.url,
       'receiver',
@@ -113,11 +141,44 @@ export class ReceiverSession {
   }
 
   stop(): void {
+    this.run++
     this.teardown()
     this.set({ ...EMPTY, phase: 'idle' })
   }
 
+  private iceLoaded(run: number, list: RTCIceServer[]): void {
+    if (run !== this.run) return
+    this.iceServers = list
+    this.iceReady = true
+    for (const m of this.held.splice(0)) this.onMessage(m)
+  }
+
+  /** The server wants a solved puzzle before it creates a room (open mode). */
+  private solveAltcha(): void {
+    const run = this.run
+    const ctl = new AbortController()
+    this.altchaAbort = ctl
+    this.altchaTried = true
+    this.set({ phase: 'checking' })
+    this.deps.altcha!(ctl.signal).then(
+      (payload) => {
+        if (run !== this.run || ctl.signal.aborted) return
+        this.altchaAbort = null
+        this.set({ phase: 'connecting' })
+        this.client?.send({ type: 'create_room', altcha: payload })
+      },
+      (e: unknown) => {
+        if (run !== this.run || ctl.signal.aborted) return
+        const code = (e as { code?: unknown } | null)?.code
+        this.fail(typeof code === 'string' ? code : 'altcha_failed')
+      },
+    )
+  }
+
   private teardown(): void {
+    this.altchaAbort?.abort()
+    this.altchaAbort = null
+    this.held = []
     this.clearContent()
     this.control.reset()
     this.peer?.close()
@@ -134,15 +195,18 @@ export class ReceiverSession {
 
   private newPeer(): Peer {
     this.peer?.close()
-    const peer = this.peerFactory({
-      onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
-      onTrack: (stream) => this.set({ stream }),
-      onDataChannel: (ch) => this.attachChannel(ch),
-      onState: (s: PeerState) => {
-        if (s === 'connected') this.set({ phase: 'receiving' })
-        else if (s === 'failed') this.fail('peer_failed')
+    const peer = this.peerFactory(
+      {
+        onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
+        onTrack: (stream) => this.set({ stream }),
+        onDataChannel: (ch) => this.attachChannel(ch),
+        onState: (s: PeerState) => {
+          if (s === 'connected') this.set({ phase: 'receiving' })
+          else if (s === 'failed') this.fail('peer_failed')
+        },
       },
-    })
+      { iceServers: this.iceServers },
+    )
     this.peer = peer
     return peer
   }
@@ -154,6 +218,11 @@ export class ReceiverSession {
   }
 
   private onMessage(m: ServerMessage): void {
+    // A peer must not be made before the ICE server list is known (rarely waits at all).
+    if (!this.iceReady && (m.type === 'peer_joined' || m.type === 'offer' || m.type === 'ice_candidate')) {
+      this.held.push(m)
+      return
+    }
     switch (m.type) {
       case 'room_created':
         this.set({ phase: 'waiting_sender', code: m.code })
@@ -184,6 +253,11 @@ export class ReceiverSession {
         this.set({ phase: 'peer_left', stream: null })
         break
       case 'error':
+        // Open servers answer the first create_room with altcha_required; the connection stays open.
+        if (m.code === 'altcha_required' && this.deps.altcha && !this.altchaTried && this.state.phase === 'connecting') {
+          this.solveAltcha()
+          break
+        }
         // not_in_room can arrive when the sender has just left; the room itself survives.
         if (m.code === 'not_in_room' && this.state.phase !== 'connecting') break
         this.fail(m.code)

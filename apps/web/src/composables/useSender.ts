@@ -4,12 +4,16 @@ import type { ControlCmd, ImageSource } from '../core/control'
 import { getScreenStream } from '../core/capture'
 import { SenderSession, type SenderState } from '../core/senderSession'
 import { signalingUrl } from '../core/signaling'
+import { fetchIceServers, httpBaseUrl } from '../core/altchaClient'
 
 /** `contentOnly`: no screen capture, only the control channel (images, links). */
 export function useSender(opts: { contentOnly?: boolean } = {}) {
   const state = shallowRef<SenderState>({ phase: 'idle', errorCode: null, channelOpen: false })
+  const url = signalingUrl(location)
+  const base = httpBaseUrl(url)
   const session = new SenderSession({
-    url: signalingUrl(location),
+    url,
+    iceServers: () => fetchIceServers(base),
     onChange: (s) => (state.value = s),
     getStream: opts.contentOnly ? undefined : getScreenStream,
   })
