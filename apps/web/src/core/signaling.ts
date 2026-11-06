@@ -47,6 +47,8 @@ export const SERVER_ERROR_CODES = [
   'forbidden',
   'server_full',
   'altcha_failed',
+  'altcha_too_hard',
+  'altcha_expired',
 ] as const
 
 export function encodeClientMessage(m: ClientMessage): string {

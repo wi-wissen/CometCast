@@ -38,7 +38,7 @@ export interface AltchaSolution {
 
 export class AltchaError extends Error {
   constructor(
-    /** 'unsupported_algorithm' | 'bad_challenge' | 'timeout' | 'aborted' */
+    /** 'unsupported_algorithm' | 'bad_challenge' | 'too_hard' | 'expired' | 'timeout' | 'aborted' */
     readonly reason: string,
     message?: string,
   ) {
@@ -49,6 +49,37 @@ export class AltchaError extends Error {
 
 /** UNCERTAIN: 60 s is a placeholder (same as the native client); solving time on weak devices is not measured. */
 export const DEFAULT_SOLVE_TIMEOUT_MS = 60_000
+
+/**
+ * Largest PBKDF2 cost (iterations per attempt) we solve. The server default is 1000
+ * (`altcha.cost`, crates/cc-server/src/config.rs); the server has no maximum for the cost.
+ * UNCERTAIN: 10 times the default is a placeholder (same as the native client). One attempt is
+ * a single uninterruptible deriveBits call, so this also bounds how long the main-thread
+ * fallback can block the page per attempt.
+ */
+export const MAX_COST = 10_000
+
+/** Largest derived key length in bytes. UNCERTAIN: 64 is a placeholder (same as the native client). */
+export const MAX_KEY_LENGTH = 64
+
+/**
+ * Refuses a puzzle that is too expensive, oddly sized or already expired, before any work is done.
+ * `nowMs` is a test seam. `expiresAt` is in seconds, like the server's.
+ */
+export function checkChallengeLimits(challenge: AltchaChallenge, nowMs: number = Date.now()): void {
+  const p = challenge?.parameters
+  if (!p) throw new AltchaError('bad_challenge')
+  if (!Number.isInteger(p.cost) || p.cost < 1 || !Number.isInteger(p.keyLength) || p.keyLength < 1)
+    throw new AltchaError('bad_challenge')
+  if (p.cost > MAX_COST) throw new AltchaError('too_hard', `cost ${p.cost} is above ${MAX_COST}`)
+  if (p.keyLength > MAX_KEY_LENGTH) throw new AltchaError('too_hard', `keyLength ${p.keyLength} is above ${MAX_KEY_LENGTH}`)
+  if (typeof p.keyPrefix === 'string' && p.keyPrefix.length > p.keyLength * 2) throw new AltchaError('bad_challenge')
+  const exp = p.expiresAt
+  if (exp !== undefined && exp !== null) {
+    if (typeof exp !== 'number' || !Number.isFinite(exp)) throw new AltchaError('bad_challenge')
+    if (exp * 1000 <= nowMs) throw new AltchaError('expired')
+  }
+}
 
 const HASHES: Record<string, 'SHA-256' | 'SHA-384' | 'SHA-512'> = {
   'PBKDF2/SHA-256': 'SHA-256',
@@ -94,8 +125,7 @@ export async function solveChallenge(challenge: AltchaChallenge, opts: SolveOpti
   const p = challenge?.parameters
   if (!p || typeof p.algorithm !== 'string' || typeof p.nonce !== 'string' || typeof p.salt !== 'string')
     throw new AltchaError('bad_challenge')
-  if (!Number.isInteger(p.cost) || p.cost < 1 || !Number.isInteger(p.keyLength) || p.keyLength < 1)
-    throw new AltchaError('bad_challenge')
+  checkChallengeLimits(challenge)
   const hash = HASHES[p.algorithm.toUpperCase()]
   if (!hash) throw new AltchaError('unsupported_algorithm', p.algorithm)
   if (typeof p.keyPrefix !== 'string' || !/^[0-9a-fA-F]*$/.test(p.keyPrefix)) throw new AltchaError('bad_challenge')

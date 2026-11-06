@@ -4,6 +4,7 @@
 // GET /ice-servers (STUN/TURN list). Both are described in docs/server.md.
 import {
   AltchaError,
+  checkChallengeLimits,
   DEFAULT_SOLVE_TIMEOUT_MS,
   encodePayload,
   parseChallenge,
@@ -16,7 +17,7 @@ import type { WorkerReply, WorkerRequest } from './altchaWorker'
 /** Error with a code that has a translation under `errors.<code>`. */
 export class ServerHttpError extends Error {
   constructor(
-    /** rate_limited | banned | forbidden | server_full | altcha_failed */
+    /** rate_limited | banned | forbidden | server_full | altcha_failed | altcha_too_hard | altcha_expired */
     readonly code: string,
   ) {
     super(code)
@@ -83,6 +84,20 @@ export interface HttpDeps {
   fetchImpl?: typeof fetch
   signal?: AbortSignal
   solve?: SolveFn
+  /** Timeout of the GET /altcha/challenge request (not of solving). */
+  fetchTimeoutMs?: number
+}
+
+/** UNCERTAIN: 8 s is a placeholder; a slow answer must not hold the page in "checking" for long. */
+const CHALLENGE_FETCH_TIMEOUT_MS = 8000
+
+/** Maps an AltchaError reason from the limit check or the solver to a translated error code. */
+function altchaErrorCode(e: unknown): string {
+  if (e instanceof AltchaError) {
+    if (e.reason === 'too_hard') return 'altcha_too_hard'
+    if (e.reason === 'expired') return 'altcha_expired'
+  }
+  return 'altcha_failed'
 }
 
 /**
@@ -91,26 +106,44 @@ export interface HttpDeps {
  */
 export async function obtainAltchaPayload(baseUrl: string, deps: HttpDeps = {}): Promise<string> {
   const doFetch = deps.fetchImpl ?? fetch
-  let res: Response
-  try {
-    res = await doFetch(`${baseUrl}/altcha/challenge`, { cache: 'no-store', signal: deps.signal })
-  } catch (e) {
-    if (deps.signal?.aborted) throw new AltchaError('aborted')
-    throw new ServerHttpError('altcha_failed')
-  }
-  if (!res.ok) throw new ServerHttpError(httpErrorCode(res.status, res.headers.get('retry-after')))
+  // The timeout covers the whole request including reading the body.
+  const ctl = new AbortController()
+  const onAbort = () => ctl.abort()
+  deps.signal?.addEventListener('abort', onAbort)
+  if (deps.signal?.aborted) ctl.abort()
+  const timer = setTimeout(() => ctl.abort(), deps.fetchTimeoutMs ?? CHALLENGE_FETCH_TIMEOUT_MS)
   let challenge: AltchaChallenge
   try {
-    challenge = parseChallenge(await res.json())
-  } catch {
-    throw new ServerHttpError('altcha_failed')
+    let res: Response
+    try {
+      res = await doFetch(`${baseUrl}/altcha/challenge`, { cache: 'no-store', signal: ctl.signal })
+    } catch {
+      if (deps.signal?.aborted) throw new AltchaError('aborted')
+      throw new ServerHttpError('altcha_failed')
+    }
+    if (!res.ok) throw new ServerHttpError(httpErrorCode(res.status, res.headers.get('retry-after')))
+    try {
+      challenge = parseChallenge(await res.json())
+    } catch {
+      if (deps.signal?.aborted) throw new AltchaError('aborted')
+      throw new ServerHttpError('altcha_failed')
+    }
+  } finally {
+    clearTimeout(timer)
+    deps.signal?.removeEventListener('abort', onAbort)
+  }
+  // Refuse absurd puzzles before any solver (worker or main thread) starts.
+  try {
+    checkChallengeLimits(challenge)
+  } catch (e) {
+    throw new ServerHttpError(altchaErrorCode(e))
   }
   try {
     const solution = await (deps.solve ?? solveInWorker)(challenge, { signal: deps.signal })
     return encodePayload(challenge, solution)
   } catch (e) {
     if (e instanceof AltchaError && e.reason === 'aborted') throw e
-    throw new ServerHttpError('altcha_failed')
+    throw new ServerHttpError(altchaErrorCode(e))
   }
 }
 
@@ -118,18 +151,32 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string')
 }
 
-/** Keeps only the RTCIceServer fields we use; drops entries that cannot be valid. */
+/** UNCERTAIN: placeholders, the same as the native client (crates/cc-transport/src/ice.rs). */
+export const MAX_ICE_SERVERS = 16
+export const MAX_ICE_URLS = 8
+export const MAX_ICE_FIELD = 512
+
+const urlIsSane = (u: string) => u.length <= MAX_ICE_FIELD && /^(stuns?|turns?):/i.test(u) && !/[\u0000-\u001f\u007f]/.test(u)
+
+/**
+ * Keeps only the RTCIceServer fields we use; drops entries that cannot be valid. The list is
+ * bounded (MAX_ICE_SERVERS entries, MAX_ICE_URLS URLs each, short fields, stun/turn schemes).
+ */
 export function parseIceServers(v: unknown): RTCIceServer[] {
   if (!Array.isArray(v)) return []
   const out: RTCIceServer[] = []
-  for (const e of v) {
+  for (const e of v.slice(0, MAX_ICE_SERVERS * 4)) {
+    if (out.length >= MAX_ICE_SERVERS) break
     if (e === null || typeof e !== 'object') continue
     const o = e as Record<string, unknown>
-    const urls = typeof o.urls === 'string' ? [o.urls] : o.urls
-    if (!isStringArray(urls)) continue
+    const rawUrls = typeof o.urls === 'string' ? [o.urls] : o.urls
+    if (!isStringArray(rawUrls)) continue
+    const urls = rawUrls.filter(urlIsSane).slice(0, MAX_ICE_URLS)
+    if (urls.length === 0) continue
     const s: RTCIceServer = { urls }
     if (typeof o.username === 'string') s.username = o.username
     if (typeof o.credential === 'string') s.credential = o.credential
+    if ((s.username?.length ?? 0) > MAX_ICE_FIELD || ((s.credential as string | undefined)?.length ?? 0) > MAX_ICE_FIELD) continue
     // A TURN entry without credentials would make RTCPeerConnection throw for the whole list.
     const needsAuth = urls.some((u) => /^turns?:/i.test(u))
     if (needsAuth && (!s.username || !s.credential)) continue

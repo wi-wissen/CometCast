@@ -2,6 +2,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   fetchIceServers,
+  MAX_ICE_FIELD,
+  MAX_ICE_SERVERS,
+  MAX_ICE_URLS,
   httpBaseUrl,
   httpErrorCode,
   obtainAltchaPayload,
@@ -101,5 +104,56 @@ describe('ICE servers', () => {
     })
     expect(url).toBe('http://h/ice-servers')
     expect(list).toEqual([{ urls: ['turn:t:1'], username: 'u', credential: 'c' }])
+  })
+})
+
+describe('ALTCHA client limits and timeouts', () => {
+  const noSolve = async (): Promise<never> => {
+    throw new Error('solver must not run')
+  }
+  const withParams = (patch: Record<string, unknown>) => json({ ...challenge, parameters: { ...challenge.parameters, ...patch } })
+  const hang: typeof fetch = (_u, init) =>
+    new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+
+  it('maps oversized and expired puzzles to translated codes without solving', async () => {
+    const run = (patch: Record<string, unknown>) => obtainAltchaPayload('http://h', { fetchImpl: async () => withParams(patch), solve: noSolve })
+    await expect(run({ cost: 1_000_000_000 })).rejects.toMatchObject({ code: 'altcha_too_hard' })
+    await expect(run({ keyLength: 100_000 })).rejects.toMatchObject({ code: 'altcha_too_hard' })
+    await expect(run({ expiresAt: 1 })).rejects.toMatchObject({ code: 'altcha_expired' })
+    await expect(run({ cost: 0 })).rejects.toMatchObject({ code: 'altcha_failed' })
+  })
+
+  it('maps a solver that reports too_hard to altcha_too_hard', async () => {
+    await expect(
+      obtainAltchaPayload('http://h', { fetchImpl: async () => json(challenge), solve: async () => { throw new AltchaError('too_hard') } }),
+    ).rejects.toMatchObject({ code: 'altcha_too_hard' })
+  })
+
+  it('gives up on a challenge request that never answers', async () => {
+    await expect(obtainAltchaPayload('http://h', { fetchImpl: hang, fetchTimeoutMs: 30, solve: noSolve })).rejects.toMatchObject({ code: 'altcha_failed' })
+  })
+
+  it('still reports a caller abort as aborted while fetching', async () => {
+    const ctl = new AbortController()
+    const p = obtainAltchaPayload('http://h', { fetchImpl: hang, signal: ctl.signal, solve: noSolve })
+    ctl.abort()
+    await expect(p).rejects.toMatchObject({ reason: 'aborted' })
+  })
+
+  it('bounds the ICE list and its entries', () => {
+    const many = Array.from({ length: 100 }, (_, i) => ({ urls: [`stun:h${i}:3478`] }))
+    expect(parseIceServers(many)).toHaveLength(MAX_ICE_SERVERS)
+    const urls = Array.from({ length: 50 }, (_, i) => `stun:h${i}:1`)
+    expect((parseIceServers([{ urls }])[0].urls as string[]).length).toBe(MAX_ICE_URLS)
+    const long = 'a'.repeat(MAX_ICE_FIELD + 1)
+    expect(
+      parseIceServers([
+        { urls: [`stun:${long}`] },
+        { urls: ['http://evil'] },
+        { urls: ['turn:t:1'], username: long, credential: 'c' },
+        { urls: ['turn:t:1'], username: 'u', credential: long },
+        { urls: ['turns:ok:1'], username: 'u', credential: 'c' },
+      ]),
+    ).toEqual([{ urls: ['turns:ok:1'], username: 'u', credential: 'c' }])
   })
 })

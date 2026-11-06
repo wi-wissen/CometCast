@@ -252,35 +252,72 @@ pub async fn http_get(
         .map_err(|_| TransportError::Timeout("HTTP request"))?
 }
 
+/// Longest chunk-size line (hex size plus extensions) we accept.
+const MAX_CHUNK_LINE: usize = 1024;
+
 /// Parse a (possibly partial) HTTP/1.1 answer. `Ok(None)` = need more bytes.
 /// `eof` = the peer closed the connection, so a body without length ends here.
+///
+/// Strict on purpose: the bytes come from a server we do not trust. Duplicate or non-numeric
+/// `Content-Length`, `Content-Length` together with `Transfer-Encoding`, an unknown transfer
+/// coding, a body longer than declared and malformed header lines are errors. Never panics.
 fn parse_response(buf: &[u8], eof: bool) -> Result<Option<HttpResponse>, TransportError> {
+    let proto = |m: &str| TransportError::Protocol(m.to_string());
     let Some(head_end) = find(buf, b"\r\n\r\n") else {
         return Ok(None);
     };
-    let head = std::str::from_utf8(&buf[..head_end])
-        .map_err(|_| TransportError::Protocol("HTTP head is not text".into()))?;
+    let head = std::str::from_utf8(&buf[..head_end]).map_err(|_| proto("HTTP head is not text"))?;
     let mut lines = head.split("\r\n");
     let status_line = lines.next().unwrap_or_default();
-    let status: u16 = status_line
-        .split_whitespace()
-        .nth(1)
+    let mut parts = status_line.split_whitespace();
+    if !parts.next().is_some_and(|v| v.starts_with("HTTP/1.")) {
+        return Err(TransportError::Protocol(format!(
+            "bad status line {status_line:?}"
+        )));
+    }
+    let status: u16 = parts
+        .next()
         .and_then(|s| s.parse().ok())
         .ok_or_else(|| TransportError::Protocol(format!("bad status line {status_line:?}")))?;
     let mut content_length: Option<usize> = None;
-    let mut chunked = false;
+    let mut transfer_encoding: Option<String> = None;
     let mut retry_after = None;
     for line in lines {
-        let Some((k, v)) = line.split_once(':') else {
-            continue;
-        };
+        let (k, v) = line
+            .split_once(':')
+            .ok_or_else(|| proto("malformed HTTP header line"))?;
         let v = v.trim();
         match k.trim().to_ascii_lowercase().as_str() {
-            "content-length" => content_length = v.parse().ok(),
-            "transfer-encoding" => chunked = v.to_ascii_lowercase().contains("chunked"),
+            "content-length" => {
+                if content_length.is_some() {
+                    return Err(proto("duplicate Content-Length"));
+                }
+                if v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(proto("invalid Content-Length"));
+                }
+                let n: usize = v.parse().map_err(|_| proto("invalid Content-Length"))?;
+                if n > MAX_HTTP_BYTES {
+                    return Err(proto("HTTP answer too large"));
+                }
+                content_length = Some(n);
+            }
+            "transfer-encoding" => {
+                if transfer_encoding.is_some() {
+                    return Err(proto("duplicate Transfer-Encoding"));
+                }
+                transfer_encoding = Some(v.to_ascii_lowercase());
+            }
             "retry-after" => retry_after = v.parse().ok(),
             _ => {}
         }
+    }
+    let chunked = match transfer_encoding.as_deref() {
+        None => false,
+        Some("chunked") => true,
+        Some(_) => return Err(proto("unsupported Transfer-Encoding")),
+    };
+    if chunked && content_length.is_some() {
+        return Err(proto("both Transfer-Encoding and Content-Length"));
     }
     let rest = &buf[head_end + 4..];
     let body = if chunked {
@@ -292,7 +329,10 @@ fn parse_response(buf: &[u8], eof: bool) -> Result<Option<HttpResponse>, Transpo
         if rest.len() < n {
             return Ok(None);
         }
-        rest[..n].to_vec()
+        if rest.len() > n {
+            return Err(proto("HTTP body longer than Content-Length"));
+        }
+        rest.to_vec()
     } else if eof || status == 204 || status == 304 || (100..200).contains(&status) {
         rest.to_vec()
     } else {
@@ -310,29 +350,47 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// Decode a chunked body. `Ok(None)` = the last chunk has not arrived yet.
+///
+/// All arithmetic is checked and the decoded size is capped at [`MAX_HTTP_BYTES`], so no byte
+/// sequence can overflow, allocate without bound or panic. Trailers are ignored.
 fn decode_chunked(mut data: &[u8]) -> Result<Option<Vec<u8>>, TransportError> {
     let bad = || TransportError::Protocol("bad chunked body".into());
-    let mut out = Vec::new();
+    let mut out: Vec<u8> = Vec::new();
     loop {
         let Some(line_end) = find(data, b"\r\n") else {
+            if data.len() > MAX_CHUNK_LINE {
+                return Err(bad());
+            }
             return Ok(None);
         };
+        if line_end > MAX_CHUNK_LINE {
+            return Err(bad());
+        }
         let size_text = std::str::from_utf8(&data[..line_end]).map_err(|_| bad())?;
         let size_text = size_text.split(';').next().unwrap_or_default().trim();
+        // Only hex digits: `from_str_radix` would also take a leading `+`.
+        if size_text.is_empty() || !size_text.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(bad());
+        }
         let size = usize::from_str_radix(size_text, 16).map_err(|_| bad())?;
         data = &data[line_end + 2..];
         if size == 0 {
             // Trailers are ignored; the final blank line may still be on its way.
             return Ok(Some(out));
         }
-        if data.len() < size + 2 {
+        if size > MAX_HTTP_BYTES || out.len().saturating_add(size) > MAX_HTTP_BYTES {
+            return Err(TransportError::Protocol("HTTP answer too large".into()));
+        }
+        // `size` is at most MAX_HTTP_BYTES here, so `size + 2` cannot overflow.
+        let need = size + 2;
+        if data.len() < need {
             return Ok(None);
         }
-        out.extend_from_slice(&data[..size]);
-        if &data[size..size + 2] != b"\r\n" {
+        if &data[size..need] != b"\r\n" {
             return Err(bad());
         }
-        data = &data[size + 2..];
+        out.extend_from_slice(&data[..size]);
+        data = &data[need..];
     }
 }
 
@@ -395,6 +453,108 @@ mod tests {
                 false
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn chunked_never_panics_on_hostile_sizes() {
+        for size in [
+            "ffffffffffffffff",
+            "fffffffffffffffe",
+            "7fffffffffffffff",
+            "8000000000000000",
+            "ffffffffffffffffff",
+            "40001",
+            "+5",
+            "-1",
+            "0x5",
+            "",
+            " ",
+            "zz",
+        ] {
+            let body = format!("{size}\r\nabc\r\n0\r\n\r\n");
+            let r = decode_chunked(body.as_bytes());
+            assert!(r.is_err(), "size {size:?} must be refused, got {r:?}");
+        }
+        // Huge size with an extension, hostile extensions and trailers.
+        assert!(decode_chunked(b"ffffffffffffffff;ext=1\r\n").is_err());
+        assert_eq!(
+            decode_chunked(b"3;a=\"x;y\"\r\nabc\r\n0;z\r\nX: y\r\n\xff\xfe\r\n\r\n")
+                .unwrap()
+                .unwrap(),
+            b"abc"
+        );
+        assert!(decode_chunked(&[b'a'; 5000]).is_err());
+        let long_ext = format!("3;{}\r\nabc\r\n0\r\n\r\n", "e".repeat(2000));
+        assert!(decode_chunked(long_ext.as_bytes()).is_err());
+        // Missing CRLF after the data.
+        assert!(decode_chunked(b"3\r\nabcXY0\r\n\r\n").is_err());
+    }
+
+    #[test]
+    fn chunked_total_size_is_capped() {
+        let mut body = Vec::new();
+        let chunk = vec![b'a'; 100 * 1024];
+        for _ in 0..4 {
+            body.extend_from_slice(b"19000\r\n");
+            body.extend_from_slice(&chunk);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(b"0\r\n\r\n");
+        assert!(decode_chunked(&body).is_err());
+    }
+
+    #[test]
+    fn response_fuzz_style_mutations_do_not_panic() {
+        // Deterministic pseudo-random mutations and cuts of a valid answer: only the absence
+        // of a panic matters.
+        let valid = b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n";
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..20_000 {
+            let mut m = valid.to_vec();
+            for _ in 0..3 {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                let i = (x as usize) % m.len();
+                m[i] = (x >> 32) as u8;
+            }
+            let cut = ((x >> 8) as usize) % (m.len() + 1);
+            let _ = parse_response(&m[..cut], false);
+            let _ = parse_response(&m, true);
+        }
+    }
+
+    #[test]
+    fn strict_header_parsing() {
+        let r = |s: &[u8]| parse_response(s, false);
+        // Duplicate or invalid Content-Length.
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: 1\r\ncontent-length: 1\r\n\r\na").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: 1\r\nContent-Length: 2\r\n\r\na").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: abc\r\n\r\n").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: -1\r\n\r\n").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: +1\r\n\r\na").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: \r\n\r\n").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: 99999999999999999999\r\n\r\n").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: 999999999\r\n\r\n").is_err());
+        // Both framings.
+        assert!(
+            r(b"HTTP/1.1 200 OK\r\ncontent-length: 1\r\ntransfer-encoding: chunked\r\n\r\n1\r\na\r\n0\r\n\r\n")
+                .is_err()
+        );
+        // Unknown coding, malformed line, wrong protocol.
+        assert!(r(b"HTTP/1.1 200 OK\r\ntransfer-encoding: gzip, chunked\r\n\r\n").is_err());
+        assert!(r(b"HTTP/1.1 200 OK\r\nno colon here\r\n\r\n").is_err());
+        assert!(r(b"FTP/1.1 200 OK\r\n\r\n").is_err());
+        // Body longer than declared.
+        assert!(r(b"HTTP/1.1 200 OK\r\ncontent-length: 1\r\n\r\nab").is_err());
+        // Exact length still works.
+        assert_eq!(
+            r(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nab")
+                .unwrap()
+                .unwrap()
+                .body,
+            b"ab"
         );
     }
 

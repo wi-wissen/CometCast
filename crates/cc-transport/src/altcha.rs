@@ -18,7 +18,63 @@ use crate::net::{HttpResponse, ServerAddr, TlsTrust, http_get};
 /// Give up solving after this long. UNCERTAIN: placeholder; the server's default puzzle needs
 /// about 750 PBKDF2 runs of 1000 iterations on average, but solving time on weak devices is
 /// not measured (docs/measurement-points.md, point 8).
-const SOLVE_TIMEOUT: Duration = Duration::from_secs(60);
+///
+/// The `altcha` crate checks the timeout every 10 attempts, so the real limit is this value
+/// plus 10 attempts of at most [`MAX_COST`] iterations (well below a second). The solver runs
+/// on a blocking thread that cannot be cancelled, so this is also the longest a thread (and a
+/// Tokio runtime waiting for it on shutdown) can be held by one puzzle.
+const SOLVE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Largest PBKDF2 cost (iterations per attempt) we solve. The server default is 1000
+/// (`altcha.cost`, crates/cc-server/src/config.rs); the server has no maximum for the cost, only
+/// for the search size (`max_difficulty_factor`). UNCERTAIN: 10 times the default is a
+/// placeholder; an operator who raises the cost above it makes native clients refuse the puzzle.
+pub const MAX_COST: u32 = 10_000;
+
+/// Largest derived key length in bytes. UNCERTAIN: 64 (one SHA-512 block) is a placeholder; the
+/// server default is 32 bytes.
+pub const MAX_KEY_LENGTH: usize = 64;
+
+/// Refuse a challenge that is too expensive, oddly sized, or already expired, before any work
+/// is done. `now_unix` is the current time in seconds.
+fn check_challenge_limits(challenge: &Challenge, now_unix: i64) -> Result<(), TransportError> {
+    let p = &challenge.parameters;
+    if p.cost == 0 || p.cost > MAX_COST {
+        return Err(TransportError::Invalid(format!(
+            "ALTCHA cost {} is outside 1..={MAX_COST}",
+            p.cost
+        )));
+    }
+    if p.key_length == 0 || p.key_length > MAX_KEY_LENGTH {
+        return Err(TransportError::Invalid(format!(
+            "ALTCHA keyLength {} is outside 1..={MAX_KEY_LENGTH}",
+            p.key_length
+        )));
+    }
+    if p.key_prefix.len() > p.key_length.saturating_mul(2) {
+        return Err(TransportError::Invalid(
+            "ALTCHA keyPrefix is longer than the key".into(),
+        ));
+    }
+    if p.memory_cost.is_some() || p.parallelism.is_some() {
+        // Memory-hard algorithms are not part of the documented server setup.
+        return Err(TransportError::Invalid(
+            "ALTCHA memory-hard parameters are not supported".into(),
+        ));
+    }
+    if p.expires_at.is_some_and(|e| e <= now_unix) {
+        return Err(TransportError::Invalid("ALTCHA challenge expired".into()));
+    }
+    Ok(())
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_secs()).ok())
+        .unwrap_or(0)
+}
 
 /// Turn a non-200 answer of an HTTP endpoint into an error with the server's vocabulary
 /// (`rate_limited`, `banned`, ...), so callers can treat it like a signalling `error`.
@@ -44,6 +100,7 @@ pub(crate) fn http_status_error(resp: &HttpResponse) -> TransportError {
 pub fn solve_challenge_json(body: &[u8]) -> Result<String, TransportError> {
     let challenge: Challenge = serde_json::from_slice(body)
         .map_err(|e| TransportError::Protocol(format!("bad ALTCHA challenge: {e}")))?;
+    check_challenge_limits(&challenge, now_unix())?;
     let mut opts = SolveChallengeOptions::new(&challenge);
     opts.timeout_ms = u64::try_from(SOLVE_TIMEOUT.as_millis()).unwrap_or(u64::MAX);
     let solution = solve_challenge(opts)
@@ -165,6 +222,52 @@ mod tests {
             }))
             .unwrap()
         );
+    }
+
+    #[test]
+    fn rejects_oversized_cost_and_key_length_before_solving() {
+        let mut ch = make(1);
+        ch.parameters.cost = 1_000_000_000;
+        let started = std::time::Instant::now();
+        let r = solve_challenge_json(&serde_json::to_vec(&ch).unwrap());
+        assert!(
+            matches!(r, Err(TransportError::Invalid(ref m)) if m.contains("cost")),
+            "{r:?}"
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
+
+        let mut ch = make(1);
+        ch.parameters.cost = MAX_COST + 1;
+        assert!(solve_challenge_json(&serde_json::to_vec(&ch).unwrap()).is_err());
+        ch.parameters.cost = 0;
+        assert!(solve_challenge_json(&serde_json::to_vec(&ch).unwrap()).is_err());
+
+        let mut ch = make(1);
+        ch.parameters.key_length = 1_000_000;
+        let r = solve_challenge_json(&serde_json::to_vec(&ch).unwrap());
+        assert!(
+            matches!(r, Err(TransportError::Invalid(ref m)) if m.contains("keyLength")),
+            "{r:?}"
+        );
+        ch.parameters.key_length = MAX_KEY_LENGTH + 1;
+        assert!(solve_challenge_json(&serde_json::to_vec(&ch).unwrap()).is_err());
+    }
+
+    #[test]
+    fn rejects_expired_challenge_and_accepts_the_limits() {
+        let mut ch = make(1);
+        ch.parameters.expires_at = Some(now_unix() - 1);
+        let r = solve_challenge_json(&serde_json::to_vec(&ch).unwrap());
+        assert!(
+            matches!(r, Err(TransportError::Invalid(ref m)) if m.contains("expired")),
+            "{r:?}"
+        );
+        ch.parameters.expires_at = Some(now_unix() + 60);
+        assert!(check_challenge_limits(&ch, now_unix()).is_ok());
+        ch.parameters.cost = MAX_COST;
+        ch.parameters.key_length = MAX_KEY_LENGTH;
+        ch.parameters.key_prefix = "00".into();
+        assert!(check_challenge_limits(&ch, now_unix()).is_ok());
     }
 
     #[test]

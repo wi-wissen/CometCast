@@ -126,6 +126,8 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 | `not_in_room` | A relay message while not in a room or while the peer is not there. | no |
 | `altcha_required` | `create_room` without `altcha` on a server that requires it (always the case in open mode). Added in M8; clients that do not know the code should treat it like any error. | no |
 | `altcha_invalid` | `create_room` with an `altcha` payload that is malformed, wrongly signed, expired, not solved or already used. | no |
+| `altcha_too_hard` | Client-side only, never sent by the server: the puzzle from `GET /altcha/challenge` asks for more work than the client accepts (`cost` above 10 000 or `keyLength` above 64, see [transport.md](transport.md)). | no |
+| `altcha_expired` | Client-side only: the puzzle's `expiresAt` was already in the past on arrival (also happens when the device clock is far ahead). | no |
 | `rate_limited` | Too many `create_room` / `join_room` messages from this address, or the server has reached its maximum number of rooms. The message text says which. Try again later. | no |
 | `banned` | Too many failed joins: the address is banned for a while. | yes |
 | `bad_message` | Unparsable JSON, unknown type, binary frame, second `hello`, or `create_room`/`join_room` while already in a room. | no |
