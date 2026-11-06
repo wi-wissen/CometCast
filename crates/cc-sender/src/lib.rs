@@ -18,9 +18,11 @@
 //!
 //! Use: [`SenderCore::start`] -> loop on [`SenderCore::next_event`].
 
+pub mod content;
 pub mod external;
 mod screen;
 
+pub use content::{ContentSendError, ContentSender, ContentSenderOptions, ControlSender};
 pub use external::{ExternalInput, ExternalOptions, ExternalStats, PushOutcome};
 pub use screen::{ScreenOptions, ScreenStats};
 
@@ -109,6 +111,9 @@ pub struct SenderOptions {
     /// Send H.264 access units that the host pushes (cannot be combined with `screen`). The
     /// host keeps a clone of the [`ExternalInput`] and pushes into it.
     pub external: Option<ExternalInput>,
+    /// Also open the `control` data channel next to the video, for images, PDFs, links and page
+    /// commands: see [`SenderCore::control`]. Default `false`.
+    pub control: bool,
     /// WebRTC settings. The codec list is forced to VP8 (test pattern) or H.264 (screen,
     /// external).
     /// If `session.ice_servers` is empty the core asks the server for its STUN/TURN list.
@@ -126,6 +131,7 @@ impl SenderOptions {
             duration: None,
             screen: None,
             external: None,
+            control: false,
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
         }
@@ -158,6 +164,7 @@ pub struct SenderCore {
     ice_servers: Vec<IceServerConfig>,
     counters: Arc<screen::Counters>,
     external: Option<ExternalInput>,
+    control: Option<ControlSender>,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
@@ -217,6 +224,10 @@ impl SenderCore {
         }
         let ice_servers = options.session.ice_servers.clone();
         let (session, session_events) = Session::new(options.session).await?;
+        let control = match options.control {
+            true => Some(ControlSender::new(session.create_control_channel().await?)),
+            false => None,
+        };
         let video = Arc::new(session.add_video_track(codec).await?);
         let offer = session.create_offer().await?;
         // The offer goes out first; candidates found meanwhile follow from the event channel.
@@ -240,6 +251,7 @@ impl SenderCore {
             ice_servers,
             counters,
             external,
+            control,
             events: events_rx,
             stop: Some(stop_tx),
             task,
@@ -250,6 +262,12 @@ impl SenderCore {
     /// caller configured). Empty = none.
     pub fn ice_servers(&self) -> &[IceServerConfig] {
         &self.ice_servers
+    }
+
+    /// The content sender, if [`SenderOptions::control`] was set. Wait for
+    /// [`ControlSender::wait_ready`] before sending.
+    pub fn control(&self) -> Option<ControlSender> {
+        self.control.clone()
     }
 
     /// Counters of the screen pipeline (all zero in test pattern mode).
@@ -421,7 +439,7 @@ async fn run(
                     }
                     emit(SenderEvent::State(s));
                 }
-                Some(SessionEvent::VideoTrack { .. }) => {}
+                Some(SessionEvent::VideoTrack { .. } | SessionEvent::ControlChannel(_)) => {}
             },
             _ = frame_tick.tick(), if test_mode && streaming_since.is_some() => {
                 let Some(since) = streaming_since else { continue };

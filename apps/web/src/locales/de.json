@@ -53,7 +53,8 @@
       "too_large": "Das Bild war größer als angekündigt und wurde verworfen.",
       "size_mismatch": "Das Bild ist unvollständig angekommen und wurde verworfen.",
       "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert.",
-      "bad_chunk": "Bilddaten kamen in unerwarteter Form an und wurden verworfen."
+      "bad_chunk": "Bilddaten kamen in unerwarteter Form an und wurden verworfen.",
+      "document_unsupported": "Der Absender hat ein PDF-Dokument gesendet. Diese App kann Dokumente noch nicht anzeigen."
     },
     "content": {
       "imageAlt": "Bild vom Absender: {name}",

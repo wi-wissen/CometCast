@@ -649,6 +649,13 @@ dependencies = [
 [[package]]
 name = "cc-files"
 version = "0.1.0"
+dependencies = [
+ "cc-docs",
+ "cc-proto",
+ "serde_json",
+ "thiserror 2.0.21",
+ "url",
+]
 
 [[package]]
 name = "cc-media"
@@ -684,6 +691,8 @@ name = "cc-receiver"
 version = "0.1.0"
 dependencies = [
  "cc-capture",
+ "cc-docs",
+ "cc-files",
  "cc-media",
  "cc-proto",
  "cc-sender",
@@ -699,6 +708,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "cc-capture",
+ "cc-files",
  "cc-media",
  "cc-proto",
  "cc-transport",
@@ -871,6 +881,7 @@ dependencies = [
  "cc-cast",
  "cc-discovery",
  "cc-docs",
+ "cc-files",
  "cc-media",
  "cc-miracast",
  "cc-proto",

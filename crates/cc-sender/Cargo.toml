@@ -22,6 +22,7 @@ h264-libloading = ["cc-media/h264-libloading"]
 [dependencies]
 cc-proto.workspace = true
 cc-transport.workspace = true
+cc-files.workspace = true
 tokio.workspace = true
 bytes.workspace = true
 thiserror.workspace = true

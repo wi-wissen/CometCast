@@ -8,12 +8,20 @@
 //! On a server that requires proof-of-work (open mode) the core fetches and solves the
 //! ALTCHA puzzle by itself when the server answers `altcha_required`.
 //!
+//! Content: if [`ReceiverOptions::content`] is set, the `control` data channel of the sender
+//! is accepted and its images, links, PDF documents and page commands arrive as
+//! [`ContentEvent`]s from [`ReceiverCore::take_content_events`] (docs/web-m2.md, `cc-files`).
+//! Links are only reported, never opened. Without the option the channel is closed.
+//!
 //! Use: [`ReceiverCore::start`] -> show [`ReceiverCore::room_code`] -> loop on
 //! [`ReceiverCore::next_event`].
+
+mod content;
 
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime};
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
     ConnectionState, IceServerConfig, MediaSnapshot, ServerAddr, Session, SessionConfig,
@@ -40,6 +48,10 @@ pub struct ReceiverOptions {
     pub session: SessionConfig,
     /// Extra trusted certificates for `wss://` / `https://` (default: system store only).
     pub trust: TlsTrust,
+    /// Accept content (images, links, PDFs, page commands) on the `control` data channel.
+    /// `None` (default): the channel is closed. The application must then read
+    /// [`ReceiverCore::take_content_events`]; when it does not, the sender is slowed down.
+    pub content: Option<ContentOptions>,
 }
 
 impl ReceiverOptions {
@@ -49,9 +61,27 @@ impl ReceiverOptions {
             server: server.into(),
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
+            content: None,
         }
     }
 }
+
+/// The content events of a [`ReceiverCore`] (from [`ReceiverCore::take_content_events`]).
+/// The queue behind it is bounded: while the application does not read, the sender is slowed down.
+pub struct ContentEvents {
+    rx: mpsc::Receiver<ContentEvent>,
+}
+
+impl ContentEvents {
+    /// Next event, or `None` after the core has stopped and all were read.
+    pub async fn next(&mut self) -> Option<ContentEvent> {
+        self.rx.recv().await
+    }
+}
+
+/// How long the core waits, after the sender left, for the content that was still in the
+/// queue to be handed to the application. UNCERTAIN: placeholder.
+const CONTENT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the receiver reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +139,8 @@ pub struct ReceiverCore {
     ice_servers: Vec<IceServerConfig>,
     session: Arc<Session>,
     events: mpsc::UnboundedReceiver<ReceiverEvent>,
+    content_events: Option<mpsc::Receiver<ContentEvent>>,
+    content_width: mpsc::UnboundedSender<u32>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
 }
@@ -153,18 +185,29 @@ impl ReceiverCore {
         let session = Arc::new(session);
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
+        let (width_tx, width_rx) = mpsc::unbounded_channel();
+        let (content_tx, content_rx) = mpsc::channel(content::EVENT_QUEUE);
+        let content = options.content.map(|o| ContentSetup {
+            options: o,
+            widths: width_rx,
+            events: content_tx,
+        });
+        let has_content = content.is_some();
         let task = tokio::spawn(run(
             sig,
             Arc::clone(&session),
             session_events,
             events_tx,
             stop_rx,
+            content,
         ));
         Ok(Self {
             code,
             ice_servers,
             session,
             events: events_rx,
+            content_events: has_content.then_some(content_rx),
+            content_width: width_tx,
             stop: Some(stop_tx),
             task,
         })
@@ -197,6 +240,20 @@ impl ReceiverCore {
         self.events.recv().await
     }
 
+    /// Take the stream of content events (once; `None` if [`ReceiverOptions::content`] was not
+    /// set or the stream was taken already). It is separate from [`Self::next_event`] so that
+    /// an application can wait for both at the same time.
+    pub fn take_content_events(&mut self) -> Option<ContentEvents> {
+        self.content_events.take().map(|rx| ContentEvents { rx })
+    }
+
+    /// Set the width in pixels that document pages are rendered at (the size of the window
+    /// or screen). The shown page is rendered again; the result arrives as a
+    /// `PageRendered` event. The value is clamped to the output limits of `cc-docs`.
+    pub fn set_content_target_width(&self, width: u32) {
+        let _ = self.content_width.send(width);
+    }
+
     /// Stop and close everything.
     pub async fn stop(mut self) {
         if let Some(tx) = self.stop.take() {
@@ -216,6 +273,13 @@ impl Drop for ReceiverCore {
     }
 }
 
+/// What the background loop needs to run the content task.
+struct ContentSetup {
+    options: ContentOptions,
+    widths: mpsc::UnboundedReceiver<u32>,
+    events: mpsc::Sender<ContentEvent>,
+}
+
 /// The background loop: signalling messages in, session events in, receiver events out.
 async fn run(
     mut sig: SignalingClient,
@@ -223,7 +287,9 @@ async fn run(
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<ReceiverEvent>,
     mut stop: oneshot::Receiver<()>,
+    mut content: Option<ContentSetup>,
 ) {
+    let mut content_task: Option<tokio::task::JoinHandle<()>> = None;
     let emit = |e: ReceiverEvent| {
         let _ = out.send(e);
     };
@@ -259,6 +325,10 @@ async fn run(
                     let _ = session.add_remote_candidate(&candidate).await;
                 }
                 Some(ServerMsg::PeerLeft) => {
+                    // Content that is still on its way is handed over first.
+                    if let Some(t) = content_task.take() {
+                        let _ = tokio::time::timeout(CONTENT_DRAIN_TIMEOUT, t).await;
+                    }
                     emit(ReceiverEvent::PeerLeft);
                     break;
                 }
@@ -284,6 +354,14 @@ async fn run(
                         break;
                     }
                 }
+                Some(SessionEvent::ControlChannel(channel)) => match content.take() {
+                    Some(c) => {
+                        content_task =
+                            Some(content::spawn(channel, c.options, c.widths, c.events));
+                    }
+                    // Content is not wanted: refuse the channel.
+                    None => channel.close().await,
+                },
                 Some(SessionEvent::VideoTrack { mime, codec }) => {
                     have_track = true;
                     emit(ReceiverEvent::VideoTrack { mime, codec });

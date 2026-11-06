@@ -23,6 +23,7 @@ use rtc::rtp_transceiver::rtp_sender::{
     RtpCodecKind,
 };
 use tokio::sync::{Mutex, OnceCell, mpsc};
+use webrtc::data_channel::RTCDataChannelInit;
 use webrtc::media_stream::MediaStreamTrack;
 use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
 use webrtc::media_stream::track_local::{TrackLocal, TrackLocalEvent};
@@ -35,6 +36,7 @@ use webrtc::peer_connection::{
 use webrtc::rtp_transceiver::RtpSender;
 
 use crate::Route;
+use crate::control::{CONTROL_LABEL, ControlChannel, SEND_BUFFER_LIMIT};
 use crate::error::TransportError;
 use crate::ice::IceServerConfig;
 use crate::rtp::{MediaSnapshot, MediaStats, VideoCodec, starts_key_frame};
@@ -167,6 +169,10 @@ pub enum SessionEvent {
         /// Parsed codec if it is one we know.
         codec: Option<VideoCodec>,
     },
+    /// The peer opened a data channel labelled `control`. The receiver side gets this; the
+    /// side that creates the channel ([`Session::create_control_channel`]) does not. Only the
+    /// first such channel is reported, others are closed.
+    ControlChannel(ControlChannel),
 }
 
 /// One peer connection.
@@ -224,6 +230,7 @@ impl Session {
         let stats = Arc::new(MediaStats::default());
         let remote_video = Arc::new(Mutex::new(None));
         let handler = Arc::new(Handler {
+            control_taken: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             remote_video: Arc::clone(&remote_video),
             events: events_tx,
             stats: Arc::clone(&stats),
@@ -235,6 +242,8 @@ impl Session {
             .with_interceptor_registry(registry)
             .with_handler(handler)
             .with_udp_addrs(config.udp_bind.clone())
+            // Back-pressure for the control data channel (see control.rs).
+            .with_data_channel_send_buffer_limit(SEND_BUFFER_LIMIT)
             .build()
             .await?;
         Ok((
@@ -284,6 +293,17 @@ impl Session {
             payload_type: OnceCell::new(),
             rtcp_events: Mutex::new(()),
         })
+    }
+
+    /// Create the `control` data channel (ordered, reliable) as the web sender does. Call
+    /// before [`Session::create_offer`], so that the offer contains it. The channel can be
+    /// used once [`ControlChannel::wait_open`] returns.
+    pub async fn create_control_channel(&self) -> Result<ControlChannel, TransportError> {
+        let dc = self
+            .pc
+            .create_data_channel(CONTROL_LABEL, Some(RTCDataChannelInit::default()))
+            .await?;
+        Ok(ControlChannel::new(dc).await)
     }
 
     /// Create an offer, set it as local description and return its SDP text.
@@ -501,6 +521,8 @@ fn codec_parameters(codec: VideoCodec) -> Result<RTCRtpCodecParameters, Transpor
 
 /// Library callbacks -> events and counters.
 struct Handler {
+    /// Set when the first `control` channel of the peer was taken.
+    control_taken: Arc<std::sync::atomic::AtomicBool>,
     remote_video: RemoteVideo,
     events: mpsc::UnboundedSender<SessionEvent>,
     stats: Arc<MediaStats>,
@@ -537,6 +559,24 @@ impl PeerConnectionEventHandler for Handler {
             _ => ConnectionState::Connecting,
         };
         let _ = self.events.send(SessionEvent::State(s));
+    }
+
+    async fn on_data_channel(&self, data_channel: Arc<dyn webrtc::data_channel::DataChannel>) {
+        // The library's driver waits for this callback to return, and `label()` asks the
+        // driver, so the work moves to its own task.
+        let events = self.events.clone();
+        let taken = Arc::clone(&self.control_taken);
+        tokio::spawn(async move {
+            if data_channel.label().await.as_deref() != Ok(CONTROL_LABEL)
+                || taken.swap(true, std::sync::atomic::Ordering::AcqRel)
+            {
+                // Other labels are not ours; a second `control` channel is not allowed.
+                let _ = data_channel.close().await;
+                return;
+            }
+            let channel = ControlChannel::new(data_channel).await;
+            let _ = events.send(SessionEvent::ControlChannel(channel));
+        });
     }
 
     async fn on_track(&self, track: Arc<dyn TrackRemote>) {

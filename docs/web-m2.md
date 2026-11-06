@@ -17,8 +17,8 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
 - **Send file or link** view on the sender: image (picker or drag and drop) and http(s) link, both over
   a WebRTC DataChannel. The signalling server only mediates the connection setup (SDP and ICE); it never
   sees the payloads.
-- PDF and Office documents, and playing media links directly, are **not implemented**; the sender view
-  says "coming later". They are planned via the Rust core.
+- PDF and Office documents, and playing media links directly, are **not implemented in the web client**; the
+  sender view says "coming later". Native clients can send and show PDFs (`document` kinds below).
 
 ## DataChannel `control`
 
@@ -27,9 +27,10 @@ The sender creates a data channel with the label `control` (`ordered: true`, rel
 this label and ignores others. The sender may run in two modes: with a screen stream (media plus
 channel) or content-only (channel only, no media section).
 
-UNCERTAIN: this message set is defined by the web client for M2 only. It should move to `cc-proto`
-(with the other protocol types) and be implemented by the native clients once it has been exercised.
-Until then native clients must not assume it, and it may change.
+UNCERTAIN: this message set was defined by the web client for M2 and is now also implemented by the
+native clients (`crates/cc-files`, see [transport.md](transport.md), "Content over the control data
+channel"), which add the `document` kinds below. It should move to `cc-proto` (with the other
+protocol types) once it has been exercised, and it may change.
 
 ### Text messages (JSON, one object per DataChannel text message, at most 8192 characters)
 
@@ -39,6 +40,14 @@ Until then native clients must not assume it, and it may change.
 | `image` | `name` (string, 1..255), `mime` (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `size` (integer bytes, 1..10 MiB) | Starts an image transfer. Binary chunks follow. |
 | `image_end` | none | Ends the transfer; the receiver checks that the received byte count equals `size`. |
 | `link` | `url` (string, at most 2048 characters) | Asks the receiver to open a link. See below. |
+| `document` | `name` (string, 1..255), `mime` (`application/pdf` only), `size` (integer bytes, 1..64 MiB) | Starts a PDF transfer, **sent by native clients; the web client does not send it**. Binary chunks follow, exactly as for an image. UNCERTAIN: new kind, defined by the native clients, not yet agreed anywhere else; the 64 MiB limit is a guess. |
+| `document_end` | none | Ends the PDF transfer; the receiver checks that the received byte count equals `size`, then opens the document. |
+
+Example sequence for a document: `{"kind":"document","name":"a.pdf","mime":"application/pdf","size":24832}`,
+then two binary messages (16384 and 8448 bytes), then `{"kind":"document_end"}`. A receiver that can show it opens
+the first page; `cmd` messages `next_page`, `prev_page` and `{"go_to_page":{"page":N}}` (N from 1) turn pages and
+`stop` closes the document (native receivers; N is clamped to the page count, page commands are ignored while no
+document is shown).
 
 Example sequence for an image: `{"kind":"image","name":"a.png","mime":"image/png","size":40000}`,
 then three binary messages (16384, 16384, 7232 bytes), then `{"kind":"image_end"}`.
@@ -47,8 +56,9 @@ then three binary messages (16384, 16384, 7232 bytes), then `{"kind":"image_end"
 
 An `ArrayBuffer` of at most 16 KiB (16384 bytes) carrying the next bytes of the image announced by
 the last `image` message, in order. The channel is ordered and reliable, so there are no sequence
-numbers. A binary message without a preceding `image`, or one that would exceed `size`, is rejected
-and the transfer is dropped. A new `image` message replaces a transfer in progress.
+numbers. A binary message without a preceding `image` (or `document`), or one that would exceed `size`, is
+rejected and the transfer is dropped. A new `image` message replaces a transfer in progress (a native
+receiver also reports that as a protocol violation).
 
 The sender stops writing while the channel's `bufferedAmount` is above 1 MiB and resumes at the
 256 KiB low-water mark (`bufferedamountlow`).
@@ -70,6 +80,15 @@ measurements behind them. 16 KiB is the size commonly considered interoperable a
   parses it (internationalised names appear in their punycode form).
 - Malformed or unknown messages are ignored; the receiver shows a translated notice for transfer
   problems.
+- Documents: the web client **cannot show PDFs yet** (no web renderer). It skips the data of a `document`
+  transfer without keeping it (same chunk rule, counting only) and, at `document_end`, shows the translated
+  notice "The sender sent a PDF document. This app cannot show documents yet."
+  (`receive.transferError.document_unsupported`). Nothing crashes and nothing is stored. Native receivers
+  render PDFs through `cc-docs` in a child process (the file is treated as hostile, see
+  [documents.md](documents.md)).
+- Native receivers apply the same rules as the web client (MIME allow list, link validation, chunk rule, size
+  limits) and a few more: a hard size cap while receiving, a message-count cap, and blocking a peer after 64
+  protocol violations. Details in [transport.md](transport.md).
 
 UNCERTAIN: whether a link opened by someone else's request is acceptable for every deployment (for
 example kiosks) is not decided; a policy or allow list may be needed later.
@@ -78,6 +97,8 @@ example kiosks) is not decided; a policy or allow list may be needed later.
 
 - Unit (vitest): `tests/control.test.ts` (chunking, reassembly, validation, back-pressure),
   `tests/toolbar.test.ts` (toolbar state, annotation model), `tests/contentSession.test.ts`.
+- Interop with the native clients: `npm run build && npm run e2e:content` (web sender to `cometcast-cli receive`,
+  `cometcast-cli send-file` / `send-link` to the web receiver, the PDF notice, native PDF with page commands).
 - End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): image arrives
   (`naturalWidth > 0`), link card appears and nothing opens until the click, pen changes canvas pixels,
   freeze keeps the frame while the video's `currentTime` keeps advancing.
