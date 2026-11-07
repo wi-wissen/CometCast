@@ -167,15 +167,24 @@ jobs:
       - run: flutter gen-l10n
       - run: flutter analyze
       - run: flutter test
-      # Builds libcc_ffi.so for arm64-v8a and armeabi-v7a through cargo-ndk (Gradle task
-      # cargoNdkDebug in android/app/build.gradle.kts) and packs it into the APK.
-      # Release builds are NOT made here: the release type is signed with the debug key and the
-      # Gradle guard checkReleaseSigning fails it unless -PcometcastAllowDebugSigning=true is set
-      # (see docs/android.md). Never publish an APK built that way.
+      # Builds libcc_ffi.so and the PDF / Office workers (libcc_docs_worker.so,
+      # libcc_office_worker.so) for arm64-v8a and armeabi-v7a through cargo-ndk (Gradle tasks
+      # cargoNdkDebug and cargoNdkWorkerDebug* in android/app/build.gradle.kts) and packs them.
+      # Release builds are NOT made here: without COMETCAST_KEYSTORE* the release type uses the
+      # debug key and the Gradle guard checkReleaseSigning fails it unless
+      # -PcometcastAllowDebugSigning=true is set (see docs/android.md). Never publish an APK
+      # built that way.
       - run: flutter build apk --debug --target-platform android-arm,android-arm64
       - name: Check the APK contains the Rust library
         run: |
           unzip -l build/app/outputs/flutter-apk/app-debug.apk | tee apk-list.txt
           grep -q 'lib/arm64-v8a/libcc_ffi.so' apk-list.txt
           grep -q 'lib/armeabi-v7a/libcc_ffi.so' apk-list.txt
+          grep -q 'lib/arm64-v8a/libcc_docs_worker.so' apk-list.txt
+          grep -q 'lib/arm64-v8a/libcc_office_worker.so' apk-list.txt
           grep -q 'lib/arm64-v8a/libflutter.so' apk-list.txt
+      # JVM unit tests of the pure Kotlin helpers (capture size arithmetic, H.264 parsing).
+      # UNCERTAIN: not run on GitHub; the same task was run locally (docs/android.md).
+      - name: Kotlin unit tests
+        working-directory: apps/flutter/android
+        run: ./gradlew :app:testDebugUnitTest
