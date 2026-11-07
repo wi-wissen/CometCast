@@ -65,6 +65,22 @@ final class BroadcastBridge: NSObject, FlutterStreamHandler {
             result(nil)
         case "status":
             result(store?.readStatus().map(Self.map))
+        case "writeShareSettings":
+            // What the share extension reads (native-apps.md 21.3): the name, the servers
+            // confirmed on this device and the last used server. Failures are ignored: the
+            // extension then asks for the name itself.
+            guard let a = call.arguments as? [String: Any],
+                  let shareStore = ShareSettingsStore.shared(group: BroadcastIdentity.appGroup)
+            else { return result(false) }
+            shareStore.write(ShareSettings(
+                name: a["name"] as? String ?? "",
+                confirmedServers: a["confirmedServers"] as? [String] ?? [],
+                lastServer: a["lastServer"] as? String))
+            result(true)
+        case "readShareSettings":
+            // The extension writes back only the name.
+            let s = ShareSettingsStore.shared(group: BroadcastIdentity.appGroup)?.read()
+            result(s.map { ["name": $0.name, "confirmedServers": $0.confirmedServers, "lastServer": $0.lastServer as Any] })
         case "isCaptured":
             result(UIScreen.main.isCaptured)
         case "info":

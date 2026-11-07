@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<!-- Name in the share sheet (native-apps.md 21.3). -->
+	<key>CFBundleDisplayName</key>
+	<string>Comet Cast</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>de</string>
+	</array>
+	<key>CometCastAppGroup</key>
+	<string>$(COMETCAST_APP_GROUP)</string>
+	<!-- The two fonts of the presenter pages (section 11), bundled in the extension. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>AtkinsonHyperlegibleNext-400.ttf</string>
+		<string>AtkinsonHyperlegibleNext-500.ttf</string>
+		<string>AtkinsonHyperlegibleNext-700.ttf</string>
+		<string>AtkinsonHyperlegibleMono-500.ttf</string>
+		<string>AtkinsonHyperlegibleMono-700.ttf</string>
+	</array>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Exactly one item, and it is an image, a PDF or a web address (spec 15.3, N81: no
+			     Office types on iOS). A dictionary rule (SupportsImageWithMaxCount, ...) cannot
+			     limit a *file* to PDFs, so the predicate form is used; UTI-CONFORMS-TO is the
+			     documented predicate function. Several items, a ZIP or a video: the entry does
+			     not exist. UNCERTAIN: never tried in Xcode or on a device (docs/ios.md). -->
+			<key>NSExtensionActivationRule</key>
+			<string>SUBQUERY (
+				extensionItems,
+				$extensionItem,
+				$extensionItem.attachments.@count == 1
+				AND SUBQUERY (
+					$extensionItem.attachments,
+					$attachment,
+					ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
+					OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf"
+					OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+				).@count == 1
+			).@count == 1</string>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+	</dict>
+</dict>
+</plist>

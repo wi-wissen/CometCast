@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::engine::{self, Config, ErrorCode, Sink, Status};
+use crate::share::{self, Command, Item, ShareConfig};
 
 /// What the status callback receives. Layout is part of the ABI (see `cc_ios.h`).
 #[repr(C)]
@@ -204,10 +205,100 @@ pub extern "C" fn cc_ios_stop() {
     engine::stop();
 }
 
-/// Version of this C ABI. Bumped when a signature or number changes.
+/// Start the share extension's session (native-apps.md 21.3). `config_json` is a JSON object
+/// `{"code": "K7QM2W", "server": "host:port", "name": "Anna", "log_dir": "/path"}` (`name` and
+/// `log_dir` optional). Returns 0 if it was started (events come through
+/// `cc_ios_share_poll`), else an `ErrorCode` (1 bad room code, 2 bad relay, 7 internal, 8 already
+/// running).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cc_ios_share_start(config_json: *const c_char) -> i32 {
+    // SAFETY: header contract, see `text`.
+    let Some(json) = (unsafe { text(config_json) }) else {
+        return ErrorCode::InvalidRoomCode as i32;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return ErrorCode::InvalidRoomCode as i32;
+    };
+    let field = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_owned);
+    let config = ShareConfig {
+        room_code: field("code").unwrap_or_default(),
+        relay_url: field("server").unwrap_or_default(),
+        name: field("name"),
+        log_dir: field("log_dir")
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from),
+        udp_bind: None,
+    };
+    match share::start(config) {
+        Ok(()) => 0,
+        Err(e) => e as i32,
+    }
+}
+
+/// Show an item: `{"file": "/path"}` or `{"link": "https://..."}`. Returns 1 if the request was
+/// queued, 0 if no session runs or the JSON is not one of the two shapes. The checks run
+/// afterwards; their result is an event (`content_prepared` or `content_rejected`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cc_ios_share_present(json: *const c_char) -> i32 {
+    // SAFETY: header contract, see `text`.
+    let Some(json) = (unsafe { text(json) }) else {
+        return 0;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return 0;
+    };
+    let item = if let Some(p) = v.get("file").and_then(|x| x.as_str()) {
+        Item::File(PathBuf::from(p))
+    } else if let Some(u) = v.get("link").and_then(|x| x.as_str()) {
+        Item::Link(u.to_owned())
+    } else {
+        return 0;
+    };
+    i32::from(share::present(item))
+}
+
+/// A page command: `{"cmd": "prev"}` or `{"cmd": "next"}`. Returns 1 if queued, else 0.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cc_ios_share_cmd(json: *const c_char) -> i32 {
+    // SAFETY: header contract, see `text`.
+    let Some(json) = (unsafe { text(json) }) else {
+        return 0;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return 0;
+    };
+    let c = match v.get("cmd").and_then(|x| x.as_str()) {
+        Some("prev") => Command::Prev,
+        Some("next") => Command::Next,
+        _ => return 0,
+    };
+    i32::from(share::command(c))
+}
+
+/// Copy the next event (one JSON object, UTF-8, NUL-terminated) into `buf`. Returns its length
+/// (more than 0), 0 if no event waits, or the negative size needed if `len` is too small (the
+/// event stays queued). Call it a few times a second; it never blocks.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cc_ios_share_poll(buf: *mut u8, len: usize) -> i32 {
+    if buf.is_null() || len == 0 {
+        return 0;
+    }
+    // SAFETY: the caller passes `len` writable bytes.
+    let out = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+    share::poll_into(out)
+}
+
+/// "Stop and close" (and a sheet that was swiped away): stop showing and leave the room. Blocks
+/// for at most about four seconds. Safe when nothing runs.
+#[unsafe(no_mangle)]
+pub extern "C" fn cc_ios_share_stop() {
+    share::stop();
+}
+
+/// Version of this C ABI. Bumped when a signature or number changes (3: the share functions).
 #[unsafe(no_mangle)]
 pub extern "C" fn cc_ios_abi_version() -> i32 {
-    2
+    3
 }
 
 #[cfg(test)]
@@ -223,13 +314,18 @@ mod tests {
             "cc_ios_push_frame",
             "cc_ios_keyframe_requested",
             "cc_ios_request_handover",
+            "cc_ios_share_start",
+            "cc_ios_share_present",
+            "cc_ios_share_cmd",
+            "cc_ios_share_poll",
+            "cc_ios_share_stop",
             "cc_ios_stop",
             "cc_ios_abi_version",
         ] {
             assert!(header.contains(name), "{name} missing in cc_ios.h");
         }
-        assert!(header.contains("#define CC_IOS_ABI_VERSION 2"));
-        assert_eq!(super::cc_ios_abi_version(), 2);
+        assert!(header.contains("#define CC_IOS_ABI_VERSION 3"));
+        assert_eq!(super::cc_ios_abi_version(), 3);
         // 4 ints, 6 counters and 3 pointers (64-bit layout, as on every iOS device).
         assert_eq!(
             std::mem::size_of::<super::CcIosStatus>(),

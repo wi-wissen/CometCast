@@ -12,6 +12,9 @@ COMETCAST_BUNDLE_ID = de.cometcast.cometcast
 // embedded extensions).
 COMETCAST_EXTENSION_BUNDLE_ID = $(COMETCAST_BUNDLE_ID).broadcast
 
+// The share extension (native-apps.md 21.3), prefixed like the broadcast extension.
+COMETCAST_SHARE_BUNDLE_ID = $(COMETCAST_BUNDLE_ID).share
+
 // App Group shared by app and extension (Developer portal: Identifiers, App Groups).
 COMETCAST_APP_GROUP = group.$(COMETCAST_BUNDLE_ID)
 
@@ -33,6 +36,7 @@ COMETCAST_SIGN_STYLE = Automatic
 COMETCAST_SIGN_IDENTITY = Apple Development
 COMETCAST_APP_PROFILE =
 COMETCAST_EXTENSION_PROFILE =
+COMETCAST_SHARE_PROFILE =
 
 // Must stay AFTER the defaults above: a later assignment wins.
 #include? "Local.xcconfig"
