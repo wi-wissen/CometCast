@@ -595,10 +595,6 @@
   "@byeAgain": {
     "description": "Spec key bye.again"
   },
-  "byeBody": "You are no longer connected. You can close this tab.",
-  "@byeBody": {
-    "description": "Spec key bye.body"
-  },
   "byeTitle": "Disconnected",
   "@byeTitle": {
     "description": "Spec key bye.title"
@@ -607,10 +603,6 @@
   "@commonBack": {
     "description": "Spec key common.back"
   },
-  "commonCancel": "Cancel",
-  "@commonCancel": {
-    "description": "Spec key common.cancel"
-  },
   "commonNext": "Next",
   "@commonNext": {
     "description": "Spec key common.next"
@@ -618,10 +610,6 @@
   "commonNoName": "No name",
   "@commonNoName": {
     "description": "Spec key common.noName"
-  },
-  "commonOr": "or",
-  "@commonOr": {
-    "description": "Spec key common.or"
   },
   "commonQuoted": "“{name}”",
   "@commonQuoted": {
@@ -653,23 +641,6 @@
         "type": "String"
       }
     }
-  },
-  "errorActionGetApp": "Get the app",
-  "@errorActionGetApp": {
-    "description": "Spec key error.action.getApp"
-  },
-  "errorActionOpenDom": "Open {dom}",
-  "@errorActionOpenDom": {
-    "description": "Spec key error.action.openDom",
-    "placeholders": {
-      "dom": {
-        "type": "String"
-      }
-    }
-  },
-  "errorActionReload": "Reload page",
-  "@errorActionReload": {
-    "description": "Spec key error.action.reload"
   },
   "errorActionRescan": "Scan QR code again",
   "@errorActionRescan": {
@@ -808,10 +779,6 @@
   "@errorNoScreenNow": {
     "description": "Spec key error.noScreen.now"
   },
-  "errorNoScreenNowNoApp": "Show a photo, a file or a link instead.",
-  "@errorNoScreenNowNoApp": {
-    "description": "Spec key error.noScreen.nowNoApp"
-  },
   "errorNoScreenTitle": "Screen sharing does not work in this browser",
   "@errorNoScreenTitle": {
     "description": "Spec key error.noScreen.title"
@@ -843,14 +810,6 @@
   "errorOtherTitle": "Something went wrong",
   "@errorOtherTitle": {
     "description": "Spec key error.other.title"
-  },
-  "errorOutdatedNow": "Reload the page.",
-  "@errorOutdatedNow": {
-    "description": "Spec key error.outdated.now"
-  },
-  "errorOutdatedTitle": "This page is out of date",
-  "@errorOutdatedTitle": {
-    "description": "Spec key error.outdated.title"
   },
   "errorOutdatedWhy": "The server was updated in the meantime.",
   "@errorOutdatedWhy": {
@@ -996,10 +955,6 @@
   "@errorsWrongRole": {
     "description": "Spec key errors.wrong_role"
   },
-  "fileBody": "Recent on this device. Or “Other file” in the system dialog.",
-  "@fileBody": {
-    "description": "Spec key file.body"
-  },
   "fileBodyWeb": "A PDF or an image from this device. It appears on the screen as soon as you pick it.",
   "@fileBodyWeb": {
     "description": "Spec key file.bodyWeb"
@@ -1007,10 +962,6 @@
   "filePick": "Choose file",
   "@filePick": {
     "description": "Spec key file.pick"
-  },
-  "fileTitle": "What would you like to show?",
-  "@fileTitle": {
-    "description": "Spec key file.title"
   },
   "idleAltAddress": "or {ip}",
   "@idleAltAddress": {
@@ -1045,10 +996,6 @@
   "idleOfflineBodyBusy": "The server is busy right now. This screen tries again by itself.",
   "@idleOfflineBodyBusy": {
     "description": "Spec key idle.offline.bodyBusy"
-  },
-  "idleOfflineBodyOutdated": "This page is out of date. Reload it to get a code.",
-  "@idleOfflineBodyOutdated": {
-    "description": "Spec key idle.offline.bodyOutdated"
   },
   "idleOfflineTitle": "No connection to {dom}",
   "@idleOfflineTitle": {
@@ -1175,37 +1122,9 @@
       }
     }
   },
-  "receiveDocumentPageErrorBadSize": "This page has an unusable size.",
-  "@receiveDocumentPageErrorBadSize": {
-    "description": "Spec key receive.document.pageError.bad_size"
-  },
-  "receiveDocumentPageErrorFailed": "This page could not be shown.",
-  "@receiveDocumentPageErrorFailed": {
-    "description": "Spec key receive.document.pageError.failed"
-  },
-  "receiveDocumentPageErrorMemory": "This page needs too much memory.",
-  "@receiveDocumentPageErrorMemory": {
-    "description": "Spec key receive.document.pageError.memory"
-  },
-  "receiveDocumentPageErrorPageOutOfRange": "This page does not exist.",
-  "@receiveDocumentPageErrorPageOutOfRange": {
-    "description": "Spec key receive.document.pageError.page_out_of_range"
-  },
-  "receiveDocumentPageErrorTimeout": "Showing this page took too long.",
-  "@receiveDocumentPageErrorTimeout": {
-    "description": "Spec key receive.document.pageError.timeout"
-  },
-  "receiveLinkAddress": "Address",
-  "@receiveLinkAddress": {
-    "description": "Spec key receive.link.address"
-  },
   "receiveLinkDismiss": "Dismiss",
   "@receiveLinkDismiss": {
     "description": "Spec key receive.link.dismiss"
-  },
-  "receiveLinkHint": "The sender asks you to open this link. Open it only if you expect it. It opens in a new tab, and only if you click “Open”.",
-  "@receiveLinkHint": {
-    "description": "Spec key receive.link.hint"
   },
   "receiveLinkHintTv": "This screen cannot open web pages. Open the address on your own device if you need it.",
   "@receiveLinkHintTv": {
@@ -1244,37 +1163,13 @@
   "@receiveTransferErrorBadMessage": {
     "description": "Spec key receive.transferError.bad_message"
   },
-  "receiveTransferErrorDocumentEncrypted": "The PDF is password protected and cannot be shown.",
-  "@receiveTransferErrorDocumentEncrypted": {
-    "description": "Spec key receive.transferError.document_encrypted"
-  },
   "receiveTransferErrorDocumentFailed": "The PDF could not be shown.",
   "@receiveTransferErrorDocumentFailed": {
     "description": "Spec key receive.transferError.document_failed"
   },
-  "receiveTransferErrorDocumentInvalid": "The PDF is damaged or not supported and cannot be shown.",
-  "@receiveTransferErrorDocumentInvalid": {
-    "description": "Spec key receive.transferError.document_invalid"
-  },
-  "receiveTransferErrorDocumentMemory": "The PDF needs more memory than allowed and was closed.",
-  "@receiveTransferErrorDocumentMemory": {
-    "description": "Spec key receive.transferError.document_memory"
-  },
   "receiveTransferErrorDocumentRejected": "The PDF was refused by the safety check and is not shown.",
   "@receiveTransferErrorDocumentRejected": {
     "description": "Spec key receive.transferError.document_rejected"
-  },
-  "receiveTransferErrorDocumentTimeout": "Showing the PDF took too long and it was closed.",
-  "@receiveTransferErrorDocumentTimeout": {
-    "description": "Spec key receive.transferError.document_timeout"
-  },
-  "receiveTransferErrorDocumentTooLarge": "The PDF is too large to be shown.",
-  "@receiveTransferErrorDocumentTooLarge": {
-    "description": "Spec key receive.transferError.document_too_large"
-  },
-  "receiveTransferErrorDocumentTooManyPages": "The PDF has too many pages to be shown.",
-  "@receiveTransferErrorDocumentTooManyPages": {
-    "description": "Spec key receive.transferError.document_too_many_pages"
   },
   "receiveTransferErrorDocumentUnsupported": "The sender sent a PDF document. This app cannot show documents yet.",
   "@receiveTransferErrorDocumentUnsupported": {
@@ -1299,15 +1194,6 @@
   "receiveTransferErrorUnexpectedChunk": "Unexpected image data was ignored.",
   "@receiveTransferErrorUnexpectedChunk": {
     "description": "Spec key receive.transferError.unexpected_chunk"
-  },
-  "relayConfirmBody": "A link asks this page to use the relay {host} instead of the default. Only continue if you know and trust its operator.",
-  "@relayConfirmBody": {
-    "description": "Spec key relay.confirm.body",
-    "placeholders": {
-      "host": {
-        "type": "String"
-      }
-    }
   },
   "relayConfirmCancel": "Cancel (use the default relay)",
   "@relayConfirmCancel": {
@@ -1340,10 +1226,6 @@
   "relayErrorsInvalid": "This is not a valid relay address.",
   "@relayErrorsInvalid": {
     "description": "Spec key relay.errors.invalid"
-  },
-  "relayErrorsMixed": "A page opened over https cannot use an unencrypted ws:// relay (the browser blocks it). Please use wss://.",
-  "@relayErrorsMixed": {
-    "description": "Spec key relay.errors.mixed"
   },
   "relayErrorsPath": "The address must not contain a path, query or fragment (only an optional /ws).",
   "@relayErrorsPath": {
@@ -1454,10 +1336,6 @@
   "setupAddressSourceOwn": "Found via the company network (DNS entry).",
   "@setupAddressSourceOwn": {
     "description": "Spec key setup.address.sourceOwn"
-  },
-  "setupAddressSourcePage": "Set by the server of this page.",
-  "@setupAddressSourcePage": {
-    "description": "Spec key setup.address.sourcePage"
   },
   "setupAddressSourceTyped": "Entered by hand.",
   "@setupAddressSourceTyped": {
@@ -1703,14 +1581,6 @@
   "whatScreenLaptop": "Whole screen or one window, live",
   "@whatScreenLaptop": {
     "description": "Spec key what.screenLaptop"
-  },
-  "whatScreenPhoneBrowser": "On a phone only with the app",
-  "@whatScreenPhoneBrowser": {
-    "description": "Spec key what.screenPhoneBrowser"
-  },
-  "whatScreenPhoneBrowserNoApp": "Not possible in a phone browser",
-  "@whatScreenPhoneBrowserNoApp": {
-    "description": "Spec key what.screenPhoneBrowserNoApp"
   },
   "whatTitle": "What would you like to show?",
   "@whatTitle": {

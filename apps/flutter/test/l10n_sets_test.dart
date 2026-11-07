@@ -49,4 +49,92 @@ void main() {
     expect(du['setupModeApprovalText'], contains('du lässt'));
     expect(sie['setupModeApprovalText'], contains('Sie lassen'));
   });
+
+  test('switching to Sie changes only addressing strings', () {
+    final formal = RegExp(r'\b(Sie|Ihr\w*|Ihnen)\b');
+    const falseAlarms = {'sendRejectOfficeFailed'};
+    // The greeting is formal in the one set ("Willkommen!") and informal in the other ("Hallo!"):
+    // the form of address changes, no pronoun is involved.
+    const greetings = {'setupWelcomeTitle'};
+    for (final k in du.keys.where((k) => !k.startsWith('@'))) {
+      if (du[k] == sie[k] || greetings.contains(k)) continue;
+      expect(
+        formal.hasMatch(sie[k] as String),
+        isTrue,
+        reason: '$k differs between the sets but is not addressed with Sie',
+      );
+      expect(falseAlarms.contains(k), isFalse, reason: k);
+    }
+  });
+
+  test('the strings of the Flutter review (11.9) are in all three sets', () {
+    const keys = {
+      'receiveLinkHintApp': 'It opens in the browser, and only if you choose',
+      'setupAddressSourcePolicy': 'Set by the administrator of this device.',
+      'idleOfflineBodyOutdatedApp':
+          'This app is out of date. Update it to get a code.',
+      'errorOutdatedTitleApp': 'This app is out of date',
+      'errorOutdatedNowApp': 'Update the app, then try again.',
+      'whatScreenTablet': 'Your whole tablet display, live',
+      'fileBodyApp': 'A PDF, an image or an Office file from this device.',
+      'fileConverting': 'Converting {name} …',
+      'relayConfirmBodyApp': 'A link asks this app to use the relay {host}',
+      'appScanWrong': 'This QR code is not from a Comet Cast screen.',
+      'appMiracast': 'Receive Miracast on this PC',
+      'iosCameraUsage': 'Comet Cast uses the camera only to scan the QR code',
+      'codecLater': 'Not now',
+      'codecDownloading': 'Downloading the video codec …',
+    };
+    for (final e in keys.entries) {
+      expect(en[e.key], contains(e.value), reason: e.key);
+      expect(du[e.key], isA<String>(), reason: e.key);
+      expect(sie[e.key], isA<String>(), reason: e.key);
+    }
+    // Typographic ellipsis, not three dots.
+    expect(en['codecDownloading'], endsWith(' …'));
+    expect(du['codecDownloading'], endsWith(' …'));
+    expect(sie['codecDownloading'], endsWith(' …'));
+  });
+
+  test('the formal set addresses the strings that the spec lists', () {
+    expect(sie['receiveLinkHintApp'], contains('Öffnen Sie ihn nur'));
+    expect(du['receiveLinkHintApp'], contains('Öffne ihn nur'));
+    expect(sie['errorOutdatedNowApp'], contains('Aktualisieren Sie die App'));
+    expect(du['errorOutdatedNowApp'], contains('Aktualisiere die App'));
+    expect(
+      sie['idleOfflineBodyOutdatedApp'],
+      contains('Aktualisieren Sie sie'),
+    );
+    expect(sie['relayConfirmBodyApp'], contains('Fahren Sie nur fort'));
+    expect(du['relayConfirmBodyApp'], contains('Mach nur weiter'));
+    // The ones the spec gives as "same as du" are the same.
+    for (final k in [
+      'setupAddressSourcePolicy',
+      'errorOutdatedTitleApp',
+      'fileConverting',
+      'appScanWrong',
+      'appMiracast',
+      'iosCameraUsage',
+      'codecLater',
+      'codecDownloading',
+    ]) {
+      expect(sie[k], du[k], reason: k);
+    }
+  });
+
+  test('strings of the web page that the apps never show are gone', () {
+    for (final k in [
+      'errorActionReload',
+      'errorOutdatedTitle',
+      'errorOutdatedNow',
+      'idleOfflineBodyOutdated',
+      'relayConfirmBody',
+      'receiveLinkHint',
+      'byeBody',
+    ]) {
+      expect(en.containsKey(k), isFalse, reason: k);
+      expect(du.containsKey(k), isFalse, reason: k);
+      expect(sie.containsKey(k), isFalse, reason: k);
+    }
+  });
 }
