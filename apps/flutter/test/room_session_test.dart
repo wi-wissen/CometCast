@@ -45,7 +45,7 @@ void main() {
             joinMode: UiJoinMode.confirm,
           ),
         )
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Ada'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Ada', handover: false))
         ..add(const ReceiverUiEvent.connectionCode(sas: '123 456'))
         ..add(
           const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
@@ -70,7 +70,7 @@ void main() {
       expect(starts, 1);
 
       // A second presenter joins with that code.
-      core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Bo'));
+      core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Bo', handover: false));
       await tick();
       expect(c.peerName, 'Bo');
       expect(c.roomCode, 'K7QM2W');
@@ -93,7 +93,7 @@ void main() {
             joinMode: UiJoinMode.open,
           ),
         )
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Ada'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Ada', handover: false))
         ..add(const ReceiverUiEvent.connectionCode(sas: '123 456'))
         ..add(
           const ReceiverUiEvent.contentLink(

@@ -16,7 +16,9 @@ export type ClientMessage =
   // altcha: base64 of {challenge, solution}; only needed when the server answers altcha_required (docs/server.md)
   // room_name: the display's name for its room (the server cleans it, cuts it at 32 characters and relays it to senders)
   | { type: 'create_room'; altcha?: string; join_mode?: JoinMode; room_name?: string }
-  | { type: 'join_room'; code: string; name?: string }
+  // handover: single-use token of the iOS broadcast extension (native-apps.md 20.5); the web client
+  // never sends one, the type only keeps the message shape in one place
+  | { type: 'join_room'; code: string; name?: string; handover?: string }
   | { type: 'set_join_mode'; join_mode: JoinMode }
   // id absent + allow false = deny all waiting requests
   // block: with allow false and an id, also block the sender's address bucket for this room session
@@ -36,9 +38,10 @@ export type ServerMessage =
   | { type: 'room_created'; code: string; join_mode: JoinMode }
   // room_name: optional, absent when the display set none (or the server is older)
   | { type: 'joined'; room_name?: string }
-  | { type: 'peer_joined'; name: string }
+  // handover: the token the sender joined with (open rooms); the web display does not use it
+  | { type: 'peer_joined'; name: string; handover?: string }
   | { type: 'join_pending'; timeout_secs: number; check: number; room_name?: string }
-  | { type: 'join_request'; id: number; name: string; check: number }
+  | { type: 'join_request'; id: number; name: string; check: number; handover?: string }
   | { type: 'join_request_cancelled'; id: number; reason: string }
   | { type: 'join_mode_changed'; join_mode: JoinMode }
   | { type: 'blocked'; id: number; name: string }
@@ -124,13 +127,15 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'unblocked':
       return isNum(o.id) ? { type: 'unblocked', id: o.id } : null
     case 'peer_joined':
-      return isStr(o.name) ? { type: 'peer_joined', name: o.name } : null
+      return isStr(o.name) ? { type: 'peer_joined', name: o.name, ...(isStr(o.handover) ? { handover: o.handover } : {}) } : null
     case 'join_pending':
       return isNum(o.timeout_secs) && isNum(o.check)
         ? { type: 'join_pending', timeout_secs: o.timeout_secs, check: o.check, ...roomNameField(o) }
         : null
     case 'join_request':
-      return isNum(o.id) && isStr(o.name) && isNum(o.check) ? { type: 'join_request', id: o.id, name: o.name, check: o.check } : null
+      return isNum(o.id) && isStr(o.name) && isNum(o.check)
+        ? { type: 'join_request', id: o.id, name: o.name, check: o.check, ...(isStr(o.handover) ? { handover: o.handover } : {}) }
+        : null
     case 'join_request_cancelled':
       return isNum(o.id) && isStr(o.reason) ? { type: 'join_request_cancelled', id: o.id, reason: o.reason } : null
     case 'join_mode_changed':

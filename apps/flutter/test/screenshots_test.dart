@@ -325,7 +325,7 @@ void main() {
         await shot(t, 'display-$p-linkcard');
         await k(t, LogicalKeyboardKey.escape);
         h.core.receiverEvents.add(
-          const ReceiverUiEvent.peerJoined(name: 'Lena'),
+          const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
         );
         await t.pump();
         await deliverFrame(t, h.core, solidFrame(160, 90, [40, 90, 160]));
@@ -367,7 +367,7 @@ void main() {
           core: core,
         );
         h.core.receiverEvents.add(
-          const ReceiverUiEvent.peerJoined(name: 'Lena'),
+          const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
         );
         await t.pump();
         await deliverFrame(t, h.core, solidFrame(160, 90, [40, 90, 160]));
@@ -409,7 +409,7 @@ void main() {
           core: core,
         );
         h.core.receiverEvents
-          ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+          ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
           ..add(
             const ReceiverUiEvent.contentDocumentOpened(
               name: 'a.pdf',
@@ -449,7 +449,7 @@ void main() {
           core: core,
         );
         h.core.receiverEvents
-          ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+          ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
           ..add(
             const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
           );

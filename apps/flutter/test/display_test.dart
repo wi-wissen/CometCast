@@ -281,7 +281,7 @@ void main() {
       (t) async {
         final h = await pumpDisplay(t);
         h.core.receiverEvents.add(
-          const ReceiverUiEvent.peerJoined(name: 'Lena'),
+          const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
         );
         await t.pump();
         expect(h.wake.held, isFalse);

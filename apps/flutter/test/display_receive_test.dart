@@ -120,7 +120,7 @@ void main() {
       (t) async {
         final h = await pumpDisplay(t);
         h.core.receiverEvents.add(
-          const ReceiverUiEvent.peerJoined(name: 'Lena'),
+          const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
         );
         await two(t);
         await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
@@ -134,7 +134,7 @@ void main() {
 
     testWidgets('a stopped presentation is Idle without a toast', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena'));
+      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
       await two(t);
       await t.pump(const Duration(seconds: 4));
       await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
@@ -163,7 +163,7 @@ void main() {
     ) async {
       final h = await pumpDisplay(t);
       h.core.receiverEvents
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
         ..add(
           const ReceiverUiEvent.contentDocumentOpened(name: 'a.pdf', pages: 3),
         );
@@ -215,7 +215,7 @@ void main() {
         await two(t);
         expect(find.text('“Lena” allowed'), findsOneWidget);
         h.core.receiverEvents.add(
-          const ReceiverUiEvent.peerJoined(name: 'Lena'),
+          const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
         );
         await two(t);
         expect(find.text('“Lena” connected'), findsNothing);
@@ -224,7 +224,7 @@ void main() {
 
     testWidgets('a join without a request (Open) says "connected"', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena'));
+      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
       await two(t);
       expect(find.text('“Lena” connected'), findsOneWidget);
     });

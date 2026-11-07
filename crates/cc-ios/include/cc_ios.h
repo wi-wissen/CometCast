@@ -45,7 +45,10 @@ enum {
     CC_IOS_ERR_CONNECTION_LOST = 5,
     CC_IOS_ERR_PEER_LEFT = 6,
     CC_IOS_ERR_INTERNAL = 7,
-    CC_IOS_ERR_ALREADY_RUNNING = 8
+    CC_IOS_ERR_ALREADY_RUNNING = 8,
+    CC_IOS_ERR_JOIN_DENIED = 9,      /* the host denied the join */
+    CC_IOS_ERR_APPROVAL_TIMEOUT = 10, /* nobody decided in time */
+    CC_IOS_ERR_ROOM_LOCKED = 11      /* the room is locked */
 };
 
 /* Return values of cc_ios_push_frame. */

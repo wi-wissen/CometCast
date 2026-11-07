@@ -31,7 +31,13 @@ final class JoinApprovalFixtureTests: XCTestCase {
         var server = 0, client = 0
         for m in ms {
             let id = m["id"]?.stringValue ?? "?"
-            let msg = try XCTUnwrap(m["message"], id)
+            var msg = try XCTUnwrap(m["message"], id)
+            // Optional fields this core does not use (the hand-over token of the iOS app) may be dropped.
+            let droppable = (m["decoders_may_drop"]?.arrayValue ?? []).compactMap { $0.stringValue }
+            if !droppable.isEmpty, case .object(var o) = msg {
+                for k in droppable { o[k] = nil }
+                msg = .object(o)
+            }
             if m["direction"]?.stringValue == "server_to_client" {
                 server += 1
                 let got = ServerMessage.decode(JSON.serialize(msg))

@@ -73,6 +73,12 @@ pub enum ErrorCode {
     Internal = 7,
     /// `start` was called while a broadcast runs.
     AlreadyRunning = 8,
+    /// The host denied the join (`join_denied`).
+    JoinDenied = 9,
+    /// Nobody decided on the join in time (`approval_timeout`).
+    ApprovalTimeout = 10,
+    /// The room is locked (`room_locked`): a hand-over join is refused like any join.
+    RoomLocked = 11,
 }
 
 /// What [`push_frame`] did with an access unit. The numbers are part of the C ABI.
@@ -353,6 +359,11 @@ pub fn stop() {
 fn start_error(e: &TransportError) -> ErrorCode {
     match e {
         TransportError::Server { code, .. } if code == "room_not_found" => ErrorCode::RoomNotFound,
+        TransportError::Server { code, .. } if code == "join_denied" => ErrorCode::JoinDenied,
+        TransportError::Server { code, .. } if code == "approval_timeout" => {
+            ErrorCode::ApprovalTimeout
+        }
+        TransportError::Server { code, .. } if code == "room_locked" => ErrorCode::RoomLocked,
         TransportError::Invalid(_) => ErrorCode::InvalidRelay,
         TransportError::Connect(_) | TransportError::Timeout(_) | TransportError::Closed => {
             ErrorCode::ServerUnreachable
@@ -545,6 +556,16 @@ mod tests {
             message: String::new(),
         };
         assert_eq!(start_error(&e), ErrorCode::RoomNotFound);
+        let server = |c: &str| TransportError::Server {
+            code: c.into(),
+            message: String::new(),
+        };
+        assert_eq!(start_error(&server("join_denied")), ErrorCode::JoinDenied);
+        assert_eq!(
+            start_error(&server("approval_timeout")),
+            ErrorCode::ApprovalTimeout
+        );
+        assert_eq!(start_error(&server("room_locked")), ErrorCode::RoomLocked);
         assert_eq!(
             start_error(&TransportError::Connect("x".into())),
             ErrorCode::ServerUnreachable
@@ -567,6 +588,9 @@ mod tests {
         assert_eq!(State::Pending as i32, 7);
         assert_eq!(ErrorCode::RoomNotFound as i32, 3);
         assert_eq!(ErrorCode::AlreadyRunning as i32, 8);
+        assert_eq!(ErrorCode::JoinDenied as i32, 9);
+        assert_eq!(ErrorCode::ApprovalTimeout as i32, 10);
+        assert_eq!(ErrorCode::RoomLocked as i32, 11);
         assert_eq!(PushCode::NoSender as i32, 6);
     }
 }

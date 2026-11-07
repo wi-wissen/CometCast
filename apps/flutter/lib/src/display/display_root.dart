@@ -184,7 +184,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     return _c.hasLiveVideo ||
         shown is ReceivedImage ||
         shown is ReceivedDocument ||
-        _codecWaiting;
+        _codecWaiting ||
+        // The presenter left for the iOS hand-over: black stage until it is back (20.5).
+        _c.handoverHold;
   }
 
   bool get _codecDialog => _codecWaiting && !_codecLater;

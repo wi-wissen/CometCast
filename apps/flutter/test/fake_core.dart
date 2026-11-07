@@ -264,6 +264,8 @@ class FakeCoreApi implements CoreApi {
   String? presenterCode;
   String? presenterServer;
   String? presenterName;
+  String? presenterHandover;
+  final handoverRequests = <String>[];
   int stopPresenterCalls = 0;
   int stopPresentingCalls = 0;
   int presentEncodedCalls = 0;
@@ -278,13 +280,32 @@ class FakeCoreApi implements CoreApi {
     required String code,
     required String server,
     String? name,
+    String? handover,
     String? udpBind,
   }) {
     startPresenterCalls++;
     presenterCode = code;
     presenterServer = server;
     presenterName = name;
+    presenterHandover = handover;
     return presenterEvents.stream;
+  }
+
+  /// What `requestHandover` queues as the answer event (null = the display does not answer
+  /// and no event comes; true/false = `HandoverResult`).
+  bool? handoverAnswer = true;
+
+  @override
+  bool requestHandover(String token) {
+    if (!presenterAccepts) return false;
+    handoverRequests.add(token);
+    final a = handoverAnswer;
+    if (a != null) {
+      scheduleMicrotask(
+        () => presenterEvents.add(PresenterUiEvent.handoverResult(ok: a)),
+      );
+    }
+    return true;
   }
 
   @override
