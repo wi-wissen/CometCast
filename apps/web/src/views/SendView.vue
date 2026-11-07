@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
+import SasLine from '../components/SasLine.vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { detectCapabilities } from '../core/capabilities'
@@ -91,6 +92,7 @@ function onInput(e: Event) {
       {{ t(`send.status.${state.phase}`) }}
       <template v-if="state.phase === 'error'"> {{ errorText }}</template>
     </p>
+    <SasLine :code="state.sas" />
 
     <div
       class="rounded-cc border p-4"

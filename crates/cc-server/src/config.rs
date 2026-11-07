@@ -286,6 +286,11 @@ pub struct ServerConfig {
     pub mode: Mode,
     /// Optional directory with the web app, served from the same address as `/ws`.
     pub web_dir: Option<PathBuf>,
+    /// Web origins (`https://host[:port]`, exact match) whose pages may use this relay from
+    /// another site: CORS for `/ice-servers`, `/altcha/challenge`, `/healthz`, and an `Origin`
+    /// check on `/ws`. Empty = same-origin only for HTTP and any `Origin` on `/ws`.
+    /// `*` = any origin (internal mode only). See docs/server.md.
+    pub allowed_origins: Vec<String>,
     /// A room without a sender is removed after this time.
     pub idle_room_timeout: Duration,
     /// A connection must send a valid `hello` within this time.
@@ -337,6 +342,7 @@ impl ServerConfig {
             listen_addr: SocketAddr::from(([127, 0, 0, 1], 8443)),
             mode,
             web_dir: None,
+            allowed_origins: Vec::new(),
             idle_room_timeout: DEFAULT_IDLE_ROOM_TIMEOUT,
             hello_timeout: DEFAULT_HELLO_TIMEOUT,
             no_room_timeout: DEFAULT_NO_ROOM_TIMEOUT,
@@ -449,6 +455,20 @@ impl ServerConfig {
             }
             if turn.ttl.is_zero() {
                 return Err(ConfigError::new("turn.ttl_secs must be at least 1"));
+            }
+        }
+        for o in &self.allowed_origins {
+            let o = o.trim();
+            if o == "*" {
+                if self.mode == Mode::Open {
+                    return Err(ConfigError::new(
+                        "allowed_origins: \"*\" is not allowed in open mode (list the exact origins of the web apps, e.g. https://cometcast.de)",
+                    ));
+                }
+            } else if crate::cors::normalize_origin(o).is_none() {
+                return Err(ConfigError::new(format!(
+                    "allowed_origins: {o:?} is not an origin (use scheme://host[:port] with http or https, no path and no trailing slash)"
+                )));
             }
         }
         let t = &self.tls;

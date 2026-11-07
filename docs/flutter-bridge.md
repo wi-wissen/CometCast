@@ -197,3 +197,5 @@ OpenH264 from source and is meant for development and CI only. For release build
 `--no-default-features --features h264-libloading`, which loads Cisco's prebuilt library at run time
 (`COMETCAST_OPENH264_LIB`). UNCERTAIN: the patent and licence situation is not clarified, see
 docs/capture.md. The Linux CMake step builds the default variant.
+
+**Codec API (2026-11-07):** `codec_state()`, `codec_info()`, `ensure_codec()` and `set_codec_dir()` in `api.rs` (types `UiCodecState`, `UiCodecInfo`) expose the OpenH264 download of `cc-codec` (docs/capture.md, "Runtime codec"). With `h264-source` the state is always `Ready`; with `h264-libloading` and no source feature it follows `cc-codec`. The Dart side is `lib/codec_controller.dart`, `lib/codec_notice.dart` (card with consent, progress, retry, offline hint) and `lib/codec_setup.dart` (Android directory), tests in `test/codec_notice_test.dart`. Codegen was run with `h264-libloading` as the temporary default of `cc-ffi`, then run again: no change.

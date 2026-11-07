@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
+import SasLine from '../components/SasLine.vue'
 // "Send file or link": images (picker or drag and drop) and http(s) links over the WebRTC control channel.
 // Nothing goes through the signalling server except the connection setup.
 import { computed, ref } from 'vue'
@@ -196,6 +197,7 @@ function stopShowing() {
       <template v-else>{{ t(`sendContent.status.${state.phase}`) }}</template>
       <template v-if="state.phase === 'error'"> {{ errorText }}</template>
     </p>
+    <SasLine :code="state.sas" />
 
     <fieldset class="flex flex-col gap-3 rounded-cc border border-line bg-surface p-4" :disabled="!ready">
       <legend class="px-1 font-semibold">{{ t('sendContent.image.title') }}</legend>

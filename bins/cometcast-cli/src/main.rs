@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 mod cast;
+mod codec;
 mod content;
 mod discover;
 mod docs;
@@ -38,6 +39,7 @@ Usage:
   cometcast-cli cast send <DEVICE-NAME|IP[:PORT]> [--screen] [--display :N] [--fps N]
                     [--bitrate-kbps N] [--seconds N] [--trust-anchors PEM]
                     [--insecure-skip-device-auth]
+  cometcast-cli codec status | install [--yes]  (the H.264 library of Cisco, see `codec --help`)
   cometcast-cli discover [--seconds N] [--policy-file PATH] [--announce HOST:PORT]
   cometcast-cli docs info|render ... (PDF pages, see `docs --help`)
   cometcast-cli office convert|engines ... (Office to PDF, see `office --help`)
@@ -105,6 +107,8 @@ enum Command {
     },
     Airplay(AirplayArgs),
     Cast(cast::CastCmd),
+    Codec(codec::CodecCmd),
+    CodecHelp,
     Discover(discover::DiscoverArgs),
     Docs(docs::DocsArgs),
     Content(content::Cmd),
@@ -220,6 +224,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "airplay-send" => return airplay_send::parse(args).map(Command::AirplaySend),
         "miracast" => return parse_miracast(args),
         "cast" => return Ok(cast::parse(args)?.map_or(Command::Help, Command::Cast)),
+        "codec" => return Ok(codec::parse(args)?.map_or(Command::CodecHelp, Command::Codec)),
         "discover" => return Ok(discover::parse(args)?.map_or(Command::Help, Command::Discover)),
         "docs" => return Ok(docs::parse(args)?.map_or(Command::DocsHelp, Command::Docs)),
         "docs-worker" => return Ok(Command::DocsWorker),
@@ -358,6 +363,11 @@ async fn async_main() -> ExitCode {
             println!("{}", docs::USAGE);
             ExitCode::SUCCESS
         }
+        Command::CodecHelp => {
+            println!("{}", codec::USAGE);
+            ExitCode::SUCCESS
+        }
+        Command::Codec(c) => codec::run(c).await,
         Command::Docs(d) => docs::run(d),
         Command::OfficeHelp => {
             println!("{}", office::USAGE);

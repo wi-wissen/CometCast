@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeServerMessage,
   encodeClientMessage,
-  signalingUrl,
   SignalingClient,
   type ServerMessage,
 } from '../src/core/signaling'
@@ -42,19 +41,6 @@ describe('message encoding', () => {
       expect(decodeServerMessage(bad)).toBeNull()
     }
     expect(decodeServerMessage(new ArrayBuffer(2))).toBeNull()
-  })
-})
-
-describe('signalingUrl', () => {
-  it('uses ws/wss by page protocol', () => {
-    expect(signalingUrl({ protocol: 'http:', host: 'a:1', search: '' })).toBe('ws://a:1/ws')
-    expect(signalingUrl({ protocol: 'https:', host: 'a', search: '' })).toBe('wss://a/ws')
-  })
-  it('accepts a plain ?server= override only', () => {
-    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=b:9' }, true)).toBe('ws://b:9/ws')
-    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=evil.com/x' }, true)).toBe('ws://a/ws')
-    // Production builds ignore the override completely.
-    expect(signalingUrl({ protocol: 'http:', host: 'a', search: '?server=b:9' }, false)).toBe('ws://a/ws')
   })
 })
 

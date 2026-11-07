@@ -925,5 +925,92 @@
   "homeReceiveTvHint": "Show the room code and wait for a sender",
   "@homeReceiveTvHint": {
     "description": "Hint under the receive entry on a television."
+  },
+  "codecTitle": "Video codec needed",
+  "@codecTitle": {
+    "description": "Title of the card that asks to download the H.264 codec."
+  },
+  "codecExplain": "To show or send a shared screen, Comet Cast needs the H.264 video codec by Cisco (OpenH264). It is not part of the app. It is downloaded once, directly from Cisco, and checked against a fixed checksum before it is used.",
+  "@codecExplain": {
+    "description": "Consent text before the codec download. Must say who provides it, that it is downloaded once, and that it is verified."
+  },
+  "codecSource": "Source: {host}, file {file}, about {size}.",
+  "@codecSource": {
+    "description": "Where the codec comes from.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "file": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "codecDownload": "Download",
+  "@codecDownload": {
+    "description": "Button: consent to the download."
+  },
+  "codecDownloading": "Downloading the video codec ...",
+  "@codecDownloading": {
+    "description": "Shown while the codec downloads."
+  },
+  "codecProgress": "{percent} %",
+  "@codecProgress": {
+    "description": "Download progress.",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "codecRetry": "Try again",
+  "@codecRetry": {
+    "description": "Button after a failed download."
+  },
+  "codecFailed": "The video codec could not be downloaded: {reason}",
+  "@codecFailed": {
+    "description": "The download failed; reason is technical English text.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "codecOffline": "No Internet access? Ask your administrator to copy the file {file} (as downloaded from Cisco, with or without the ending .bz2) into the folder {dir}, or to set the variable COMETCAST_CODEC_DIR to a folder that contains it.",
+  "@codecOffline": {
+    "description": "Hint for networks without Internet: administrator folder.",
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "dir": {
+        "type": "String"
+      }
+    }
+  },
+  "codecOfflineNoDir": "No Internet access? Ask your administrator to copy the file {file} (as downloaded from Cisco, with or without the ending .bz2) into a folder and to set the environment variable COMETCAST_CODEC_DIR to that folder.",
+  "@codecOfflineNoDir": {
+    "description": "Hint for networks without Internet when no folder is known.",
+    "placeholders": {
+      "file": {
+        "type": "String"
+      }
+    }
+  },
+  "codecUnsupported": "This system has no video codec to download: {reason}",
+  "@codecUnsupported": {
+    "description": "This platform has no codec download.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "codecRemembered": "Your consent is remembered; later downloads start without asking.",
+  "@codecRemembered": {
+    "description": "Note that consent is stored."
   }
 }

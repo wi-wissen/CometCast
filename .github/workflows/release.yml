@@ -1,0 +1,1297 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Release: type a version number, get a DRAFT GitHub Release with every app attached.
+# Read docs/releasing.md first (inputs, secrets, what is unsigned without them, dry runs).
+#
+# UNCERTAIN: this workflow has NOT been run on GitHub. It was checked with actionlint and the
+# scripts under tools/ were run locally, nothing else. Every job below is UNCERTAIN until its
+# first real run. The jobs are independent: one platform failing does not stop the others, and
+# the draft release is still created with what was built (the run is then marked failed).
+#
+# Signing secrets live in the GitHub Environment `release` (docs/releasing.md, one-time setup):
+# the signing jobs (android, macos, ios, tvos) use it in a real run, so required reviewers and
+# "deployment branches = main" protect the secrets. A dry run uses no environment and no secrets:
+# everything is built unsigned.
+#
+# Nothing is committed. tools/set-version.mjs edits the checkout inside each runner; the draft
+# release points at the commit this run started from (github.sha). A draft release creates its
+# tag only when someone publishes it.
+#
+# Action versions are pinned to full commit SHAs (resolved with `git ls-remote` on 2026-11-07;
+# the comment names the release tag the SHA belonged to). Dependabot or a manual bump keeps them
+# current. Not pinned: Homebrew packages (xcodegen), the tools that `cargo install`/`npx` fetch by
+# exact version, and the Flutter/NDK/Xcode versions the runner image provides.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number, semantic, without a leading v (for example 0.1.0 or 1.0.0-rc.1)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run: build everything, but create no release, no tag and push no image'
+        required: true
+        type: boolean
+        default: false
+      skip:
+        description: 'Optional: jobs to skip, comma separated, no spaces (linux,windows,macos,android,ios,tvos,web,server,docker,meta)'
+        required: false
+        type: string
+        default: ''
+
+# Nothing by default; every job asks for what it needs.
+permissions: {}
+
+# One release run at a time. A run that is already running is never cancelled. GitHub keeps at
+# most ONE waiting run per group: a third run cancels the waiting second one (docs/releasing.md).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.9' # the version everything else (flutter.yml) was verified with
+  NODE_VERSION: '22'
+  # The one place that names the Rust compiler. Passed to .github/actions/rust-toolchain by every
+  # job that compiles Rust (the Dockerfile has its own). Bump by hand and run a dry run.
+  RUST_VERSION: '1.97.0'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------------------
+  # Validates the inputs and decides names. Fails early, before anything expensive. No token
+  # with write access here: this job runs the scripts of the chosen branch.
+  # ---------------------------------------------------------------------------------------
+  validate:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      image: ${{ steps.check.outputs.image }}
+      build_number: ${{ steps.check.outputs.build_number }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check the version, the skip list and the branch
+        id: check
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SKIP: ${{ inputs.skip }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          # Same semver rule as tools/set-version.mjs (one source of truth).
+          VERSION="$version" node --input-type=module -e "
+            import { SEMVER } from './tools/set-version.mjs';
+            if (!SEMVER.test(process.env.VERSION)) {
+              console.error('\"' + process.env.VERSION + '\" is not a semantic version: MAJOR.MINOR.PATCH[-prerelease], no leading v, no +build');
+              process.exit(1);
+            }"
+          # A typo in `skip` would silently build everything (or skip the wrong job).
+          tools/release-guard.sh skip-valid "$INPUT_SKIP"
+          if [ "$DRY_RUN" != "true" ] && [ "$REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            echo "::error::a real release must be started from the default branch ($DEFAULT_BRANCH), not $REF_NAME. Use a dry run to test a branch."
+            exit 1
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "prerelease=$prerelease"
+            echo "image=ghcr.io/$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')/cometcast-server"
+            echo "build_number=$RUN_NUMBER"
+          } >> "$GITHUB_OUTPUT"
+      - name: Self-tests of the release scripts and the i18n check
+        run: |
+          node --test tools/set-version.test.mjs tools/check-i18n.test.mjs tools/release-summary.test.mjs
+          node tools/check-i18n.mjs
+          bash -n tools/release-stage.sh
+          bash tools/release-guard.test.sh
+
+  # ---------------------------------------------------------------------------------------
+  # Duplicate guards. Needs a token that can LIST DRAFT RELEASES (contents: write; with read
+  # only, drafts are invisible), so it runs on its own: no checkout and no repository code. It
+  # checks the tag (authenticated, works for private repositories), every release and draft of
+  # that tag, and, for a real run, that the Docker version tag was never pushed (an image
+  # version is never overwritten). Every other job needs this one.
+  # UNCERTAIN: never run.
+  # ---------------------------------------------------------------------------------------
+  prepare:
+    name: Duplicate guards
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    outputs:
+      version: ${{ needs.validate.outputs.version }}
+      tag: ${{ needs.validate.outputs.tag }}
+      prerelease: ${{ needs.validate.outputs.prerelease }}
+      image: ${{ needs.validate.outputs.image }}
+      build_number: ${{ needs.validate.outputs.build_number }}
+    steps:
+      # Only this one script of the commit the run started from is checked out (whoever can
+      # start a run can already push to the repository); no credentials are persisted.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Tag, release and draft must not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: tools/release-guard.sh tag-free "$REPO" "$TAG"
+      - name: Docker version tag must not exist (real run with the docker job only)
+        if: ${{ !inputs.dry_run && !contains(format(',{0},', inputs.skip), ',docker,') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          IMAGE: ${{ needs.validate.outputs.image }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          tools/release-guard.sh image-free "$IMAGE" "$VERSION"
+
+  # ---------------------------------------------------------------------------------------
+  # Linux desktop: Flutter bundle (tar.gz) and a .deb. The CMake step of the app builds the
+  # Rust core and both workers and puts them into the bundle (docs/flutter-bridge.md).
+  # Built on ubuntu-22.04 on purpose: the binaries need glibc >= the build machine's, so the
+  # oldest image we can use sets the floor (glibc 2.35: Ubuntu 22.04+, Debian 12+ (2.36); NOT
+  # Debian 11 or Ubuntu 20.04). ubuntu-latest would raise the floor with every image update.
+  # AppImage: not made (needs a downloaded appimagetool binary; not worth it for a first cut).
+  # ---------------------------------------------------------------------------------------
+  linux:
+    name: Linux desktop (x86_64)
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',linux,') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      - name: Build the app (release)
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter build linux --release
+      - name: Package tar.gz and .deb
+        env:
+          BUNDLE: apps/flutter/build/linux/x64/release/bundle
+        run: |
+          set -euo pipefail
+          for f in cometcast cc-docs-worker cc-office-worker lib/libcc_ffi.so; do
+            test -e "$BUNDLE/$f" || { echo "::error::missing $f in the bundle"; exit 1; }
+          done
+          mkdir -p dist
+          name="cometcast-linux-x86_64-$VERSION"
+          rm -rf "stage" && mkdir -p "stage/$name"
+          cp -a "$BUNDLE/." "stage/$name/"
+          tools/release-stage.sh "stage/$name" "$VERSION"
+          tar -C stage -czf "dist/$name.tar.gz" "$name"
+
+          # .deb: the bundle lives in /opt/cometcast, /usr/bin/cometcast is a link to it.
+          # Depends are hand-written minimums = the versions of the build image (Ubuntu 22.04),
+          # which Debian 12 also meets. UNCERTAIN: not derived with dpkg-shlibdeps.
+          debver="${VERSION/-/\~}"   # Debian sorts 1.0.0~rc.1 before 1.0.0
+          pkg="stage/deb"
+          mkdir -p "$pkg/opt/cometcast" "$pkg/usr/bin" "$pkg/usr/share/applications" "$pkg/usr/share/doc/cometcast" "$pkg/DEBIAN"
+          cp -a "$BUNDLE/." "$pkg/opt/cometcast/"
+          ln -s /opt/cometcast/cometcast "$pkg/usr/bin/cometcast"
+          cp LICENSE THIRD_PARTY_NOTICES.md "$pkg/usr/share/doc/cometcast/"
+          cat > "$pkg/usr/share/applications/cometcast.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Comet Cast
+          Exec=/usr/bin/cometcast
+          Terminal=false
+          Categories=Network;Education;
+          DESKTOP
+          cat > "$pkg/DEBIAN/control" <<CONTROL
+          Package: cometcast
+          Version: $debver
+          Section: net
+          Priority: optional
+          Architecture: amd64
+          Depends: libc6 (>= 2.35), libgtk-3-0 (>= 3.24.33), libglib2.0-0 (>= 2.72), libstdc++6 (>= 12), libgcc-s1 (>= 12)
+          Maintainer: Comet Cast contributors <noreply@users.noreply.github.com>
+          Description: Comet Cast, screen, document and file sharing for classrooms
+           Sender and receiver app. See https://github.com/wi-wissen/CometCast
+          CONTROL
+          chmod -R u=rwX,go=rX "$pkg"
+          dpkg-deb --root-owner-group --build "$pkg" "dist/cometcast_${VERSION}_amd64.deb"
+          dpkg-deb --info "dist/cometcast_${VERSION}_amd64.deb"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-linux
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Windows desktop. The Flutter Windows project does NOT build the Rust core by itself
+  # (only linux/CMakeLists.txt and the Android Gradle file do), so this job builds cc_ffi.dll
+  # and the workers with cargo and copies them next to the executable.
+  # The Visual C++ runtime DLLs are bundled app-local (see the Package step).
+  # UNCERTAIN: never tried; the Windows build of the app and of cc-ffi is unverified (README).
+  # MSI/installer: not made.
+  # ---------------------------------------------------------------------------------------
+  windows:
+    name: Windows desktop (x86_64)
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',windows,') }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+      - name: Build the Rust core and the workers (native)
+        run: |
+          # Two commands: building cc-docs and cc-office together would unify features and link
+          # the Office engine into the core (same reason as in linux/CMakeLists.txt).
+          cargo build --release --locked -p cc-ffi -p cc-docs
+          cargo build --release --locked -p cc-office
+          for f in cc_ffi.dll cc-docs-worker.exe cc-office-worker.exe; do
+            test -f "target/release/$f" || { echo "::error::target/release/$f was not built"; exit 1; }
+          done
+      - name: Build the app (release)
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter build windows --release
+      - name: Package zip
+        run: |
+          set -euo pipefail
+          out=apps/flutter/build/windows/x64/runner/Release
+          test -f "$out/cometcast.exe" || { echo "::error::cometcast.exe not found in $out"; ls "$out"; exit 1; }
+          cp target/release/cc_ffi.dll target/release/cc-docs-worker.exe target/release/cc-office-worker.exe "$out/"
+          # The Visual C++ runtime, app-local (Flutter's engine, cc_ffi.dll and the workers all
+          # link it dynamically; a clean Windows has no copy). Taken from the Visual Studio of
+          # this runner. We do NOT link the CRT statically: Flutter itself needs these DLLs.
+          vswhere="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+          vs="$("$vswhere" -latest -products '*' -property installationPath | tr -d '\r')"
+          test -n "$vs" || { echo "::error::Visual Studio not found (vswhere)"; exit 1; }
+          vs="$(cygpath -u "$vs")"
+          crt="$(find "$vs/VC/Redist/MSVC" -type d -path '*/x64/Microsoft.VC*.CRT' ! -path '*onecore*' ! -path '*debug_nonredist*' | sort | tail -n 1)"
+          test -n "$crt" || { echo "::error::no x64 Microsoft.VC*.CRT redist folder under $vs/VC/Redist/MSVC"; exit 1; }
+          echo "VC++ runtime from: $crt"
+          for dll in vcruntime140.dll vcruntime140_1.dll msvcp140.dll; do
+            test -f "$crt/$dll" || { echo "::error::$dll missing in $crt"; ls "$crt"; exit 1; }
+            cp "$crt/$dll" "$out/"
+          done
+          tools/release-stage.sh "$out" "$VERSION"
+          mkdir -p dist
+          (cd "$out" && 7z a -tzip -mx=9 "$GITHUB_WORKSPACE/dist/cometcast-windows-x86_64-$VERSION.zip" . > /dev/null)
+          ls -l dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-windows
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # macOS: universal app (arm64 + x86_64). Same situation as Windows: the Rust core and the
+  # workers are built here and copied into the .app. Signing and notarisation only with
+  # secrets (Environment `release`, real runs only); without them the app is ad-hoc signed
+  # (runs only after the user allows it).
+  # The library is loaded from Contents/Frameworks (apps/flutter/lib/core/rust_loader.dart).
+  # Everything is signed inside out WITHOUT --deep: libraries and frameworks, then the helper
+  # executables (Helper.entitlements: sandbox + inherit, else macOS kills them), then the app
+  # (Release.entitlements: sandbox, network client/server, user-selected files). The ad-hoc
+  # branch uses the same entitlements. Only the Developer ID (hardened runtime) variant adds
+  # com.apple.security.cs.disable-library-validation to the APP, because the hardened runtime
+  # refuses libraries not signed by our team and the user-supplied Cisco libopenh264 is signed
+  # by Cisco (docs/releasing.md).
+  # UNCERTAIN: never tried on a Mac: the sandbox behaviour (sockets, worker start, loading the
+  # dylib and the Cisco library), the signing order and notarisation are all unverified.
+  # ---------------------------------------------------------------------------------------
+  macos:
+    name: macOS app (universal)
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',macos,') }}
+    runs-on: macos-15
+    timeout-minutes: 120
+    environment: ${{ !inputs.dry_run && 'release' || '' }}
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      HAVE_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+      HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+          targets: aarch64-apple-darwin x86_64-apple-darwin
+      - name: Build the Rust core and the workers (arm64 and x86_64, joined with lipo)
+        run: |
+          set -euo pipefail
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked --target "$t" -p cc-ffi -p cc-docs
+            cargo build --release --locked --target "$t" -p cc-office
+          done
+          mkdir -p rust-universal
+          lipo -create -output rust-universal/libcc_ffi.dylib target/aarch64-apple-darwin/release/libcc_ffi.dylib target/x86_64-apple-darwin/release/libcc_ffi.dylib
+          for w in cc-docs-worker cc-office-worker; do
+            lipo -create -output "rust-universal/$w" "target/aarch64-apple-darwin/release/$w" "target/x86_64-apple-darwin/release/$w"
+          done
+          lipo -info rust-universal/libcc_ffi.dylib
+      - name: Build the app (release)
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter build macos --release
+      - name: Put the Rust core into the app
+        id: app
+        run: |
+          set -euo pipefail
+          apps=(apps/flutter/build/macos/Build/Products/Release/*.app)
+          app="${apps[0]}"
+          test -d "$app" || { echo "::error::no .app found"; exit 1; }
+          mkdir -p "$app/Contents/Frameworks"
+          cp rust-universal/libcc_ffi.dylib "$app/Contents/Frameworks/libcc_ffi.dylib"
+          cp rust-universal/cc-docs-worker rust-universal/cc-office-worker "$app/Contents/MacOS/"
+          cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+      - name: Import the signing certificate (only when the secrets exist)
+        if: ${{ env.HAVE_SIGNING == 'true' }}
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          kcpass="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$kcpass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kcpass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$kcpass" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+      - name: Sign (Developer ID when secrets exist, else ad-hoc), inside out, no --deep
+        env:
+          APP: ${{ steps.app.outputs.app }}
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          ent=apps/flutter/macos/Runner/Release.entitlements
+          helper_ent=apps/flutter/macos/Runner/Helper.entitlements
+          if [ "$HAVE_SIGNING" = "true" ]; then
+            ident="$SIGN_IDENTITY"
+            opts=(--force --options runtime --timestamp)
+            # Hardened runtime enforces library validation: the app could then load only
+            # libraries signed by Apple or by our own team. The Cisco libopenh264 (supplied by
+            # the user, signed by Cisco) would be refused, so this variant, and only this one,
+            # adds the exception. Remove it once the codec manager is verified to need nothing.
+            app_ent="$RUNNER_TEMP/App.entitlements"
+            cp "$ent" "$app_ent"
+            /usr/libexec/PlistBuddy -c 'Add :com.apple.security.cs.disable-library-validation bool true' "$app_ent"
+          else
+            echo "::warning::macOS signing secrets are missing: the app is only ad-hoc signed (same entitlements, no hardened runtime)"
+            ident="-"
+            opts=(--force)
+            app_ent="$ent"
+          fi
+          # 1. Libraries and frameworks, deepest first (-depth), including libcc_ffi.dylib.
+          while IFS= read -r -d '' f; do
+            codesign "${opts[@]}" --sign "$ident" "$f"
+          done < <(find "$APP/Contents/Frameworks" -depth \( -name '*.dylib' -o -name '*.framework' \) -print0)
+          # 2. Helper executables: sandbox + inherit, or macOS kills them at start.
+          for f in "$APP/Contents/MacOS/cc-docs-worker" "$APP/Contents/MacOS/cc-office-worker"; do
+            codesign "${opts[@]}" --entitlements "$helper_ent" --sign "$ident" "$f"
+          done
+          # 3. The app itself.
+          codesign "${opts[@]}" --entitlements "$app_ent" --sign "$ident" "$APP"
+          # Verification only (--deep here checks nested code, it does not sign).
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements - "$APP" 2>&1 | head -n 30
+          codesign -d --entitlements - "$APP/Contents/MacOS/cc-docs-worker" 2>&1 | head -n 12
+      - name: Notarise (only with Apple ID secrets and a Developer ID signature)
+        if: ${{ env.HAVE_SIGNING == 'true' && env.HAVE_NOTARY == 'true' }}
+        env:
+          APP: ${{ steps.app.outputs.app }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          # The app-specific password is stored once in the temporary keychain as a profile and
+          # then referenced by name. NOTE: `store-credentials` still receives the password as an
+          # argument, once (visible to processes of this single-tenant runner for a moment);
+          # `submit` and every later command never see it.
+          xcrun notarytool store-credentials cometcast-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --keychain "$keychain" > /dev/null
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --keychain-profile cometcast-notary --keychain "$keychain" \
+            --wait --output-format json > "$RUNNER_TEMP/notary.json" || true
+          cat "$RUNNER_TEMP/notary.json"
+          if ! jq -e '.status == "Accepted"' "$RUNNER_TEMP/notary.json" > /dev/null; then
+            id="$(jq -r '.id // empty' "$RUNNER_TEMP/notary.json")"
+            if [ -n "$id" ]; then xcrun notarytool log "$id" --keychain-profile cometcast-notary --keychain "$keychain" || true; fi
+            echo "::error::notarisation was not accepted"
+            exit 1
+          fi
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+      - name: Package zip and dmg
+        env:
+          APP: ${{ steps.app.outputs.app }}
+        run: |
+          set -euo pipefail
+          suffix=""
+          [ "$HAVE_SIGNING" = "true" ] || suffix="-adhoc-signed"
+          [ "$HAVE_SIGNING" = "true" ] && [ "$HAVE_NOTARY" != "true" ] && suffix="-not-notarized"
+          mkdir -p dist stage
+          ditto -c -k --keepParent "$APP" "dist/cometcast-macos-universal-$VERSION$suffix.zip"
+          tools/release-stage.sh stage/dmg "$VERSION"
+          cp -R "$APP" stage/dmg/
+          ln -s /Applications stage/dmg/Applications
+          hdiutil create -volname "Comet Cast $VERSION" -srcfolder stage/dmg -ov -format UDZO "dist/cometcast-macos-universal-$VERSION$suffix.dmg"
+          ls -l dist
+      - name: Remove the signing keychain
+        if: ${{ always() && env.HAVE_SIGNING == 'true' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
+          rm -f "$RUNNER_TEMP/App.entitlements" "$RUNNER_TEMP/notary.json" "$RUNNER_TEMP/notarize.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-macos
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Android: APK and AAB (arm and arm64), Rust core through cargo-ndk (Gradle task).
+  # The Gradle file signs release builds with the DEBUG key and refuses unless
+  # cometcastAllowDebugSigning=true. We allow it, then re-sign with the release keystore when
+  # the secrets exist; without them the files are named ...-debugkey and must not be shipped.
+  # ---------------------------------------------------------------------------------------
+  android:
+    name: Android (APK, AAB)
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',android,') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ !inputs.dry_run && 'release' || '' }}
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      HAVE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+      ORG_GRADLE_PROJECT_cometcastAllowDebugSigning: 'true'
+      BUILD_TOOLS: '36.0.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+          targets: aarch64-linux-android armv7-linux-androideabi
+      - name: cargo-ndk
+        run: |
+          cargo install cargo-ndk --version 4.1.2 --locked
+      # Same SDK pieces as .github/workflows/flutter.yml (NDK must match Flutter 3.47.9).
+      - name: Install Android SDK pieces
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;$BUILD_TOOLS" "ndk;28.2.13676358"
+      - name: Build APK and AAB (release, built with the debug key by the Gradle file)
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter build apk --release --target-platform android-arm,android-arm64
+          flutter build appbundle --release --target-platform android-arm,android-arm64
+      - name: Sign with the release keystore (only when the secrets exist)
+        if: ${{ env.HAVE_KEYSTORE == 'true' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          ks="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$ks"
+          bt="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
+          out=apps/flutter/build/app/outputs
+          apk_in="$out/flutter-apk/app-release.apk"
+          aab_in="$out/bundle/release/app-release.aab"
+          # APK: align, then apksigner replaces the debug signature.
+          "$bt/zipalign" -f -p 4 "$apk_in" "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" sign --ks "$ks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$RUNNER_TEMP/signed.apk" "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" verify --verbose "$RUNNER_TEMP/signed.apk" | head -n 8
+          cp "$RUNNER_TEMP/signed.apk" "$apk_in"
+          # AAB: remove the debug signature files, then jarsigner.
+          zip -q -d "$aab_in" 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC' || true
+          jarsigner -sigalg SHA256withRSA -digestalg SHA-256 -keystore "$ks" \
+            -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEY_PASSWORD "$aab_in" "$KEY_ALIAS"
+          jarsigner -verify "$aab_in" | head -n 3
+          rm -f "$ks"
+      - name: Collect
+        run: |
+          set -euo pipefail
+          suffix=""
+          [ "$HAVE_KEYSTORE" = "true" ] || { suffix="-debugkey"; echo "::warning::no Android keystore secrets: the APK and AAB carry the DEBUG key (file names end in -debugkey)"; }
+          out=apps/flutter/build/app/outputs
+          mkdir -p dist
+          cp "$out/flutter-apk/app-release.apk" "dist/cometcast-android-$VERSION$suffix.apk"
+          cp "$out/bundle/release/app-release.aab" "dist/cometcast-android-$VERSION$suffix.aab"
+          # List into a file first: `unzip -l | grep -q` makes grep exit early, unzip gets SIGPIPE and
+          # pipefail then fails the step although the library is there.
+          unzip -l "dist/cometcast-android-$VERSION$suffix.apk" > apk-list.txt
+          grep -q 'lib/arm64-v8a/libcc_ffi.so' apk-list.txt
+          grep -q 'lib/armeabi-v7a/libcc_ffi.so' apk-list.txt
+          ls -l dist
+      - name: Remove the keystore
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-android
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # iOS. UNCERTAIN: the iOS project has no Rust core integration (README: iOS is not built),
+  # so this archive is a build check and a starting point, not a working app.
+  # Without signing secrets: unsigned .xcarchive (zip) only. With them: also a signed .ipa.
+  # Both carry NO-CORE in the file name: a signed .ipa is signed, but still has no Rust core,
+  # so it is NOT shippable. The name keeps nobody from mistaking it for a release app.
+  # ---------------------------------------------------------------------------------------
+  ios:
+    name: iOS (xcarchive, NO-CORE)
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',ios,') }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: ${{ !inputs.dry_run && 'release' || '' }}
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      HAVE_SIGNING: ${{ secrets.IOS_CERT_P12_BASE64 != '' && secrets.IOS_CERT_PASSWORD != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Prepare Flutter and CocoaPods (unsigned)
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          # Creates ios/Flutter/Generated.xcconfig (version from pubspec) and runs pod install.
+          flutter build ios --release --no-codesign
+      - name: xcodebuild archive (unsigned)
+        working-directory: apps/flutter/ios
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          ditto -c -k --keepParent "$RUNNER_TEMP/Runner.xcarchive" "$GITHUB_WORKSPACE/dist/cometcast-ios-$VERSION-UNSIGNED-NO-CORE.xcarchive.zip"
+      - name: Signed IPA, no Rust core (only when the secrets exist)
+        if: ${{ env.HAVE_SIGNING == 'true' }}
+        env:
+          CERT_P12: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          PROFILE_B64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD || 'app-store-connect' }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/ios.keychain-db"
+          kcpass="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/ios-cert.p12"
+          security create-keychain -p "$kcpass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kcpass" "$keychain"
+          security import "$RUNNER_TEMP/ios-cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$kcpass" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/ios-cert.p12"
+          echo "$PROFILE_B64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")"
+          pname="$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")"
+          team="$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+          bundle_id="$(grep -A1 'PRODUCT_BUNDLE_IDENTIFIER' apps/flutter/ios/Runner.xcodeproj/project.pbxproj | grep -o 'de\.[A-Za-z0-9.]*' | head -n 1)"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>$EXPORT_METHOD</string>
+            <key>teamID</key><string>$team</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>$bundle_id</key><string>$pname</string></dict>
+          </dict></plist>
+          PLIST
+          (cd apps/flutter && flutter build ipa --release --export-options-plist="$RUNNER_TEMP/ExportOptions.plist")
+          cp apps/flutter/build/ios/ipa/*.ipa "dist/cometcast-ios-$VERSION-NO-CORE.ipa"
+      - name: Remove the signing material
+        if: ${{ always() && env.HAVE_SIGNING == 'true' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/ios.keychain-db" || true
+          rm -f "$RUNNER_TEMP/profile.mobileprovision" "$RUNNER_TEMP/profile.plist"
+          rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-ios
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Apple TV: apps/apple-tv has an XcodeGen spec (project.yml) and a SwiftUI source folder,
+  # no .xcodeproj is committed, so the project is generated first.
+  # Signed like iOS: the same Apple Distribution certificate (IOS_CERT_P12_BASE64 /
+  # IOS_CERT_PASSWORD) plus a tvOS provisioning profile (TVOS_PROVISIONING_PROFILE_BASE64);
+  # TVOS_CERT_P12_BASE64 / TVOS_CERT_PASSWORD override the certificate when it differs.
+  # Without them: unsigned archive only. With them: signed archive and .ipa instead.
+  # UNCERTAIN: project.yml says it was written without Xcode; the first build may need fixes,
+  # and the whole signing path (manual signing, exportArchive) has never run.
+  # ---------------------------------------------------------------------------------------
+  tvos:
+    name: Apple TV (xcarchive, ipa)
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',tvos,') }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: ${{ !inputs.dry_run && 'release' || '' }}
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      HAVE_SIGNING: ${{ (secrets.TVOS_CERT_P12_BASE64 || secrets.IOS_CERT_P12_BASE64) != '' && (secrets.TVOS_CERT_PASSWORD || secrets.IOS_CERT_PASSWORD) != '' && secrets.TVOS_PROVISIONING_PROFILE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+          h264: keep
+      - name: Generate the Xcode project
+        working-directory: apps/apple-tv
+        run: |
+          set -euo pipefail
+          test -f project.yml || { echo "::error::apps/apple-tv/project.yml is missing"; exit 1; }
+          brew install xcodegen
+          xcodegen generate
+      - name: Archive (unsigned, when there are no signing secrets)
+        if: ${{ env.HAVE_SIGNING != 'true' }}
+        working-directory: apps/apple-tv
+        run: |
+          set -euo pipefail
+          echo "::warning::tvOS signing secrets are missing: the archive is unsigned"
+          xcodebuild archive \
+            -project CometCastTV.xcodeproj -scheme CometCastTV -configuration Release \
+            -destination 'generic/platform=tvOS' \
+            -archivePath "$RUNNER_TEMP/CometCastTV.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          ditto -c -k --keepParent "$RUNNER_TEMP/CometCastTV.xcarchive" "$GITHUB_WORKSPACE/dist/cometcast-tvos-$VERSION-UNSIGNED.xcarchive.zip"
+      - name: Import the certificate and the provisioning profile (only when the secrets exist)
+        if: ${{ env.HAVE_SIGNING == 'true' }}
+        id: sign
+        env:
+          CERT_P12: ${{ secrets.TVOS_CERT_P12_BASE64 || secrets.IOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.TVOS_CERT_PASSWORD || secrets.IOS_CERT_PASSWORD }}
+          PROFILE_B64: ${{ secrets.TVOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/tvos.keychain-db"
+          kcpass="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/tvos-cert.p12"
+          security create-keychain -p "$kcpass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kcpass" "$keychain"
+          security import "$RUNNER_TEMP/tvos-cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$kcpass" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/tvos-cert.p12"
+          echo "$PROFILE_B64" | base64 --decode > "$RUNNER_TEMP/tvos.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/tvos.mobileprovision" > "$RUNNER_TEMP/tvos-profile.plist"
+          uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/tvos-profile.plist")"
+          {
+            echo "profile_name=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/tvos-profile.plist")"
+            echo "team=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/tvos-profile.plist")"
+          } >> "$GITHUB_OUTPUT"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/tvos.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+      - name: Archive and export (signed, manual signing)
+        if: ${{ env.HAVE_SIGNING == 'true' }}
+        env:
+          PROFILE_NAME: ${{ steps.sign.outputs.profile_name }}
+          TEAM: ${{ steps.sign.outputs.team }}
+          EXPORT_METHOD: ${{ vars.TVOS_EXPORT_METHOD || vars.IOS_EXPORT_METHOD || 'app-store-connect' }}
+        run: |
+          set -euo pipefail
+          bundle_id="$(sed -n 's/^ *PRODUCT_BUNDLE_IDENTIFIER: *//p' apps/apple-tv/project.yml | head -n 1 | tr -d '"')"
+          test -n "$bundle_id" || { echo "::error::no PRODUCT_BUNDLE_IDENTIFIER in apps/apple-tv/project.yml"; exit 1; }
+          cat > "$RUNNER_TEMP/ExportOptionsTV.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>$EXPORT_METHOD</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict><key>$bundle_id</key><string>$PROFILE_NAME</string></dict>
+          </dict></plist>
+          PLIST
+          (cd apps/apple-tv && xcodebuild archive \
+            -project CometCastTV.xcodeproj -scheme CometCastTV -configuration Release \
+            -destination 'generic/platform=tvOS' \
+            -archivePath "$RUNNER_TEMP/CometCastTV-signed.xcarchive" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$TEAM" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME")
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/CometCastTV-signed.xcarchive" \
+            -exportPath "$RUNNER_TEMP/tvos-export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptionsTV.plist"
+          mkdir -p dist
+          ditto -c -k --keepParent "$RUNNER_TEMP/CometCastTV-signed.xcarchive" "dist/cometcast-tvos-$VERSION.xcarchive.zip"
+          cp "$RUNNER_TEMP"/tvos-export/*.ipa "dist/cometcast-tvos-$VERSION.ipa"
+      - name: Remove the signing material
+        if: ${{ always() && env.HAVE_SIGNING == 'true' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/tvos.keychain-db" || true
+          rm -f "$RUNNER_TEMP/tvos.mobileprovision" "$RUNNER_TEMP/tvos-profile.plist" "$RUNNER_TEMP/tvos-cert.p12"
+          rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-tvos
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Web app: PDF renderer (WASM) and the Vue app, as a zip of dist/.
+  # ---------------------------------------------------------------------------------------
+  web:
+    name: Web app
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',web,') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+          h264: keep
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+      - name: Install the wasm-bindgen CLI of the version in Cargo.lock
+        run: |
+          set -euo pipefail
+          ver="$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+          test -n "$ver" || { echo "::error::wasm-bindgen not found in Cargo.lock"; exit 1; }
+          cargo install wasm-bindgen-cli --version "$ver" --locked
+      - name: Build
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build:wasm
+          npm run build
+      - name: Package zip
+        run: |
+          set -euo pipefail
+          test -f apps/web/dist/index.html
+          test -f apps/web/dist/pdf/cc_docs_wasm_bg.wasm || { echo "::error::the PDF renderer is missing from dist/"; exit 1; }
+          name="cometcast-web-$VERSION"
+          rm -rf stage && mkdir -p "stage/$name" dist
+          cp -a apps/web/dist/. "stage/$name/"
+          tools/release-stage.sh "stage/$name" "$VERSION"
+          (cd stage && zip -qr "../dist/$name.zip" "$name")
+          ls -l dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-web
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Server binaries. aarch64 Linux is built natively on an Arm runner (ubuntu-22.04-arm); macOS x86_64 is a
+  # cross-build on the Arm Mac runner. The web app is a separate artefact (COMETCAST_WEB_DIR).
+  # ---------------------------------------------------------------------------------------
+  server:
+    name: Server ${{ matrix.target }}
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',server,') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux binaries are built on the oldest image (glibc 2.35 floor, same as the desktop app).
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, ext: tar.gz, exe: '' }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, ext: tar.gz, exe: '' }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, ext: zip, exe: '.exe' }
+          - { target: aarch64-apple-darwin, os: macos-15, ext: tar.gz, exe: '' }
+          - { target: x86_64-apple-darwin, os: macos-15, ext: tar.gz, exe: '' }
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+          h264: keep
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --target "$TARGET" -p cometcast-server
+      - name: Package
+        env:
+          EXE: ${{ matrix.exe }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          set -euo pipefail
+          name="cometcast-server-$VERSION-$TARGET"
+          rm -rf stage && mkdir -p "stage/$name/config" dist
+          cp "target/$TARGET/release/cometcast-server$EXE" "stage/$name/"
+          cp deploy/config/cometcast-server.example.toml "stage/$name/config/"
+          tools/release-stage.sh "stage/$name" "$VERSION"
+          if [ "$EXT" = "zip" ]; then
+            (cd stage && 7z a -tzip -mx=9 "$GITHUB_WORKSPACE/dist/$name.zip" "$name" > /dev/null)
+          else
+            tar -C stage -czf "dist/$name.tar.gz" "$name"
+          fi
+          ls -l dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-server-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Docker image from deploy/Dockerfile: one native build per architecture, pushed by digest;
+  # the next job joins the two digests into ONE tag: the version. `latest` is never moved here;
+  # a person promotes it with .github/workflows/promote-latest.yml after publishing the release.
+  # A version that already exists on ghcr.io is refused (also in `prepare`). A dry run builds
+  # but pushes nothing. The image has no PDF viewer (docs/releasing.md).
+  # ---------------------------------------------------------------------------------------
+  docker:
+    name: Docker ${{ matrix.platform }}
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',docker,') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux/amd64, arch: amd64, os: ubuntu-latest }
+          - { platform: linux/arm64, arch: arm64, os: ubuntu-24.04-arm }
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      IMAGE: ${{ needs.prepare.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+          h264: keep
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Log in to ghcr.io
+        if: ${{ !inputs.dry_run }}
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: ${{ matrix.platform }}
+          # Attestations would make the per-arch digests indexes; the join step needs plain images.
+          provenance: false
+          sbom: false
+          labels: |
+            org.opencontainers.image.title=cometcast-server
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=GPL-3.0-or-later
+          outputs: type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true,push=${{ !inputs.dry_run }}
+      - name: Save the digest
+        if: ${{ !inputs.dry_run }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p digests
+          printf '%s' "$DIGEST" > "digests/$ARCH"
+      - name: Upload the digest
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-manifest:
+    name: Docker multi-arch tag
+    needs: [prepare, docker]
+    if: ${{ !inputs.dry_run && !contains(format(',{0},', inputs.skip), ',docker,') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      IMAGE: ${{ needs.prepare.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release-guard.sh
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: docker-digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Create the multi-arch tag
+        run: |
+          set -euo pipefail
+          test "$(find digests -type f | wc -l)" -eq 2 || { echo "::error::expected 2 digests (amd64, arm64)"; find digests -type f; exit 1; }
+          # Last look before the push (a re-run of this job, or a push by someone else).
+          tools/release-guard.sh image-free "$IMAGE" "$VERSION"
+          refs=()
+          for f in digests/*; do refs+=("$IMAGE@$(cat "$f")"); done
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "${refs[@]}"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+  # ---------------------------------------------------------------------------------------
+  # SBOMs (CycloneDX: Rust workspace and web app), the deploy bundle and the licence files.
+  # cargo-cyclonedx 0.5.10 was run locally (one <crate>.cdx.json per crate, 21 files); the job fails when no
+  # SBOM file is found. The Flutter/Dart dependencies are NOT covered by an SBOM yet.
+  # ---------------------------------------------------------------------------------------
+  meta:
+    name: SBOMs and deploy bundle
+    needs: prepare
+    if: ${{ !contains(format(',{0},', inputs.skip), ',meta,') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          build-number: ${{ needs.prepare.outputs.build_number }}
+          image: ${{ needs.prepare.outputs.image }}
+          h264: keep
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          version: ${{ env.RUST_VERSION }}
+      - name: Rust SBOM (cargo-cyclonedx)
+        run: |
+          set -euo pipefail
+          cargo install cargo-cyclonedx --version 0.5.10 --locked
+          cargo cyclonedx --format json
+          mkdir -p dist sbom
+          while IFS= read -r -d '' f; do
+            n="${f#./}"
+            mv "$f" "sbom/${n//\//__}"
+          done < <(find . -name '*.cdx.json' -not -path './target/*' -not -path '*/node_modules/*' -print0)
+          count="$(find sbom -type f | wc -l)"
+          test "$count" -gt 0 || { echo "::error::cargo cyclonedx produced no file"; exit 1; }
+          find sbom -type f
+          tar -C sbom -czf "dist/cometcast-sbom-rust-$VERSION.tar.gz" .
+      - name: Web SBOM (CycloneDX npm)
+        working-directory: apps/web
+        run: |
+          npm ci --ignore-scripts
+          npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --ignore-npm-errors --omit dev --output-format JSON --output-file "$GITHUB_WORKSPACE/dist/cometcast-sbom-web-$VERSION.cdx.json"
+      - name: Deploy bundle and licence files
+        run: |
+          set -euo pipefail
+          name="cometcast-deploy-$VERSION"
+          rm -rf stage && mkdir -p "stage/$name"
+          cp -a deploy/. "stage/$name/"
+          tools/release-stage.sh "stage/$name" "$VERSION"
+          tar -C stage -czf "dist/$name.tar.gz" "$name"
+          cp LICENSE dist/LICENSE
+          cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
+          ls -l dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-meta
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # The draft release. Runs even when some platform jobs failed or were skipped, and lists
+  # that in the notes; the run is marked failed at the end in that case. A dry run uploads the
+  # checksums and notes as a workflow artefact instead and creates nothing.
+  # ---------------------------------------------------------------------------------------
+  release:
+    name: Draft release
+    needs: [prepare, linux, windows, macos, android, ios, tvos, web, server, docker, docker-manifest, meta]
+    if: ${{ always() && !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      IMAGE: ${{ needs.prepare.outputs.image }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      GH_TOKEN: ${{ github.token }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: assets
+          merge-multiple: true
+      - name: Checksums and notes
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          dry=()
+          [ "$DRY_RUN" = "true" ] && dry=(--dry-run)
+          img=()
+          if [ "$DRY_RUN" != "true" ] && [ "$(echo "$NEEDS_JSON" | jq -r '.["docker-manifest"].result // "none"')" = "success" ]; then img=(--image "$IMAGE"); fi
+          node tools/release-summary.mjs --version "$VERSION" --assets assets --out notes.md "${dry[@]}" "${img[@]}" > /dev/null
+          (cd assets && sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS")
+          mv "$RUNNER_TEMP/SHA256SUMS" assets/SHA256SUMS
+          (cd assets && sha256sum -c SHA256SUMS)
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+          # shellcheck disable=SC2016
+          { echo; echo '### SHA256SUMS'; echo; echo '```'; cat assets/SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Dry run result (no release created)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dry-run-bundle
+          path: |
+            assets/*
+            notes.md
+          retention-days: 7
+      - name: Create the draft release
+        if: ${{ !inputs.dry_run }}
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Same guard as in `prepare`, once more: a release or draft may have appeared while the
+          # builds ran. Any match fails the step; an existing one is never touched.
+          GH_TOKEN="$GH_TOKEN" tools/release-guard.sh tag-free "$REPO" "$TAG"
+          flags=(--draft --generate-notes --notes-file notes.md --target "$SHA" --title "Comet Cast $VERSION" --repo "$REPO")
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); else flags+=(--latest); fi
+          gh release create "$TAG" "${flags[@]}" assets/*
+          echo "Draft release for $TAG created. Review it, then publish it (that creates the tag)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Mark the run failed when a platform job failed
+        run: |
+          failed="$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' | tr '\n' ' ')"
+          if [ -n "$failed" ]; then
+            echo "::error::these jobs failed or were cancelled and are missing from the release: $failed"
+            exit 1
+          fi

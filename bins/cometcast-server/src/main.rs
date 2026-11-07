@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use cc_server::{
-    AltchaMode, DEFAULT_CONFIG_TOML, Mode, ServerConfig, VERSION, load_config, overrides_from_env,
+    AltchaMode, DEFAULT_CONFIG_TOML, Mode, ServerConfig, VERSION, check_allowed_origins_text,
+    load_config, overrides_from_env,
 };
 
 const USAGE: &str = "Usage: cometcast-server [options]\n\
@@ -15,6 +16,7 @@ const USAGE: &str = "Usage: cometcast-server [options]\n\
   --mode <open|internal> operating mode (default internal)\n\
   --listen <addr:port>   address to listen on (default 127.0.0.1:8443)\n\
   --web-dir <path>       serve this directory (the web app) from the same address\n\
+  --allowed-origins <a,b> web origins that may use this relay from another site (CORS + /ws check)\n\
   --tls-cert <file>      certificate chain (PEM); use with --tls-key to serve HTTPS\n\
   --tls-key <file>       private key (PEM)\n\
   --tls-self-signed      DEVELOPMENT ONLY: make a throw-away self-signed certificate\n\
@@ -52,6 +54,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Cli, String> {
             "--mode" => cli.overrides.push(("mode".into(), value("--mode")?)),
             "--listen" => cli.overrides.push(("listen".into(), value("--listen")?)),
             "--web-dir" => cli.overrides.push(("web_dir".into(), value("--web-dir")?)),
+            "--allowed-origins" => {
+                let v = value("--allowed-origins")?;
+                check_allowed_origins_text("--allowed-origins", &v).map_err(|e| e.to_string())?;
+                cli.overrides.push(("allowed_origins".into(), v));
+            }
             "--tls-cert" => cli
                 .overrides
                 .push(("tls.cert_file".into(), value("--tls-cert")?)),
@@ -74,10 +81,21 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Cli, String> {
     Ok(cli)
 }
 
+/// A `COMETCAST_ALLOWED_ORIGINS` that is set but names no origin is an error (not "unset").
+fn check_env_origins(value: Option<&str>) -> Result<(), String> {
+    match value {
+        Some(v) => {
+            check_allowed_origins_text("COMETCAST_ALLOWED_ORIGINS", v).map_err(|e| e.to_string())
+        }
+        None => Ok(()),
+    }
+}
+
 /// Combine file, environment and command line into the final settings.
 fn build_config(cli: &Cli) -> Result<ServerConfig, String> {
     let env_file = std::env::var_os("COMETCAST_CONFIG").map(PathBuf::from);
     let file = cli.config_file.clone().or(env_file);
+    check_env_origins(std::env::var("COMETCAST_ALLOWED_ORIGINS").ok().as_deref())?;
     let mut overrides = overrides_from_env(std::env::vars());
     overrides.extend(cli.overrides.iter().cloned());
     load_config(file.as_deref(), &overrides).map_err(|e| e.to_string())
@@ -108,6 +126,16 @@ fn describe(config: &ServerConfig, addr: std::net::SocketAddr) {
     }
     if config.turn.is_some() {
         println!("TURN credentials: on (GET /ice-servers)");
+    }
+    if !config.allowed_origins.is_empty() {
+        println!(
+            "allowed web origins: {} (CORS on /ice-servers, /altcha/challenge, /healthz; Origin check on /ws)",
+            config.allowed_origins.join(", ")
+        );
+    } else if config.mode == Mode::Open {
+        println!(
+            "note: allowed_origins is empty, so /ws accepts any browser origin. Public relays should list the web app origins."
+        );
     }
     if let Some(dir) = &config.web_dir {
         println!("serving web files from {}", dir.display());
@@ -208,6 +236,23 @@ async fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_allowed_origins_is_an_error_naming_the_source() {
+        for bad in ["", ",", " , "] {
+            let e = parse_args(["--allowed-origins".to_string(), bad.to_string()].into_iter())
+                .unwrap_err();
+            assert!(e.contains("--allowed-origins"), "{bad:?}: {e}");
+            let e = check_env_origins(Some(bad)).unwrap_err();
+            assert!(e.contains("COMETCAST_ALLOWED_ORIGINS"), "{bad:?}: {e}");
+        }
+        assert!(check_env_origins(None).is_ok());
+        assert!(check_env_origins(Some("https://a.example")).is_ok());
+        assert!(
+            parse_args(["--allowed-origins".to_string(), "https://a.example".into()].into_iter())
+                .is_ok()
+        );
+    }
 
     fn args(list: &[&str]) -> impl Iterator<Item = String> {
         list.iter()

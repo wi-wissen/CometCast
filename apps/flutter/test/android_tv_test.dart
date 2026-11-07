@@ -211,6 +211,57 @@ void main() {
       },
     );
 
+    testWidgets(
+      'hardware decoder: no codec card and no download, even if OpenH264 is missing',
+      (tester) async {
+        final core = FakeCoreApi()
+          ..codecStateResult = const UiCodecState.missing();
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          CometCastApp(
+            core: core,
+            tv: true,
+            androidPlatform: FakePlatform(),
+            videoDecoder: FakeVideoDecoder(),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('roomCode')), findsOneWidget);
+        expect(find.byKey(const Key('codecNotice')), findsNothing);
+        expect(core.ensureCodecCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'software decoder: the codec card is shown while it is missing',
+      (tester) async {
+        final core = FakeCoreApi()
+          ..codecStateResult = const UiCodecState.missing()
+          ..codecInfoResult = const UiCodecInfo(
+            fileName: 'libopenh264-2.6.0-android-arm64.8.so',
+            version: '2.6.0',
+            host: 'ciscobinary.openh264.org',
+            downloadBytes: 634264,
+            autoDownload: false,
+            adminDir: null,
+          );
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          CometCastApp(core: core, tv: true, androidPlatform: FakePlatform()),
+        );
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('codecNotice')), findsOneWidget);
+      },
+    );
+
     testWidgets('keep-screen-on is released when the receive view closes', (
       tester,
     ) async {

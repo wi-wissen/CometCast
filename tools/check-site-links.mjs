@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Checks the static site in site/ without dependencies: every internal link, src, href, canonical
+// and hreflang URL must point to an existing file (directory URLs need index.html), every #fragment
+// must match an id on the target page, and every page needs lang, title, description and a hreflang pair.
+// External links (https://...) are NOT fetched; the check is offline on purpose.
+// Placeholder paths that are known not to exist yet are listed in ALLOWED_MISSING.
+// Usage: node tools/check-site-links.mjs [site-dir]
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'site'));
+const ORIGIN = 'https://cometcast.de';
+const ALLOWED_MISSING = new Set(['/app/']); // web app placeholder, see docs/website.md
+
+const walk = (d) => readdirSync(d).flatMap((n) => {
+  const f = join(d, n);
+  return statSync(f).isDirectory() ? walk(f) : [f];
+});
+const files = walk(root);
+const htmls = files.filter((f) => f.endsWith('.html'));
+const errors = [];
+const idsCache = new Map();
+
+function resolveTarget(path) {
+  let f = join(root, path);
+  if (path.endsWith('/')) f = join(f, 'index.html');
+  return existsSync(f) && statSync(f).isFile() ? f : null;
+}
+function ids(f) {
+  if (!idsCache.has(f)) idsCache.set(f, new Set([...readFileSync(f, 'utf8').matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])));
+  return idsCache.get(f);
+}
+
+for (const file of htmls) {
+  const rel = file.slice(root.length);
+  const html = readFileSync(file, 'utf8');
+  const err = (m) => errors.push(`${rel}: ${m}`);
+  if (!/<html lang="[a-z]{2}"/.test(html)) err('missing html lang');
+  if (!/<title>[^<]+<\/title>/.test(html)) err('missing title');
+  if (!/<meta name="description" content="[^"]+"/.test(html) && !rel.endsWith('404.html')) err('missing description');
+  if (!rel.endsWith('404.html') && !/rel="alternate" hreflang="de"/.test(html)) err('missing hreflang de');
+  if (!rel.endsWith('404.html') && !/rel="alternate" hreflang="en"/.test(html)) err('missing hreflang en');
+  const pageUrl = rel.replace(/index\.html$/, '');
+  for (const m of html.matchAll(/\s(?:href|src|srcset)="([^"]*)"/g)) {
+    let u = m[1];
+    if (!u || /^(mailto:|tel:|data:)/.test(u)) continue;
+    if (u.startsWith(ORIGIN)) u = u.slice(ORIGIN.length) || '/';
+    if (/^https?:\/\//.test(u)) { if (!u.startsWith('https://')) err(`insecure link ${u}`); continue; }
+    if (u.startsWith('//')) { err(`protocol-relative URL ${u}`); continue; }
+    const [pathPart, frag] = u.split('#');
+    const path = pathPart === '' ? pageUrl : pathPart;
+    if (!path.startsWith('/')) { err(`relative URL ${u} (use root-relative)`); continue; }
+    if (ALLOWED_MISSING.has(path)) continue;
+    const target = resolveTarget(path);
+    if (!target) { err(`broken link ${u}`); continue; }
+    if (frag && target.endsWith('.html') && !ids(target).has(frag)) err(`missing anchor #${frag} in ${path}`);
+  }
+}
+for (const need of ['404.html', 'CNAME', '.nojekyll', 'sitemap.xml', 'robots.txt']) {
+  if (!existsSync(join(root, need))) errors.push(`missing ${need}`);
+}
+if (existsSync(join(root, 'sitemap.xml'))) {
+  for (const m of readFileSync(join(root, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    if (!m[1].startsWith(ORIGIN + '/')) errors.push(`sitemap: foreign URL ${m[1]}`);
+    else if (!resolveTarget(m[1].slice(ORIGIN.length))) errors.push(`sitemap: missing page ${m[1]}`);
+  }
+}
+if (existsSync(join(root, 'CNAME')) && readFileSync(join(root, 'CNAME'), 'utf8').trim() !== 'cometcast.de') errors.push('CNAME is not cometcast.de');
+if (errors.length) { console.error(errors.join('\n')); console.error(`\n${errors.length} problem(s)`); process.exit(1); }
+console.log(`site OK: ${htmls.length} pages checked`);

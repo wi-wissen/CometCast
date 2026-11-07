@@ -10,6 +10,7 @@
 //! proof-of-work for creating rooms, and short-lived TURN credentials. See docs/server.md.
 
 mod config;
+mod cors;
 mod file_config;
 mod health;
 mod limits;
@@ -40,7 +41,9 @@ pub use config::{
     DEFAULT_WIDE_FAILURE_FACTOR, LimitsConfig, Mode, NetworkConfig, Secret, ServerConfig,
     TlsConfig, TurnConfig,
 };
-pub use file_config::{DEFAULT_CONFIG_TOML, load_config, overrides_from_env};
+pub use file_config::{
+    DEFAULT_CONFIG_TOML, check_allowed_origins_text, load_config, overrides_from_env,
+};
 pub use health::healthcheck;
 pub use turn::{IceServer, credential_for, ice_servers};
 
@@ -54,6 +57,8 @@ pub(crate) struct AppState {
     pub(crate) rooms: Arc<Mutex<rooms::Rooms>>,
     pub(crate) guard: Arc<limits::Guard>,
     pub(crate) puzzle: Arc<puzzle::Puzzle>,
+    /// Browser origins allowed to use the relay from another site (`allowed_origins`).
+    pub(crate) origins: Arc<cors::OriginPolicy>,
     /// Becomes `true` when the server is asked to stop; open WebSockets then close.
     pub(crate) shutdown: tokio::sync::watch::Receiver<bool>,
 }
@@ -108,6 +113,7 @@ fn build_app_with_shutdown(
     let state = AppState {
         guard: limits::Guard::new(config.limits.clone()),
         puzzle: Arc::new(puzzle::Puzzle::new(&config.altcha)),
+        origins: Arc::new(cors::OriginPolicy::new(&config.allowed_origins)),
         config: Arc::new(config),
         rooms: Arc::new(Mutex::new(rooms::Rooms::default())),
         shutdown,
@@ -122,9 +128,14 @@ fn build_app_with_shutdown(
         app = app.fallback_service(ServeDir::new(dir));
     }
     // The access check (allow/deny lists, client address) wraps everything, files included.
+    // CORS is outermost so that refusals (429, 403) stay readable for an allowed page.
     app.layer(middleware::from_fn_with_state(
         state.clone(),
         net::access_middleware,
+    ))
+    .layer(middleware::from_fn_with_state(
+        state.clone(),
+        cors::cors_middleware,
     ))
     .with_state(state)
 }

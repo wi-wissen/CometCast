@@ -48,9 +48,11 @@ Details: [docs/architecture.md](docs/architecture.md).
 | `bins/` | Binaries: `cometcast-server`, `cometcast-cli` | yes |
 | `apps/flutter` | Flutter app for desktop, mobile and Android TV / Google TV | yes |
 | `apps/apple-tv` | Native SwiftUI receiver for Apple TV | yes |
-| `apps/web` | Web app (Vue 3, TypeScript, Vite). PDF pages are rendered by `crates/cc-docs-wasm` (hayro as WASM, built separately with `npm run build:wasm`); the rest of the Rust core is not used in the browser yet | yes |
+| `apps/web` | Web app (Vue 3, TypeScript, Vite), plain static files that can be hosted anywhere (GitHub Pages, any web server) and talk to a relay chosen by `?server=`, `config.json`, a build-time default or the page's own origin ([apps/web/README.md](apps/web/README.md#static-hosting-and-relay-selection)); the relay server's Docker image still bundles it. PDF pages are rendered by `crates/cc-docs-wasm` (hayro as WASM, built separately with `npm run build:wasm`); the rest of the Rust core is not used in the browser yet | yes |
 | `assets/` | Logo and other assets | yes |
 | `docs/` | Documentation, see [docs/README.md](docs/README.md) | yes |
+| `deploy/` | Docker, Compose and coturn files for the server, see [deploy/README.md](deploy/README.md) | yes |
+| `site/` | The static website for cometcast.de, see [docs/website.md](docs/website.md) | yes |
 | `tools/` | Helper scripts, for example the translation check | yes |
 | `xtask/` | Build helpers | yes |
 
@@ -110,7 +112,11 @@ cargo run -p cometcast-cli -- send <CODE> --seconds 10   # sends a built-in VP8 
 The browser app interoperates with them: `cd apps/web && npm run build && npm run e2e:native`.
 Details and limits: [docs/transport.md](docs/transport.md).
 
+Running a server: [bins/cometcast-server/README.md](bins/cometcast-server/README.md) (settings, modes, troubleshooting) and [deploy/README.md](deploy/README.md) (Docker Compose, reverse proxy, coturn, firewall).
+
 More commands will be added here when the things they build exist.
+
+Releases: the GitHub workflow `.github/workflows/release.yml` builds all apps from a version number and creates a draft release. **UNCERTAIN: it has never run on GitHub; every job in it is unverified until its first real run.** See [docs/releasing.md](docs/releasing.md) (inputs, secrets, unsigned files, dry run).
 
 ## Contributing
 

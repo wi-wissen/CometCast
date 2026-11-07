@@ -24,6 +24,8 @@ import 'package:cometcast/src/rust/api.dart'
         SenderUiEvent,
         ServerDefaults,
         ServerDiscovery,
+        UiCodecInfo,
+        UiCodecState,
         UiContentCmd,
         VideoFrame;
 
@@ -61,7 +63,11 @@ export 'package:cometcast/src/rust/api.dart'
         startAdvertising,
         stopAdvertising,
         watchReceivers,
-        stopWatchingReceivers;
+        stopWatchingReceivers,
+        codecState,
+        codecInfo,
+        ensureCodec,
+        setCodecDir;
 
 abstract class CoreApi {
   /// Connect to [server], create a room and report events. The first event is the room code.
@@ -196,6 +202,21 @@ abstract class CoreApi {
   Future<void> stopWatchingReceivers();
 
   Future<void> stopSender();
+
+  /// State of the H.264 codec (Cisco OpenH264, downloaded on first use in release builds).
+  /// `ready` in builds that contain the codec.
+  UiCodecState codecState();
+
+  /// Facts for the consent text (host, file name, size, administrator settings); null if this
+  /// build never downloads the codec.
+  UiCodecInfo? codecInfo();
+
+  /// Import the administrator's file or download the codec. Only after the person agreed (or
+  /// when [UiCodecInfo.autoDownload] is true). While it runs, [codecState] reports progress.
+  Future<UiCodecState> ensureCodec();
+
+  /// Android: the app-private directory in which the codec is stored.
+  void setCodecDir(String? path);
 
   /// Same rules as `cc_proto::RoomCode::parse` (the Rust code is the single source of truth).
   RoomCodeCheck checkRoomCode(String input);
@@ -337,6 +358,18 @@ class RustCoreApi implements CoreApi {
 
   @override
   Future<void> stopSender() => rust.stopSender();
+
+  @override
+  UiCodecState codecState() => rust.codecState();
+
+  @override
+  UiCodecInfo? codecInfo() => rust.codecInfo();
+
+  @override
+  Future<UiCodecState> ensureCodec() => rust.ensureCodec();
+
+  @override
+  void setCodecDir(String? path) => rust.setCodecDir(path: path);
 
   @override
   RoomCodeCheck checkRoomCode(String input) => rust.checkRoomCode(input: input);

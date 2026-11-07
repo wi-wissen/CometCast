@@ -28,6 +28,7 @@ cd apps/web && npm ci && npm run dev
 - `npm run e2e` - end-to-end test, see below (not part of `npm test`)
 - `npm run e2e:native` - interop test with the native Rust peers, see below
 - `npm run e2e:m2` - end-to-end test for toolbar, freeze, images and links (needs `npm run build` first)
+- `npm run e2e:static` - app on its own static origin, relay on another (builds by itself, see "Static hosting")
 
 ## Trying it
 
@@ -38,11 +39,12 @@ cargo run -p cometcast-server -- --listen 127.0.0.1:8443 --web-dir apps/web/dist
 
 Open `http://127.0.0.1:8443` in two tabs/browsers: "Receive on this device" shows a room code; on the
 other one choose "Send screen", enter the code and share. For development with `npm run dev`, add
-`?server=127.0.0.1:8443` to the URL (development builds only; production builds ignore it) so the page talks to the running server.
+`?server=127.0.0.1:8443` to the URL so the page talks to the running server (works in every build, see below).
 
 ## Code layout
 
 - `src/core/signaling.ts` - WebSocket client and typed messages (mirrors `cc-proto`)
+- `src/core/relay.ts`, `src/composables/useRelay.ts`, `src/components/RelayField.vue` - relay validation and selection, `config.json`, the relay field
 - `src/core/peer.ts` - RTCPeerConnection wrapper (takes the STUN/TURN list from the server; none by default)
 - `src/core/altcha.ts`, `altchaWorker.ts`, `altchaClient.ts` - ALTCHA solver (WebCrypto PBKDF2, runs in a Web Worker), `GET /altcha/challenge` and `GET /ice-servers`
 - `src/core/receiverSession.ts`, `senderSession.ts` - explicit state machines
@@ -71,8 +73,72 @@ other one choose "Send screen", enter the code and share. For development with `
   an unusable answer all mean "no list"; the page then connects as before. Entries with a `turn:` URL but without
   user name and credential are dropped. UNCERTAIN: relaying through a real coturn was not tried; the end-to-end test
   only checks that the list reaches the peer connection (with correct credentials).
-- **Web app on another origin.** The two endpoints are fetched from the page's own origin (the server sends no CORS
-  headers, see docs/server.md). A `?server=` override in development builds changes the origin used for both.
+- **Web app on another origin.** `GET /altcha/challenge` and `GET /ice-servers` go to the http(s) origin of the
+  **selected relay** (see the next section), which needs `allowed_origins` on the relay (docs/server.md).
+
+## Static hosting and relay selection
+
+The build (`dist/`) is plain static files (Vue + Rust WASM): host it on GitHub Pages, any web server, or let the
+relay serve it (`--web-dir`, the Docker image does). The relay (`cometcast-server`) relays signalling (room codes, offers/answers, ICE candidates); media goes peer to peer.
+
+**Which relay the page uses**, first match wins (`src/core/relay.ts`, tests in `tests/relay.test.ts`):
+
+1. `?server=` in the page URL, or a relay typed into the relay field of the start page (kept for this tab only,
+   `sessionStorage`). Accepts `wss://host[:port][/ws]`, `https://...` as a spelling of it, or a bare `host[:port]`.
+   `ws://` is accepted only for localhost, single-label names, `.local`/`.lan` and private/loopback/link-local IP
+   addresses (LAN, development). No user info, query, fragment or other path. An invalid value is ignored.
+2. `config.json` next to `index.html` (optional; fetched at start with a 1.5 s timeout, no credentials):
+   `{ "relays": ["wss://relay.example.org/ws", "wss://second.example.org/ws"] }` (or `{ "relay": "..." }`). Only ws/wss
+   URLs, at most 8, invalid entries dropped, first = default, the others show up as buttons. It is parsed as JSON and
+   never executed and read with a streaming reader that stops at 8 KiB. A missing file (404) or an HTML fallback page
+   means "no config" silently; a timeout, a network or server error, a body over 8 KiB, invalid JSON or a file without
+   a usable relay shows a visible, translated hint on the start page ("relay configuration could not be read, using the
+   default") and the default is used. A `ws://` entry is dropped on an https page (mixed content).
+   Example: `deploy/config/web-app-config.example.json`.
+3. Build-time default `VITE_DEFAULT_RELAY`, e.g. `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws npm run build`.
+4. The page's own origin (the relay serves the page: Docker image, `--web-dir`, `npm run dev` with `?server=`).
+
+The start page shows the relay in use (host only) in a field with the tag "default" or "custom", lets you enter another
+relay (validated, translated errors, German with Sie) and reset it. The send and receive pages show the host read-only
+(the relay can only be changed on the start page, because the rooms exist on one relay). **When the relay in use is not
+the default (`?server=` or a change in the field) a warning is shown**: a link can point to any relay. Sender and
+receiver must use the same relay.
+
+**A relay chosen only by a link (`?server=`) is never used silently.** Before any connection or screen capture (the
+"Receive", "Share screen" and content-send buttons) a blocking dialog names the host and says that the operator of that
+relay can see who connects, the room codes and network addresses, and can redirect the connection. "Use this relay"
+remembers the confirmation for this tab (`sessionStorage`) and for exactly that relay; "Cancel (use the default relay)"
+drops the `?server=` for this page view and starts nothing. `config.json` relays, the build default, the page's own
+origin and a relay typed into the field are trusted without the dialog. There is no URL parameter or other switch that
+skips it (the e2e tests click through it). A `ws://` relay on an https page is refused when entered or in `?server=`
+(mixed content, translated message).
+
+**What the relay can and cannot do (UNCERTAIN, not audited).** Screen, images and documents travel directly between
+the two browsers, encrypted (DTLS-SRTP), unless a TURN relay is configured, which then forwards the encrypted packets.
+The relay carries the signalling, including the DTLS certificate fingerprints, so a malicious relay could in
+principle interfere with the key exchange (swap fingerprints) and sit in the middle. **Connection check code**
+(`src/core/sas.ts`): when connected, sender and receiver show a 6 digit code, the SHA-256 (domain-separated
+`cometcast/connection-check/v1`) of the two DTLS fingerprints of the final offer and answer, sorted, reduced to 6 digits.
+Both sides show the same code unless the fingerprints were swapped. Limits: people have to compare it (nothing is
+enforced and the page cannot tell if they did); a short code without a commitment step can in principle be ground by an
+active attacker who has time to try many certificates, so it is a check against casual interception, not a proof;
+tested with fake peers (vitest) and in `npm run e2e` / `npm run e2e:static` (both sides show the same code), never
+against a relay that really swaps fingerprints.
+
+**Base path.** `VITE_BASE=/app/ npm run build` builds for `https://cometcast.de/app/` (default `/`; must be an absolute
+path, `./` is rejected because the PDF worker builds its URLs from it). Assets, the two Web Workers, the logo in the
+header and `<base>pdf/` (the optional WASM renderer from `npm run build:wasm`) all follow it; there is no service
+worker, web manifest, web font or other remote asset (system fonts only). Checked by building with `/app/` and
+serving it at that path (`npm run e2e:static`). `config.json` is read from `<base>config.json`.
+
+The relay must allow the page's origin: `allowed_origins = ["https://cometcast.de"]` (docs/server.md, "Web app on
+another origin"); otherwise the browser blocks `/ice-servers` and `/altcha/challenge` and `/ws` is refused with
+`403` when a list is set. The page then shows "The connection to the server was lost or could not be made".
+`npm run e2e:static` (Chrome or Chromium, `E2E_CHROME=...`) builds the app with `VITE_BASE=/app/`, serves it from a
+second plain static server, starts relays on other ports, and checks `?server=`, `config.json`, ALTCHA across origins,
+video through the relay, the confirmation dialog (nothing connects before it, Cancel falls back to the default), the
+hint for an unusable `config.json`, the same connection check code on both sides, that a third origin is rejected, and
+that a rate-limited client on the allowed origin can read `429` and `Retry-After`. UNCERTAIN: real GitHub Pages and real DNS were not tried.
 
 ## End-to-end test
 

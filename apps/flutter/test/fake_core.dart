@@ -69,6 +69,33 @@ class FakeCoreApi implements CoreApi {
   );
   String? captureInfoDisplay;
 
+  /// The H.264 codec (default: built in, nothing to do).
+  UiCodecState codecStateResult = const UiCodecState.ready();
+  UiCodecInfo? codecInfoResult;
+  int ensureCodecCalls = 0;
+
+  /// If set, ensureCodec answers only when this completes (then with codecStateAfter).
+  Completer<void>? ensureCodecGate;
+  UiCodecState codecStateAfter = const UiCodecState.ready();
+  String? codecDir;
+
+  @override
+  UiCodecState codecState() => codecStateResult;
+
+  @override
+  UiCodecInfo? codecInfo() => codecInfoResult;
+
+  @override
+  Future<UiCodecState> ensureCodec() async {
+    ensureCodecCalls++;
+    await ensureCodecGate?.future;
+    codecStateResult = codecStateAfter;
+    return codecStateAfter;
+  }
+
+  @override
+  void setCodecDir(String? path) => codecDir = path;
+
   /// Whether the last startReceiver asked for content.
   bool? receiverContent;
 

@@ -16,6 +16,8 @@ import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'annotations.dart';
 import 'core/android_platform.dart';
+import 'codec_controller.dart';
+import 'codec_notice.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
 import 'receiver_controller.dart';
@@ -77,6 +79,12 @@ class _ReceivePageState extends State<ReceivePage> {
   /// TV / hardware decoder / keep-screen-on settings of this device (fixed for the app's life).
   DeviceProfile get _profile => DeviceProfile.peek(context);
   bool get _tv => _profile.tv;
+  late final CodecController _codec = CodecController(
+    core: widget.core,
+    settings: widget.settings,
+    // The device's own decoder (MediaCodec) shows the picture: no OpenH264, no download.
+    needed: _profile.videoDecoder == null,
+  );
   bool _serverEmpty = false;
 
   /// Pen, highlighter, eraser, laser, undo, clear and freeze over the picture or page. Local
@@ -120,6 +128,7 @@ class _ReceivePageState extends State<ReceivePage> {
         if (mounted && !_controller.isActive) _start();
       });
     }
+    _codec.init();
   }
 
   AndroidPlatform? _keepAwakePlatform;
@@ -134,6 +143,7 @@ class _ReceivePageState extends State<ReceivePage> {
     _advertiseQueue
         .run(() => widget.core.stopAdvertising())
         .catchError((Object _) {});
+    _codec.dispose();
     _controller.dispose();
     _annotations.dispose();
     super.dispose();
@@ -510,6 +520,7 @@ class _ReceivePageState extends State<ReceivePage> {
             autofocus: true,
             onSubmitted: _controller.isActive ? null : _start,
           ),
+          CodecNotice(controller: _codec),
           if (_serverEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),

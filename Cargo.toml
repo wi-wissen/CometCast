@@ -7,6 +7,7 @@ members = [
     "crates/cc-proto",
     "crates/cc-discovery",
     "crates/cc-transport",
+    "crates/cc-codec",
     "crates/cc-media",
     "crates/cc-capture",
     "crates/cc-docs",
@@ -90,6 +91,9 @@ cc-airplay = { path = "crates/cc-airplay" }
 cc-airplay-sender = { path = "crates/cc-airplay-sender", default-features = false }
 cc-capture = { path = "crates/cc-capture" }
 cc-media = { path = "crates/cc-media", default-features = false }
+# Finds and downloads Cisco's OpenH264 library at run time. Default features off: only the
+# lookup (no HTTP client); the program that offers the download (cc-ffi) turns `download` on.
+cc-codec = { path = "crates/cc-codec", default-features = false }
 # Screen capture on X11: pure-Rust protocol implementation (no libxcb, no unsafe in our code).
 x11rb = { version = "0.14", default-features = false, features = ["damage", "randr"] }
 # H.264 (BSD-2-Clause bindings around Cisco's OpenH264). The build mode is chosen by the

@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Moves the Docker tag `latest` of the server image to a released version. A person starts it,
+# after publishing the GitHub release (the release workflow never touches `latest`).
+# Read docs/releasing.md ("Docker image and latest").
+#
+# Refuses: a pre-release version, a release that is not published (draft or missing), an image
+# version that does not exist, and moving `latest` to a LOWER version than the one it points to
+# now. Same version again is a no-op.
+#
+# UNCERTAIN: this workflow has NOT been run on GitHub. It was checked with actionlint only.
+name: Promote latest
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released version to make `latest`, MAJOR.MINOR.PATCH, no leading v, no pre-release'
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: promote-latest
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Move latest
+    # Only from the default branch (this workflow file is what the person trusts).
+    if: ${{ github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      INPUT_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      REPO_OWNER: ${{ github.repository_owner }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Log in to ghcr.io
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+      - name: Check the release and the versions, then move latest
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          image="ghcr.io/$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')/cometcast-server"
+          if ! printf '%s' "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "::error::'$version' is not MAJOR.MINOR.PATCH. Pre-releases (-rc.1 ...) never become latest."
+            exit 1
+          fi
+          # The release must exist, be published and not be a pre-release.
+          state="$(gh release view "v$version" --repo "$REPO" --json isDraft,isPrerelease -q '"\(.isDraft) \(.isPrerelease)"')" \
+            || { echo "::error::no release v$version found"; exit 1; }
+          if [ "$state" != "false false" ]; then
+            echo "::error::release v$version is not a published full release (draft=$(echo "$state" | cut -d' ' -f1), prerelease=$(echo "$state" | cut -d' ' -f2))"
+            exit 1
+          fi
+          new_digest="$(docker buildx imagetools inspect "$image:$version" --format '{{.Manifest.Digest}}')" \
+            || { echo "::error::image $image:$version does not exist"; exit 1; }
+          # What does latest point to now? Compare its digest with the version tags of the
+          # published full releases to learn its version.
+          if cur_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+            current=""
+            while read -r tag; do
+              v="${tag#v}"
+              d="$(docker buildx imagetools inspect "$image:$v" --format '{{.Manifest.Digest}}' 2>/dev/null)" || continue
+              if [ "$d" = "$cur_digest" ]; then current="$v"; break; fi
+            done < <(gh release list --repo "$REPO" --limit 1000 --json tagName,isDraft,isPrerelease \
+                       -q '[.[] | select(.isDraft == false and .isPrerelease == false) | .tagName] | .[]' | sort -V -r)
+            if [ -z "$current" ]; then
+              echo "::error::latest points to an image that matches no published release version; cannot prove the new version is higher. Fix it by hand."
+              exit 1
+            fi
+            echo "latest currently is $current"
+            if [ "$current" = "$version" ]; then
+              echo "latest already is $version, nothing to do"
+              exit 0
+            fi
+            highest="$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n 1)"
+            if [ "$highest" != "$version" ]; then
+              echo "::error::refusing to move latest from $current down to $version"
+              exit 1
+            fi
+          else
+            echo "latest does not exist yet"
+          fi
+          docker buildx imagetools create -t "$image:latest" "$image@$new_digest"
+          docker buildx imagetools inspect "$image:latest"
+          echo "latest now is $version ($new_digest)" >> "$GITHUB_STEP_SUMMARY"

@@ -5,7 +5,10 @@
 | [measurement-points.md](measurement-points.md) | The 17 beta assumptions, the ten measurement points and the measurement spikes. Most important page: it says what is unverified |
 | [architecture.md](architecture.md) | Layers, Rust core crates, platform apps, server, route ladder, decisions, milestones |
 | [protocol.md](protocol.md) | The signalling protocol between sender, receiver and server |
-| [server.md](server.md) | Operating `cometcast-server`: configuration, open and internal mode, TLS, limits, ALTCHA, TURN, deployment |
+| [server.md](server.md) | Operating `cometcast-server`: configuration, open and internal mode, TLS, limits, ALTCHA, TURN, deployment, `allowed_origins` for a web app on another origin |
+| [../bins/cometcast-server/README.md](../bins/cometcast-server/README.md) | Server README: quick start, settings table, modes, hardening checklist, troubleshooting |
+| [../deploy/README.md](../deploy/README.md) | Deployment guide: Docker Compose, reverse proxy (Caddy, nginx), TLS, coturn, firewall, upgrade |
+| [website.md](website.md) | The static website (cometcast.de): layout, GitHub Pages setup the owner does once, DNS, web app and relay hosting |
 | [capture.md](capture.md) | Real screen content from the native sender (X11) as H.264: capture, change detection, encoder, key frames, numbers seen, limits, licensing questions |
 | [transport.md](transport.md) | The native WebRTC path (`cc-transport`, receiver and sender cores, CLI): what works and what does not |
 | [web-m2.md](web-m2.md) | Web app toolbar, image, link and PDF transfer over the control DataChannel (message format, limits, PDF rendering in the browser) |
@@ -19,6 +22,7 @@
 | [discovery.md](discovery.md) | How the app finds the server (`cc-discovery`): MDM policy file, DNS-SRV, display announcement over mDNS, built-in list; receiver discovery; trust rules; what is unverified |
 | [documents.md](documents.md) | PDF documents (`cc-docs`): render on the receiver with hayro, limits, hostile-input tests, measured numbers, WASM check, what is unverified |
 | [i18n.md](i18n.md) | How the bilingual (de/en) UI works |
+| [releasing.md](releasing.md) | The release workflow: version input, dry run, signing secrets, what is unsigned, tag protection; every job UNCERTAIN until its first real run |
 
 Other project files: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [CLA](../CLA.md), [SECURITY](../SECURITY.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md).
 

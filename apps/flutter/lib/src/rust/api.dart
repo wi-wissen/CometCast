@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `discover_servers_with`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -276,6 +276,24 @@ Stream<ContentSenderUiEvent> startContentSender({
 /// business, the sender has no renderer.
 bool sendContentCmd({required UiContentCmd cmd}) =>
     RustLib.instance.api.crateApiSendContentCmd(cmd: cmd);
+
+/// Current state of the H.264 codec. Cheap; the UI polls it while a download runs.
+UiCodecState codecState() => RustLib.instance.api.crateApiCodecState();
+
+/// Facts for the consent text; `None` if this build never downloads (codec built in, no H.264,
+/// or a platform without a library).
+UiCodecInfo? codecInfo() => RustLib.instance.api.crateApiCodecInfo();
+
+/// Make the codec available: import the administrator's file or download from Cisco. Call it
+/// only after the user agreed (or when [`UiCodecInfo::auto_download`] is true). Returns the
+/// state when done; while it runs, [`codec_state`] reports the progress.
+Future<UiCodecState> ensureCodec() =>
+    RustLib.instance.api.crateApiEnsureCodec();
+
+/// Where the codec is stored on Android: the app-private directory the app passes in
+/// (`getFilesDir()`). Other platforms use their per-user data directory and ignore this.
+void setCodecDir({String? path}) =>
+    RustLib.instance.api.crateApiSetCodecDir(path: path);
 
 /// Result of [`start_advertising`].
 enum AdvertiseOutcome {
@@ -1047,6 +1065,86 @@ class ServerDiscovery {
           announcementsAllowed == other.announcementsAllowed &&
           notices == other.notices &&
           warnings == other.warnings;
+}
+
+/// What the UI shows before it asks to download the codec.
+class UiCodecInfo {
+  /// Exact file name the library must have (for the administrator directory).
+  final String fileName;
+
+  /// OpenH264 version.
+  final String version;
+
+  /// Host the download comes from.
+  final String host;
+
+  /// Approximate download size in bytes.
+  final int downloadBytes;
+
+  /// The administrator allows the download without asking (`COMETCAST_CODEC_AUTO=1`).
+  final bool autoDownload;
+
+  /// The administrator directory (`COMETCAST_CODEC_DIR`), if set.
+  final String? adminDir;
+
+  const UiCodecInfo({
+    required this.fileName,
+    required this.version,
+    required this.host,
+    required this.downloadBytes,
+    required this.autoDownload,
+    this.adminDir,
+  });
+
+  @override
+  int get hashCode =>
+      fileName.hashCode ^
+      version.hashCode ^
+      host.hashCode ^
+      downloadBytes.hashCode ^
+      autoDownload.hashCode ^
+      adminDir.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiCodecInfo &&
+          runtimeType == other.runtimeType &&
+          fileName == other.fileName &&
+          version == other.version &&
+          host == other.host &&
+          downloadBytes == other.downloadBytes &&
+          autoDownload == other.autoDownload &&
+          adminDir == other.adminDir;
+}
+
+@freezed
+sealed class UiCodecState with _$UiCodecState {
+  const UiCodecState._();
+
+  /// Nothing to do: the codec is built in, or the library is on the disk.
+  const factory UiCodecState.ready() = UiCodecState_Ready;
+
+  /// The library is missing. [`ensure_codec`] downloads it (after the user agreed).
+  const factory UiCodecState.missing() = UiCodecState_Missing;
+
+  /// A download runs; `progress` is 0.0 to 1.0.
+  const factory UiCodecState.downloading({
+    /// Fraction done.
+    required double progress,
+  }) = UiCodecState_Downloading;
+
+  /// The last download or import failed; `reason` is technical and in English.
+  const factory UiCodecState.failed({
+    /// What went wrong.
+    required String reason,
+  }) = UiCodecState_Failed;
+
+  /// This build or platform has no H.264 codec to offer.
+  const factory UiCodecState.unsupported({
+    /// Why.
+    required String reason,
+  }) = UiCodecState_Unsupported;
 }
 
 /// WebRTC connection state (a copy of the transport's enum so Dart gets its own type).

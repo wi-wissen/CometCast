@@ -34,6 +34,8 @@ export interface ReceiverState {
   transfer: { name: string; received: number; size: number } | null
   /** Last transfer problem (TransferErrorCode or bad_message), cleared by the next content. */
   contentError: TransferErrorCode | 'bad_message' | null
+  /** Connection check code once connected (compare with the sender), else absent. */
+  sas?: string
 }
 
 export interface ReceiverDeps {
@@ -84,6 +86,7 @@ const EMPTY: ReceiverState = {
   content: null,
   transfer: null,
   contentError: null,
+  sas: undefined,
 }
 
 export class ReceiverSession {
@@ -283,7 +286,7 @@ export class ReceiverSession {
   private fail(code: string): void {
     if (this.state.phase === 'error' || this.state.phase === 'idle') return
     this.teardown()
-    this.set({ phase: 'error', errorCode: code, stream: null })
+    this.set({ phase: 'error', errorCode: code, stream: null, sas: undefined })
   }
 
   private newPeer(): Peer {
@@ -294,7 +297,12 @@ export class ReceiverSession {
         onTrack: (stream) => this.set({ stream }),
         onDataChannel: (ch) => this.attachChannel(ch),
         onState: (s: PeerState) => {
-          if (s === 'connected') this.set({ phase: 'receiving' })
+          if (s === 'connected') {
+            this.set({ phase: 'receiving' })
+            void peer.connectionCode?.().then((c) => {
+              if (c && this.peer === peer) this.set({ sas: c })
+            })
+          }
           else if (s === 'failed') this.fail('peer_failed')
         },
       },
@@ -322,7 +330,7 @@ export class ReceiverSession {
         break
       case 'peer_joined':
         this.newPeer()
-        this.set({ phase: 'negotiating', stream: null })
+        this.set({ phase: 'negotiating', stream: null, sas: undefined })
         break
       case 'offer': {
         const peer = this.peer ?? this.newPeer()
@@ -343,7 +351,7 @@ export class ReceiverSession {
         this.peer = null
         this.clearContent()
         this.control.reset()
-        this.set({ phase: 'peer_left', stream: null })
+        this.set({ phase: 'peer_left', stream: null, sas: undefined })
         break
       case 'error':
         // Open servers answer the first create_room with altcha_required; the connection stays open.

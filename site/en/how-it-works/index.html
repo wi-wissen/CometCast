@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works: room code and connection routes</title>
+<meta name="description" content="How Comet Cast connects devices: room code, direct connection, a server with TURN, or the receiver's own Wi-Fi.">
+<link rel="canonical" href="https://cometcast.de/en/how-it-works/">
+<link rel="alternate" hreflang="de" href="https://cometcast.de/funktionsweise/">
+<link rel="alternate" hreflang="en" href="https://cometcast.de/en/how-it-works/">
+<link rel="alternate" hreflang="x-default" href="https://cometcast.de/funktionsweise/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#eceef2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site"><div class="wrap">
+<a class="brand" href="/en/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast logo: a comet shaped like a C" width="36" height="36"></picture><span>Comet Cast</span></a>
+<nav class="main" aria-label="Main navigation"><a href="/en/">Home</a><a href="/en/how-it-works/" aria-current="page">How it works</a><a href="/en/downloads/">Downloads</a><a href="/en/privacy/">Privacy & self-hosting</a><a href="/en/open-source/">Open source</a><a href="/en/contact/">Contact</a></nav>
+<div class="lang"><a href="/funktionsweise/" hreflang="de" lang="de" title="Auf Deutsch wechseln">Deutsch</a></div>
+</div></header>
+<main id="main"><div class="wrap">
+<h1>How it works</h1>
+<p class="lead">Devices find each other with a room code. Then Comet Cast tries the connection routes in order.</p>
+<h2>1. Room code</h2>
+<p>The receiver creates a room code, also shown as a QR code. The sender enters it. The code is short; the server slows guessing with limits and temporary bans.</p>
+<h2>2. Connection routes, in this order</h2>
+<ol class="steps">
+<li><strong>Direct.</strong> WebRTC between the two devices.</li>
+<li><strong>Through a server.</strong> If direct fails: an organisation's server with a TURN relay (and optionally an SFU).</li>
+<li><strong>Own Wi-Fi.</strong> If that fails too: the receiver's own Wi-Fi.</li>
+</ol>
+<div class="note"><p>The order is the plan. Little is measured so far: connections on a local network and a TURN test on a single machine. Across real networks, through NAT, or between two devices over TURN it is <span class="st">UNCERTAIN</span>.</p></div>
+<h2>How the app finds the server</h2>
+<ol class="steps"><li>MDM policy</li><li>DNS-SRV record <code>_cometcast._tcp</code></li><li>Announcement from the display device</li><li>Built-in default list</li></ol>
+<p>mDNS runs in parallel for local discovery. Parts of the server discovery in the apps are not built yet.</p>
+<h2>What the server does</h2>
+<p>The server only mediates: rooms and signalling. The open server stores and relays no images, files or media. The screen travels directly between the devices or, if needed, through TURN. More on <a href="/en/privacy/">Privacy &amp; self-hosting</a>.</p>
+<h2>Technical details</h2>
+<p>Architecture: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/architecture.md">docs/architecture.md</a>, protocol: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/protocol.md">docs/protocol.md</a>, open assumptions: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/measurement-points.md">docs/measurement-points.md</a>.</p>
+</div></main>
+<footer class="site"><div class="wrap"><span>Comet Cast is free software (GPL-3.0-or-later). This site sets no cookies and loads nothing from third parties.</span><a href="/en/imprint/">Imprint</a><a href="https://github.com/wi-wissen/CometCast">GitHub</a></div></footer>
+</body>
+</html>

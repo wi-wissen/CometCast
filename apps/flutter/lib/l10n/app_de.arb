@@ -195,5 +195,17 @@
   "toolbarFrozenHint": "Eingefroren. Der Live-Stream läuft im Hintergrund weiter.",
   "videoStatsHardware": "Hardware-Decoder",
   "homeReceiverOnlyTv": "Dieser Fernseher empfängt nur. Starten Sie das Teilen auf Ihrem Smartphone, Tablet oder Computer und geben Sie den hier angezeigten Raumcode ein.",
-  "homeReceiveTvHint": "Raumcode anzeigen und auf einen Sender warten"
+  "homeReceiveTvHint": "Raumcode anzeigen und auf einen Sender warten",
+  "codecTitle": "Video-Codec erforderlich",
+  "codecExplain": "Um einen geteilten Bildschirm anzuzeigen oder zu senden, benötigt Comet Cast den H.264-Video-Codec von Cisco (OpenH264). Er gehört nicht zur App. Er wird einmalig direkt von Cisco heruntergeladen und vor der Verwendung anhand einer festen Prüfsumme kontrolliert.",
+  "codecSource": "Quelle: {host}, Datei {file}, etwa {size}.",
+  "codecDownload": "Herunterladen",
+  "codecDownloading": "Der Video-Codec wird heruntergeladen ...",
+  "codecProgress": "{percent} %",
+  "codecRetry": "Erneut versuchen",
+  "codecFailed": "Der Video-Codec konnte nicht heruntergeladen werden: {reason}",
+  "codecOffline": "Kein Internetzugang? Bitten Sie Ihre Administratorin oder Ihren Administrator, die Datei {file} (so wie von Cisco geladen, mit oder ohne die Endung .bz2) in den Ordner {dir} zu kopieren oder die Variable COMETCAST_CODEC_DIR auf einen Ordner zu setzen, der sie enthält.",
+  "codecOfflineNoDir": "Kein Internetzugang? Bitten Sie Ihre Administratorin oder Ihren Administrator, die Datei {file} (so wie von Cisco geladen, mit oder ohne die Endung .bz2) in einen Ordner zu kopieren und die Umgebungsvariable COMETCAST_CODEC_DIR auf diesen Ordner zu setzen.",
+  "codecUnsupported": "Auf diesem System gibt es keinen Video-Codec zum Herunterladen: {reason}",
+  "codecRemembered": "Ihre Zustimmung wird gespeichert; spätere Downloads starten ohne Rückfrage."
 }

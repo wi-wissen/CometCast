@@ -91,22 +91,6 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
   }
 }
 
-/**
- * ws:// or wss:// URL for /ws on the page origin. `?server=host:port` overrides the host, but
- * only in development builds: in production a crafted link must not redirect the signalling.
- */
-export function signalingUrl(
-  loc: { protocol: string; host: string; search: string },
-  allowOverride: boolean = import.meta.env.DEV,
-): string {
-  const scheme = loc.protocol === 'https:' ? 'wss:' : 'ws:'
-  let host = loc.host
-  const override = new URLSearchParams(loc.search).get('server')
-  // Only a plain host[:port] is accepted, so the parameter cannot inject a path or a scheme.
-  if (allowOverride && override && /^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(override)) host = override
-  return `${scheme}//${host}/ws`
-}
-
 /** The subset of the browser WebSocket that this client uses (lets tests inject a fake). */
 export interface WebSocketLike {
   send(data: string): void

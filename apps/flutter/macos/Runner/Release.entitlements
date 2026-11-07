@@ -4,5 +4,14 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Comet Cast talks to other devices: outgoing connections (discovery, relay, WebRTC) and
+	     incoming ones (the receiver listens). Without these the sandbox has no sockets at all. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Files and documents are picked with the system file picker. -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
 </dict>
 </plist>

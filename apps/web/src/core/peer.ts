@@ -2,6 +2,7 @@
 //
 // Thin RTCPeerConnection wrapper. Signalling happens elsewhere; this class only deals with WebRTC.
 import type { ControlChannel } from './control'
+import { connectionCode } from './sas'
 
 export type PeerState = 'connecting' | 'connected' | 'failed'
 
@@ -23,6 +24,8 @@ export interface Peer {
   acceptOffer(sdp: string): Promise<string>
   acceptAnswer(sdp: string): Promise<void>
   addIceCandidate(candidateJson: string): Promise<void>
+  /** Connection check code from the final local and remote SDPs (null if unavailable). */
+  connectionCode?(): Promise<string | null>
   close(): void
 }
 
@@ -89,6 +92,11 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
       // Candidates may arrive before the remote description; they are queued until it is set.
       if (!remoteSet) pending.push(init)
       else await pc.addIceCandidate(init)
+    },
+    async connectionCode() {
+      const l = pc.currentLocalDescription?.sdp
+      const r = pc.currentRemoteDescription?.sdp
+      return l && r ? connectionCode(l, r) : null
     },
     close() {
       pc.onicecandidate = pc.ontrack = pc.ondatachannel = pc.onconnectionstatechange = null
