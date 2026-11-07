@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
@@ -19,6 +21,8 @@ export function normalizeBase(raw: string | undefined): string {
 }
 
 export default defineConfig(({ mode }) => ({
+  // The version of this build, for the source link of the start page footer (tag `v{version}`).
+  define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8')).version) },
   base: normalizeBase(loadEnv(mode, '.', 'VITE_').VITE_BASE),
   plugins: [vue(), tailwindcss()],
   // The logos come from the repository's assets/logo folder and the locale tests read docs/design.

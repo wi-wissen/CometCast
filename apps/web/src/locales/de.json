@@ -539,5 +539,12 @@
       "title": "Etwas hat nicht geklappt",
       "now": "Versuch es noch einmal. Wenn es wieder passiert, sag dem Gastgeber Bescheid."
     }
+  },
+  "about": {
+    "footer": "Freie Software (GPL-3.0)",
+    "source": "Quelltext",
+    "licences": "Lizenzen",
+    "privacy": "Datenschutz",
+    "imprint": "Impressum"
   }
 }

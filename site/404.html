@@ -7,6 +7,19 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/style.css">
+<script>
+// GitHub Pages answers every unknown path with this page. Under /app/ that means a join link (/app/K7QM2W) or
+// /app/display of the web app, which chooses its page by the path: show the app's index.html here, the address stays.
+// Every other path keeps this 404 page. (docs/website.md)
+(function () {
+  if (!/^\/app(\/|$)/.test(location.pathname)) return;
+  document.documentElement.style.visibility = 'hidden';
+  fetch('/app/index.html', { credentials: 'omit' })
+    .then(function (r) { if (!r.ok) throw new Error('no app'); return r.text(); })
+    .then(function (html) { document.open(); document.write(html); document.close(); })
+    .catch(function () { document.documentElement.style.visibility = ''; });
+})();
+</script>
 </head>
 <body>
 <main id="main"><div class="wrap">

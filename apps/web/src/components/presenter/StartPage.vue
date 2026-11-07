@@ -10,6 +10,8 @@ import { CODE_FIELD_MAX, codeFieldText, codeFromField } from '../../core/roomCod
 import { formatCode } from '../../core/codeFormat'
 import { appUrlFor } from '../../config/stores'
 import { splitSlot } from '../../core/textSlot'
+import { legalLinks, licencesUrl, sourceUrl } from '../../core/legal'
+import type { LegalUrls } from '../../core/relay'
 
 // The page at {dom} and {dom}/{CODE} (spec 5.2): code, name, browser or app.
 const props = defineProps<{
@@ -19,11 +21,13 @@ const props = defineProps<{
   busy: boolean
   /** Shown instead of nothing after a failed code check (inline error). */
   codeError?: boolean
+  /** privacy_url / imprint_url of the operator's config.json (decision N83). */
+  legal?: LegalUrls
 }>()
 // `connect` carries the text of the field without spaces and dashes; the page that receives it checks it
 // (not exactly 6 characters of the code alphabet: error page, no server call).
 const emit = defineEmits<{ connect: [code: string] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const platform = currentPlatform()
 
 const code = ref(props.qrCode ?? '')
@@ -77,6 +81,11 @@ function getApp() {
 // sentence stays text. The sentence is built with a marker so that every language is cut at the right place.
 const beDisplayParts = computed(() => splitSlot((m) => t('start.beDisplay', { dom: m }), '/display'.length))
 const displayHref = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/display`
+// Footer line (spec 15.9, web part): licence, source, the licence list of this build, and privacy / imprint only where
+// there is a page to name (cometcast.de, or the operator's config.json).
+const footSource = sourceUrl(__APP_VERSION__)
+const footLicences = licencesUrl(import.meta.env.BASE_URL)
+const footLegal = computed(() => legalLinks(location.hostname, locale.value === 'de' ? 'de' : 'en', props.legal ?? {}))
 onMounted(() => {
   if (!props.qrCode) codeInput.value?.focus()
 })
@@ -141,5 +150,16 @@ onMounted(() => {
         </p>
       </div>
     </form>
+    <p class="cp-small cp-foot" data-testid="start-footer">
+      {{ t('about.footer') }}
+      · <a class="cp-link" :href="footSource" target="_blank" rel="noopener noreferrer" data-testid="foot-source">{{ t('about.source') }}</a>
+      · <a class="cp-link" :href="footLicences" target="_blank" rel="noopener noreferrer" data-testid="foot-licences">{{ t('about.licences') }}</a>
+      <template v-if="footLegal.privacy">
+        · <a class="cp-link" :href="footLegal.privacy" target="_blank" rel="noopener noreferrer" data-testid="foot-privacy">{{ t('about.privacy') }}</a>
+      </template>
+      <template v-if="footLegal.imprint">
+        · <a class="cp-link" :href="footLegal.imprint" target="_blank" rel="noopener noreferrer" data-testid="foot-imprint">{{ t('about.imprint') }}</a>
+      </template>
+    </p>
   </main>
 </template>

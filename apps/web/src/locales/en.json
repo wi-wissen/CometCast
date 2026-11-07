@@ -539,5 +539,12 @@
       "title": "Something went wrong",
       "now": "Try again. If it happens again, tell the host."
     }
+  },
+  "about": {
+    "footer": "Free software (GPL-3.0)",
+    "source": "Source code",
+    "licences": "Licences",
+    "privacy": "Privacy",
+    "imprint": "Imprint"
   }
 }

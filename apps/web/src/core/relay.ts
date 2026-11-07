@@ -152,8 +152,49 @@ export function parseRelayConfig(text: string, pageProtocol?: string): Relay[] {
   return out
 }
 
+/**
+ * Optional operator pages named in `config.json` (`privacy_url`, `imprint_url`): https URLs only (decision N83).
+ * Anything else (other schemes, credentials, over-long or invalid text) is dropped.
+ */
+export interface LegalUrls {
+  privacy?: string
+  imprint?: string
+}
+
+function legalUrl(v: unknown): string | undefined {
+  if (typeof v !== 'string' || v.length > 512) return undefined
+  try {
+    const u = new URL(v.trim())
+    if (u.protocol !== 'https:' || u.username || u.password) return undefined
+    return u.href
+  } catch {
+    return undefined
+  }
+}
+
+/** Reads `privacy_url` and `imprint_url` of `config.json` text; never throws. */
+export function parseLegalConfig(text: string): LegalUrls {
+  if (typeof text !== 'string' || text.length > MAX_CONFIG_BYTES) return {}
+  let v: unknown
+  try {
+    v = JSON.parse(text)
+  } catch {
+    return {}
+  }
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return {}
+  const o = v as Record<string, unknown>
+  const out: LegalUrls = {}
+  const privacy = legalUrl(o.privacy_url)
+  const imprint = legalUrl(o.imprint_url)
+  if (privacy) out.privacy = privacy
+  if (imprint) out.imprint = imprint
+  return out
+}
+
 export interface RelayConfigResult {
   relays: Relay[]
+  /** Operator pages of the start page footer (N83); empty without them. */
+  legal: LegalUrls
   /** The file exists (or the request went wrong) but could not be used: the page tells the person. */
   failed: boolean
 }
@@ -200,15 +241,17 @@ export async function loadRelayConfig(
   const timer = setTimeout(() => ctl.abort(), deps.timeoutMs ?? 1500)
   try {
     const res = await doFetch(`${base}config.json`, { cache: 'no-cache', credentials: 'omit', signal: ctl.signal })
-    if (res.status === 404 || res.status === 410) return { relays: [], failed: false }
-    if (!res.ok) return { relays: [], failed: true }
-    if ((res.headers.get('content-type') ?? '').toLowerCase().includes('text/html')) return { relays: [], failed: false }
+    if (res.status === 404 || res.status === 410) return { relays: [], legal: {}, failed: false }
+    if (!res.ok) return { relays: [], legal: {}, failed: true }
+    if ((res.headers.get('content-type') ?? '').toLowerCase().includes('text/html')) return { relays: [], legal: {}, failed: false }
     const text = await readCapped(res, MAX_CONFIG_BYTES)
-    if (text === null) return { relays: [], failed: true }
+    if (text === null) return { relays: [], legal: {}, failed: true }
     const relays = parseRelayConfig(text, deps.pageProtocol)
-    return { relays, failed: relays.length === 0 }
+    const legal = parseLegalConfig(text)
+    // A file that only names the operator's pages is usable (no relay: the page's own origin stays the default).
+    return { relays, legal, failed: relays.length === 0 && !legal.privacy && !legal.imprint }
   } catch {
-    return { relays: [], failed: true }
+    return { relays: [], legal: {}, failed: true }
   } finally {
     clearTimeout(timer)
   }
@@ -270,4 +313,25 @@ export function resolveRelay(inp: RelayInputs): RelayChoice {
     }
   }
   return { current, default: def, choices, nonDefault: current.wsUrl !== def.wsUrl }
+}
+
+/**
+ * The join address (spec 4.2 `{dom}`, decision N85): where a browser finds this web app, not the relay's host.
+ * - a relay that a link or the UI picked (not the default): that relay's host;
+ * - the relay is the page's own server: the page host;
+ * - the default relay is another server (cometcast.de: relay.cometcast.de): the page host plus the base path
+ *   (`cometcast.de/app`), because only the page serves the app.
+ * `scheme` is the one for the QR URL: the page's for the first two page cases, the relay's otherwise.
+ */
+export function joinAddress(
+  choice: Pick<RelayChoice, 'current' | 'nonDefault'>,
+  loc: { protocol: string; host: string },
+  base = '/',
+): { dom: string; scheme: 'https' | 'http' } {
+  const cur = choice.current
+  const pageScheme = loc.protocol === 'https:' ? 'https' : 'http'
+  if (choice.nonDefault) return { dom: cur.host, scheme: cur.insecure ? 'http' : 'https' }
+  if (cur.host === loc.host) return { dom: cur.host, scheme: cur.insecure ? 'http' : 'https' }
+  const path = base.replace(/\/+$/, '')
+  return { dom: `${loc.host}${path}`, scheme: pageScheme }
 }

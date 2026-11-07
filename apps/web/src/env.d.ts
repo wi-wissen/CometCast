@@ -12,3 +12,6 @@ interface ImportMetaEnv {
   /** TEST-ONLY, build time: shortens the idle-dim delay for end-to-end builds (src/core/idleDim.ts). */
   readonly VITE_E2E_DIM_MS?: string
 }
+
+/** Version of this build (package.json), injected by vite.config.ts. */
+declare const __APP_VERSION__: string

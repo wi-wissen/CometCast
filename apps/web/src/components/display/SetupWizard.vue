@@ -219,7 +219,7 @@ defineExpose({ back: () => (showField.value ? cancelField() : act({ type: 'back'
         <div v-else class="cd-srvcard">
           <Icon name="globe" />
           <div>
-            <p class="d" data-testid="wz-domain">{{ relay.current.value.host }}</p>
+            <p class="d" data-testid="wz-domain">{{ relay.join.value.dom }}</p>
             <p class="s" data-testid="wz-source">{{ t(sourceKey) }}</p>
           </div>
         </div>

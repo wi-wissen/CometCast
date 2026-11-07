@@ -12,6 +12,7 @@ on:
       - 'crates/cc-docs/**'
       - 'Cargo.lock'
       - 'tools/check-site-links.mjs'
+      - 'deploy/well-known/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -74,6 +75,9 @@ jobs:
           test -f stage/app/index.html || { echo "::error::the web app is missing under /app/"; exit 1; }
           test -f stage/app/pdf/cc_docs_wasm_bg.wasm || { echo "::error::the PDF renderer is missing under /app/"; exit 1; }
           test -f stage/.nojekyll
+          # The app and universal links of the apps point at cometcast.de/app/{CODE}: the website serves the verification files.
+          mkdir -p stage/.well-known
+          cp deploy/well-known/assetlinks.json deploy/well-known/apple-app-site-association stage/.well-known/
       - name: Check links of the staged artifact (/app/ must exist now)
         run: node tools/check-site-links.mjs stage
       - uses: actions/configure-pages@v5

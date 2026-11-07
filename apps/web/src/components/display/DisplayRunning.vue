@@ -78,8 +78,9 @@ const head = computed(() => state.value.requests[0] ?? null)
 // A dialog over the presentation (join request, link card): name tag, End, toolbar, badge and pill are under its scrim and inert (decision 13.68).
 const linkOpen = computed(() => state.value.content?.kind === 'link')
 const dialogOpen = computed(() => head.value !== null || linkOpen.value)
-const dom = computed(() => relay.current.value.host)
-const scheme = computed<'https' | 'http'>(() => (relay.current.value.insecure ? 'http' : 'https'))
+// `{dom}` is the join address, where a browser finds the web app (decision N85), not always the relay's host.
+const dom = computed(() => relay.join.value.dom)
+const scheme = computed<'https' | 'http'>(() => relay.join.value.scheme)
 // Not drawn: a status line for screen readers (and for the automated tests). The spec's display shows
 // nothing else at rest (docs/design/implementation-questions.md).
 const statusText = computed(() => {
