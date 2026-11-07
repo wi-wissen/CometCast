@@ -19,7 +19,6 @@ import '../../core/android_platform.dart';
 import '../../core/core_api.dart';
 import '../../core/miracast.dart' show MiracastCore;
 import '../../licences.dart';
-import '../../miracast_page.dart' show MiracastVideoView;
 import '../../receive_ways.dart';
 import '../../core/nearby_platform.dart' show setAnnounceLock;
 import '../../discovery.dart';
@@ -31,6 +30,7 @@ import 'about.dart';
 import 'codec_dialog.dart';
 import 'display_logic.dart';
 import 'kit.dart';
+import 'miracast_view.dart';
 import 'picture_stage.dart';
 import 'screens.dart';
 import 'setup_wizard.dart';
@@ -166,6 +166,10 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   final FocusNode _aboutNode = RowNode(row: 0, col: 0, debugLabel: 'about');
   ReceiveWays? _rx;
   bool _wayDialog = false;
+  final Map<BigInt, int> _arrived = {};
+  int _arrivalSeq = 0;
+  int _waySeq = 0;
+  RxRequest? _wayRequest;
   bool _raised = false;
   bool _controlsShown = false;
   bool _dimmed = false;
@@ -371,6 +375,26 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     withoutCode: _t - _lostAt,
   );
 
+  /// One queue for Comet Cast join requests and AirPlay/Miracast requests, first come first
+  /// served by the order in which they reached this controller (spec 15.14 N111). A way request
+  /// is shown when no Comet Cast request that arrived before it waits.
+  void _orderRequests(ReceiverController c, ReceiveWays? rx) {
+    for (final r in c.requests) {
+      _arrived.putIfAbsent(r.id, () => ++_arrivalSeq);
+    }
+    _arrived.removeWhere((id, _) => c.requests.every((r) => r.id != id));
+    final w = rx?.request;
+    if (w == null) {
+      _wayRequest = null;
+    } else if (!identical(w, _wayRequest)) {
+      _wayRequest = w;
+      _waySeq = ++_arrivalSeq;
+    }
+    _wayDialog =
+        w != null &&
+        (c.requests.isEmpty || _waySeq < (_arrived[c.requests.first.id] ?? 0));
+  }
+
   void _onController() {
     if (!mounted) return;
     final c = _c;
@@ -402,11 +426,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _rx?.setMode(fromCoreMode(c.joinMode));
     _rx?.setCometCastPresenting(_ccPresenting);
     final rx = _rx;
-    if (rx?.request == null) {
-      _wayDialog = false;
-    } else if (c.requests.isEmpty) {
-      _wayDialog = true; // first come, first served
-    }
+    _orderRequests(c, rx);
     // A dialog over a running AirPlay mirror: the window comes to the front for it and goes
     // back after it (native-apps.md 21.4).
     final needRaise =
@@ -720,14 +740,16 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   void _ensureLicences() {
     if (_licenceLoad != null) return;
     final flutterName = AppLocalizations.of(context).aboutFlutter;
+    final flutterSub = AppLocalizations.of(context).aboutFlutterSub;
     final loader =
         widget.licenceLoader ??
         () => loadLicences(
           desktop: !(Platform.isAndroid || Platform.isIOS),
           officeFonts: widget.core.officeWorkerPath() != null,
+          extraAssets: const {uxplayEntryName: uxplayLicenceAsset},
         );
     _licenceLoad = loader().then((v) {
-      final set = withFlutterEntry(v, flutterName);
+      final set = withFlutterEntry(v, flutterName, flutterSub);
       if (mounted) setState(() => _licences = set);
       return set;
     });

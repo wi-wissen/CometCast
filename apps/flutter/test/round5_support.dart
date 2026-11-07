@@ -28,6 +28,7 @@ import 'nearby_support.dart';
 class FakeShareIntake implements ShareIntake {
   SharedItem? item;
   final discarded = <String>[];
+  var returned = 0;
   final _c = StreamController<void>.broadcast();
 
   @override
@@ -47,6 +48,9 @@ class FakeShareIntake implements ShareIntake {
 
   @override
   Future<void> discard(String path) async => discarded.add(path);
+
+  @override
+  Future<void> returnToCaller() async => returned++;
 }
 
 class R5 {
@@ -61,6 +65,7 @@ class R5 {
     required this.opened,
     required this.picks,
     required this.log,
+    this.pickLabels = const [],
   });
   final FakeCoreApi core;
   final AppSettings settings;
@@ -71,6 +76,7 @@ class R5 {
   final FakeShareIntake intake;
   final List<Uri> opened;
   final List<PickKind> picks;
+  final List<String> pickLabels;
   final List<String> log;
 }
 
@@ -124,6 +130,7 @@ Future<R5> pumpR5(
   List<String>? pickResults,
   bool announcements = true,
   IosShareSettings? iosShare,
+  bool leaveApp = true,
 }) async {
   await t.runAsync(loadAppFonts);
   final core = fake ?? FakeCoreApi();
@@ -156,6 +163,7 @@ Future<R5> pumpR5(
   final intake = shareIntake ?? FakeShareIntake();
   final opened = <Uri>[];
   final picks = <PickKind>[];
+  final pickLabels = <String>[];
   final log = <String>[];
   var pickIndex = 0;
   t.view.physicalSize = size;
@@ -175,6 +183,7 @@ Future<R5> pumpR5(
         pickFile: (_) async => null,
         pickFileFor: (label, kind) async {
           picks.add(kind);
+          pickLabels.add(label);
           final r = pickResults;
           if (r == null || pickIndex >= r.length) return null;
           final v = r[pickIndex++];
@@ -194,7 +203,7 @@ Future<R5> pumpR5(
         nearbyController: nearby,
         tvController: tv,
         licenceLoader: () async => fakeLicences(),
-        leaveApp: () => log.add('leave'),
+        leaveApp: leaveApp ? () => log.add('leave') : null,
         iosShareSettings: iosShare,
       ),
     ),
@@ -213,6 +222,7 @@ Future<R5> pumpR5(
     opened: opened,
     picks: picks,
     log: log,
+    pickLabels: pickLabels,
   );
 }
 

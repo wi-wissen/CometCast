@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../licences.dart';
-import '../branding.g.dart';
+import '../branding_info.dart';
 import '../design/icons.dart';
 import '../design/spans.dart';
 import '../design/tokens.dart';
@@ -18,18 +18,14 @@ import 'kit.dart';
 
 /// `github.com/wi-wissen/CometCast` from the branding file's source URL.
 String aboutSourceText() =>
-    Branding.sourceUrl.replaceFirst(RegExp(r'^https?://'), '');
+    BrandingInfo.current.sourceUrl.replaceFirst(RegExp(r'^https?://'), '');
 
-/// The host of the privacy page (`cometcast.de`), or null when the build has none.
+/// The host of the privacy page (`cometcast.de`), or null when the build has no privacy URL
+/// (spec 15.14 N108: `about.webTv` only then).
 String? aboutWebText() {
+  final b = BrandingInfo.current;
   final u = Uri.tryParse(
-    Branding.privacyUrlDe.isNotEmpty
-        ? Branding.privacyUrlDe
-        : Branding.privacyUrlEn.isNotEmpty
-        ? Branding.privacyUrlEn
-        : Branding.imprintUrlDe.isNotEmpty
-        ? Branding.imprintUrlDe
-        : Branding.imprintUrlEn,
+    b.privacyUrlDe.isNotEmpty ? b.privacyUrlDe : b.privacyUrlEn,
   );
   final h = u?.host ?? '';
   return h.isEmpty ? null : h;
@@ -97,11 +93,14 @@ class AboutDialogView extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 line(t.aboutLicence, key: const Key('about-licence')),
-                if (Branding.publisherName.isNotEmpty) ...[
+                if (BrandingInfo.current.publisherName.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  line(t.aboutPublisher, key: const Key('about-publisher')),
+                  line(
+                    t.aboutPublisher(BrandingInfo.current.publisherName),
+                    key: const Key('about-publisher'),
+                  ),
                 ],
-                if (Branding.sourceUrl.isNotEmpty) ...[
+                if (BrandingInfo.current.sourceUrl.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   valueLine(
                     t.aboutSourceTv(spanMarker),
@@ -335,43 +334,84 @@ class _LicenceViewerState extends State<LicenceViewer> {
     );
     final text = _shownText;
     final blocks = (text ?? '').split(RegExp(r'\n{2,}'));
+    final paneBox = Container(
+      key: const Key('licence-pane'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tok.panel,
+        borderRadius: BorderRadius.circular(14),
+        // Always the same 1 px border: the text must not move when the pane gains or loses
+        // focus (N100).
+        border: Border.all(width: 1, color: tok.line),
+      ),
+      child: shown == null
+          ? Text(
+              set != null && entries.isEmpty ? t.aboutNone : '',
+              key: const Key('licence-none'),
+              style: s.type.cardText,
+            )
+          : ListView.builder(
+              controller: _paneScroll,
+              itemCount: text == null ? 0 : blocks.length,
+              itemBuilder: (context, i) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SelectableText(
+                  blocks[i],
+                  key: i == 0 ? const Key('licence-text') : null,
+                  style: TextStyle(
+                    fontFamily: fontMono,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                    color: tok.fg,
+                  ),
+                ),
+              ),
+            ),
+    );
     final pane = Focus(
       focusNode: _pane,
-      child: Container(
-        key: const Key('licence-pane'),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: tok.panel,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            width: _paneFocused ? 4 : 1,
-            color: _paneFocused ? tok.focus : tok.line,
-          ),
-        ),
-        child: shown == null
-            ? Text(
-                set != null && entries.isEmpty ? t.aboutNone : '',
-                key: const Key('licence-none'),
-                style: s.type.cardText,
-              )
-            : ListView.builder(
-                controller: _paneScroll,
-                itemCount: text == null ? 0 : blocks.length,
-                itemBuilder: (context, i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: SelectableText(
-                    blocks[i],
-                    key: i == 0 ? const Key('licence-text') : null,
-                    style: TextStyle(
-                      fontFamily: fontMono,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      height: 1.4,
-                      color: tok.fg,
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.passthrough,
+        children: [
+          paneBox,
+          // The focus ring of 3.5, drawn outside the pane's border box.
+          if (_paneFocused) ...[
+            Positioned(
+              left: -9,
+              top: -9,
+              right: -9,
+              bottom: -9,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14 + 9),
+                    border: Border.all(
+                      width: 9,
+                      color: DisplayTokens.focusGlow,
                     ),
                   ),
                 ),
               ),
+            ),
+            Positioned(
+              key: const Key('licence-pane-ring'),
+              left: -7,
+              top: -7,
+              right: -7,
+              bottom: -7,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14 + 7),
+                    border: Border.all(width: 4, color: tok.focus),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
     return Container(
@@ -507,10 +547,17 @@ class _LicenceRowViewState extends State<_LicenceRowView> {
         onPressed: widget.onTap,
         child: Container(
           height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          // The entry the pane shows has the selected-tile look of 3.2: 2 px `--acc` border and
+          // the fill (OLED black: border only); the border is always there so that the text
+          // does not move (N100).
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: widget.selected ? t.selectedTileFill : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              width: 2,
+              color: widget.selected ? t.acc : Colors.transparent,
+            ),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

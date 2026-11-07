@@ -164,7 +164,7 @@ class ReceiveWays extends ChangeNotifier {
     switch (way) {
       case RxWay.airplay:
         final on = settings.airplayReceive;
-        if (_apFailed && on) {
+        if (_apFailed && on && _mode != DisplayJoinMode.locked) {
           return const RxRow(on: true, disabled: false, line: RxLine.failed);
         }
         return RxRow(
@@ -187,11 +187,20 @@ class ReceiveWays extends ChangeNotifier {
             MiracastStateLine.failed => RxLine.failed,
           };
           if (line == RxLine.failed) {
-            return RxRow(on: on, disabled: false, line: RxLine.failed);
+            // Precedence of spec 15.14 N97: locked > failed.
+            return RxRow(
+              on: on,
+              disabled: false,
+              line: on && _mode == DisplayJoinMode.locked
+                  ? RxLine.locked
+                  : RxLine.failed,
+            );
           }
           return RxRow(on: false, disabled: true, line: line);
         }
-        if (_mc?.phase == MiracastPhase.problem && on) {
+        if (_mc?.phase == MiracastPhase.problem &&
+            on &&
+            _mode != DisplayJoinMode.locked) {
           return const RxRow(on: true, disabled: false, line: RxLine.failed);
         }
         return RxRow(

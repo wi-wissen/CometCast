@@ -662,7 +662,7 @@ class DBetaChip extends StatelessWidget {
 
 /// The display switch: track 44 x 24, radius 12, border 2; off `--line` border, `--panel2`
 /// fill (OLED black), knob 16 `--mut`; on `--acc` border and fill, knob `--bg`. The knob moves
-/// in 120 ms (a jump with reduced motion). Disabled: 40 % opacity. Drawn only; the row is the
+/// in 120 ms, and the track colour with it on the same curve (a jump with reduced motion). Disabled: 40 % opacity. Drawn only; the row is the
 /// control.
 class DSwitch extends StatelessWidget {
   const DSwitch({super.key, required this.on, this.disabled = false});
@@ -680,6 +680,7 @@ class DSwitch extends StatelessWidget {
       opacity: disabled ? .4 : 1,
       child: AnimatedContainer(
         duration: d,
+        curve: Curves.ease,
         width: 44,
         height: 24,
         decoration: BoxDecoration(

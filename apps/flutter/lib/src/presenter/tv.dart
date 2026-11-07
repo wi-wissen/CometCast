@@ -95,7 +95,7 @@ class TvRowTile extends StatelessWidget {
     return PTap(
       onPressed: othersBusy ? null : onPressed,
       radius: 12,
-      label: beta ? t.tvAria(title, way) : '$title, $way',
+      label: beta ? '${t.tvAria(title, way)}, ${t.beta}' : t.tvAria(title, way),
       builder: (_) => Container(
         constraints: BoxConstraints(minHeight: s.laptop ? 50 : 58),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

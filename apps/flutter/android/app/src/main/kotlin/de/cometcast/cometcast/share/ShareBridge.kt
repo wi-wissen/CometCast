@@ -29,6 +29,10 @@ import java.util.concurrent.Future
  *   Office), found **while copying**, nothing is left on the disk.
  * - `discardSharedItem` (path): deletes that copy. Done when the presentation of the item ends;
  *   `cacheDir/share` is also emptied when the app starts.
+ * - `returnToCaller`: Cancel and system Back on the share page (spec 15.14 N112). The activity moves
+ *   to the back (`moveTaskToBack(true)`: the app's previous page and any join are kept, the
+ *   person is back in the app that shared); only an activity that the share intent started cold
+ *   is finished.
  * - Dart receives `shared` (no argument) when a new item arrives while the app runs
  *   ([onNewIntent]); it then calls `takeSharedItem`.
  *
@@ -44,11 +48,14 @@ class ShareBridge(
     private val root = File(activity.cacheDir, "share")
     private var pending: Future<Map<String, Any?>?>? = null
 
+    /** The share intent started this activity (cold start): the only case `finish()` is allowed. */
+    private var startedByShare = false
+
     init {
         // Copies of an earlier run are not needed any more.
         root.deleteRecursively()
         channel.setMethodCallHandler(this)
-        accept(activity.intent)
+        startedByShare = accept(activity.intent)
     }
 
     /** A new item while the activity runs (launch mode singleTop). */
@@ -78,11 +85,24 @@ class ShareBridge(
                     main.post { result.success(item) }
                 }
             }
+            "returnToCaller" -> {
+                returnToCaller()
+                result.success(null)
+            }
             "discardSharedItem" -> {
                 discard(call.arguments as? String)
                 result.success(null)
             }
             else -> result.notImplemented()
+        }
+    }
+
+    /** Back to the app that shared, without ending Comet Cast (N112). */
+    private fun returnToCaller() {
+        if (startedByShare) {
+            activity.finish()
+        } else {
+            activity.moveTaskToBack(true)
         }
     }
 

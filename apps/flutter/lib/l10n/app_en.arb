@@ -122,6 +122,18 @@
   "@sendContentPickerTypes": {
     "description": "Name of the file type filter in the file dialog."
   },
+  "sendContentPickerTypesNoOffice": "Images and PDF",
+  "@sendContentPickerTypesNoOffice": {
+    "description": "Spec 15.13 key `send.content.pickerTypesNoOffice` (round 5 fixes, N97-N118)."
+  },
+  "sendContentPickerPdf": "PDF",
+  "@sendContentPickerPdf": {
+    "description": "Spec 15.13 key `send.content.pickerPdf` (round 5 fixes, N97-N118)."
+  },
+  "sendContentPickerPhotos": "Photos",
+  "@sendContentPickerPhotos": {
+    "description": "Spec 15.13 key `send.content.pickerPhotos` (round 5 fixes, N97-N118)."
+  },
   "sendContentLinkInvalid": "Please enter a link that starts with http:// or https://.",
   "@sendContentLinkInvalid": {
     "description": "Error under the link field. The rules are checked by the Rust core."
@@ -1976,7 +1988,7 @@
   "@tvAirplay": {
     "description": "Spec 15.13 key `tv.airplay` (round 5)."
   },
-  "tvAria": "{name}, {way}, Beta",
+  "tvAria": "{name}, {way}",
   "@tvAria": {
     "description": "Spec 15.13 key `tv.aria` (round 5).",
     "placeholders": {
@@ -2070,6 +2082,15 @@
   "@errorTvWhyLost": {
     "description": "Spec 15.13 key `error.tv.whyLost` (round 5)."
   },
+  "errorTvTitleLost": "{tv} is no longer connected",
+  "@errorTvTitleLost": {
+    "description": "Spec 15.13 key `error.tv.titleLost` (round 5 fixes, N97-N118).",
+    "placeholders": {
+      "tv": {
+        "type": "String"
+      }
+    }
+  },
   "errorTvNow": "If you can, install Comet Cast on the TV. Then the code on the screen works.",
   "@errorTvNow": {
     "description": "Spec 15.13 key `error.tv.now` (round 5)."
@@ -2160,9 +2181,14 @@
   "@aboutLicence": {
     "description": "Spec 15.13 key `about.licence` (round 5)."
   },
-  "aboutPublisher": "Published by Schulverwalter GmbH",
+  "aboutPublisher": "Publisher: {name}",
   "@aboutPublisher": {
-    "description": "Spec 15.13 key `about.publisher` (round 5)."
+    "description": "Spec 15.13 key `about.publisher` (round 5).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   },
   "aboutSource": "Source code",
   "@aboutSource": {
@@ -2203,6 +2229,10 @@
   "aboutFlutter": "Flutter engine",
   "@aboutFlutter": {
     "description": "Spec 15.13 key `about.flutter` (round 5)."
+  },
+  "aboutFlutterSub": "Several licences",
+  "@aboutFlutterSub": {
+    "description": "Spec 15.13 key `about.flutterSub` (round 5 fixes, N97-N118)."
   },
   "aboutSourceTv": "Source code: {url}",
   "@aboutSourceTv": {

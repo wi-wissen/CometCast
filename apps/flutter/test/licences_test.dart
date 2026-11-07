@@ -60,6 +60,15 @@ void main() {
       'UxPlay',
       'Atkinson Hyperlegible',
     ]);
+    // Subtitle "GPL-3.0" (N106), the text is the shipped file.
+    final ux = s.featured[1];
+    expect(ux.licence, 'GPL-3.0');
+    expect(ux.text, startsWith('GNU GENERAL PUBLIC LICENSE'));
+  });
+
+  test('without the UxPlay file there is no UxPlay entry', () {
+    final s = parseLicences(LicenceInput(licences: licences, notices: notices));
+    expect(s.featured.map((e) => e.name), isNot(contains('UxPlay')));
   });
 
   test('every #### heading of the Rust and Flutter texts is an entry, texts are fenced blocks', () {

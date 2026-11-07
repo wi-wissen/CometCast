@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/core/miracast.dart';
 import 'package:cometcast/core/share_intake.dart';
+import 'package:cometcast/src/branding_info.dart';
 import 'package:cometcast/src/design/tokens.dart';
 
 import 'display_support.dart';
@@ -186,6 +187,18 @@ void registerRound5Shots() {
         await shot(t, 'r5-appsettings-android-$p');
         await tapKey(t, 'about-open');
         await shot(t, 'r5-about-android-$p');
+        await finish(t, r);
+        // With the official branding file: publisher, Privacy, Imprint (U11).
+        BrandingInfo.current = BrandingInfo.official;
+        r = await pumpR5(t, locale: l.value, brightness: b.value, office: true);
+        await tapKey(t, 'app-settings-open');
+        await tapKey(t, 'about-open');
+        await shot(t, 'r5-about-android-branded-$p');
+        BrandingInfo.current = const BrandingInfo.generated();
+        await finish(t, r);
+        r = await pumpR5(t, locale: l.value, brightness: b.value, office: true);
+        await tapKey(t, 'app-settings-open');
+        await tapKey(t, 'about-open');
         await t.enterText(find.byKey(const Key('licence-search')), 'xyz');
         await settle(t);
         await shot(t, 'r5-about-none-$p');
@@ -380,6 +393,7 @@ void registerRound5Shots() {
         await toggle(t, 'airplay');
         await toggle(t, 'miracast');
         await rxEvent(t, h, const AirplayUiEvent.advertising());
+        await pump(t, 200); // the tracks have reached their colour (N97)
         await shot(t, 'r5-display-settings-on-$p');
         await rxEvent(t, h, const AirplayUiEvent.failed(code: 'no_dnssd'));
         await shot(t, 'r5-display-settings-failed-$p');
@@ -439,7 +453,11 @@ void registerRound5Shots() {
         );
         await pump(t, 300);
         await t.tapAt(const Offset(500, 500));
-        await pump(t, 600);
+        // The name tag fades in 400 ms: the shot is taken at least 500 ms after the input
+        // (N101). One frame first, so that the fade has started (a single long pump would draw
+        // only its first frame).
+        await pump(t, 16);
+        await pump(t, 700);
         await shot(t, 'r5-display-miracast-presenting-$p');
       });
 
@@ -510,6 +528,19 @@ void registerRound5Shots() {
         await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await pump(t, 100);
         await shot(t, 'r5-display-licences-pane-$p');
+      });
+
+      shotTest('display $p: About with the official branding', (t) async {
+        BrandingInfo.current = BrandingInfo.official;
+        try {
+          await win(t);
+          await openSettings(t);
+          await t.tap(find.byKey(const Key('settings-about')));
+          await pump(t);
+          await shot(t, 'r5-display-about-branded-$p');
+        } finally {
+          BrandingInfo.current = const BrandingInfo.generated();
+        }
       });
 
       shotTest('display $p: TV About and licence viewer', (t) async {

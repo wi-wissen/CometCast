@@ -469,3 +469,50 @@ Asked by the round 5 Flutter implementer (Part A of [fix-list-round5.md](fix-lis
 16. **The iOS share settings channel** (`ios_share_settings.dart`) was not used by anything. It is now: read once at the start (the name the extension changed wins), written on Connect, on a settings change and after a joined session. Not run on a device. **Answered (N117):** accepted; verified in the iOS device test.
 
 **Visible differences of the round 5 UI hand-off, answered** (spec 15.14): (1) Settings 510 ref: N97, accepted as the maximum, DE `failed` shortened. (2) Brand row in the left column: N98, it spans both columns. (3) 5 px above the address line: N99, a 44-high box from the field edge; Use/Cancel placement accepted. (4) Licence rows 40 + 2, labels unfixed: N100, accepted. (5) Name tag fade 400 ms: N101, stays; shots after 500 ms. (6) "Flutter engine" without subtitle: N102, `about.flutterSub`. (7) TV accessible name in code: N103, accepted with `tv.aria` = "{name}, {way}". (8) About pages not `PPage`: N104, accepted if Back is fixed at the bottom on phones. (9) TV hiding by IP: N105, core field `NearbyScreenInfo.addresses`. (10) No UxPlay entry: N106, required where UxPlay ships. (11) iOS sheet and web footer not drawn: N107, iOS shots during the device test; web footer reviewed (separator fix).
+
+## N. Questions from round 5 fixes
+
+Asked by the implementer of [fix-list-round5-2.md](fix-list-round5-2.md) (U1 to U16, P1 to P8). Nothing here was decided by the implementer; "did meanwhile" is the minimal neutral behaviour.
+
+1. **U16 / F9: the presenter Miracast page is not retired.**
+   - **Found:** U16 says "F9 after the Miracast device test" (P6, section I of `docs/miracast-device-test-plan.md`, native-apps.md 21.10 item 9b). No Windows hardware exists here, so the test did not run.
+   - **Options:** wait (the order of N117); or delete the page and the `miracast*` keys now.
+   - **Did meanwhile:** only the first step of N117: `MiracastVideoView` (with `FrameDecoder` and `decodeMiracastFrame`) moved to `lib/src/display/miracast_view.dart`; the link, `miracast_page.dart` and the keys stay. The plan has two new cases (I10 "no second PIN", I11).
+2. **P2 / P8 (C10): what counts as "UxPlay ships".**
+   - **Found:** no packaging bundles UxPlay (`THIRD_PARTY_NOTICES.md`: "no UxPlay binary or source is bundled"); the Linux `.deb` only has `Recommends: uxplay`. N106 asks for the entry "wherever UxPlay is shipped" and a guard that fails otherwise.
+   - **Options:** (a) the guard looks at the packaged bundle for the program; (b) a `Recommends` counts too, so every build that can list the AirPlay row carries the licence file.
+   - **Did meanwhile:** (a). The app lists "UxPlay · GPL-3.0" second when `assets/licenses/uxplay/UXPLAY_LICENSE.txt` exists in the build (the folder is declared in `pubspec.yaml`, empty otherwise); `node tools/gen-third-party.mjs --uxplay-licence FILE [--uxplay-notices FILE]` writes that file (licence file followed by the notices of the bundled parts); `tools/release-guard.sh uxplay-licence DIR` fails a bundle with a `uxplay` or `uxplay.exe` but no `UXPLAY_LICENSE.txt`, and runs in the Linux job on the `.deb` root. The macOS and Windows packaging of UxPlay and Miracast (C10) was not done: there is nothing to package yet.
+3. **P3: `DeviceAuth::InsecureSkip` and `--insecure-skip-device-auth` still exist in `cc-cast` and `cometcast-cli`.**
+   - **Found:** N115 and native-apps.md 21.10 item 3 say "no option that skips certificate verification". The app and `cc-ffi` never use it (`start_tv_presenter` builds `DeviceAuth::Verify`), but seven loopback tests of `cc-cast` and the developer flag of the CLI use it.
+   - **Options:** remove it from the library and the CLI (the seven loopback tests then need generated anchors); or keep it for developers and tests.
+   - **Did meanwhile:** kept; no way to reach it from the app. `THIRD_PARTY_NOTICES.md` has a row with the rule that a build may embed or ship Cast trust anchors only after a row names their source and licence, and says that the app has no such option. Without anchors the app lists no Cast TVs (`can_screen` false, the existing test `what_each_way_offers`).
+4. **U13: arrival order is a sequence number, not a clock.**
+   - **Found:** N111 allows "a Dart timestamp". Two requests in the same notification, or a frozen test clock, would tie.
+   - **Did meanwhile:** `DisplayRoot` numbers every request as it first reaches the controller (`_orderRequests`); the way request is shown when no Comet Cast request that arrived before it waits. The "more waiting" count of the Comet Cast dialog (`request.queue`) still counts only Comet Cast requests; a way dialog shows none. **Question:** should the count include the other kind?
+5. **U7: nothing separates the scrolling content from the fixed Back on the phone About pages.**
+   - **Found:** the list passes under the fixed area without a divider or fade (the same as the other phone pages with a pinned action area). A row can be cut by the area's top edge.
+   - **Did meanwhile:** no divider.
+6. **U9: the not-connected share page while converting.**
+   - **Found:** N113 says "both buttons are disabled". Only the connected variant has two buttons (Show on …, Another screen), which are disabled. The not-connected variant (start page with `share.show` and Scan) is not reachable while converting, because Connect is disabled while the join runs.
+   - **Did meanwhile:** unchanged there.
+7. **U2: the laptop layout without the nearby card.**
+   - **Found:** N98 names "both columns (N61)". With no nearby card there is one column; the brand row there stays in the column (it already is the full content width).
+   - **Did meanwhile:** the spanning row only in the two-column layout. In German the left column still wraps `app.welcome` to two lines (N63, accepted).
+8. **U4: geometry of the pane's focus ring.**
+   - **Found:** N100 says "outside the pane's border box" and names no numbers.
+   - **Did meanwhile:** the ring of 3.5 (glow 9, outline 4 at offset 3) around the unchanged 1 px border. The current list row has a 2 px border always (clear when not current) with its padding reduced from 10 to 8, so the text keeps its place.
+9. **P5: the error disc of the iOS share extension.**
+   - **Found:** N116 bundles `file`, `link`, `info`; the app picks an icon per error kind (`x`, `clock`, `locked` ...).
+   - **Did meanwhile:** the error pages of the extension use `info` (the old `exclamationmark` symbol is gone). The activation predicate excludes `public.file-url` only in the web-address branch, so an image or PDF that also registers a file URL still lists Comet Cast (the ZIP and Word cases do not). Never compiled or run.
+10. **P8 (C9): the Apple TV part is Swift without a compiler; no tvOS screenshots.**
+    - **Found:** no Xcode here. The About dialog and licence viewer already existed from round 5.
+    - **Did meanwhile:** `AboutView.swift`: `about.publisher` with the name and only when the branding name is set, `about.sourceTv` from the branding source URL, `about.webTv` only with a privacy URL (its host), the current licence row with a 2 px `--acc` border (also in OLED black); the string catalogs were regenerated (`tools/gen-appletv-strings.mjs`). **Not done:** the tvOS screenshots in Dark, Light and OLED black.
+11. **P1: reporting address changes of a row.**
+    - **Found:** `NearbyScreen.addresses` is the union of the addresses of all instances of the row.
+    - **Did meanwhile:** a second instance that adds an address makes one `Updated` event (the old test expected none); a goodbye of one instance shrinks the list without an event. Link-local IPv6 addresses are kept as the backend gives them; the Dart side compares normalised text (lower case, no brackets or zone, IPv4-mapped as IPv4).
+12. **P7: what tells the web display that an offer is a new session.**
+    - **Found:** a web presenter renegotiates on one peer connection (adds or removes its screen), the native presenter makes a new connection per presentation; the native receiver resets on every second offer, which would break the web sender.
+    - **Did meanwhile:** the web receiver resets when the offer comes from another peer connection: the session id of the `o=` line or the ICE username fragment differs from the last offer. Offers without these lines count as renegotiation. No toast (as on the native receiver).
+13. **U15: shots of the name tag.**
+    - **Found:** one long `pump` draws only its first frame, so the fade was caught at its start.
+    - **Did meanwhile:** the shot test pumps one frame and then 700 ms; `r5-display-miracast-presenting-*` shows the tag fully.

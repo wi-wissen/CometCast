@@ -158,20 +158,24 @@ class FirstRunPage extends StatelessWidget {
           children: links,
         ),
     ];
+    final brandRow = PBrand(
+      trailing: onAppSettings == null
+          ? null
+          : PCompactButton(
+              key: const Key('app-settings-open'),
+              label: settingsIsAbout ? t.aboutOpen : t.appSettingsOpen,
+              icon: settingsIsAbout ? CcIconName.info : CcIconName.gear,
+              centered: true,
+              onPressed: onAppSettings,
+            ),
+    );
+    // On the laptop layout with the nearby card the brand row spans both columns (N98).
+    final brandSpans =
+        intro == null && nearby != null && codeChip == null && s.laptop;
     final brand = <Widget>[
       ...?intro,
       if (intro == null) ...[
-        PBrand(
-          trailing: onAppSettings == null
-              ? null
-              : PCompactButton(
-                  key: const Key('app-settings-open'),
-                  label: settingsIsAbout ? t.aboutOpen : t.appSettingsOpen,
-                  icon: settingsIsAbout ? CcIconName.info : CcIconName.gear,
-                  centered: true,
-                  onPressed: onAppSettings,
-                ),
-        ),
+        if (!brandSpans) brandRow,
         Text(t.appWelcome, style: s.type.heading),
       ],
       PField(
@@ -256,10 +260,7 @@ class FirstRunPage extends StatelessWidget {
               readOnly: connecting,
               onSubmitted: connecting ? null : (_) => onConnect(),
             ),
-            if (addressLine != null) ...[
-              const SizedBox(height: 5),
-              addressLine!,
-            ],
+            if (addressLine != null) addressLine!,
           ],
         ),
       ],
@@ -283,6 +284,8 @@ class FirstRunPage extends StatelessWidget {
       );
       return PPage(
         children: [
+          brandRow,
+          // The heading and the two columns start 14 below the brand row (N98): PPage's gap.
           // Columns 4 : 5 after the 32 gap, left at least 260 (N61).
           LayoutBuilder(
             builder: (context, box) {
@@ -830,7 +833,7 @@ class PresentingPage extends StatelessWidget {
               PTextLink(
                 key: const Key('presenting-own-pdf'),
                 label: t.presentingOwnPdf,
-                left: s.laptop,
+                left: true,
                 onPressed: onOwnPdf!,
               ),
             ],
@@ -1009,7 +1012,9 @@ class ErrorPage extends StatelessWidget {
         t.errorNoScreenNowNoApp,
       ),
       ErrorKind.tv => (
-        t.errorTvTitle(tvName ?? ''),
+        tvWhy == TvErrorWhy.lost
+            ? t.errorTvTitleLost(tvName ?? '')
+            : t.errorTvTitle(tvName ?? ''),
         switch (tvWhy) {
           TvErrorWhy.airplay => t.errorTvWhyAirplay,
           TvErrorWhy.lost => t.errorTvWhyLost,

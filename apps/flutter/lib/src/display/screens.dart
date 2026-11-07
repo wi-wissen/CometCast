@@ -1488,7 +1488,8 @@ class PinDialog extends StatelessWidget {
                 child: Text(
                   grouped(pin),
                   key: const Key('pin-value'),
-                  textAlign: TextAlign.center,
+                  // Left-aligned with the body text, in both PIN dialogs (N110).
+                  textAlign: TextAlign.start,
                   style: s.type.code,
                 ),
               ),

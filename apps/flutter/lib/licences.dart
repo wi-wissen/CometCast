@@ -62,6 +62,14 @@ class LicenceSet {
   bool get isEmpty => featured.isEmpty && all.isEmpty;
 }
 
+/// The entry for UxPlay (spec 15.14 N106): listed where UxPlay is shipped, with the licence
+/// file it ships (the GPL-3.0 text followed by the notices of its bundled parts) as its text.
+/// The packaging copies that file to [uxplayLicenceAsset]; a build without UxPlay has no such
+/// file and no entry.
+const uxplayEntryName = 'UxPlay';
+const uxplayEntryLicence = 'GPL-3.0';
+const uxplayLicenceAsset = 'assets/licenses/uxplay/UXPLAY_LICENSE.txt';
+
 /// The first non-empty line of [text], at most 60 characters ("…" marks a cut).
 String licenceLine(String text) {
   for (final raw in text.split('\n')) {
@@ -215,7 +223,16 @@ LicenceSet parseLicences(LicenceInput input) {
 
   final featured = <LicenceEntry>[
     ?notices['OpenH264 notice'],
-    for (final e in input.extra.entries) entry(e.key, e.value, featured: true),
+    for (final e in input.extra.entries)
+      if (e.key == uxplayEntryName)
+        LicenceEntry(
+          name: e.key,
+          licence: uxplayEntryLicence,
+          text: e.value,
+          featured: true,
+        )
+      else
+        entry(e.key, e.value, featured: true),
     ?notices['Atkinson Hyperlegible notice'],
     ?fonts,
     for (final k in notices.keys)
@@ -287,18 +304,19 @@ Future<String> flutterLicenceText() async {
   return b.toString();
 }
 
-/// The list with the entry for Flutter's licences ([name] = `about.flutter`) added at the end
+/// The list with the entry for Flutter's licences ([name] = `about.flutter`, [sub] = `about.flutterSub`) added at the end
 /// of "All parts".
-LicenceSet withFlutterEntry(LicenceSet set, String name) => LicenceSet(
-  featured: set.featured,
-  all: [
-    ...set.all,
-    LicenceEntry(
-      name: name,
-      licence: '',
-      text: '',
-      featured: false,
-      lazyText: flutterLicenceText,
-    ),
-  ],
-);
+LicenceSet withFlutterEntry(LicenceSet set, String name, String sub) =>
+    LicenceSet(
+      featured: set.featured,
+      all: [
+        ...set.all,
+        LicenceEntry(
+          name: name,
+          licence: sub,
+          text: '',
+          featured: false,
+          lazyText: flutterLicenceText,
+        ),
+      ],
+    );

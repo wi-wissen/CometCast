@@ -93,33 +93,40 @@ class _AddressLineState extends State<AddressLine> {
     final t = AppLocalizations.of(context);
     final via = t.startVia(widget.dom);
     if (_mode == _Mode.line) {
-      return Wrap(
-        key: const Key('address-line'),
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          HostText(via, host: widget.dom, style: s.type.small),
-          Text(' · ', style: s.type.small),
-          if (widget.policy)
-            Text(
-              t.startViaPolicy,
-              key: const Key('address-policy'),
-              style: s.type.small,
-            )
-          else
-            PTextLink(
-              key: const Key('address-change'),
-              label: t.startViaChange,
-              bold: true,
-              size: 13,
-              left: true,
-              onPressed: widget.locked
-                  ? () {}
-                  : () => setState(() {
-                      _mode = _Mode.field;
-                      _error = false;
-                    }),
-            ),
-        ],
+      // A box 44 high that starts at the code field's bottom edge, the text centred in it, in
+      // the link and in the policy variant alike (spec 15.7, N99).
+      return Container(
+        key: const Key('address-line-box'),
+        constraints: const BoxConstraints(minHeight: 44),
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          key: const Key('address-line'),
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            HostText(via, host: widget.dom, style: s.type.small),
+            Text(' · ', style: s.type.small),
+            if (widget.policy)
+              Text(
+                t.startViaPolicy,
+                key: const Key('address-policy'),
+                style: s.type.small,
+              )
+            else
+              PTextLink(
+                key: const Key('address-change'),
+                label: t.startViaChange,
+                bold: true,
+                size: 13,
+                left: true,
+                onPressed: widget.locked
+                    ? () {}
+                    : () => setState(() {
+                        _mode = _Mode.field;
+                        _error = false;
+                      }),
+              ),
+          ],
+        ),
       );
     }
     final checking = _mode == _Mode.checking;
@@ -178,11 +185,18 @@ class _AddressLineState extends State<AddressLine> {
     );
     // Laptop: on the field's right in one row if it fits, otherwise below (spec 15.7). The phone
     // page measures its height (intrinsics), so a layout builder is only used on the laptop.
-    return CallbackShortcuts(
-      bindings: {const SingleActivator(LogicalKeyboardKey.escape): _cancel},
-      child: s.laptop
-          ? LayoutBuilder(builder: (context, box) => block(box.maxWidth >= 480))
-          : block(false),
+    // The opened state replaces the box; its label stands 14 below the code field as for any
+    // field (N99).
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): _cancel},
+        child: s.laptop
+            ? LayoutBuilder(
+                builder: (context, box) => block(box.maxWidth >= 480),
+              )
+            : block(false),
+      ),
     );
   }
 }

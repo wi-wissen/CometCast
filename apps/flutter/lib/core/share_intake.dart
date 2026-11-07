@@ -90,6 +90,11 @@ abstract class ShareIntake {
 
   /// Deletes the cache copy of [path] (when the presentation of the item ends).
   Future<void> discard(String path);
+
+  /// Cancel and system Back on the share page: back to the app that shared, without ending Comet
+  /// Cast (spec 15.14 N112). Android: `moveTaskToBack`; the activity is finished only after a
+  /// cold start by the share.
+  Future<void> returnToCaller();
 }
 
 /// The platform channel implementation. A missing plugin (every platform but Android) is not
@@ -125,6 +130,17 @@ class ChannelShareIntake implements ShareIntake {
   }
 
   @override
+  Future<void> returnToCaller() async {
+    try {
+      await _channel.invokeMethod<void>('returnToCaller');
+    } on PlatformException {
+      // Nothing to do.
+    } on MissingPluginException {
+      // Not Android.
+    }
+  }
+
+  @override
   Future<void> discard(String path) async {
     try {
       await _channel.invokeMethod<void>('discardSharedItem', path);
@@ -145,6 +161,9 @@ class NoShareIntake implements ShareIntake {
 
   @override
   Future<void> discard(String path) async {}
+
+  @override
+  Future<void> returnToCaller() async {}
 
   @override
   Future<SharedItem?> take() async => null;

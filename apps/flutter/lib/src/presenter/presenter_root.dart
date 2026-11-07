@@ -9,7 +9,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
@@ -422,10 +421,11 @@ class PresenterRootState extends State<PresenterRoot>
         _nearbyConnectId == null &&
         _tvRow == null;
     if (wanted) {
-      tv.setHiddenAddresses({
-        for (final r in _nearby?.rows ?? const <NearbyRow>[])
-          displayHost(r.screen.server).split(':').first,
-      });
+      tv.setHiddenAddresses(
+        hiddenTvAddresses([
+          for (final r in _nearby?.rows ?? const <NearbyRow>[]) r.screen,
+        ]),
+      );
       tv.start();
     } else if (_tvRow == null) {
       tv.stop();
@@ -1044,11 +1044,13 @@ class PresenterRootState extends State<PresenterRoot>
 
   Future<String?> _pick(PickKind kind) {
     final t = AppLocalizations.of(context);
-    // The filter label names Office files only for the full set; the reduced sets have none
-    // (see docs/design/implementation-questions-flutter.md M).
-    final label = kind == PickKind.imagePdfOffice
-        ? t.sendContentPickerTypes
-        : '';
+    // Every filter is named (N109): the GTK dialog shows the name.
+    final label = switch (kind) {
+      PickKind.imagePdfOffice => t.sendContentPickerTypes,
+      PickKind.imagePdf => t.sendContentPickerTypesNoOffice,
+      PickKind.pdf => t.sendContentPickerPdf,
+      PickKind.photo => t.sendContentPickerPhotos,
+    };
     final f = widget.pickFileFor;
     return f != null ? f(label, kind) : widget.pickFile(label);
   }
@@ -1203,13 +1205,15 @@ class PresenterRootState extends State<PresenterRoot>
     if (item?.path != null) unawaited(_intake.discard(item!.path!));
   }
 
-  /// Cancel: closes the page; on Android the person is back in the app that shared.
+  /// Cancel: closes the page; on Android the person is back in the app that shared and Comet Cast
+  /// moves to the back with its join (`ShareBridge.returnToCaller`).
   void _closeShare() {
     _clearShare();
     if (widget.leaveApp != null) {
       widget.leaveApp!();
     } else {
-      SystemNavigator.pop();
+      // Back to the app that shared; Comet Cast and its join stay (N112).
+      unawaited(_intake.returnToCaller());
     }
     if (mounted) {
       _go(_session.isJoined ? PresenterPage.what : PresenterPage.firstRun);
@@ -1323,10 +1327,12 @@ class PresenterRootState extends State<PresenterRoot>
         () => loadLicences(
           desktop: _desktop,
           officeFonts: widget.core.officeWorkerPath() != null,
+          extraAssets: const {uxplayEntryName: uxplayLicenceAsset},
         );
     final flutterName = AppLocalizations.of(context).aboutFlutter;
+    final flutterSub = AppLocalizations.of(context).aboutFlutterSub;
     _licenceLoad = loader().then((v) {
-      final set = withFlutterEntry(v, flutterName);
+      final set = withFlutterEntry(v, flutterName, flutterSub);
       if (mounted) setState(() => _licences = set);
       return set;
     });

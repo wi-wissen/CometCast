@@ -9,7 +9,7 @@ import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../licences.dart';
 import '../beta.dart';
-import '../branding.g.dart';
+import '../branding_info.dart';
 import '../design/icons.dart';
 import '../design/spans.dart';
 import '../design/tokens.dart' show fontMono;
@@ -131,41 +131,56 @@ class PScrollPage extends StatelessWidget {
         ],
       ],
     );
+    // Phone: [footer] (common.back) stands in the fixed bottom action area, always visible, the
+    // content scrolls above it, also when the content is short (spec 15.14 N104). Laptop: it
+    // follows the content.
+    final scroll = CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 0),
+          sliver: SliverToBoxAdapter(child: spaced(header)),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad.left, 8, pad.right, 0),
+          sliver: SliverList.separated(
+            itemCount: itemCount,
+            itemBuilder: itemBuilder,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+          ),
+        ),
+        if (s.laptop)
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(pad.left, 24, pad.right, pad.bottom),
+            sliver: SliverToBoxAdapter(
+              child: Align(alignment: Alignment.centerLeft, child: footer),
+            ),
+          )
+        else
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 744),
-          child: CustomScrollView(
-            slivers: [
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 0),
-                sliver: SliverToBoxAdapter(child: spaced(header)),
-              ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(pad.left, 8, pad.right, 0),
-                sliver: SliverList.separated(
-                  itemCount: itemCount,
-                  itemBuilder: itemBuilder,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+          child: s.laptop
+              ? scroll
+              : Column(
+                  children: [
+                    Expanded(child: scroll),
+                    Padding(
+                      key: const Key('scroll-page-actions'),
+                      padding: EdgeInsets.fromLTRB(
+                        pad.left,
+                        0,
+                        pad.right,
+                        pad.bottom,
+                      ),
+                      child: SizedBox(width: double.infinity, child: footer),
+                    ),
+                  ],
                 ),
-              ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                  pad.left,
-                  24,
-                  pad.right,
-                  pad.bottom,
-                ),
-                sliver: SliverToBoxAdapter(
-                  // Phone: the full-width action as on every page; laptop: at the left.
-                  child: s.laptop
-                      ? Align(alignment: Alignment.centerLeft, child: footer)
-                      : footer,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -249,9 +264,10 @@ class AboutPage extends StatelessWidget {
     final t = AppLocalizations.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final de = languageCode == 'de';
-    final privacy = de ? Branding.privacyUrlDe : Branding.privacyUrlEn;
-    final imprint = de ? Branding.imprintUrlDe : Branding.imprintUrlEn;
-    const source = Branding.sourceUrl;
+    final b = BrandingInfo.current;
+    final privacy = de ? b.privacyUrlDe : b.privacyUrlEn;
+    final imprint = de ? b.imprintUrlDe : b.imprintUrlEn;
+    final source = b.sourceUrl;
     void open(String url) {
       final u = Uri.tryParse(url);
       if (u != null) onOpenUrl(u);
@@ -262,21 +278,21 @@ class AboutPage extends StatelessWidget {
         PTextLink(
           key: const Key('about-source'),
           label: t.aboutSource,
-          left: s.laptop,
+          left: true,
           onPressed: () => open('$source/tree/v$version'),
         ),
       if (privacy.isNotEmpty)
         PTextLink(
           key: const Key('about-privacy'),
           label: t.aboutPrivacy,
-          left: s.laptop,
+          left: true,
           onPressed: () => open(privacy),
         ),
       if (imprint.isNotEmpty)
         PTextLink(
           key: const Key('about-imprint'),
           label: t.aboutImprint,
-          left: s.laptop,
+          left: true,
           onPressed: () => open(imprint),
         ),
     ];
@@ -337,10 +353,10 @@ class AboutPage extends StatelessWidget {
                 key: const Key('about-licence'),
                 style: s.type.body.copyWith(color: p.fg2),
               ),
-              if (Branding.publisherName.isNotEmpty) ...[
+              if (b.publisherName.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
-                  t.aboutPublisher,
+                  t.aboutPublisher(b.publisherName),
                   key: const Key('about-publisher'),
                   style: s.type.small,
                 ),
@@ -350,9 +366,8 @@ class AboutPage extends StatelessWidget {
         ),
         if (links.isNotEmpty)
           Column(
-            crossAxisAlignment: s.laptop
-                ? CrossAxisAlignment.start
-                : CrossAxisAlignment.center,
+            // In-content links are left-aligned in both layouts (N104).
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: links,
           ),
         Column(

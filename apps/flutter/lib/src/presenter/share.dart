@@ -97,8 +97,12 @@ class ShareCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
+        // The disc keeps the position it has with a one-line meta line; a longer meta or
+        // refusal text grows downward (spec 15.14 N113).
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
+            key: const Key('share-disc'),
             width: 56,
             height: 56,
             decoration: BoxDecoration(
@@ -262,13 +266,14 @@ class SharePage extends StatelessWidget {
           PPrimaryButton(
             key: const Key('share-show'),
             label: room == null ? t.shareShowHere : t.shareShowOn(room!),
-            onPressed: onShow,
+            // Both buttons are disabled while an Office file converts (N113).
+            onPressed: converting == null ? onShow : null,
           ),
           if (onOtherScreen != null)
             PSecondaryButton(
               key: const Key('share-other'),
               label: t.shareOtherScreen,
-              onPressed: onOtherScreen,
+              onPressed: converting == null ? onOtherScreen : null,
             ),
         ] else
           PSecondaryButton(

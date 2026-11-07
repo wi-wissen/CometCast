@@ -14,6 +14,7 @@ import 'package:cometcast/core/miracast.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 import 'package:cometcast/miracast_controller.dart';
 import 'package:cometcast/miracast_page.dart';
+import 'package:cometcast/src/display/miracast_view.dart';
 import 'package:cometcast/src/presenter/kit.dart';
 
 import 'fake_miracast.dart';
