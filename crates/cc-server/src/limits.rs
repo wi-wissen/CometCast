@@ -117,6 +117,7 @@ pub(crate) struct Guard {
     create: Keyed,
     join: Keyed,
     http: Keyed,
+    ice: Keyed,
     state: Mutex<StateTable>,
     per_ip_connections: Mutex<HashMap<IpAddr, usize>>,
     /// All bad events (for the ALTCHA difficulty).
@@ -192,6 +193,7 @@ impl Guard {
             create: per_minute(cfg.create_room_per_min),
             join: per_minute(cfg.join_attempts_per_min),
             http: per_minute(cfg.http_per_min),
+            ice: per_minute(cfg.ice_per_min),
             cfg,
             state: Mutex::new(StateTable::default()),
             per_ip_connections: Mutex::new(HashMap::new()),
@@ -397,15 +399,30 @@ impl Guard {
         Ok(())
     }
 
-    /// A plain HTTP request (`/altcha/challenge`, `/ice-servers`).
+    /// A plain HTTP request to `/altcha/challenge`.
     pub(crate) fn check_http(&self, ip: IpAddr, now: Instant) -> Result<(), Deny> {
+        self.check_keyed(&self.http, self.cfg.http_per_min, ip, now)
+    }
+
+    /// A request to `/ice-servers`: its own bucket, separate from `check_http`.
+    pub(crate) fn check_ice(&self, ip: IpAddr, now: Instant) -> Result<(), Deny> {
+        self.check_keyed(&self.ice, self.cfg.ice_per_min, ip, now)
+    }
+
+    fn check_keyed(
+        &self,
+        bucket: &Keyed,
+        per_min: u32,
+        ip: IpAddr,
+        now: Instant,
+    ) -> Result<(), Deny> {
         self.housekeeping();
         if let Some(left) = self.banned_for(ip, now) {
             return Err(Deny::Banned(left));
         }
-        if self.http.check_key(&limit_key(ip)).is_err() {
+        if bucket.check_key(&limit_key(ip)).is_err() {
             self.note_event(now);
-            return Err(Deny::RateLimited(retry_after(self.cfg.http_per_min)));
+            return Err(Deny::RateLimited(retry_after(per_min)));
         }
         Ok(())
     }
@@ -574,6 +591,7 @@ mod tests {
             join_attempts_per_min: 6,
             failed_join_weight: 3,
             http_per_min: 2,
+            ice_per_min: 2,
             max_rooms: 10,
             max_connections: 2,
             ban_after_failed_joins: 3,
@@ -633,6 +651,26 @@ mod tests {
         assert!(g.check_http(ip("192.0.2.1"), now).is_ok());
         assert!(g.check_http(ip("192.0.2.1"), now).is_ok());
         assert!(g.check_http(ip("192.0.2.1"), now).is_err());
+    }
+
+    #[test]
+    fn ice_servers_have_their_own_bucket() {
+        let g = Guard::new(limits());
+        let now = Instant::now();
+        let a = ip("192.0.2.1");
+        // Use up the challenge bucket: the ICE list is still served.
+        assert!(g.check_http(a, now).is_ok());
+        assert!(g.check_http(a, now).is_ok());
+        assert!(g.check_http(a, now).is_err());
+        assert!(g.check_ice(a, now).is_ok());
+        assert!(g.check_ice(a, now).is_ok());
+        assert!(g.check_ice(a, now).is_err());
+        // And the other way round for another address.
+        let b = ip("192.0.2.2");
+        assert!(g.check_ice(b, now).is_ok());
+        assert!(g.check_ice(b, now).is_ok());
+        assert!(g.check_ice(b, now).is_err());
+        assert!(g.check_http(b, now).is_ok());
     }
 
     #[test]

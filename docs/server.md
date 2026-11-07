@@ -75,7 +75,7 @@ UNCERTAIN: every number is a placeholder.
 | --- | --- | --- | --- |
 | `mode` | | `internal` | `open` or `internal` (see below). |
 | `listen` | | `127.0.0.1:8443` | Address and port. UNCERTAIN: default port not decided. |
-| `web_dir` | | none | Serve the web app from the same address. |
+| `web_dir` | | none | Serve the web app from the same address. An **empty value** (`web_dir = ""`, `--web-dir ""`, `COMETCAST_WEB_DIR=`) means none: no files are served and every unknown path is `404` from the server itself. This is how to switch off the directory that the Docker image presets. |
 | `allowed_origins` | | `[]` | Web origins (`https://host[:port]`, exact) whose pages may use this relay from another site: CORS for `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`. Empty = same-origin only for HTTP, any browser origin on `/ws`. `*` = any origin, internal mode only. See [Web app on another origin](#web-app-on-another-origin). Env `COMETCAST_ALLOWED_ORIGINS`, CLI `--allowed-origins`. |
 | `default_join_mode` | `open` | `open` | Join mode of rooms whose creator names none (`open` or `confirm`; never `locked`). Web, Flutter and CLI clients send `open` themselves unless the person chose another mode. |
 | `allow_open_rooms` | `true` | `true` | `false` = rooms in join mode `open` are refused (`open_rooms_disabled`), also when a receiver switches an existing room to `open`. Needs `default_join_mode = "confirm"`. For operators who want approval everywhere. |
@@ -94,7 +94,8 @@ UNCERTAIN: every number is a placeholder.
 | `limits.create_room_per_min` | 6 | 60 | `create_room` per client address. |
 | `limits.join_attempts_per_min` | 20 | 120 | `join_room` per client address. |
 | `limits.failed_join_weight` | 5 | 2 | A failed join counts as this many attempts. |
-| `limits.http_per_min` | 30 | 300 | `/altcha/challenge` and `/ice-servers` per client address. |
+| `limits.http_per_min` | 30 | 300 | `/altcha/challenge` per client address. |
+| `limits.ice_per_min` | 30 | 300 | `/ice-servers` per client address. Its own bucket: it is no longer shared with `/altcha/challenge`, so a client that fetches the ICE list on every connect cannot use up the puzzle budget (and the other way round). |
 | `limits.max_rooms` | 10000 | 100000 | Rooms at the same time, whole server. |
 | `limits.max_connections` | 5000 | 20000 | Open WebSocket connections, whole server. |
 | `limits.ban_after_failed_joins` | 10 | 30 | Failed joins within the window cause a ban. |
@@ -278,7 +279,7 @@ bucket per address; a quota of N per minute also allows a burst of N):
 - `create_room` (`create_room_per_min`): the client gets `rate_limited`; the connection stays open.
 - `join_room` (`join_attempts_per_min`): same. A **failed** join (unknown or malformed
   code, full room) is counted harder: it costs `failed_join_weight` attempts.
-- `/altcha/challenge` and `/ice-servers` (`http_per_min`).
+- `/altcha/challenge` (`http_per_min`) and `/ice-servers` (`ice_per_min`): two separate buckets per address.
 - Whole server: `max_connections` (`503`) and `max_rooms` (`create_room` gets `rate_limited`).
 
 **Per connection (after the upgrade):** a token bucket limits messages and bytes per
@@ -389,11 +390,13 @@ clients already parse it; there is no `ttl` field because nothing expires):
 - With `[turn]` (internal mode only): STUN entry first (`[stun] urls` plus `[turn] stun_urls`, no
   duplicates), then the TURN entry with REST credentials, as below.
 - Neither configured: `404`. Clients (web, Rust cores, Swift core) read `404`, and any other failure,
-  as "no ICE servers" and connect without them.
+  as "no ICE servers" and connect without them; a `429` or `403` is told apart from that in the
+  web client's state and console log (`apps/web/src/core/relay.ts`), see
+  [implementation-questions](design/implementation-questions.md) (D1).
 - Open mode keeps its rules: `[turn]` is refused, ALTCHA is required to create rooms. The
   `/ice-servers` call itself needs **no ALTCHA** (a public STUN list is no secret and costs nothing
-  to hand out), but it obeys the allow/deny lists, bans and the per-address `limits.http_per_min`
-  (shared with `/altcha/challenge`), and CORS applies as for the other browser-called endpoints
+  to hand out), but it obeys the allow/deny lists, bans and the per-address `limits.ice_per_min`
+  (its own bucket, not shared with `/altcha/challenge`), and CORS applies as for the other browser-called endpoints
   (`allowed_origins`, see [Web app on another origin](#web-app-on-another-origin)).
 - The server only lists the URLs. The STUN service itself is a separate program (for example a
   STUN-only coturn; see the relay repository). STUN responses are small, but UDP source addresses can
@@ -428,7 +431,7 @@ fresh random user name per call would give every call a fresh coturn `user-quota
 would limit nothing. Now repeated calls of one client return the same user name (tested). Residual:
 (a) clients behind one NAT share one user name and its quota; (b) an attacker with many addresses
 (a botnet, or many IPv6 /64 networks) gets many user names; `/ice-servers` is also rate limited
-per address by `limits.http_per_min` (shared with `/altcha/challenge`), which does not help
+per address by `limits.ice_per_min` (its own bucket), which does not help
 against many addresses. `ttl` is an extra field that browsers ignore. UNCERTAIN: the plan says
 "about 1 h"; the keyed hash instead of the room code is our choice (the endpoint knows no room).
 

@@ -110,7 +110,7 @@ pub fn ice_servers_for(
 
 /// `GET /ice-servers`. 404 when neither `[stun]` nor `[turn]` is configured. A plain STUN
 /// list is public information (no credentials), so it needs no ALTCHA, but it obeys the access
-/// lists and the per-address `http_per_min` limit like every other HTTP endpoint.
+/// lists and the per-address `ice_per_min` limit (a bucket of its own, not shared with `/altcha/challenge`).
 pub(crate) async fn ice_servers_handler(
     State(state): State<AppState>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -120,7 +120,7 @@ pub(crate) async fn ice_servers_handler(
     if stun.is_empty() && turn.is_none() {
         return (StatusCode::NOT_FOUND, "no ICE servers configured\n").into_response();
     }
-    if let Err(deny) = state.guard.check_http(ip, Instant::now()) {
+    if let Err(deny) = state.guard.check_ice(ip, Instant::now()) {
         return crate::deny_response(deny);
     }
     let now = SystemTime::now()

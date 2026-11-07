@@ -97,8 +97,12 @@ pub struct LimitsConfig {
     pub join_attempts_per_min: u32,
     /// A failed join uses this many join attempts instead of one.
     pub failed_join_weight: u32,
-    /// Requests per minute to `/altcha/challenge` and `/ice-servers`.
+    /// Requests per minute to `/altcha/challenge`.
     pub http_per_min: u32,
+    /// Requests per minute to `/ice-servers`. Its own bucket: a client that fetches the ICE
+    /// list on every connect must not use up the budget of the ALTCHA puzzles, and a 429 on
+    /// the ICE list silently costs the client its STUN server.
+    pub ice_per_min: u32,
     /// Most rooms at the same time (whole server).
     pub max_rooms: usize,
     /// Most open WebSocket connections at the same time (whole server).
@@ -174,6 +178,7 @@ impl LimitsConfig {
                 join_attempts_per_min: 20,
                 failed_join_weight: 5,
                 http_per_min: 30,
+                ice_per_min: 30,
                 max_rooms: 10_000,
                 max_connections: 5_000,
                 ban_after_failed_joins: 10,
@@ -204,6 +209,7 @@ impl LimitsConfig {
                 join_attempts_per_min: 120,
                 failed_join_weight: 2,
                 http_per_min: 300,
+                ice_per_min: 300,
                 max_rooms: 100_000,
                 max_connections: 20_000,
                 ban_after_failed_joins: 30,
@@ -487,6 +493,7 @@ impl ServerConfig {
             ("limits.join_attempts_per_min", l.join_attempts_per_min),
             ("limits.failed_join_weight", l.failed_join_weight),
             ("limits.http_per_min", l.http_per_min),
+            ("limits.ice_per_min", l.ice_per_min),
             ("limits.ban_after_failed_joins", l.ban_after_failed_joins),
             ("limits.msg_rate_per_sec", l.msg_rate_per_sec),
             ("limits.msg_burst", l.msg_burst),

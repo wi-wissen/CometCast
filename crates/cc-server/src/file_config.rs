@@ -101,6 +101,7 @@ struct FileLimits {
     join_attempts_per_min: Option<u32>,
     failed_join_weight: Option<u32>,
     http_per_min: Option<u32>,
+    ice_per_min: Option<u32>,
     max_rooms: Option<usize>,
     max_connections: Option<usize>,
     ban_after_failed_joins: Option<u32>,
@@ -213,7 +214,13 @@ impl FileConfig {
             c.listen_addr = v;
         }
         if let Some(v) = self.web_dir {
-            c.web_dir = Some(v);
+            // An empty path means "serve no files" (so `COMETCAST_WEB_DIR=` switches off the
+            // directory that a Docker image presets); `/` and `/anything` are then 404.
+            c.web_dir = if v.as_os_str().is_empty() {
+                None
+            } else {
+                Some(v)
+            };
         }
         if let Some(v) = self.allowed_origins {
             if let StringList::One(text) = &v {
@@ -289,6 +296,9 @@ impl FileConfig {
             }
             if let Some(v) = l.http_per_min {
                 d.http_per_min = v;
+            }
+            if let Some(v) = l.ice_per_min {
+                d.ice_per_min = v;
             }
             if let Some(v) = l.max_rooms {
                 d.max_rooms = v;
@@ -596,6 +606,42 @@ mod tests {
             .try_into()
             .map_err(|e| ConfigError::new(format!("{e}")))?;
         f.into_server_config()
+    }
+
+    #[test]
+    fn empty_web_dir_means_no_static_files() {
+        // From the file, from `--set` and from the environment (the Docker image presets
+        // COMETCAST_WEB_DIR; an empty value must switch the directory off, not serve "").
+        let c = load_config_from_str("web_dir = \"\"\n").unwrap();
+        assert!(c.web_dir.is_none());
+        let c = load_config(None, &[("web_dir".into(), String::new())]).unwrap();
+        assert!(c.web_dir.is_none());
+        let o = overrides_from_env([("COMETCAST_WEB_DIR".to_string(), String::new())].into_iter());
+        assert_eq!(o, vec![("web_dir".to_string(), String::new())]);
+        assert!(load_config(None, &o).unwrap().web_dir.is_none());
+        // A later empty override wins over an earlier real path.
+        let c = load_config(
+            None,
+            &[
+                ("web_dir".into(), "/srv/web".into()),
+                ("web_dir".into(), String::new()),
+            ],
+        )
+        .unwrap();
+        assert!(c.web_dir.is_none());
+        // A real path still works.
+        let c = load_config(None, &[("web_dir".into(), "/srv/web".into())]).unwrap();
+        assert_eq!(c.web_dir.as_deref(), Some(Path::new("/srv/web")));
+    }
+
+    #[test]
+    fn ice_per_min_is_its_own_setting() {
+        let open = load_config(None, &[("mode".into(), "open".into())]).unwrap();
+        assert_eq!(open.limits.ice_per_min, 30);
+        let c = load_config(None, &[("limits.ice_per_min".into(), "77".into())]).unwrap();
+        assert_eq!(c.limits.ice_per_min, 77);
+        assert_eq!(c.limits.http_per_min, 300);
+        assert!(load_config(None, &[("limits.ice_per_min".into(), "0".into())]).is_err());
     }
 
     #[test]
