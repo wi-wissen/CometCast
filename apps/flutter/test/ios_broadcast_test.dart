@@ -329,6 +329,18 @@ void main() {
       expect(args!['handover'], 'abcDEF-_123');
     });
 
+    test(
+      'option (a) of the test builds can never be on in a release build',
+      () {
+        expect(iosOptionAAllowed(release: true, defined: true), isFalse);
+        expect(iosOptionAAllowed(release: true, defined: false), isFalse);
+        expect(iosOptionAAllowed(release: false, defined: false), isFalse);
+        expect(iosOptionAAllowed(release: false, defined: true), isTrue);
+        // Without the define (all tests) the hand-over is on.
+        expect(iosOptionA, isFalse);
+      },
+    );
+
     test('hand-over tokens are 128 random bits as base64url', () {
       final t = newHandoverToken();
       expect(t, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));

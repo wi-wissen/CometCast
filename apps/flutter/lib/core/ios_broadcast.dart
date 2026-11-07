@@ -20,7 +20,24 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart';
+
+/// Test builds only (native-apps.md 20.5, step 7): option (a) of the F2 answer, the extension
+/// joins on its own connection without the hand-over token (the host is asked as for any join;
+/// the extension sends the name, the app shows the waiting page with the extension's check number
+/// and joins again with the same code afterwards). Switched on with
+/// `--dart-define=COMETCAST_IOS_OPTION_A=true`; **a release build ignores it** (see
+/// [iosOptionAAllowed]), so the hand-over cannot be turned off in a shipped app.
+const _iosOptionADefine = bool.fromEnvironment('COMETCAST_IOS_OPTION_A');
+
+/// Whether option (a) is on: only when [defined] and the build is not a release build.
+bool iosOptionAAllowed({required bool release, required bool defined}) =>
+    defined && !release;
+
+/// Option (a) for this build (never true in a release build).
+bool get iosOptionA =>
+    iosOptionAAllowed(release: kReleaseMode, defined: _iosOptionADefine);
 
 /// Id of the single entry that `captureInfo` lists on iOS (`IOS_BROADCAST_ID` in
 /// crates/cc-ffi/src/api.rs; a Rust test pins the value).

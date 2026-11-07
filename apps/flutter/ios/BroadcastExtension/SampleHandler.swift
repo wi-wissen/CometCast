@@ -310,7 +310,16 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
     }
 
     private func localizedMessage(for error: BroadcastErrorName) -> String {
-        NSLocalizedString("error.\(error.rawValue)", comment: "Shown by iOS when the broadcast ends")
+        // The refusals of a join (denied, timed out, locked) have no text of their own in the
+        // extension: the app shows their normal pages (native-apps.md 20.5, step 6), and iOS gets
+        // the neutral "The broadcast has ended." (docs/design/implementation-questions-flutter.md,
+        // I4).
+        let key: String
+        switch error {
+        case .joinDenied, .approvalTimeout, .roomLocked: key = "error.none"
+        default: key = "error.\(error.rawValue)"
+        }
+        return NSLocalizedString(key, comment: "Shown by iOS when the broadcast ends")
     }
 
     // MARK: memory

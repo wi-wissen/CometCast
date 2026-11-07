@@ -741,7 +741,8 @@ class PresenterRootState extends State<PresenterRoot>
     final server = _sessionServer ?? _server;
     final name = _myName;
     final token = newHandoverToken();
-    final held = await _session.requestHandover(token);
+    // Test builds only: option (a) skips the hand-over (never in a release build).
+    final held = iosOptionA ? false : await _session.requestHandover(token);
     if (!mounted) return;
     await _session.disconnect();
     if (!mounted) return;
