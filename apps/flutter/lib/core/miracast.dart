@@ -464,8 +464,9 @@ class FfiMiracastCore implements MiracastCore {
       jsonEncode({'name': name, 'pairing': pairing.wire}),
     );
     final p = a.alloc(bytes.length);
-    if (p == nullptr)
+    if (p == nullptr) {
       throw const MiracastCallException(-2, 'allocation failed');
+    }
     try {
       p.asTypedList(bytes.length).setAll(0, bytes);
       final rc = a.start(p, bytes.length);
@@ -562,8 +563,9 @@ class _Api {
   /// Call a function that writes JSON into a buffer and decode it.
   Map<String, Object?> readJson(_BufDart fn) {
     final buf = _json ??= alloc(_jsonCap);
-    if (buf == nullptr)
+    if (buf == nullptr) {
       throw const MiracastCallException(-2, 'allocation failed');
+    }
     final n = fn(buf, _jsonCap);
     if (n < 0) throw MiracastCallException(n);
     final decoded = jsonDecode(utf8.decode(buf.asTypedList(n)));
@@ -573,8 +575,9 @@ class _Api {
 
   MiracastFrame? pollFrame() {
     final info = _info ??= alloc(sizeOf<CcFrameInfo>()).cast<CcFrameInfo>();
-    if (info == nullptr)
+    if (info == nullptr) {
       throw const MiracastCallException(-2, 'allocation failed');
+    }
     if (_frame == null) {
       _frame = alloc(_defaultFrameBytes);
       _frameCap = _defaultFrameBytes;

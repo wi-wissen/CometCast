@@ -94,8 +94,9 @@ class MiracastController extends ChangeNotifier {
     if (_libraryIssue != null) return _libraryIssue;
     if (_state.issue != null) return _state.issue;
     if (phase == MiracastPhase.idle) return _probe?.issue;
-    if (_state.adapter == 'not_optimized')
+    if (_state.adapter == 'not_optimized') {
       return MiracastIssue.adapterNotOptimized;
+    }
     return null;
   }
 
