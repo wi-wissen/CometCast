@@ -16,6 +16,7 @@
     "e2e:m2": "node e2e/m2.spec.mjs",
     "e2e:content": "node e2e/native-content.spec.mjs",
     "e2e:open": "node e2e/open-mode.spec.mjs",
+    "e2e:media": "node e2e/media.spec.mjs",
     "e2e:pdf": "node e2e/pdf.spec.mjs",
     "build:wasm": "bash scripts/build-wasm.sh"
   },

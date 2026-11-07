@@ -497,6 +497,7 @@ wins; closing returns to the live screen or to waiting):
   (`xn--...`) so that look-alike names are visible, with the whole address under it. **Nothing is opened
   automatically**: Open asks Rust to validate the address again, checks the scheme once more in Dart, and only then calls
   `url_launcher` (external application mode). Dismiss has the initial focus, so a stray Enter does not open anything.
+  The web receiver can additionally play media links after a click (see [web-m2.md](web-m2.md#media-links)); **the Flutter card does not do that yet** (UNCERTAIN, needs a media package).
 
 Failures are calm, translated notes chosen by an error **code** (`DocumentRejected`, `TooLarge`, protocol
 violations, `transfer_timeout`, worker unavailable, render failed); text that came from the sender is never shown,

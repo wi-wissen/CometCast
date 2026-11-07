@@ -2,11 +2,13 @@
 <script setup lang="ts">
 // Content sent by the sender: an image (fit contain, with a close button) or a link confirmation card.
 // A link is opened only by a click on "Open" here, never automatically.
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReceivedContent } from '../core/receiverSession'
 import type { PageBitmap } from '../core/pdfRenderer'
 import DocumentView from './DocumentView.vue'
+import MediaPlayer from './MediaPlayer.vue'
+import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, playerReduce, type MediaErrorCode, type PlayerEvent } from '../core/media'
 
 const props = defineProps<{ content: ReceivedContent | null; renderPage: (page: number, width: number) => Promise<PageBitmap> }>()
 const emit = defineEmits<{ close: []; prev: []; next: [] }>()
@@ -14,6 +16,32 @@ const { t } = useI18n()
 const dismissBtn = ref<HTMLButtonElement | null>(null)
 const closeBtn = ref<HTMLButtonElement | null>(null)
 
+// Media links: a link whose path ends in a media extension gets a "Play" button. One player at a time;
+// new content or a close always returns to the card, which removes (and releases) the element.
+const player = ref(initialPlayer)
+function dispatch(e: PlayerEvent) {
+  player.value = playerReduce(player.value, e)
+}
+const mediaKind = computed(() => (props.content?.kind === 'link' ? classifyMediaUrl(props.content.url) : null))
+const hlsOk = computed(() => mediaKind.value !== 'hls' || canPlayHlsNatively())
+const canPlay = computed(() => mediaKind.value !== null && hlsOk.value)
+const showPlayer = computed(() => props.content?.kind === 'link' && mediaKind.value !== null && (player.value.phase === 'loading' || player.value.phase === 'playing'))
+const mediaError = computed(() => (player.value.phase === 'error' ? player.value.code : null))
+function onMediaError(code: MediaErrorCode) {
+  dispatch({ type: 'error', code })
+  void nextTick(() => playBtn.value?.focus())
+}
+function onMediaStop() {
+  // Stop closes the whole link content, like Dismiss.
+  dispatch({ type: 'stop' })
+  emit('close')
+}
+const playBtn = ref<HTMLButtonElement | null>(null)
+
+watch(
+  () => props.content,
+  () => dispatch({ type: 'stop' }),
+)
 watch(
   () => props.content,
   async (c) => {
@@ -80,6 +108,15 @@ function onKey(e: KeyboardEvent) {
       {{ t('receive.content.close') }}
     </button>
 
+    <MediaPlayer
+      v-else-if="content.kind === 'link' && showPlayer && mediaKind"
+      :url="content.url"
+      :kind="mediaKind"
+      :host="content.host"
+      @playing="dispatch({ type: 'playing' })"
+      @error="onMediaError"
+      @stop="onMediaStop"
+    />
     <div v-else-if="content.kind === 'link'" class="absolute inset-0 z-[26] grid place-items-center bg-black/55 p-4" @keydown="onKey">
       <div
         role="alertdialog"
@@ -96,7 +133,22 @@ function onKey(e: KeyboardEvent) {
         <p id="link-card-desc" class="mt-1 text-sm text-muted">{{ t('receive.link.hint') }}</p>
         <div class="mt-3 text-xs font-semibold uppercase tracking-wider text-muted">{{ t('receive.link.address') }}</div>
         <p data-testid="link-url" class="mt-1 break-all rounded-cc border border-line bg-sunk px-2 py-1.5 font-mono text-sm">{{ content.url }}</p>
+        <p v-if="canPlay" data-testid="media-hint" class="mt-3 text-sm text-muted">{{ t('receive.media.hint', { host: content.host }) }}</p>
+        <p v-else-if="mediaKind === 'hls'" data-testid="media-hls-unsupported" class="mt-3 text-sm text-muted">{{ t('receive.media.hlsUnsupported') }}</p>
+        <p v-if="mediaError" data-testid="media-error" role="alert" class="mt-3 text-sm text-err">
+          {{ t(`receive.media.error.${mediaError}`, { host: content.host }) }}
+        </p>
         <div class="mt-4 flex flex-wrap gap-3">
+          <button
+            v-if="canPlay"
+            ref="playBtn"
+            type="button"
+            data-testid="media-play"
+            class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg"
+            @click="dispatch({ type: 'play' })"
+          >
+            {{ mediaError ? t('receive.media.retry') : t('receive.media.play', { host: content.host }) }}
+          </button>
           <a
             :href="content.url"
             target="_blank"
