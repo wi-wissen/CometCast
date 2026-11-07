@@ -111,6 +111,14 @@ class SenderController extends ChangeNotifier {
   /// iOS: why the broadcast failed or ended (null while it runs or after a clean stop).
   IosBroadcastError? broadcastError;
 
+  /// iOS: the token of the way back that the extension got from the display before it left
+  /// (native-apps.md 20.5, step 5), or null (an old or a web display, or the broadcast failed).
+  String? nextHandover;
+
+  /// iOS: the broadcast ended cleanly (the person or the app stopped it): the app joins again
+  /// and lands on "What to show". False after a failure or when the display left.
+  bool broadcastEndedCleanly = false;
+
   /// Technical error text in English (shown after a translated "Error:" prefix).
   String? error;
 
@@ -177,6 +185,8 @@ class SenderController extends ChangeNotifier {
     broadcastNotStarted = false;
     broadcastStatus = null;
     broadcastError = null;
+    nextHandover = null;
+    broadcastEndedCleanly = false;
     error = null;
   }
 
@@ -190,6 +200,8 @@ class SenderController extends ChangeNotifier {
     int maxDimension = 1280,
     int fps = 30,
     int bitrate = 2500000,
+    String? name,
+    String? handover,
   }) async {
     final ios = iosBroadcast;
     if (ios == null) {
@@ -219,6 +231,8 @@ class SenderController extends ChangeNotifier {
           maxDimension: maxDimension,
           fps: fps,
           bitrate: bitrate,
+          name: name,
+          handover: handover,
         ),
       );
       if (_generation != generation) return;
@@ -254,27 +268,55 @@ class SenderController extends ChangeNotifier {
     droppedUnits = s.dropped;
     framesSent = s.sent;
     switch (s.state) {
+      case IosBroadcastState.pending:
+        // The display did not let the extension in by itself (no token, an old display, an
+        // expired token): the waiting page with the extension's check number (20.5, step 6).
+        approval = ApprovalWait(
+          check: s.check ?? 0,
+          timeoutSecs: s.timeoutSecs ?? 60,
+        );
+        phase = SenderPhase.waitingApproval;
       case IosBroadcastState.starting:
       case IosBroadcastState.connecting:
       case IosBroadcastState.waiting:
+        approval = null;
         phase = SenderPhase.starting;
       case IosBroadcastState.streaming:
       case IosBroadcastState.reconnecting:
       case IosBroadcastState.paused:
+        approval = null;
         phase = SenderPhase.running;
       case IosBroadcastState.ended:
         if (s.error == IosBroadcastError.peerLeft) {
           receiverLeft = true;
         } else {
           captureStopped = true;
+          broadcastEndedCleanly = true;
+          nextHandover = s.nextHandover;
         }
         _endBroadcast(keepStopFlag: true);
         return;
       case IosBroadcastState.failed:
       case IosBroadcastState.lost:
-        broadcastError = s.state == IosBroadcastState.lost
-            ? IosBroadcastError.internalError
-            : s.error;
+        final refused = switch (s.error) {
+          IosBroadcastError.joinDenied => JoinRefusal.denied,
+          IosBroadcastError.approvalTimeout => JoinRefusal.timedOut,
+          IosBroadcastError.roomLocked =>
+            approval != null
+                ? JoinRefusal.lockedWhileWaiting
+                : JoinRefusal.locked,
+          _ => null,
+        };
+        if (refused != null && s.state == IosBroadcastState.failed) {
+          // The normal error pages of a refused join (20.5, step 6).
+          refusal = refused;
+          refusedAt = joinClock();
+          approval = null;
+        } else {
+          broadcastError = s.state == IosBroadcastState.lost
+              ? IosBroadcastError.internalError
+              : s.error;
+        }
         _endBroadcast(keepStopFlag: true);
         return;
     }
@@ -459,6 +501,38 @@ class SenderController extends ChangeNotifier {
     final feeder = _feeder;
     _feeder = null;
     if (feeder != null) unawaited(feeder.stop());
+  }
+
+  /// iOS: ask the extension to end the broadcast and wait for its last report, which carries the
+  /// token of the way back (native-apps.md 20.5, step 5), at most [timeout]. The state then is
+  /// [SenderPhase.ended] with [broadcastEndedCleanly] and [nextHandover]; when the extension
+  /// says nothing in time the broadcast is ended here without a token.
+  Future<void> stopBroadcastAndWait({
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final ios = iosBroadcast;
+    if (ios == null || (_broadcastSub == null && !awaitingBroadcast)) {
+      return stop();
+    }
+    final done = Completer<void>();
+    void watch() {
+      if (!isActive && !done.isCompleted) done.complete();
+    }
+
+    addListener(watch);
+    try {
+      await ios.stop();
+    } catch (_) {
+      // Nothing to stop, or the platform is gone: the timeout below ends it.
+    }
+    await done.future.timeout(timeout, onTimeout: () {});
+    removeListener(watch);
+    if (isActive) {
+      // The extension did not report: it was gone already or is stuck. No way back token.
+      broadcastEndedCleanly = true;
+      captureStopped = true;
+      _endBroadcast(keepStopFlag: true);
+    }
   }
 
   Future<void> stop() async {

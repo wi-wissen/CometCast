@@ -69,6 +69,7 @@ String errorsText(AppLocalizations t, String code) => switch (code) {
   'peer_failed' => t.errorsPeerFailed,
   'capture_denied' => t.errorsCaptureDenied,
   'capture_failed' => t.errorsCaptureFailed,
+  'capture_unavailable' => t.errorsCaptureUnavailable,
   'join_pending' => t.errorsJoinPending,
   'join_denied' => t.errorsJoinDenied,
   'room_locked' => t.errorsRoomLocked,
@@ -221,8 +222,21 @@ class PresenterRootState extends State<PresenterRoot>
   /// iOS only: the broadcast extension joins on its own, outside the session.
   SenderController? _ios;
 
+  /// iOS: the room the extension was given, for the way back after the broadcast (20.5).
+  ({String code, String server, String? name})? _iosRoom;
+
+  /// iOS: the token the display holds for this person since the hand-over of the current
+  /// broadcast; reused when the broadcast is not started at all (the sheet is cancelled).
+  String? _iosOwnToken;
+
+  /// iOS: the way back was taken for this broadcast already.
+  bool _iosRejoined = false;
+
   bool get _desktop =>
       widget.desktop ?? !(Platform.isAndroid || Platform.isIOS);
+
+  /// iOS: the broadcast runs (its status fills the Presenting page).
+  bool get _iosPresenting => _ios != null && _ios!.isActive;
 
   PresenterDevice _deviceKind(BuildContext context) {
     final d = widget.device;
@@ -564,6 +578,9 @@ class PresenterRootState extends State<PresenterRoot>
         } else {
           _go(PresenterPage.firstRun);
         }
+      case ErrorAction.back:
+        // Still connected: "What to show" (the join was kept); without a session the start page.
+        _go(_session.isJoined ? PresenterPage.what : PresenterPage.firstRun);
       case ErrorAction.showFile:
         _go(PresenterPage.file);
       case ErrorAction.showLink:
@@ -712,14 +729,26 @@ class PresenterRootState extends State<PresenterRoot>
     if (!_session.presentEncoded()) _releaseCapture();
   }
 
-  /// iOS: the broadcast extension joins on its own connection, so the session is left first and
-  /// the extension is asked in the system sheet (docs/design/implementation-questions-flutter.md,
-  /// F2). When it ends the person is back at the first page with the same code.
+  /// iOS: the broadcast extension joins on its own connection (the app is suspended while another
+  /// app is in front), so the approval is handed over (native-apps.md 20.5, N32): the display is
+  /// asked to hold a single-use token for this person, the token goes to the extension with the
+  /// name, the session is left, and the system sheet opens. A display that does not answer
+  /// (old, web) leaves the extension to join the ordinary way: the waiting page with the
+  /// extension's check number (step 6).
   Future<void> _startIos() async {
     final code = _roomCode;
     if (code == null) return;
+    final server = _sessionServer ?? _server;
+    final name = _myName;
+    final token = newHandoverToken();
+    // Test builds only: option (a) skips the hand-over (never in a release build).
+    final held = iosOptionA ? false : await _session.requestHandover(token);
+    if (!mounted) return;
     await _session.disconnect();
     if (!mounted) return;
+    _iosRoom = (code: code, server: server, name: name);
+    _iosOwnToken = held ? token : null;
+    _iosRejoined = false;
     final ios = (_ios ??= SenderController(
       core: widget.core,
       udpBind: widget.settings.udpBind,
@@ -727,7 +756,38 @@ class PresenterRootState extends State<PresenterRoot>
     )..addListener(_onIos));
     widget.settings.rememberServer();
     _go(PresenterPage.firstRun);
-    await ios.startBroadcast(code: code, server: _sessionServer ?? _server);
+    await ios.startBroadcast(
+      code: code,
+      server: server,
+      name: name,
+      handover: _iosOwnToken,
+    );
+  }
+
+  /// iOS, after the broadcast: join again and land on "What to show" (step 5). With the token of
+  /// the way back the display lets the person in without a dialog; without one this is
+  /// Connect again (the waiting page where the room asks, step 6). Once per broadcast.
+  void _rejoinIos({String? token}) {
+    if (_iosRejoined) return;
+    _iosRejoined = true;
+    final r = _iosRoom;
+    if (r == null) {
+      _go(PresenterPage.firstRun);
+      return;
+    }
+    _roomCode = r.code;
+    _sessionServer = r.server;
+    _waited = false;
+    _lastPhase = PresenterSessionPhase.idle;
+    _lastStartFailure = null;
+    _session.connect(
+      code: r.code,
+      server: r.server,
+      name: r.name,
+      handover: token,
+    );
+    _go(PresenterPage.firstRun);
+    setState(() {});
   }
 
   void _onIos() {
@@ -757,12 +817,17 @@ class PresenterRootState extends State<PresenterRoot>
           _go(PresenterPage.error);
         } else if (c.broadcastError != null || c.error != null) {
           _showError(iosErrorCode(c.broadcastError));
+        } else if (c.broadcastEndedCleanly) {
+          // Stopped by the person or the app: the extension asked the display for the way back.
+          _rejoinIos(token: c.nextHandover);
         } else if (_page != PresenterPage.error) {
           _go(PresenterPage.firstRun);
         }
       case SenderPhase.idle:
-        if (c.broadcastNotStarted && _page != PresenterPage.firstRun) {
-          _go(PresenterPage.firstRun);
+        if (c.broadcastNotStarted) {
+          // The sheet was cancelled or nobody started the broadcast: the display still holds
+          // the token of the hand-over (60 s); with it the person is back without a dialog.
+          _rejoinIos(token: _iosOwnToken);
         }
       case SenderPhase.starting:
         break;
@@ -838,8 +903,8 @@ class PresenterRootState extends State<PresenterRoot>
   /// Ends the presentation only: the presenter stays joined (decision N5).
   Future<void> _stop() async {
     if (_ios != null && _ios!.isActive) {
-      await _ios!.stop();
-      _go(PresenterPage.firstRun);
+      // The extension reports "ended" with the token of the way back; `_onIos` joins again.
+      await _ios!.stopBroadcastAndWait();
       return;
     }
     _session.stopPresenting();
@@ -942,8 +1007,9 @@ class PresenterRootState extends State<PresenterRoot>
         return PresentingPage(
           kind: _kind,
           pdf: c.contentKind == UiContentKind.pdf,
-          room: c.roomName,
-          sas: c.connectionCode,
+          // iOS: the extension is connected, not this session; its status has both lines.
+          room: _iosPresenting ? _ios!.broadcastStatus?.roomName : c.roomName,
+          sas: _iosPresenting ? _ios!.broadcastStatus?.sas : c.connectionCode,
           page: c.page,
           pages: c.pages,
           onPrev: () => c.sendCommand(const UiContentCmd.prevPage()),
@@ -958,6 +1024,8 @@ class PresenterRootState extends State<PresenterRoot>
           lockedWhile: _lockedWhile,
           cooldown: _error == ErrorKind.denied ? _cooldown : 0,
           otherWhy: _errorCode == null ? null : errorsText(t, _errorCode!),
+          // No capture backend: Back to "What to show", never Try again (N33).
+          useBack: _errorCode == 'capture_unavailable',
           relayWhy: _relayWhy,
           canRescan: widget.scanQr != null && !_desktop,
           onAction: _errorAction,

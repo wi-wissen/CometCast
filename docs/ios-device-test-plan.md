@@ -99,6 +99,20 @@ Receiver for all B tests: the web receiver in a browser, or a desktop receiver. 
 | B11 | German UI and system language: repeat B9 and B9b | Alerts and app texts are German, no raw English technical text | Strings of the extension come from its own `Localizable.strings` |
 | B12 | iPad: 1080p-class source (largest iPad), 10 minutes, scrolling content | Stable, no crash. This is the **spike 4** run: see M1 | |
 
+### B13. Hand-over of the approval (N32, [native-apps.md](design/native-apps.md) 20.5)
+
+Receiver: a **native** display (desktop or Android TV app) in **Approval on**, and the same with **Open**. Use the release build. Record the iOS version.
+
+| Id | Steps | Expected | UNCERTAIN / look for |
+| --- | --- | --- | --- |
+| B13a | Phone: Connect (the host allows once), Screen, confirm "Start Broadcast" | **No second request** on the display, no "connected" or "left" toast. The phone shows the Presenting page with the room name and the security code (the same digits as on the display). The display shows the picture | Whether the extension joined with the token at all (look at `cc-ios.log`: no `pending`). If the host is asked again, record whether the display is old, or the token timed out (60 s) |
+| B13b | Stop in the app (and in another run: red status pill, and Control Center) | The phone is back on "What to show", still connected (header with the room name). The display is Idle with the same code, no "left" toast and no request | `nextHandover` in `status.json` appears before `ended`; if the app ends up on the start page instead, the rejoin with the code is the fallback: record why |
+| B13c | Then show a file | Works without a new request | |
+| B13d | Cancel the system sheet instead of starting | After the app's start timeout the phone is back on "What to show" without a request (its own token is still valid for 60 s); after more than 60 s it joins like Connect (waiting page in Approval on) | |
+| B13e | Against an **old server** (or a web display): Connect, Screen | The extension is an ordinary request: the waiting page with the extension's check number and countdown (the same number as on the display), then Presenting after the host allows | Name shown on the display's request is the person's name |
+| B13f | Display in **Locked**, then Screen | The error page of a locked room (no hand-over) | |
+| B13g | Open the sheet and wait 70 s before tapping Start | An ordinary request (the token expired) | |
+
 ### M1. Memory (the decisive test, spike 4)
 
 | Id | Steps | Expected | UNCERTAIN / look for |

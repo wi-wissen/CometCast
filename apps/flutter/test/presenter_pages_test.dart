@@ -442,7 +442,11 @@ void main() {
     ) async {
       await pumpPage(
         t,
-        const RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
+        const RelayConfirmPage(
+          host: 'relay.example.org',
+          onCancel: nop,
+          onUse: nop,
+        ),
       );
       expect(
         find.textContaining('A link asks this app to use the relay'),
@@ -464,7 +468,11 @@ void main() {
     testWidgets('the relay page in German is du', (t) async {
       await pumpPage(
         t,
-        const RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
+        const RelayConfirmPage(
+          host: 'relay.example.org',
+          onCancel: nop,
+          onUse: nop,
+        ),
         locale: const Locale('de'),
       );
       expect(find.textContaining('Mach nur weiter'), findsOneWidget);
@@ -591,6 +599,11 @@ void main() {
     testWidgets('failed: the inline error and the retry button', (t) async {
       await pumpCodec(t, const UiCodecState.failed(reason: 'network error'));
       expect(find.byKey(const Key('codec-failed')), findsOneWidget);
+      expect(
+        find.text('The video codec could not be downloaded.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('network error'), findsNothing);
       final style = t
           .widget<Text>(find.byKey(const Key('codec-failed')))
           .style!;
@@ -611,10 +624,17 @@ void main() {
     testWidgets('unsupported: the other page with the codec text', (t) async {
       await pumpCodec(t, const UiCodecState.unsupported(reason: 'no bz2'));
       expect(find.text('Something went wrong'), findsOneWidget);
+      // The key's text only: no technical reason (N46); the action is Back, never Try again.
       expect(
-        find.textContaining('This system has no video codec to download'),
+        find.text(
+          'This system cannot use the video codec, so shared screens cannot be shown or sent here.',
+        ),
         findsOneWidget,
       );
+      expect(find.textContaining('no bz2'), findsNothing);
+      expect(find.byKey(const Key('error-back')), findsOneWidget);
+      expect(find.text('Back'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
       noMaterial(t);
     });
 

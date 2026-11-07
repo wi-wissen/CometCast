@@ -116,6 +116,17 @@ pub enum Message {
         /// The page count, from 1, at least `page`.
         pages: u32,
     },
+    /// Presenter to display (iOS, native-apps.md 20.5): "hold this single-use token, the
+    /// broadcast extension will join with it". The token is 1 to 64 characters of the
+    /// base64url alphabet. A display without hand-over support does not answer.
+    Handover {
+        /// The token (checked like `join_room.handover`).
+        token: String,
+    },
+    /// Display to presenter: the token of a `handover` message is stored. A presenter that
+    /// does not get this within a few seconds joins the ordinary way (the display then asks
+    /// the host as for any join).
+    HandoverOk,
 }
 
 /// Why a text message was refused.
@@ -211,6 +222,15 @@ pub fn parse_message(text: &str, max_image: u64, max_document: u64) -> Result<Me
                 _ => Err(ParseError::InvalidFields),
             }
         }
+        "handover" => {
+            let token = o
+                .get("token")
+                .and_then(|t| t.as_str())
+                .and_then(|t| cc_proto::sanitize_handover(Some(t)))
+                .ok_or(ParseError::InvalidFields)?;
+            Ok(Message::Handover { token })
+        }
+        "handover_ok" => Ok(Message::HandoverOk),
         _ => Err(ParseError::UnknownKind),
     }
 }
@@ -389,6 +409,8 @@ impl Message {
             Message::DocumentEnd => json!({"kind": "document_end"}),
             Message::Link { url } => json!({"kind": "link", "url": url}),
             Message::Page { page, pages } => json!({"kind": "page", "page": page, "pages": pages}),
+            Message::Handover { token } => json!({"kind": "handover", "token": token}),
+            Message::HandoverOk => json!({"kind": "handover_ok"}),
         };
         v.to_string()
     }
@@ -425,6 +447,33 @@ mod tests {
             parse(r#"{"kind":"cmd","cmd":"stop"}"#),
             Ok(Message::Cmd(ControlCmd::Stop))
         );
+    }
+
+    #[test]
+    fn handover_messages_are_parsed_and_bounded() {
+        assert_eq!(
+            parse(r#"{"kind":"handover","token":"AbC-_123"}"#),
+            Ok(Message::Handover {
+                token: "AbC-_123".into()
+            })
+        );
+        assert_eq!(parse(r#"{"kind":"handover_ok"}"#), Ok(Message::HandoverOk));
+        let long = format!(r#"{{"kind":"handover","token":"{}"}}"#, "a".repeat(65));
+        for bad in [
+            r#"{"kind":"handover"}"#,
+            r#"{"kind":"handover","token":""}"#,
+            r#"{"kind":"handover","token":5}"#,
+            r#"{"kind":"handover","token":"a b"}"#,
+            r#"{"kind":"handover","token":"a+b"}"#,
+            long.as_str(),
+        ] {
+            assert_eq!(parse(bad), Err(ParseError::InvalidFields), "{bad}");
+        }
+        assert_eq!(
+            Message::Handover { token: "x1".into() }.to_json(),
+            r#"{"kind":"handover","token":"x1"}"#
+        );
+        assert_eq!(Message::HandoverOk.to_json(), r#"{"kind":"handover_ok"}"#);
     }
 
     #[test]

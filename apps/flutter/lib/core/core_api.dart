@@ -73,6 +73,7 @@ export 'package:cometcast/src/rust/api.dart'
         presentScreen,
         presentEncoded,
         presentContent,
+        requestHandover,
         stopPresenting,
         captureInfo,
         serverDefaults,
@@ -183,12 +184,23 @@ abstract class CoreApi {
   /// Join the room once (on Connect): the host approves once. Events: see `PresenterUiEvent`
   /// (the Rust documentation lists the codes and which errors end the stream). Replaces a
   /// running sender or presenter session.
+  ///
+  /// [handover] is a single-use token that the display issued to this person earlier
+  /// ([requestHandover], iOS, native-apps.md 20.5): the display admits the join without a
+  /// dialog. Null, or a token the display does not know, is an ordinary join.
   Stream<PresenterUiEvent> startPresenter({
     required String code,
     required String server,
     String? name,
+    String? handover,
     String? udpBind,
   });
+
+  /// iOS hand-over (native-apps.md 20.5, step 1): ask the display to hold the single-use
+  /// [token] (22 characters of base64url, 128 random bits) for the broadcast extension. The
+  /// answer is the event `PresenterUiEvent.handoverResult`. False if no session runs or the
+  /// token is not valid.
+  bool requestHandover(String token);
 
   /// Leave the room (Disconnect, withdraw while waiting, the app ends).
   Future<void> stopPresenter();
@@ -431,13 +443,18 @@ class RustCoreApi implements CoreApi {
     required String code,
     required String server,
     String? name,
+    String? handover,
     String? udpBind,
   }) => rust.startPresenter(
     code: code,
     server: server,
     name: name,
+    handover: handover,
     udpBind: udpBind,
   );
+
+  @override
+  bool requestHandover(String token) => rust.requestHandover(token: token);
 
   @override
   Future<void> stopPresenter() => rust.stopPresenter();

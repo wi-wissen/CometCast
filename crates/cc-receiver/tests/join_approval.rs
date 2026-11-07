@@ -94,7 +94,7 @@ async fn confirm_allow_and_deny_with_native_cores() {
     rx.decide_join(id, true);
     let sender = allowed.await.unwrap().expect("allowed");
     next_matching(&mut rx, |e| match e {
-        ReceiverEvent::PeerJoined { name } => Some(name),
+        ReceiverEvent::PeerJoined { name, .. } => Some(name),
         _ => None,
     })
     .await;

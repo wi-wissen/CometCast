@@ -152,6 +152,10 @@ pub const MAX_DISPLAY_NAME_CHARS: usize = 40;
 /// Longest room name (in characters) that the server keeps and relays to senders.
 pub const MAX_ROOM_NAME_CHARS: usize = 32;
 
+/// Longest hand-over token (characters) that the server relays (native-apps.md 20.5). A token
+/// is 128 random bits as base64url (22 characters); the bound leaves room for longer ones.
+pub const MAX_HANDOVER_CHARS: usize = 64;
+
 /// Who may join a room. Chosen by the receiver (display device) and changeable at any time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -266,6 +270,20 @@ pub fn sanitize_room_name(raw: Option<&str>) -> Option<String> {
     (!out.is_empty()).then_some(out)
 }
 
+/// Check the optional `handover` field of `join_room` before it is relayed (native-apps.md
+/// 20.5): 1 to [`MAX_HANDOVER_CHARS`] characters of the base64url alphabet (`A-Z a-z 0-9 - _`).
+/// Anything else (empty, too long, other characters) is dropped and the join is an ordinary
+/// join: the field is a hint for the display, never a reason to refuse a join. The server
+/// does not know or check tokens; the display that minted the room decides.
+pub fn sanitize_handover(raw: Option<&str>) -> Option<String> {
+    let t = raw?;
+    let ok = !t.is_empty()
+        && t.len() <= MAX_HANDOVER_CHARS
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    ok.then(|| t.to_owned())
+}
+
 /// Messages from a client (sender or receiver) to the server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -302,6 +320,13 @@ pub enum ClientMsg {
         /// the server sanitises it ([`sanitize_display_name`]).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// Single-use hand-over token (iOS broadcast extension, native-apps.md 20.5): at most
+        /// [`MAX_HANDOVER_CHARS`] characters of the base64url alphabet. Relayed unchanged to
+        /// the display device in `join_request` / `peer_joined`; the server neither stores nor
+        /// checks it (the display does). Invalid values are dropped
+        /// ([`sanitize_handover`]). Optional; older servers ignore the field.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handover: Option<String>,
     },
     /// Receiver (room owner) only: change who may join, at any time.
     SetJoinMode {
@@ -389,6 +414,10 @@ pub enum ServerMsg {
     PeerJoined {
         /// Sanitised display name of the sender (`Guest N` if it gave none).
         name: String,
+        /// The hand-over token the sender joined with, when the join needed no decision (join
+        /// mode `open`); see `join_room`. Absent otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handover: Option<String>,
     },
     /// Sent to a sender whose join waits for the display device's decision.
     JoinPending {
@@ -410,6 +439,11 @@ pub enum ServerMsg {
         name: String,
         /// The check number the joiner sees on its waiting screen (see `join_pending`).
         check: u8,
+        /// The hand-over token of the join, as checked by [`sanitize_handover`]; the display
+        /// admits a join with a token it issued without asking (native-apps.md 20.5). Absent
+        /// for an ordinary join.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handover: Option<String>,
     },
     /// Sent to the receiver: a waiting request is gone (joiner left, cancelled, timed out,
     /// or the mode became `locked`).
@@ -531,6 +565,12 @@ mod tests {
             ClientMsg::JoinRoom {
                 code: RoomCode::parse("k7m2qx").unwrap(),
                 name: Some("Ana".into()),
+                handover: None,
+            },
+            ClientMsg::JoinRoom {
+                code: RoomCode::parse("k7m2qx").unwrap(),
+                name: None,
+                handover: Some("x".repeat(64)),
             },
             ClientMsg::SetJoinMode {
                 join_mode: JoinMode::Locked,
@@ -585,7 +625,14 @@ mod tests {
             ServerMsg::Joined {
                 room_name: Some("Meeting room Elbe".into()),
             },
-            ServerMsg::PeerJoined { name: "Ana".into() },
+            ServerMsg::PeerJoined {
+                name: "Ana".into(),
+                handover: None,
+            },
+            ServerMsg::PeerJoined {
+                name: "Ana".into(),
+                handover: Some("tok_en-1".into()),
+            },
             ServerMsg::JoinPending {
                 timeout_secs: 60,
                 check: 42,
@@ -600,6 +647,13 @@ mod tests {
                 id: 1,
                 name: "Ana".into(),
                 check: 42,
+                handover: None,
+            },
+            ServerMsg::JoinRequest {
+                id: 2,
+                name: "Ana".into(),
+                check: 43,
+                handover: Some("tok_en-1".into()),
             },
             ServerMsg::JoinRequestCancelled {
                 id: 1,
@@ -645,11 +699,17 @@ mod tests {
             r#"{"type":"hello","proto_version":1,"role":"receiver"}"#
         );
         let j = r#"{"type":"join_room","code":"k7m2qx"}"#;
-        let ClientMsg::JoinRoom { code, name } = serde_json::from_str(j).unwrap() else {
+        let ClientMsg::JoinRoom {
+            code,
+            name,
+            handover,
+        } = serde_json::from_str(j).unwrap()
+        else {
             panic!("wrong variant");
         };
         assert_eq!(code.as_str(), "K7M2QX");
         assert_eq!(name, None);
+        assert_eq!(handover, None);
     }
 
     #[test]
@@ -674,9 +734,18 @@ mod tests {
         assert_eq!(
             j(&ClientMsg::JoinRoom {
                 code: RoomCode::parse("K7M2QX").unwrap(),
-                name: Some("Ana".into())
+                name: Some("Ana".into()),
+                handover: None
             }),
             r#"{"type":"join_room","code":"K7M2QX","name":"Ana"}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::JoinRoom {
+                code: RoomCode::parse("K7M2QX").unwrap(),
+                name: Some("Ana".into()),
+                handover: Some("AbC-_123".into())
+            }),
+            r#"{"type":"join_room","code":"K7M2QX","name":"Ana","handover":"AbC-_123"}"#
         );
         assert_eq!(
             j(&ClientMsg::SetJoinMode {
@@ -727,9 +796,19 @@ mod tests {
             s(&ServerMsg::JoinRequest {
                 id: 7,
                 name: "Ana".into(),
-                check: 42
+                check: 42,
+                handover: None
             }),
             r#"{"type":"join_request","id":7,"name":"Ana","check":42}"#
+        );
+        assert_eq!(
+            s(&ServerMsg::JoinRequest {
+                id: 7,
+                name: "Ana".into(),
+                check: 42,
+                handover: Some("tok_en-1".into())
+            }),
+            r#"{"type":"join_request","id":7,"name":"Ana","check":42,"handover":"tok_en-1"}"#
         );
         assert_eq!(
             s(&ServerMsg::JoinPending {
@@ -766,7 +845,10 @@ mod tests {
         );
         assert_eq!(s(&ServerMsg::RoomEnded), r#"{"type":"room_ended"}"#);
         assert_eq!(
-            s(&ServerMsg::PeerJoined { name: "Ana".into() }),
+            s(&ServerMsg::PeerJoined {
+                name: "Ana".into(),
+                handover: None
+            }),
             r#"{"type":"peer_joined","name":"Ana"}"#
         );
         assert!(
@@ -863,7 +945,11 @@ mod tests {
             }
         );
         assert_eq!(
-            serde_json::to_string(&ServerMsg::PeerJoined { name: "Ana".into() }).unwrap(),
+            serde_json::to_string(&ServerMsg::PeerJoined {
+                name: "Ana".into(),
+                handover: None
+            })
+            .unwrap(),
             r#"{"type":"peer_joined","name":"Ana"}"#
         );
         assert_eq!(
@@ -954,5 +1040,34 @@ mod tests {
     fn invalid_room_code_fails_to_deserialize() {
         let j = r#"{"type":"join_room","code":"bad"}"#;
         assert!(serde_json::from_str::<ClientMsg>(j).is_err());
+    }
+
+    #[test]
+    fn handover_tokens_are_bounded_and_base64url() {
+        assert_eq!(
+            sanitize_handover(Some("AbC-_123")),
+            Some("AbC-_123".to_owned())
+        );
+        // A token of 128 random bits as base64url is 22 characters.
+        assert!(sanitize_handover(Some("0123456789abcdefABCDEF")).is_some());
+        assert!(sanitize_handover(Some(&"a".repeat(MAX_HANDOVER_CHARS))).is_some());
+        assert_eq!(
+            sanitize_handover(Some(&"a".repeat(MAX_HANDOVER_CHARS + 1))),
+            None
+        );
+        for bad in [
+            "",
+            " ",
+            "a b",
+            "a+b",
+            "a/b",
+            "a=",
+            "\u{e4}",
+            "a\n",
+            "{\"x\":1}",
+        ] {
+            assert_eq!(sanitize_handover(Some(bad)), None, "{bad:?}");
+        }
+        assert_eq!(sanitize_handover(None), None);
     }
 }

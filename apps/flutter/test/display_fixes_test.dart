@@ -439,7 +439,7 @@ void main() {
     ) async {
       final h = await pumpDisplay(t);
       h.core.receiverEvents
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
         ..add(const ReceiverUiEvent.connectionCode(sas: '123 456'));
       await t.pump();
       await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
@@ -456,7 +456,9 @@ void main() {
 
     testWidgets('no code reported: no second line', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena'));
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
+      );
       await t.pump();
       await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
       await key(t, LogicalKeyboardKey.select);
@@ -465,7 +467,9 @@ void main() {
 
     testWidgets('the pill counts the received percent', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena'));
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
+      );
       await t.pump();
       await deliverFrame(t, h.core, solidFrame(16, 9, [0, 0, 255]));
       h.core.receiverEvents.add(
@@ -495,7 +499,7 @@ void main() {
     ) async {
       final h = await pumpDisplay(t, core: _FailingPageCore());
       h.core.receiverEvents
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
         ..add(
           const ReceiverUiEvent.contentDocumentOpened(name: 'a.pdf', pages: 3),
         )
@@ -531,7 +535,7 @@ void main() {
       c.codecInfoResult = info;
       final h = await pumpDisplay(t, core: c);
       h.core.receiverEvents
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
         ..add(
           const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
         );
@@ -585,7 +589,7 @@ void main() {
       h.core.receiverEvents.add(const ReceiverUiEvent.peerLeft());
       await t.pump();
       h.core.receiverEvents
-        ..add(const ReceiverUiEvent.peerJoined(name: 'Tom'))
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Tom', handover: false))
         ..add(
           const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
         );

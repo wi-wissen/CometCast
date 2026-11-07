@@ -114,9 +114,13 @@ async fn dropping_the_receiver_closes_its_connection() {
     let mut sig = cc_transport::SignalingClient::connect(&server, cc_proto::Role::Sender)
         .await
         .unwrap();
-    sig.send(cc_proto::ClientMsg::JoinRoom { code, name: None })
-        .await
-        .unwrap();
+    sig.send(cc_proto::ClientMsg::JoinRoom {
+        code,
+        name: None,
+        handover: None,
+    })
+    .await
+    .unwrap();
     assert_eq!(
         sig.recv().await,
         Some(cc_proto::ServerMsg::Joined { room_name: None })

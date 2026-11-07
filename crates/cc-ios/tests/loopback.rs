@@ -73,6 +73,8 @@ fn config(server: &str, code: &str) -> Config {
         relay_url: server.to_owned(),
         log_dir: None,
         udp_bind: Some("127.0.0.1:0".into()),
+        name: None,
+        handover: None,
     }
 }
 
@@ -229,6 +231,8 @@ fn the_c_functions_work_without_a_running_sender() {
             bad.as_ptr(),
             relay.as_ptr(),
             std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
             None,
             std::ptr::null_mut(),
         )
@@ -243,4 +247,173 @@ fn the_c_functions_work_without_a_running_sender() {
     assert_eq!(r, PushCode::NoSender as i32);
     assert!(!ffi::cc_ios_keyframe_requested());
     ffi::cc_ios_stop();
+}
+
+/// The extension joins a display that asks the host: with the token it was handed it is let in
+/// without a request, and before it leaves it asks the display for the token of the way back.
+#[test]
+fn the_extension_joins_with_a_handover_token_and_asks_for_the_way_back() {
+    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
+    use cc_receiver::ContentOptions;
+    use cc_sender::{PresenterOptions, PresenterSession};
+    const OUT: &str = "AAAAAAAAAAAAAAAAAAAAAA";
+    const BACK: &str = "BBBBBBBBBBBBBBBBBBBBBB";
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (server, receiver, code) = rt.block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(run(
+            listener,
+            ServerConfig::default(),
+            std::future::pending(),
+        ));
+        let mut o = ReceiverOptions::new(&addr);
+        o.session = SessionConfig {
+            udp_bind: vec!["127.0.0.1:0".into()],
+            ..SessionConfig::default()
+        };
+        o.join_mode = cc_proto::JoinMode::Confirm;
+        o.content = Some(ContentOptions::default());
+        let mut r = ReceiverCore::start(o).await.unwrap();
+        let mut content = r.take_content_events().unwrap();
+        tokio::spawn(async move { while content.next().await.is_some() {} });
+        let code = r.room_code().to_string();
+        (addr, r, code)
+    });
+    let events = Arc::new(Mutex::new(Vec::<String>::new()));
+    let ev = Arc::clone(&events);
+    let receiver = Arc::new(tokio::sync::Mutex::new(receiver));
+    let rx = Arc::clone(&receiver);
+    rt.spawn(async move {
+        loop {
+            let e = rx.lock().await.next_event().await;
+            match e {
+                Some(ReceiverEvent::JoinRequest { id, name, .. }) => {
+                    ev.lock().unwrap().push(format!("request {name}"));
+                    // Only the app's own first join is allowed by the host here.
+                    if name == "Ana" {
+                        rx.lock().await.decide_join(id, true);
+                    }
+                }
+                Some(ReceiverEvent::PeerJoined { name, handover }) => {
+                    ev.lock().unwrap().push(format!("joined {name} {handover}"));
+                }
+                Some(ReceiverEvent::HandoverStored { name }) => {
+                    ev.lock().unwrap().push(format!("stored {name}"));
+                }
+                Some(ReceiverEvent::PeerLeft) => ev.lock().unwrap().push("left".into()),
+                Some(_) => {}
+                None => break,
+            }
+        }
+    });
+    let log_has = |t: &str| events.lock().unwrap().iter().any(|e| e == t);
+
+    // The app joins (host allows once), hands a token over and leaves.
+    let mut o = PresenterOptions::new(&server, receiver_code(&code));
+    o.session = SessionConfig {
+        udp_bind: vec!["127.0.0.1:0".into()],
+        ..SessionConfig::default()
+    };
+    o.name = Some("Ana".into());
+    let app = rt.block_on(PresenterSession::join(o)).expect("app joins");
+    rt.block_on(app.request_handover(OUT)).expect("handover_ok");
+    rt.block_on(app.leave());
+    assert!(wait_for(Duration::from_secs(10), || log_has("left")));
+
+    // The extension starts with the name and the token: no request for the host.
+    let (sink, log) = collecting_sink();
+    let mut cfg = config(&server, &code);
+    cfg.name = Some("Ana".into());
+    cfg.handover = Some(OUT.into());
+    engine::start(cfg, sink).expect("start");
+    assert!(
+        wait_for(Duration::from_secs(25), || {
+            last_state(&log).is_some_and(|(s, _)| s == State::Waiting || s == State::Streaming)
+        }),
+        "{:?}",
+        log.lock()
+            .unwrap()
+            .last()
+            .map(|s| (s.state, s.error, s.message.clone()))
+    );
+    assert!(log_has("joined Ana true"), "{:?}", events.lock().unwrap());
+    // Exactly one request ever reached the host: the app's own first join.
+    assert_eq!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.starts_with("request"))
+            .count(),
+        1
+    );
+    // Wait until the data channel is up, then ask for the token of the way back.
+    let got = wait_for(Duration::from_secs(25), || engine::request_handover(BACK));
+    assert!(got, "the display answers the hand-over request");
+    assert!(wait_for(Duration::from_secs(5), || log_has("stored Ana")));
+    // A bad token is refused before anything is sent.
+    assert!(!engine::request_handover("not valid!"));
+    engine::stop();
+    // After stop nothing is asked.
+    assert!(!engine::request_handover(BACK));
+    drop(rt);
+}
+
+fn receiver_code(code: &str) -> cc_proto::RoomCode {
+    cc_proto::RoomCode::parse(code).unwrap()
+}
+
+/// Without a token the same join is an ordinary request (here nobody decides: the status says
+/// "pending" with the check number the host sees).
+#[test]
+fn a_join_that_waits_for_the_host_reports_pending_with_the_check_number() {
+    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (server, receiver) = rt.block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(run(
+            listener,
+            ServerConfig::default(),
+            std::future::pending(),
+        ));
+        let mut o = ReceiverOptions::new(&addr);
+        o.session = SessionConfig {
+            udp_bind: vec!["127.0.0.1:0".into()],
+            ..SessionConfig::default()
+        };
+        o.join_mode = cc_proto::JoinMode::Confirm;
+        (addr, ReceiverCore::start(o).await.unwrap())
+    });
+    let code = receiver.room_code().to_string();
+    let seen = Arc::new(Mutex::new(None::<(String, u8)>));
+    let s2 = Arc::clone(&seen);
+    let mut receiver = receiver;
+    rt.spawn(async move {
+        while let Some(e) = receiver.next_event().await {
+            if let ReceiverEvent::JoinRequest { name, check, .. } = e {
+                *s2.lock().unwrap() = Some((name, check));
+            }
+        }
+    });
+    let (sink, log) = collecting_sink();
+    let mut cfg = config(&server, &code);
+    cfg.name = Some("Ana".into());
+    engine::start(cfg, sink).expect("start");
+    assert!(wait_for(Duration::from_secs(15), || {
+        last_state(&log).is_some_and(|(s, _)| s == State::Pending)
+    }));
+    let pending = log.lock().unwrap().last().cloned().unwrap();
+    assert!((10..=99).contains(&pending.check), "{pending:?}");
+    assert_eq!(pending.timeout_secs, 60);
+    assert!(wait_for(Duration::from_secs(5), || seen
+        .lock()
+        .unwrap()
+        .is_some()));
+    let (name, check) = seen.lock().unwrap().clone().unwrap();
+    assert_eq!(name, "Ana");
+    assert_eq!(check, pending.check, "the same number on both sides");
+    engine::stop();
+    drop(rt);
 }

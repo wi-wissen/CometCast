@@ -67,10 +67,10 @@
   "codecDownloading": "Der Video-Codec wird heruntergeladen …",
   "codecProgress": "{percent} %",
   "codecRetry": "Erneut versuchen",
-  "codecFailed": "Der Video-Codec konnte nicht heruntergeladen werden: {reason}",
+  "codecFailed": "Der Video-Codec konnte nicht heruntergeladen werden.",
   "codecOffline": "Kein Internetzugang? Bitten Sie Ihre Administratorin oder Ihren Administrator, die Datei {file} (so wie von Cisco geladen, mit oder ohne die Endung .bz2) in den Ordner {dir} zu kopieren oder die Variable COMETCAST_CODEC_DIR auf einen Ordner zu setzen, der sie enthält.",
   "codecOfflineNoDir": "Kein Internetzugang? Bitten Sie Ihre Administratorin oder Ihren Administrator, die Datei {file} (so wie von Cisco geladen, mit oder ohne die Endung .bz2) in einen Ordner zu kopieren und die Umgebungsvariable COMETCAST_CODEC_DIR auf diesen Ordner zu setzen.",
-  "codecUnsupported": "Auf diesem System gibt es keinen Video-Codec zum Herunterladen: {reason}",
+  "codecUnsupported": "Dieses System kann den Video-Codec nicht nutzen. Geteilte Bildschirme lassen sich hier nicht zeigen oder senden.",
   "miracastTitle": "Miracast-Empfänger",
   "miracastIntro": "Dieser PC kann den Bildschirm eines Android-Smartphones („Cast“ oder „Smart View“) oder eines Windows-PCs (Windows-Taste + K) anzeigen, ohne dass auf dem sendenden Gerät eine App nötig ist.",
   "miracastNameLabel": "Name, der Sendern angezeigt wird",
@@ -377,5 +377,7 @@
   "relayConfirmBodyNearby": "Der Bildschirm {name} nutzt das Relay {host}. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen.",
   "iosLocalNetworkUsage": "Comet Cast sucht Bildschirme im selben WLAN, damit Sie keinen Code tippen müssen.",
   "startOr": "oder",
-  "commonCancel": "Abbrechen"
+  "commonCancel": "Abbrechen",
+  "codecStageHint": "Noch kein Bild: Dieser Bildschirm braucht den Video-Codec.",
+  "errorsCaptureUnavailable": "Dieses Gerät kann seinen Bildschirm noch nicht mit Comet Cast teilen. Zeigen Sie stattdessen eine Datei oder einen Link."
 }

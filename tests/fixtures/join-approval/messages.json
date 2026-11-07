@@ -1,5 +1,5 @@
 {
-  "description": "Exact JSON of every message that join approval added or changed (protocol version 2). `message` is the whole text frame. The messages of the other kinds (offer, answer, ice_candidate, control, peer_left) did not change. The 'message' fields of errors are English text for logs; clients must key on `code`. crates/cc-proto checks these.",
+  "description": "Exact JSON of every message that join approval added or changed (protocol version 2). `message` is the whole text frame. The messages of the other kinds (offer, answer, ice_candidate, control, peer_left) did not change. The 'message' fields of errors are English text for logs; clients must key on `code`. crates/cc-proto checks these. Entries with `decoders_may_drop` carry optional fields that an implementation without hand-over support (the web client, the Apple TV core) may ignore: they compare the message without those fields.",
   "messages": [
     {
       "id": "hello_v2",
@@ -78,6 +78,19 @@
       }
     },
     {
+      "id": "join_room_with_handover",
+      "direction": "client_to_server",
+      "decoders_may_drop": [
+        "handover"
+      ],
+      "message": {
+        "type": "join_room",
+        "code": "K7M2QX",
+        "name": "Ana",
+        "handover": "q3Zx9_-Lm0AbCdEfGhIjKl"
+      }
+    },
+    {
       "id": "join_pending",
       "direction": "server_to_client",
       "message": {
@@ -104,6 +117,20 @@
         "id": 1,
         "name": "Ana",
         "check": 42
+      }
+    },
+    {
+      "id": "join_request_with_handover",
+      "direction": "server_to_client",
+      "decoders_may_drop": [
+        "handover"
+      ],
+      "message": {
+        "type": "join_request",
+        "id": 3,
+        "name": "Ana",
+        "check": 42,
+        "handover": "q3Zx9_-Lm0AbCdEfGhIjKl"
       }
     },
     {
@@ -153,6 +180,18 @@
       "message": {
         "type": "peer_joined",
         "name": "Ana"
+      }
+    },
+    {
+      "id": "peer_joined_with_handover",
+      "direction": "server_to_client",
+      "decoders_may_drop": [
+        "handover"
+      ],
+      "message": {
+        "type": "peer_joined",
+        "name": "Ana",
+        "handover": "q3Zx9_-Lm0AbCdEfGhIjKl"
       }
     },
     {

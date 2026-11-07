@@ -163,6 +163,25 @@ class CodecController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  String? _loggedReason;
+
+  /// The technical reason of a failure or of "unsupported" goes to the log, never on screen
+  /// (spec N46): the screens show the key's text only.
+  @override
+  void notifyListeners() {
+    final s = state;
+    final r = switch (s) {
+      UiCodecState_Failed(:final reason) => 'download failed: $reason',
+      UiCodecState_Unsupported(:final reason) => 'unsupported: $reason',
+      _ => null,
+    };
+    if (r != null && r != _loggedReason) {
+      _loggedReason = r;
+      debugPrint('cometcast: video codec $r');
+    }
+    super.notifyListeners();
+  }
+
   @override
   void dispose() {
     _disposed = true;

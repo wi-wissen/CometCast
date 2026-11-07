@@ -93,29 +93,32 @@ void main() {
     );
   });
 
-  test('Android and iOS: never look at files, plain name for the system loader', () {
-    for (final os in [CoreOs.android, CoreOs.ios]) {
-      expect(coreLibraryCandidates(os: os, exeDir: '/x'), isEmpty);
-    }
-    expect(
-      resolveCoreLibraryPath(
-        environment: const {},
-        os: CoreOs.android,
-        executableDir: '/x',
-        fileExists: (p) => true,
-      ),
-      'libcc_ffi.so',
-    );
-    expect(
-      resolveCoreLibraryPath(
-        environment: const {},
-        os: CoreOs.ios,
-        executableDir: '/x',
-        fileExists: (p) => true,
-      ),
-      'libcc_ffi.dylib',
-    );
-  });
+  test(
+    'Android and iOS: never look at files, plain name for the system loader',
+    () {
+      for (final os in [CoreOs.android, CoreOs.ios]) {
+        expect(coreLibraryCandidates(os: os, exeDir: '/x'), isEmpty);
+      }
+      expect(
+        resolveCoreLibraryPath(
+          environment: const {},
+          os: CoreOs.android,
+          executableDir: '/x',
+          fileExists: (p) => true,
+        ),
+        'libcc_ffi.so',
+      );
+      expect(
+        resolveCoreLibraryPath(
+          environment: const {},
+          os: CoreOs.ios,
+          executableDir: '/x',
+          fileExists: (p) => true,
+        ),
+        'libcc_ffi.dylib',
+      );
+    },
+  );
 
   test('the environment variable wins on every platform', () {
     for (final os in CoreOs.values) {

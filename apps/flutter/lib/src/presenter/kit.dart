@@ -73,9 +73,15 @@ class PPage extends StatelessWidget {
     this.actions = const [],
     this.actionsRow = false,
     this.bottomReserve = 0,
+    this.pinActions = false,
   });
 
   final List<Widget> children;
+
+  /// Phone: the content scrolls and the actions stay in the bottom action area, with at least
+  /// 24 free between the last item and the actions when scrolled to the end (the Miracast page,
+  /// N39). Laptop: no effect (the row follows the content, 24 below it).
+  final bool pinActions;
 
   /// Buttons at the bottom of the page.
   final List<Widget> actions;
@@ -150,6 +156,44 @@ class PPage extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
+              ),
+            );
+          }
+          if (pinActions) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 744),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          // 24 free below the last item when scrolled to the end.
+                          padding: EdgeInsets.fromLTRB(
+                            pad.left,
+                            pad.top,
+                            pad.right,
+                            24,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: spaced,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        pad.left,
+                        0,
+                        pad.right,
+                        pad.bottom,
+                      ),
+                      child: actionArea(),
+                    ),
+                    if (bottomReserve > 0) SizedBox(height: bottomReserve),
+                  ],
                 ),
               ),
             );

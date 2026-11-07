@@ -24,18 +24,26 @@ use std::time::Duration;
 use cc_proto::{ControlCmd, Role, RoomCode, ServerMsg};
 use cc_transport::{
     ConnectionState, JoinProgress, ServerAddr, SessionConfig, SignalingClient, TlsTrust,
-    TransportError, ice, join_room,
+    TransportError, ice, join_room_with,
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-use crate::content::{ContentSender, ContentSenderOptions, ControlSender};
+use crate::content::{ContentSender, ContentSenderOptions, ControlSender, DisplayMessage};
 use crate::{
     ExternalInput, RunEnd, ScreenOptions, SenderCore, SenderEvent, SenderOptions, StartFailed,
 };
 
 /// How long a stop waits for `cmd stop` to leave. UNCERTAIN: placeholder.
 const STOP_FLUSH: Duration = Duration::from_secs(2);
+
+/// How long [`PresenterSession::request_handover`] waits for the control channel to open.
+/// UNCERTAIN: placeholder.
+const HANDOVER_READY: Duration = Duration::from_secs(10);
+
+/// How long [`PresenterSession::request_handover`] waits for the display's `handover_ok`
+/// (a display without hand-over support never answers). UNCERTAIN: placeholder.
+const HANDOVER_ACK: Duration = Duration::from_secs(4);
 
 /// Settings for [`PresenterSession::join`].
 #[derive(Debug, Clone)]
@@ -53,6 +61,9 @@ pub struct PresenterOptions {
     pub name: Option<String>,
     /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
     pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
+    /// A single-use hand-over token the display issued to this person (iOS, native-apps.md
+    /// 20.5): the display admits the join without asking. `None` = an ordinary join.
+    pub handover: Option<String>,
 }
 
 impl PresenterOptions {
@@ -65,6 +76,7 @@ impl PresenterOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+            handover: None,
         }
     }
 }
@@ -183,6 +195,11 @@ enum Cmd {
         reply: oneshot::Sender<Result<ControlSender, TransportError>>,
     },
     StopPresenting,
+    /// The control channel for a hand-over: the running presentation's, or a content-only one
+    /// that is started for it (and stays quiet: no events for the app).
+    Handover {
+        reply: oneshot::Sender<Result<ControlSender, TransportError>>,
+    },
     Leave,
 }
 
@@ -191,6 +208,8 @@ pub struct PresenterSession {
     room_name: Option<String>,
     cmds: mpsc::UnboundedSender<Cmd>,
     events: mpsc::UnboundedReceiver<PresenterEvent>,
+    /// Counts the `handover_ok` answers of the display.
+    handover_acks: watch::Sender<u64>,
     task: JoinHandle<()>,
 }
 
@@ -201,10 +220,11 @@ impl PresenterSession {
     pub async fn join(options: PresenterOptions) -> Result<Self, TransportError> {
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        let room_name = join_room(
+        let room_name = join_room_with(
             &mut sig,
             options.code.clone(),
             options.name.clone(),
+            options.handover.clone(),
             options.join_progress.as_ref(),
         )
         .await?;
@@ -226,11 +246,20 @@ impl PresenterSession {
         }
         let (cmds_tx, cmds_rx) = mpsc::unbounded_channel();
         let (events_tx, events_rx) = mpsc::unbounded_channel();
-        let task = tokio::spawn(run(sig, options, ice_state, cmds_rx, events_tx));
+        let (acks_tx, _) = watch::channel(0u64);
+        let task = tokio::spawn(run(
+            sig,
+            options,
+            ice_state,
+            cmds_rx,
+            events_tx,
+            acks_tx.clone(),
+        ));
         Ok(Self {
             room_name: room_name.clone(),
             cmds: cmds_tx,
             events: events_rx,
+            handover_acks: acks_tx,
             task,
         })
     }
@@ -250,6 +279,31 @@ impl PresenterSession {
             .send(Cmd::Present { what, reply })
             .map_err(|_| TransportError::Closed)?;
         answer.await.map_err(|_| TransportError::Closed)?
+    }
+
+    /// Hand the approval over to another connection of this person (the iOS broadcast
+    /// extension, native-apps.md 20.5): ask the display, on the content control channel, to
+    /// hold the single-use `token` (128 random bits as base64url, valid 60 s on the display),
+    /// and wait for its `handover_ok`. A content-only channel is opened for this when no
+    /// presentation runs; it makes no event for the app. Call [`Self::leave`] afterwards. Fails
+    /// when the display does not answer within a few seconds (an old display, a web display,
+    /// a lost connection): the caller then lets the other connection join the ordinary way.
+    pub async fn request_handover(&self, token: &str) -> Result<(), TransportError> {
+        let (reply, answer) = oneshot::channel();
+        self.cmds
+            .send(Cmd::Handover { reply })
+            .map_err(|_| TransportError::Closed)?;
+        let control = answer.await.map_err(|_| TransportError::Closed)??;
+        control.wait_ready(HANDOVER_READY).await?;
+        let mut acks = self.handover_acks.subscribe();
+        control
+            .send_handover(token)
+            .await
+            .map_err(|e| TransportError::Invalid(e.to_string()))?;
+        tokio::time::timeout(HANDOVER_ACK, acks.changed())
+            .await
+            .map_err(|_| TransportError::Timeout("waiting for handover_ok"))?
+            .map_err(|_| TransportError::Closed)
     }
 
     /// End the running presentation only. The session stays joined; the end is reported as
@@ -282,6 +336,8 @@ struct Running {
     control: ControlSender,
     pages: JoinHandle<()>,
     presenting: bool,
+    /// Started only to carry a hand-over: the app is told nothing about it.
+    quiet: bool,
 }
 
 enum Core {
@@ -354,6 +410,7 @@ impl Running {
             control,
             pages: tokio::spawn(std::future::ready(())),
             presenting: false,
+            quiet: false,
         }
     }
 }
@@ -362,7 +419,46 @@ enum Next {
     Cmd(Option<Cmd>),
     Idle(Option<ServerMsg>),
     Running(Option<SenderEvent>),
-    Page(Option<(u32, u32)>),
+    Page(Option<DisplayMessage>),
+}
+
+/// Start a presentation on the signalling connection and keep it in `running`. When it cannot
+/// start the connection comes back and the session stays joined.
+async fn begin(
+    sig: &mut Option<SignalingClient>,
+    running: &mut Option<Running>,
+    stopping: &mut bool,
+    options: &PresenterOptions,
+    what: Presentation,
+    quiet: bool,
+    page_tx: &mpsc::UnboundedSender<DisplayMessage>,
+) -> Result<ControlSender, TransportError> {
+    let Some(s) = sig.take().filter(|_| running.is_none()) else {
+        return Err(TransportError::Invalid(
+            "a presentation is running already".into(),
+        ));
+    };
+    match start(s, options, what).await {
+        Ok(mut r) => {
+            let control = r.control.clone();
+            let tx = page_tx.clone();
+            let reader = control.clone();
+            r.pages = tokio::spawn(async move {
+                while let Some(m) = reader.recv_message().await {
+                    let _ = tx.send(m);
+                }
+            });
+            r.quiet = quiet;
+            *stopping = false;
+            *running = Some(r);
+            Ok(control)
+        }
+        Err(StartFailed { sig: s, error }) => {
+            // The session stays joined; the caller decides what the error means.
+            *sig = Some(s);
+            Err(error)
+        }
+    }
 }
 
 async fn run(
@@ -371,6 +467,7 @@ async fn run(
     ice_state: IceState,
     mut cmds: mpsc::UnboundedReceiver<Cmd>,
     out: mpsc::UnboundedSender<PresenterEvent>,
+    acks: watch::Sender<u64>,
 ) {
     let emit = |e: PresenterEvent| {
         let _ = out.send(e);
@@ -378,7 +475,7 @@ async fn run(
     // Between presentations this task holds the signalling connection itself.
     let mut sig: Option<SignalingClient> = Some(sig);
     let mut running: Option<Running> = None;
-    let (page_tx, mut page_rx) = mpsc::unbounded_channel::<(u32, u32)>();
+    let (page_tx, mut page_rx) = mpsc::unbounded_channel::<DisplayMessage>();
     let mut stopping = false;
     loop {
         let next = tokio::select! {
@@ -401,32 +498,35 @@ async fn run(
         match next {
             Next::Cmd(None | Some(Cmd::Leave)) => break,
             Next::Cmd(Some(Cmd::Present { what, reply })) => {
-                let Some(s) = sig.take().filter(|_| running.is_none()) else {
-                    let _ = reply.send(Err(TransportError::Invalid(
-                        "a presentation is running already".into(),
-                    )));
-                    continue;
+                let r = begin(
+                    &mut sig,
+                    &mut running,
+                    &mut stopping,
+                    &options,
+                    what,
+                    false,
+                    &page_tx,
+                )
+                .await;
+                let _ = reply.send(r);
+            }
+            Next::Cmd(Some(Cmd::Handover { reply })) => {
+                let r = match running.as_ref() {
+                    Some(r) => Ok(r.control.clone()),
+                    None => {
+                        begin(
+                            &mut sig,
+                            &mut running,
+                            &mut stopping,
+                            &options,
+                            Presentation::Content,
+                            true,
+                            &page_tx,
+                        )
+                        .await
+                    }
                 };
-                match start(s, &options, what).await {
-                    Ok(mut r) => {
-                        let control = r.control.clone();
-                        let tx = page_tx.clone();
-                        let reader = control.clone();
-                        r.pages = tokio::spawn(async move {
-                            while let Some(p) = reader.recv_page().await {
-                                let _ = tx.send(p);
-                            }
-                        });
-                        stopping = false;
-                        running = Some(r);
-                        let _ = reply.send(Ok(control));
-                    }
-                    Err(StartFailed { sig: s, error }) => {
-                        // The session stays joined; the caller decides what the error means.
-                        sig = Some(s);
-                        let _ = reply.send(Err(error));
-                    }
-                }
+                let _ = reply.send(r);
             }
             Next::Cmd(Some(Cmd::StopPresenting)) => {
                 if let Some(r) = running.as_mut()
@@ -440,20 +540,34 @@ async fn run(
                     r.core.request_stop();
                 }
             }
-            Next::Page(Some((page, pages))) => emit(PresenterEvent::Page { page, pages }),
+            Next::Page(Some(DisplayMessage::Page { page, pages })) => {
+                emit(PresenterEvent::Page { page, pages });
+            }
+            Next::Page(Some(DisplayMessage::HandoverOk)) => {
+                acks.send_modify(|n| *n += 1);
+            }
             Next::Page(None) => {}
             Next::Running(Some(ev)) => match ev {
                 SenderEvent::State(s) => {
+                    let quiet = running.as_ref().is_some_and(|r| r.quiet);
                     if s == ConnectionState::Connected
                         && let Some(r) = running.as_mut()
                         && !r.presenting
                     {
                         r.presenting = true;
-                        emit(PresenterEvent::Presenting);
+                        if !quiet {
+                            emit(PresenterEvent::Presenting);
+                        }
                     }
-                    emit(PresenterEvent::State(s));
+                    if !quiet {
+                        emit(PresenterEvent::State(s));
+                    }
                 }
-                SenderEvent::ConnectionCode(code) => emit(PresenterEvent::ConnectionCode(code)),
+                SenderEvent::ConnectionCode(code) => {
+                    if !running.as_ref().is_some_and(|r| r.quiet) {
+                        emit(PresenterEvent::ConnectionCode(code));
+                    }
+                }
                 SenderEvent::Streaming { frames_sent } => {
                     emit(PresenterEvent::Streaming { frames_sent });
                 }
@@ -467,11 +581,14 @@ async fn run(
                 // The presentation's task ended: take the signalling connection back.
                 let Some(r) = running.take() else { continue };
                 r.pages.abort();
+                let quiet = r.quiet;
                 let (back, end) = r.core.join().await;
                 stopping = false;
                 match end {
                     RunEnd::Stopped { .. } => {
-                        emit(PresenterEvent::PresentingStopped);
+                        if !quiet {
+                            emit(PresenterEvent::PresentingStopped);
+                        }
                         match back {
                             Some(s) => sig = Some(s),
                             None => {

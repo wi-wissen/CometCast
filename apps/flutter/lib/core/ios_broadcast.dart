@@ -3,7 +3,8 @@
 //
 // On iOS the screen is not captured by the app but by a ReplayKit Broadcast Upload Extension that
 // makes the whole network connection itself (docs/ios.md). The app only
-//   1. hands over the room code and the server through the App Group ([IosBroadcast.prepare]),
+//   1. hands over the room code, the server, the person's name and the single-use hand-over
+//      token of the display through the App Group ([IosBroadcast.prepare]; native-apps.md 20.5),
 //   2. opens the system broadcast picker ([IosBroadcast.showPicker]),
 //   3. shows the status that the extension writes back ([IosBroadcast.events]),
 //   4. can ask the extension to stop ([IosBroadcast.stop]).
@@ -17,8 +18,26 @@
 // UNCERTAIN: never run on a device (docs/ios.md).
 
 import 'dart:async';
+import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart';
+
+/// Test builds only (native-apps.md 20.5, step 7): option (a) of the F2 answer, the extension
+/// joins on its own connection without the hand-over token (the host is asked as for any join;
+/// the extension sends the name, the app shows the waiting page with the extension's check number
+/// and joins again with the same code afterwards). Switched on with
+/// `--dart-define=COMETCAST_IOS_OPTION_A=true`; **a release build ignores it** (see
+/// [iosOptionAAllowed]), so the hand-over cannot be turned off in a shipped app.
+const _iosOptionADefine = bool.fromEnvironment('COMETCAST_IOS_OPTION_A');
+
+/// Whether option (a) is on: only when [defined] and the build is not a release build.
+bool iosOptionAAllowed({required bool release, required bool defined}) =>
+    defined && !release;
+
+/// Option (a) for this build (never true in a release build).
+bool get iosOptionA =>
+    iosOptionAAllowed(release: kReleaseMode, defined: _iosOptionADefine);
 
 /// Id of the single entry that `captureInfo` lists on iOS (`IOS_BROADCAST_ID` in
 /// crates/cc-ffi/src/api.rs; a Rust test pins the value).
@@ -30,6 +49,10 @@ const iosBroadcastMonitorId = 'ios-broadcast';
 enum IosBroadcastState {
   starting,
   connecting,
+
+  /// The join waits for the host's decision: [IosBroadcastStatus.check] and
+  /// [IosBroadcastStatus.timeoutSecs] say what the waiting page shows (20.5, step 6).
+  pending,
   waiting,
   streaming,
   reconnecting,
@@ -55,6 +78,11 @@ enum IosBroadcastError {
   memory,
   stoppedByApp,
   internalError,
+
+  /// The host denied the join, nobody decided in time, the room is locked (20.5, step 6).
+  joinDenied,
+  approvalTimeout,
+  roomLocked,
 }
 
 /// One report of the extension.
@@ -71,6 +99,11 @@ class IosBroadcastStatus {
     this.freeMemoryMB = -1,
     this.seq = 0,
     this.updatedAtMs,
+    this.check,
+    this.timeoutSecs,
+    this.roomName,
+    this.sas,
+    this.nextHandover,
   });
 
   final IosBroadcastState state;
@@ -95,6 +128,20 @@ class IosBroadcastStatus {
   /// ignores reports older than its own start request: they belong to an earlier broadcast.
   final int? updatedAtMs;
 
+  /// While [IosBroadcastState.pending]: the check number the display shows on its request, and
+  /// the seconds the host has to decide.
+  final int? check;
+  final int? timeoutSecs;
+
+  /// The display's room name and the connection check code (`123 456`) of the broadcast, for
+  /// the Presenting page (`presenting.where`, `presenting.sas`).
+  final String? roomName;
+  final String? sas;
+
+  /// The token of the way back: the display holds it, the app joins with it after the
+  /// broadcast and needs no new approval (20.5, step 5). Null: join the ordinary way.
+  final String? nextHandover;
+
   bool get isTerminal =>
       state == IosBroadcastState.ended ||
       state == IosBroadcastState.failed ||
@@ -112,10 +159,17 @@ class IosBroadcastRequest {
     this.maxDimension = 1280,
     this.fps = 30,
     this.bitrate = 2500000,
+    this.name,
+    this.handover,
   });
 
   final String code;
   final String relay;
+
+  /// The person's name for the display's request, and the single-use token the display holds
+  /// for this person (null = an ordinary join, the display asks the host).
+  final String? name;
+  final String? handover;
   final int maxDimension;
   final int fps;
   final int bitrate;
@@ -165,6 +219,8 @@ class ChannelIosBroadcast implements IosBroadcast {
       'maxDimension': r.maxDimension,
       'fps': r.fps,
       'bitrate': r.bitrate,
+      'name': r.name,
+      'handover': r.handover,
     });
   }
 
@@ -204,7 +260,38 @@ IosBroadcastStatus? parseBroadcastStatus(dynamic raw) {
     updatedAtMs: raw['updatedAt'] is num
         ? ((raw['updatedAt'] as num) * 1000).round()
         : null,
+    check: raw['check'] is num ? _int(raw['check']) : null,
+    timeoutSecs: raw['timeoutSecs'] is num ? _int(raw['timeoutSecs']) : null,
+    roomName: _text(raw['roomName']),
+    sas: _text(raw['sas']),
+    nextHandover: _text(raw['nextHandover']),
   );
+}
+
+String? _text(dynamic v) => v is String && v.isNotEmpty ? v : null;
+
+/// A new single-use hand-over token: 128 random bits as base64url without padding (22
+/// characters of `A-Z a-z 0-9 - _`), the form the display accepts (native-apps.md 20.5). Pass a
+/// [Random] only in tests.
+String newHandoverToken([Random? random]) {
+  final r = random ?? Random.secure();
+  const alphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  final bytes = List<int>.generate(16, (_) => r.nextInt(256));
+  final out = StringBuffer();
+  var bits = 0;
+  var acc = 0;
+  for (final b in bytes) {
+    acc = (acc << 8) | b;
+    bits += 8;
+    while (bits >= 6) {
+      bits -= 6;
+      out.write(alphabet[(acc >> bits) & 63]);
+    }
+    acc &= (1 << bits) - 1;
+  }
+  if (bits > 0) out.write(alphabet[(acc << (6 - bits)) & 63]);
+  return out.toString();
 }
 
 T? _byName<T extends Enum>(List<T> values, dynamic name) {

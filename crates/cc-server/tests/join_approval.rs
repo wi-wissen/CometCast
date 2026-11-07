@@ -877,3 +877,116 @@ async fn room_name_is_cleaned_and_cut_at_32_characters() {
     send(&mut r, json!({"type":"create_room","room_name":5})).await;
     assert_eq!(code_of(&recv(&mut r).await), "bad_message");
 }
+
+// --- hand-over token of the iOS broadcast extension (native-apps.md 20.5) ---
+// The server only relays the optional `handover` field of a join; the display decides.
+
+#[tokio::test]
+async fn handover_token_is_relayed_unchanged_in_join_request() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut s = sender(addr).await;
+    let token = "AbCdEfGhIjKlMnOpQrStUv";
+    send(
+        &mut s,
+        json!({"type":"join_room","code":code,"name":"Ana","handover":token}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "join_pending");
+    let req = recv(&mut r).await;
+    assert_eq!(req["type"], "join_request");
+    assert_eq!(req["handover"], token);
+    // The owner still decides; allowing works as for any join.
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":req["id"],"allow":true}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "joined");
+    assert_eq!(
+        recv(&mut r).await,
+        json!({"type":"peer_joined","name":"Ana"})
+    );
+}
+
+#[tokio::test]
+async fn handover_token_is_relayed_in_peer_joined_in_open_rooms() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("open")).await;
+    let mut s = sender(addr).await;
+    send(
+        &mut s,
+        json!({"type":"join_room","code":code,"name":"Ana","handover":"tok_en-1"}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "joined");
+    assert_eq!(
+        recv(&mut r).await,
+        json!({"type":"peer_joined","name":"Ana","handover":"tok_en-1"})
+    );
+}
+
+#[tokio::test]
+async fn bad_handover_tokens_are_dropped_and_the_join_goes_on() {
+    let addr = start(ServerConfig::default()).await;
+    for bad in [
+        json!("x".repeat(65)),
+        json!(""),
+        json!("a b"),
+        json!("<script>"),
+    ] {
+        let (mut r, code) = room(addr, Some("confirm")).await;
+        let mut s = sender(addr).await;
+        send(
+            &mut s,
+            json!({"type":"join_room","code":code,"name":"Ana","handover":bad}),
+        )
+        .await;
+        assert_eq!(recv(&mut s).await["type"], "join_pending");
+        let req = recv(&mut r).await;
+        assert_eq!(req["type"], "join_request");
+        assert!(req.get("handover").is_none(), "dropped: {req}");
+    }
+}
+
+#[tokio::test]
+async fn a_token_does_not_skip_the_host_in_confirm_or_locked_rooms() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut s = sender(addr).await;
+    send(
+        &mut s,
+        json!({"type":"join_room","code":code,"handover":"AbCdEf"}),
+    )
+    .await;
+    // Still pending: the server never admits by itself.
+    assert_eq!(recv(&mut s).await["type"], "join_pending");
+    assert_eq!(recv(&mut r).await["type"], "join_request");
+    let (_r2, code2) = room(addr, Some("locked")).await;
+    let mut s2 = sender(addr).await;
+    send(
+        &mut s2,
+        json!({"type":"join_room","code":code2,"handover":"AbCdEf"}),
+    )
+    .await;
+    assert_eq!(code_of(&recv(&mut s2).await), "room_locked");
+}
+
+#[tokio::test]
+async fn a_token_from_one_room_does_not_open_another_room() {
+    // The server relays whatever token it gets, to the owner of the room named by the code;
+    // each display checks tokens against its own store (see cc-receiver tests).
+    let addr = start(ServerConfig::default()).await;
+    let (mut a, code_a) = room(addr, Some("confirm")).await;
+    let (mut b, code_b) = room(addr, Some("confirm")).await;
+    let mut s = sender(addr).await;
+    send(
+        &mut s,
+        json!({"type":"join_room","code":code_b,"handover":"AbCdEf"}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "join_pending");
+    assert_eq!(recv(&mut b).await["handover"], "AbCdEf");
+    silent(&mut a).await;
+    let _ = code_a;
+}

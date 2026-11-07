@@ -184,7 +184,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     return _c.hasLiveVideo ||
         shown is ReceivedImage ||
         shown is ReceivedDocument ||
-        _codecWaiting;
+        _codecWaiting ||
+        // The presenter left for the iOS hand-over: black stage until it is back (20.5).
+        _c.handoverHold;
   }
 
   bool get _codecDialog => _codecWaiting && !_codecLater;
@@ -227,7 +229,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     final setup = await widget.store.loadSetup();
     final look = await widget.store.loadAppearance();
     final id = await widget.store.instanceId();
-    await _codec?.init();
+    // Not awaited: with a consent on file `init` downloads the codec (or follows a running
+    // download), which can take minutes, and the display must not stay blank meanwhile.
+    unawaited(_codec?.init());
     if (!mounted) return;
     _instanceId = id;
     setState(() {
@@ -379,6 +383,23 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     if (mounted) setState(() {});
     final w = _wizard;
     if (w != null) w.updateOptions(_addressOptions());
+  }
+
+  /// The IPv4 address of the in-house box (spec 4.2, N40): the server of this display came from
+  /// a box announcement (`sourceBox`) and its address is a host name; the announcement's IPv4
+  /// address then is a second way in (`idle.altAddress`) and the QR code uses it. Null
+  /// otherwise (the IP is never shown next to an IP, nor for any other source).
+  String? get _boxIp {
+    final server = _server;
+    for (final x in widget.settings.serverSuggestions) {
+      if (x.address.trim() != server || x.kind != ServerSourceKind.announced) {
+        continue;
+      }
+      final ip = x.ip;
+      if (ip == null || ip.isEmpty) return null;
+      return isIpHost(displayHost(server)) ? null : ip;
+    }
+    return null;
   }
 
   List<AddressOption> _addressOptions() {
@@ -702,12 +723,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
             final shown = c.shown;
             final link = shown is ReceivedLink ? shown : null;
             final hidePointer = presenting && !_controlsShown;
-            final transferPill = presenting && c.receiving != null
-                ? t.receiveTransfer(
-                    c.receiving!.name,
-                    '${c.receiving!.percent}',
-                  )
-                : null;
+            final receiving = presenting ? c.receiving : null;
             final errorToast = c.noteError == null
                 ? null
                 : _contentToast(t, c.noteError!);
@@ -731,6 +747,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       mode: fromCoreMode(c.joinMode),
                       code: c.roomCode,
                       dom: _server,
+                      altAddress: _boxIp,
                       view: _view,
                       cause: _cause,
                       dimmed: _dimmed,
@@ -741,12 +758,26 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                           !_settingsOpen && head == null && link == null,
                       onSettings: () => setState(() => _settingsOpen = true),
                     ),
+                  // After "Not now" (also while the download goes on): the state line on the black
+                  // stage, no box, at rest too (spec 4.7, N31). It goes with the picture, the
+                  // presenter or End; input shows the controls above it.
+                  if (presenting && _codecWaiting && _codecLater)
+                    Center(
+                      child: Text(
+                        t.codecStageHint,
+                        key: const Key('codec-stage-hint'),
+                        textAlign: TextAlign.center,
+                        style: DisplayScope.of(context).type.stageHint,
+                      ),
+                    ),
                   if (presenting)
                     PresentingControls(
                       name: c.peerName ?? '',
                       sas: c.connectionCode,
                       inert: _codecDialog,
-                      shown: _controlsShown || _codecDialog,
+                      // The dialog's appearance does not reveal the controls (N31): they stay
+                      // under the scrim and fade on their normal timer.
+                      shown: _controlsShown,
                       endFocus: _endNode,
                       onEnd: () {
                         _c.endRoom();
@@ -757,7 +788,12 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       shown is ReceivedDocument &&
                       c.note == ContentNote.renderFailed)
                     PageErrorBox(text: t.receiveDocumentPageErrorFailed),
-                  if (transferPill != null) TransferPill(text: transferPill),
+                  if (receiving != null)
+                    TransferPill(
+                      name: receiving.name,
+                      percent: '${receiving.percent}',
+                      format: t.receiveTransfer,
+                    ),
                   if (_settingsOpen && !presenting && head == null)
                     SettingsDialog(
                       mode: fromCoreMode(c.joinMode),

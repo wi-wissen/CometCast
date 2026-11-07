@@ -19,7 +19,10 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
-use cc_files::{ContentEvent, ContentOptions, ContentReceiver, Next, WorkDone, page_message};
+use cc_files::{
+    ContentEvent, ContentOptions, ContentReceiver, Next, WorkDone, handover_ok_message,
+    page_message,
+};
 use cc_transport::{ControlChannel, ControlData};
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinHandle;
@@ -179,6 +182,16 @@ fn feed(rx: &mut ContentReceiver, data: ControlData, evs: &mut Vec<ContentEvent>
     }
 }
 
+/// What the content task needs to answer a presenter's hand-over request (native-apps.md 20.5).
+pub(crate) struct HandoverHook {
+    /// The display's tokens.
+    pub(crate) store: Arc<crate::HandoverStore>,
+    /// Name of the presenter whose channel this is (as the display knows it).
+    pub(crate) name: String,
+    /// Where "a token was stored" is reported to the receiver loop.
+    pub(crate) notify: mpsc::UnboundedSender<crate::ReceiverEvent>,
+}
+
 /// Start the task. It ends when the channel closed and everything was handled, when the
 /// application dropped the event receiver, or when the receiver blocked itself.
 pub(crate) fn spawn(
@@ -186,6 +199,7 @@ pub(crate) fn spawn(
     opts: ContentOptions,
     mut widths: mpsc::UnboundedReceiver<u32>,
     events: Arc<EventSink>,
+    hook: Option<HandoverHook>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut rx = ContentReceiver::new(opts);
@@ -260,6 +274,19 @@ pub(crate) fn spawn(
                 },
             }
             for e in evs {
+                // A hand-over request is for the display itself, not for the application:
+                // hold the token and answer. Without a known presenter it is not answered.
+                if let ContentEvent::HandoverRequested { token } = &e {
+                    if let Some(h) = &hook
+                        && h.store.insert(token, &h.name, Instant::now())
+                    {
+                        let _ = channel.send_text(&handover_ok_message()).await;
+                        let _ = h.notify.send(crate::ReceiverEvent::HandoverStored {
+                            name: h.name.clone(),
+                        });
+                    }
+                    continue;
+                }
                 if events.push(e).await.is_err() {
                     channel.close().await;
                     return;

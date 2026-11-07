@@ -185,7 +185,25 @@ pub async fn join_room(
     name: Option<String>,
     progress: Option<&mpsc::UnboundedSender<JoinProgress>>,
 ) -> Result<Option<String>, TransportError> {
-    sig.send(ClientMsg::JoinRoom { code, name }).await?;
+    join_room_with(sig, code, name, None, progress).await
+}
+
+/// [`join_room`] with a single-use hand-over token (`join_room.handover`, native-apps.md
+/// 20.5): the display admits a join that carries a token it issued without asking the host.
+/// `None` is an ordinary join.
+pub async fn join_room_with(
+    sig: &mut SignalingClient,
+    code: RoomCode,
+    name: Option<String>,
+    handover: Option<String>,
+    progress: Option<&mpsc::UnboundedSender<JoinProgress>>,
+) -> Result<Option<String>, TransportError> {
+    sig.send(ClientMsg::JoinRoom {
+        code,
+        name,
+        handover,
+    })
+    .await?;
     let mut deadline = tokio::time::Instant::now() + JOIN_ANSWER_TIMEOUT;
     loop {
         let msg = tokio::time::timeout_at(deadline, sig.recv())

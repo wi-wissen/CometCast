@@ -194,6 +194,13 @@ pub enum ContentEvent {
     },
     /// The sender stopped the content; whatever was shown should disappear.
     ContentStopped,
+    /// The presenter asks the display to hold a hand-over token (iOS broadcast extension,
+    /// native-apps.md 20.5). The application stores it and answers with
+    /// [`handover_ok_message`](crate::handover_ok_message), or does not answer.
+    HandoverRequested {
+        /// The token: 1 to 64 base64url characters.
+        token: String,
+    },
     /// Something was refused or failed. The detail is for logs, not for translation.
     Error {
         /// The kind of problem.
@@ -660,7 +667,8 @@ impl ContentReceiver {
             }
             Message::Link { url } => out.push(ContentEvent::LinkRequested { url }),
             // Display to presenter only: ignored here, and not a violation.
-            Message::Page { .. } => self.skipping = skipping,
+            Message::Page { .. } | Message::HandoverOk => self.skipping = skipping,
+            Message::Handover { token } => out.push(ContentEvent::HandoverRequested { token }),
             Message::Cmd(cmd) => self.command(&mut out, &cmd),
         }
         out

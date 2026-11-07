@@ -69,6 +69,36 @@ describe('message encoding', () => {
       room_name: 'Room 204',
     })
   })
+  it('tolerates the optional hand-over token of the iOS app (join_request, peer_joined) and ignores anything else in it', () => {
+    const t = 'q3Zx9_-Lm0AbCdEfGhIjKl'
+    expect(decodeServerMessage(`{"type":"join_request","id":3,"name":"Ana","check":42,"handover":"${t}"}`)).toEqual({
+      type: 'join_request',
+      id: 3,
+      name: 'Ana',
+      check: 42,
+      handover: t,
+    })
+    expect(decodeServerMessage(`{"type":"peer_joined","name":"Ana","handover":"${t}"}`)).toEqual({
+      type: 'peer_joined',
+      name: 'Ana',
+      handover: t,
+    })
+    // not a string: the message stays valid, the field is dropped
+    for (const v of ['null', '5', '["x"]', '{"a":1}']) {
+      expect(decodeServerMessage(`{"type":"join_request","id":3,"name":"Ana","check":42,"handover":${v}}`), v).toEqual({
+        type: 'join_request',
+        id: 3,
+        name: 'Ana',
+        check: 42,
+      })
+    }
+    expect(JSON.parse(encodeClientMessage({ type: 'join_room', code: 'ABC234', name: 'Ana', handover: t }))).toEqual({
+      type: 'join_room',
+      code: 'ABC234',
+      name: 'Ana',
+      handover: t,
+    })
+  })
   it('rejects invalid input', () => {
     for (const bad of ['', 'nope', '[]', 'null', '{"type":"nope"}', '{"type":"offer"}', '{"type":"room_created","code":1}', '{"type":"room_created","code":"ABC234"}', '{"type":"join_request","id":"1","name":"x","check":1}', '{"type":"join_mode_changed","join_mode":"x"}', '{"type":"peer_joined"}']) {
       expect(decodeServerMessage(bad)).toBeNull()

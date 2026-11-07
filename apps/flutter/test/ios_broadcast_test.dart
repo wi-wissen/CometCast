@@ -7,6 +7,7 @@
 //   * the receiver on iOS: no codec card, "not needed" note, failing decoder reported.
 
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -140,6 +141,8 @@ void main() {
         'maxDimension': 1280,
         'fps': 30,
         'bitrate': 2500000,
+        'name': null,
+        'handover': null,
       });
     });
 
@@ -240,6 +243,7 @@ void main() {
       expect(IosBroadcastState.values.map((e) => e.name), [
         'starting',
         'connecting',
+        'pending',
         'waiting',
         'streaming',
         'reconnecting',
@@ -262,14 +266,104 @@ void main() {
         'memory',
         'stoppedByApp',
         'internalError',
+        'joinDenied',
+        'approvalTimeout',
+        'roomLocked',
       ]);
+    });
+
+    test('the fallback fields and the way back are read from the status', () {
+      final s = parseBroadcastStatus({
+        'state': 'pending',
+        'check': 42,
+        'timeoutSecs': 60,
+        'roomName': 'Room 204',
+        'sas': '171 852',
+        'nextHandover': 'tok',
+      })!;
+      expect(s.state, IosBroadcastState.pending);
+      expect((s.check, s.timeoutSecs), (42, 60));
+      expect(
+        (s.roomName, s.sas, s.nextHandover),
+        ('Room 204', '171 852', 'tok'),
+      );
+      // Missing, empty or wrongly typed: null, never a guess.
+      final e = parseBroadcastStatus({
+        'state': 'ended',
+        'roomName': '',
+        'sas': 5,
+        'nextHandover': '',
+      })!;
+      expect(
+        (e.check, e.roomName, e.sas, e.nextHandover),
+        (null, null, null, null),
+      );
+    });
+
+    test('prepare hands the name and the token to the platform', () async {
+      Map<Object?, Object?>? args;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('de.cometcast/ios_broadcast'),
+            (call) async {
+              args = call.arguments as Map<Object?, Object?>?;
+              return true;
+            },
+          );
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('de.cometcast/ios_broadcast'),
+              null,
+            ),
+      );
+      await const ChannelIosBroadcast().prepare(
+        const IosBroadcastRequest(
+          code: 'K7QM2W',
+          relay: 'r:1',
+          name: 'Lena',
+          handover: 'abcDEF-_123',
+        ),
+      );
+      expect(args!['name'], 'Lena');
+      expect(args!['handover'], 'abcDEF-_123');
+    });
+
+    test(
+      'option (a) of the test builds can never be on in a release build',
+      () {
+        expect(iosOptionAAllowed(release: true, defined: true), isFalse);
+        expect(iosOptionAAllowed(release: true, defined: false), isFalse);
+        expect(iosOptionAAllowed(release: false, defined: false), isFalse);
+        expect(iosOptionAAllowed(release: false, defined: true), isTrue);
+        // Without the define (all tests) the hand-over is on.
+        expect(iosOptionA, isFalse);
+      },
+    );
+
+    test('hand-over tokens are 128 random bits as base64url', () {
+      final t = newHandoverToken();
+      expect(t, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
+      expect(newHandoverToken(), isNot(t));
+      // The same bytes as the Swift test (0xfb x 16).
+      expect(newHandoverToken(_Fixed(0xfb)), '-_v7-_v7-_v7-_v7-_v7-w');
+      expect(newHandoverToken(_Fixed(0)), 'A' * 21 + 'A');
     });
   });
 
-  group('Send screen on iOS', () {
-  });
+  group('Send screen on iOS', () {});
 
-  group('Receiver on iOS', () {
-  });
+  group('Receiver on iOS', () {});
 }
 
+/// A "random" source that always gives the same byte (tests of the token format only).
+class _Fixed implements Random {
+  _Fixed(this.v);
+  final int v;
+  @override
+  int nextInt(int max) => v;
+  @override
+  bool nextBool() => false;
+  @override
+  double nextDouble() => 0;
+}

@@ -17,10 +17,14 @@ use crate::engine::{self, Config, ErrorCode, Sink, Status};
 /// What the status callback receives. Layout is part of the ABI (see `cc_ios.h`).
 #[repr(C)]
 pub struct CcIosStatus {
-    /// `State` as an integer (0 idle .. 6 failed).
+    /// `State` as an integer (0 idle .. 7 pending).
     pub state: i32,
     /// `ErrorCode` as an integer.
     pub error: i32,
+    /// Check number (10..99) of a join that waits for the host; 0 = none.
+    pub check: i32,
+    /// Seconds the host has to decide, with `check`; 0 = none.
+    pub timeout_secs: i32,
     /// Access units handed to the sender.
     pub pushed: u64,
     /// Access units written to the transport.
@@ -35,6 +39,11 @@ pub struct CcIosStatus {
     pub keyframe_requests: u64,
     /// Technical English text, NUL-terminated, valid during the callback only.
     pub message: *const c_char,
+    /// Room name the display gave, NUL-terminated, empty = none; valid during the callback only.
+    pub room_name: *const c_char,
+    /// Connection check code (`123 456`), NUL-terminated, empty until connected; valid during
+    /// the callback only.
+    pub sas: *const c_char,
 }
 
 /// Signature of the status callback.
@@ -58,10 +67,15 @@ fn sink(callback: CcIosStatusCallback, user: *mut c_void) -> Sink {
     let user = UserData(user);
     Arc::new(move |s: &Status| {
         let Some(cb) = callback else { return };
-        let message = CString::new(s.message.replace('\0', " ")).unwrap_or_default();
+        let cstr = |t: &str| CString::new(t.replace('\0', " ")).unwrap_or_default();
+        let message = cstr(&s.message);
+        let room_name = cstr(&s.room_name);
+        let sas = cstr(&s.sas);
         let c = CcIosStatus {
             state: s.state as i32,
             error: s.error as i32,
+            check: i32::from(s.check),
+            timeout_secs: i32::try_from(s.timeout_secs).unwrap_or(i32::MAX),
             pushed: s.pushed,
             sent: s.sent,
             dropped: s.dropped,
@@ -69,6 +83,8 @@ fn sink(callback: CcIosStatusCallback, user: *mut c_void) -> Sink {
             keyframes_sent: s.keyframes_sent,
             keyframe_requests: s.keyframe_requests,
             message: message.as_ptr(),
+            room_name: room_name.as_ptr(),
+            sas: sas.as_ptr(),
         };
         // SAFETY: `cb` is the caller's function; `c` and `message` live until it returns.
         unsafe { cb(&c, user.get()) };
@@ -89,16 +105,28 @@ unsafe fn text(ptr: *const c_char) -> Option<String> {
 /// Start the broadcast sender. Returns 0 if it was started (progress comes through `callback`),
 /// else an `ErrorCode` (1 bad room code, 2 bad relay, 7 internal, 8 already running).
 /// `app_group_path` is the directory for `cc-ios.log` (may be NULL). `callback` may be NULL.
+/// `name` is the person's name for the display's request and `handover` the single-use token
+/// the app got from the display (native-apps.md 20.5); both may be NULL or empty.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cc_ios_start(
     room_code: *const c_char,
     relay_url: *const c_char,
     app_group_path: *const c_char,
+    name: *const c_char,
+    handover: *const c_char,
     callback: CcIosStatusCallback,
     user: *mut c_void,
 ) -> i32 {
     // SAFETY: header contract, see `text`.
-    let (code, relay, dir) = unsafe { (text(room_code), text(relay_url), text(app_group_path)) };
+    let (code, relay, dir, name, handover) = unsafe {
+        (
+            text(room_code),
+            text(relay_url),
+            text(app_group_path),
+            text(name),
+            text(handover),
+        )
+    };
     let Some(code) = code else {
         return ErrorCode::InvalidRoomCode as i32;
     };
@@ -110,6 +138,8 @@ pub unsafe extern "C" fn cc_ios_start(
         relay_url: relay,
         log_dir: dir.filter(|d| !d.is_empty()).map(PathBuf::from),
         udp_bind: None,
+        name: name.filter(|n| !n.trim().is_empty()),
+        handover: handover.filter(|h| !h.is_empty()),
     };
     match engine::start(config, sink(callback, user)) {
         Ok(()) => 0,
@@ -146,6 +176,20 @@ pub unsafe extern "C" fn cc_ios_push_frame(
     engine::push_frame(bytes, is_key, pts_us) as i32
 }
 
+/// Ask the display to hold a new hand-over token for the way back to the app (native-apps.md
+/// 20.5, step 5). `token` is 1 to 64 base64url characters (the extension makes 128 random bits).
+/// Blocks for at most about four seconds. Returns 1 when the display answered, 0 otherwise
+/// (nothing runs, the token is not valid, an old or a web display that does not answer). Call it
+/// before `cc_ios_stop`, not from the status callback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cc_ios_request_handover(token: *const c_char) -> i32 {
+    // SAFETY: header contract, see `text`.
+    let Some(token) = (unsafe { text(token) }) else {
+        return 0;
+    };
+    i32::from(engine::request_handover(&token))
+}
+
 /// Returns true once per key frame request; the encoder should then make a sync frame.
 #[unsafe(no_mangle)]
 pub extern "C" fn cc_ios_keyframe_requested() -> bool {
@@ -163,7 +207,7 @@ pub extern "C" fn cc_ios_stop() {
 /// Version of this C ABI. Bumped when a signature or number changes.
 #[unsafe(no_mangle)]
 pub extern "C" fn cc_ios_abi_version() -> i32 {
-    1
+    2
 }
 
 #[cfg(test)]
@@ -178,13 +222,18 @@ mod tests {
             "cc_ios_set_config",
             "cc_ios_push_frame",
             "cc_ios_keyframe_requested",
+            "cc_ios_request_handover",
             "cc_ios_stop",
             "cc_ios_abi_version",
         ] {
             assert!(header.contains(name), "{name} missing in cc_ios.h");
         }
-        assert!(header.contains("#define CC_IOS_ABI_VERSION 1"));
-        assert_eq!(super::cc_ios_abi_version(), 1);
-        assert_eq!(std::mem::size_of::<super::CcIosStatus>(), 8 + 6 * 8 + 8);
+        assert!(header.contains("#define CC_IOS_ABI_VERSION 2"));
+        assert_eq!(super::cc_ios_abi_version(), 2);
+        // 4 ints, 6 counters and 3 pointers (64-bit layout, as on every iOS device).
+        assert_eq!(
+            std::mem::size_of::<super::CcIosStatus>(),
+            4 * 4 + 6 * 8 + 3 * 8
+        );
     }
 }

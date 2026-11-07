@@ -296,6 +296,19 @@ class ReceiverController extends ChangeNotifier {
   bool senderJoined = false;
   bool senderLeft = false;
 
+  /// A presenter's hand-over token is stored (iOS, native-apps.md 20.5): its leaving is not a
+  /// leave for the host (no `toast.left`) until the token is used or runs out.
+  bool handoverPending = false;
+
+  /// The presenter left with a hand-over pending while something was shown: the display stays
+  /// in Presenting on black for at most [handoverHoldSeconds] (spec N32, 20.5 step 2). Nothing
+  /// shown: Idle at once, as for any leave.
+  bool handoverHold = false;
+  Timer? _holdTimer;
+
+  /// How long a hand-over token lives on the display (the core's own limit is the same).
+  static const handoverHoldSeconds = 60;
+
   /// The connection check code of the connected presenter (`123 456`), or null until it
   /// connected. The presenter shows the same digits.
   String? connectionCode;
@@ -455,6 +468,7 @@ class ReceiverController extends ChangeNotifier {
     _startHardware();
     phase = ReceiverPhase.starting;
     roomCode = null;
+    _endHandover();
     senderJoined = false;
     senderLeft = false;
     connectionCode = null;
@@ -564,10 +578,17 @@ class ReceiverController extends ChangeNotifier {
         onNotice?.call(const NoticeSessionEnded());
         _begin(_startServer, restartMode ?? joinMode);
         return;
-      case ReceiverUiEvent_PeerJoined(:final name):
+      case ReceiverUiEvent_PeerJoined(:final name, :final handover):
         peerName = name;
         senderJoined = true;
-        onNotice?.call(NoticeJoined(name));
+        // A join with the display's own hand-over token: the person was approved before and
+        // came back; no "connected" notice, no dialog.
+        _endHandover();
+        if (!handover) onNotice?.call(NoticeJoined(name));
+      case ReceiverUiEvent_HandoverStored():
+        handoverPending = true;
+      case ReceiverUiEvent_HandoverExpired():
+        _endHandover();
       case ReceiverUiEvent_ConnectionState(:final state):
         connectionState = state;
       case ReceiverUiEvent_ConnectionCode(:final sas):
@@ -639,7 +660,18 @@ class ReceiverController extends ChangeNotifier {
         senderLeft = true;
         final left = peerName;
         peerName = null;
-        if (left != null) onNotice?.call(NoticeLeft(left));
+        // A leave with a hand-over pending is no leave for the host (native-apps.md 20.5).
+        final quiet = handoverPending;
+        if (quiet && keepRoomOnPeerLeft && (hasLiveVideo || shown != null)) {
+          handoverHold = true;
+          _holdTimer?.cancel();
+          _holdTimer = Timer(const Duration(seconds: handoverHoldSeconds), () {
+            if (_disposed || !handoverHold) return;
+            _endHandover();
+            notifyListeners();
+          });
+        }
+        if (left != null && !quiet) onNotice?.call(NoticeLeft(left));
         if (keepRoomOnPeerLeft) {
           // The room outlives the presenter: same code, same mode, block list and queue.
           senderJoined = false;
@@ -669,6 +701,14 @@ class ReceiverController extends ChangeNotifier {
         return;
     }
     notifyListeners();
+  }
+
+  /// The hand-over is over (used, expired or the room is new): normal rules again.
+  void _endHandover() {
+    handoverPending = false;
+    handoverHold = false;
+    _holdTimer?.cancel();
+    _holdTimer = null;
   }
 
   /// Forget what belonged to the connected presenter: picture, content, counters and the
@@ -1233,6 +1273,7 @@ class ReceiverController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _holdTimer?.cancel();
     _retryTimer?.cancel();
     _cancel();
     _clearImage();

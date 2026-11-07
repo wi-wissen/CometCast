@@ -541,7 +541,13 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 }
             }
         }
-        ClientMsg::JoinRoom { code, name } => {
+        ClientMsg::JoinRoom {
+            code,
+            name,
+            handover,
+        } => {
+            // The display checks the token; the server only passes on a well-formed one.
+            let handover = cc_proto::sanitize_handover(handover.as_deref());
             if role != Role::Sender {
                 return strike(conn, state, "wrong_role", "only a sender can join a room");
             } else if conn.room.is_some() || conn.pending.is_some() {
@@ -567,7 +573,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     }) => {
                         conn.room = Some(code);
                         conn.send(ServerMsg::Joined { room_name });
-                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
+                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined { name, handover }));
                     }
                     Ok(Joined::Pending {
                         owner,
@@ -590,6 +596,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                             id: req,
                             name,
                             check,
+                            handover,
                         }));
                     }
                     Err(JoinError::NotFound) => {
@@ -719,7 +726,10 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         joiner.send(Outgoing::Msg(ServerMsg::Joined {
                             room_name: d.room_name.clone(),
                         }));
-                        owner.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
+                        owner.send(Outgoing::Msg(ServerMsg::PeerJoined {
+                            name,
+                            handover: None,
+                        }));
                     }
                     for (tx, req, code, reason, ip) in d.dropped {
                         tx.send(Outgoing::Msg(ServerMsg::Error {

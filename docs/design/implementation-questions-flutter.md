@@ -268,3 +268,48 @@ Questions found while building the desktop system screen picker (B7, E1 above) i
 | After "Use this relay" the rows are those frozen when the relay page opened | Accepted: shown disabled only until the join answers (N51) |
 | Relay page uses the generic icon and layout | Correct: it is the presenter variant of 7.2 (N52) |
 | Debug banner visible in screenshots | Re-shoot without it (N58, C1) |
+
+## I. Questions from the second UI round
+
+Questions found while implementing [fix-list-flutter-2.md](fix-list-flutter-2.md) (parts A and B1). Each: what was found, the options, what was done meanwhile (the minimal neutral behaviour). Nothing here was decided by the implementer.
+
+- **I1 4.7: the admin note wraps to three lines in English, not two.**
+  - **Found:** at 780 wide (712 for the text) `codec.offlineNoDir` (and `codec.offline`) at 14 / 1.4 wraps to **3** lines, so the missing state is about 670 px high at 1920 × 1080, not 626 (spec: "admin 2"). The card still starts at 206 px (103 ref), so the 66 ref rule holds.
+  - **Options:** (a) accept the three lines and correct the heights of 4.7 (about 335 ref); (b) shorten the English text; (c) widen the card.
+  - **Done meanwhile:** as designed (780, 14 / 1.4), no text changed.
+- **I2 4.7: the unsupported state is one line high.**
+  - **Found:** `codec.unsupported` is one line at 780 wide, so the card is about 360 px (180 ref) high; spec: about 200 ref (two lines).
+  - **Done meanwhile:** none needed; the card is smaller than the specified maximum, still centred.
+- **I3 4.7 and fix list A1: what the downloading and failed states show besides their own line.**
+  - **Found:** the acceptance lines of A1 name only the line and the row; section 4.7 and its heights (365 / 351 ref) include the explanation, source and admin note in both states.
+  - **Done meanwhile:** as 4.7 (body stays in missing, downloading and failed; unsupported is label, text and Close only).
+- **I4 20.5 step 6: the extension's alert text for a refused hand-over join.**
+  - **Found:** `finishBroadcastWithError` needs a text. "No new copy" leaves nothing for `joinDenied`, `approvalTimeout`, `roomLocked`; the app shows the normal error pages for them.
+  - **Options:** (a) the neutral "The broadcast has ended." (`error.none`); (b) three new sentences in the extension strings.
+  - **Done meanwhile:** (a), in the extension's `localizedMessage`.
+- **I5 20.5 step 3: the token is bound to the presenter's name, and the name may be empty.**
+  - **Found:** the display binds a token to the name it knows from `peer_joined`. A person who gave no name is `Guest N` with a number that changes from join to join, so an exact comparison would never match.
+  - **Options:** (a) two `Guest N` labels are the same person (the secret token carries the trust); (b) the app must always send a name (a default name is copy); (c) no name binding.
+  - **Done meanwhile:** (a), in `cc-receiver`'s `HandoverStore`.
+- **I6 20.5 step 3: the token in an Open room.**
+  - **Found:** the spec relays `handover` in `join_request`. In mode `open` the server makes no request: the joiner is in at once and the display only sees `peer_joined`, so it could not suppress `toast.connected`.
+  - **Options:** (a) the server also relays the field in `peer_joined` (what the display then checks); (b) the server sends a `join_request` for token joins in Open rooms (changes who is asked); (c) accept the toast in Open.
+  - **Done meanwhile:** (a): optional `handover` in `peer_joined` for joins that need no decision. The server still neither stores nor checks tokens.
+- **I7 20.5: the web display does not hold tokens yet.**
+  - **Found:** fix list B1 asks the web receiver to accept the same messages (a web change). The web display has no store and ignores the control message and the field (it reads and drops them; tests added).
+  - **Done meanwhile:** the web and Swift decoders tolerate the field (fixtures with `decoders_may_drop`); iOS against a web display uses step 6 (the waiting page with the extension's number). The web handover is not built.
+- **I8 20.5: which page the app shows behind the system sheet.**
+  - **Found:** the app has left the room before the sheet opens; the spec is silent about the page behind the sheet (the old code showed the start page).
+  - **Done meanwhile:** unchanged (the start page); the person is back on "What to show" after the broadcast or after cancelling the sheet.
+- **I9 20.5 step 2: "stays in Presenting on black".**
+  - **Found:** with a hand-over pending the display keeps Presenting (black stage, wake lock) for at most 60 s when the leaving presenter had something shown; if nothing was shown, Idle at once. No text is shown on the black stage for this.
+  - **Done meanwhile:** as written, no line on the black stage.
+- **I10 N24 / A11: the emptied room name field selects the first suggestion again.**
+  - **Found:** after typing a name and deleting it the wizard falls back to the first suggestion (as built before), so its chip is selected again next to the ringed empty field. The fix list asks only for the ring.
+  - **Done meanwhile:** unchanged.
+- **I11 N40: where the box IP comes from.**
+  - **Found:** the announcement record carries the addresses of the announcing device; the spec says "the IPv4 address the announcement resolved to".
+  - **Done meanwhile:** the first IPv4 address of the record (`ServerCandidate.ip`, only for `display-announcement`); shown only when the server's address is a host name, and the QR then encodes `https://{ip}/{CODE}`.
+- **I12 Display start-up and the codec download.**
+  - **Found:** the display waited for `CodecController.init` (which downloads the codec when a consent is on file) before it showed anything, so it stayed blank for the length of a download.
+  - **Done meanwhile:** the display no longer waits for it. No design change.

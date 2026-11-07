@@ -43,10 +43,15 @@ final class BroadcastBridge: NSObject, FlutterStreamHandler {
             guard let a = call.arguments as? [String: Any],
                   let code = a["code"] as? String, let relay = a["relay"] as? String
             else { return result(FlutterError(code: "bad_arguments", message: "code and relay needed", details: nil)) }
+            // The name and the single-use hand-over token travel in config.json (App Group,
+            // docs/design/native-apps.md 20.5): the extension sends the name and joins with
+            // the token. A token that is not 1 to 64 base64url characters is not handed over.
+            let token = (a["handover"] as? String).flatMap { HandoverToken.isValid($0) ? $0 : nil }
             let config = BroadcastConfig(
                 code: code, relay: relay, requestedAt: Date().timeIntervalSince1970,
                 maxDimension: a["maxDimension"] as? Int ?? 1280, fps: a["fps"] as? Int ?? 30,
-                bitrate: a["bitrate"] as? Int ?? 2_500_000).clamped
+                bitrate: a["bitrate"] as? Int ?? 2_500_000,
+                name: a["name"] as? String, handover: token).clamped
             store.clearStopRequest()
             store.deleteStatus()
             do { try store.writeConfig(config); lastSeq = -1; reportedLost = false; result(true) }
@@ -138,8 +143,16 @@ final class BroadcastBridge: NSObject, FlutterStreamHandler {
     }
 
     private static func map(_ s: BroadcastStatus) -> [String: Any] {
-        ["seq": s.seq, "state": s.state.rawValue, "error": s.error.rawValue, "sent": s.sent,
-         "dropped": s.dropped, "bytes": s.bytes, "keyframes": s.keyframes, "width": s.width,
-         "height": s.height, "freeMemoryMB": s.freeMemoryMB, "updatedAt": s.updatedAt, "stale": false]
+        var m: [String: Any] = [
+            "seq": s.seq, "state": s.state.rawValue, "error": s.error.rawValue, "sent": s.sent,
+            "dropped": s.dropped, "bytes": s.bytes, "keyframes": s.keyframes, "width": s.width,
+            "height": s.height, "freeMemoryMB": s.freeMemoryMB, "updatedAt": s.updatedAt, "stale": false]
+        // The page's fallbacks and the way back (20.5): only what the extension wrote.
+        if let v = s.check { m["check"] = v }
+        if let v = s.timeoutSecs { m["timeoutSecs"] = v }
+        if let v = s.roomName { m["roomName"] = v }
+        if let v = s.sas { m["sas"] = v }
+        if let v = s.nextHandover { m["nextHandover"] = v }
+        return m
     }
 }

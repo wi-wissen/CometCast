@@ -189,7 +189,21 @@ pub enum ReceiverUiEvent {
     PeerJoined {
         /// Cleaned display name of the sender (plain text, at most 40 characters).
         name: String,
+        /// The join came with a hand-over token this display had issued (the iOS broadcast
+        /// extension, native-apps.md 20.5) and was let in without a dialog: show no
+        /// "connected" notice, the person was approved before.
+        handover: bool,
     },
+    /// A presenter's hand-over token is stored (the display answered `handover_ok`). The
+    /// presenter leaving now is not a leave for the host (no notice) until the token is used
+    /// ([`ReceiverUiEvent::PeerJoined`] with `handover`) or runs out
+    /// ([`ReceiverUiEvent::HandoverExpired`]).
+    HandoverStored {
+        /// The presenter's name.
+        name: String,
+    },
+    /// A hand-over token ran out unused (60 s): back to normal.
+    HandoverExpired,
     /// Join mode `confirm`: somebody waits for a decision ([`decide_join`]). The name is
     /// untrusted text that the server cleaned: show it as plain text.
     JoinRequest {
@@ -427,7 +441,11 @@ fn stats_event(s: MediaSnapshot) -> ReceiverUiEvent {
 
 fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
     match e {
-        ReceiverEvent::PeerJoined { name } => ReceiverUiEvent::PeerJoined { name },
+        ReceiverEvent::PeerJoined { name, handover } => {
+            ReceiverUiEvent::PeerJoined { name, handover }
+        }
+        ReceiverEvent::HandoverStored { name } => ReceiverUiEvent::HandoverStored { name },
+        ReceiverEvent::HandoverExpired => ReceiverUiEvent::HandoverExpired,
         ReceiverEvent::JoinRequest { id, name, check } => {
             ReceiverUiEvent::JoinRequest { id, name, check }
         }
@@ -1517,6 +1535,10 @@ pub struct ServerCandidate {
     pub address: String,
     /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
     pub source: String,
+    /// For `display-announcement`: the IPv4 address the announcement resolved to, as text. The
+    /// display shows it as `idle.altAddress` (and the QR code uses it) when the announced
+    /// server is a host name (the in-house box, decision N40).
+    pub ip: Option<String>,
 }
 
 /// What went wrong while looking for servers, as a code. The UI shows a translated sentence
@@ -1585,6 +1607,7 @@ fn candidates(report: &cc_discovery::DiscoveryReport) -> Vec<ServerCandidate> {
         .map(|s| ServerCandidate {
             address: s.address.clone(),
             source: s.source.as_str().to_owned(),
+            ip: s.ip.map(|ip| ip.to_string()),
         })
         .collect()
 }
@@ -2574,6 +2597,14 @@ pub enum PresenterUiEvent {
     },
     /// The content was delivered (the transport confirmed it). Page commands can follow.
     ContentSent,
+    /// The answer to [`request_handover`]: the display holds the token (`ok`), or it did not
+    /// answer in time (an old display, a web display, a lost connection). Either way the app
+    /// goes on: with the token the extension is let in without a dialog, without it the host
+    /// is asked as for any join.
+    HandoverResult {
+        /// The display answered `handover_ok`.
+        ok: bool,
+    },
     /// The presentation is connected: media flows, or the channel is open.
     Presenting,
     /// The presentation ended and the session is still joined (on request, or because the system
@@ -2601,11 +2632,15 @@ pub enum PresenterUiEvent {
 /// [`stop_presenter`] leaves. Replaces a running sender or presenter session.
 ///
 /// Errors are events, not return values (see [`start_receiver`]); a code that is not a room
-/// code is reported as `room_not_found`. `udp_bind` is for development only.
+/// code is reported as `room_not_found`. `handover` is a single-use token that the display issued
+/// to this person earlier ([`request_handover`], native-apps.md 20.5): the display admits the
+/// join without a dialog; `None` (or a token the display does not know) is an ordinary join.
+/// `udp_bind` is for development only.
 pub async fn start_presenter(
     code: String,
     server: String,
     name: Option<String>,
+    handover: Option<String>,
     udp_bind: Option<String>,
     events: StreamSink<PresenterUiEvent>,
 ) {
@@ -2629,6 +2664,7 @@ pub async fn start_presenter(
         code,
         server,
         name,
+        handover,
         udp_bind,
     };
     let Some(session) = presenter::join(join, &events, &mut stop_rx).await else {
@@ -2692,6 +2728,16 @@ pub fn present_encoded() -> bool {
 #[frb(sync)]
 pub fn present_content(source: ContentSource) -> bool {
     presenter::send(PCmd::Content(source))
+}
+
+/// iOS hand-over (native-apps.md 20.5, step 1): ask the display to hold the single-use `token`
+/// (128 random bits as base64url, 1 to 64 characters of `A-Z a-z 0-9 - _`, made by the app) for
+/// the broadcast extension, which joins with it. The answer is the event `HandoverResult`; then
+/// leave with [`stop_presenter`]. Opens a quiet content-only connection if nothing is
+/// presented. Returns `false` if no presenter session runs or the token is not valid.
+#[frb(sync)]
+pub fn request_handover(token: String) -> bool {
+    cc_proto::sanitize_handover(Some(&token)).is_some() && presenter::send(PCmd::Handover(token))
 }
 
 /// End the running presentation only: the display goes Idle with the same code and the
@@ -2838,6 +2884,26 @@ pub fn set_codec_dir(path: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The hand-over request is refused before anything is queued when the token is not a
+    /// valid one or no presenter session runs (native-apps.md 20.5).
+    #[test]
+    fn a_handover_request_needs_a_valid_token_and_a_session() {
+        presenter::clear();
+        assert!(
+            !request_handover("AbCdEfGhIjKlMnOpQrStUv".into()),
+            "no session"
+        );
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        presenter::install(tx);
+        for bad in ["", "a b", "a+b", &"x".repeat(65)] {
+            assert!(!request_handover(bad.into()), "{bad:?}");
+        }
+        assert!(rx.try_recv().is_err(), "nothing was queued for a bad token");
+        assert!(request_handover("AbCd-_09".into()));
+        assert!(matches!(rx.try_recv(), Ok(PCmd::Handover(t)) if t == "AbCd-_09"));
+        presenter::clear();
+    }
 
     /// Both features on (cargo unifies them in a workspace build): the backend is the source
     /// build, nothing is missing, so the UI must not ask for a download.

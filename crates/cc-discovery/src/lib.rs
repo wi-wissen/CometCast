@@ -99,6 +99,10 @@ pub struct DiscoveredServer {
     /// decides). For DNS-SRV and announced servers it is always `Some`; `Some(false)` only for
     /// a private IP literal or a `.local` name, and the UI should say so.
     pub tls: Option<bool>,
+    /// The IPv4 address the display's announcement resolved to, for an announced server
+    /// (`DisplayAnnouncement`) only: the app shows it as a second way in when the announced
+    /// server is a host name (the in-house box, decision N40). `None` otherwise.
+    pub ip: Option<std::net::Ipv4Addr>,
 }
 
 impl DiscoveredServer {
@@ -114,7 +118,14 @@ impl DiscoveredServer {
             source,
             detail,
             tls,
+            ip: None,
         }
+    }
+
+    /// The same entry with the IPv4 address the announcement resolved to.
+    pub fn with_ip(mut self, ip: Option<std::net::Ipv4Addr>) -> Self {
+        self.ip = ip;
+        self
     }
 }
 
@@ -268,11 +279,19 @@ pub async fn discover_servers_with(
                     .into_iter()
                     .filter_map(|r| {
                         let address = r.announced_server?;
-                        Some(DiscoveredServer::new(
-                            address,
-                            ServerSource::DisplayAnnouncement,
-                            Some(format!("announced by {}", r.name)),
-                        ))
+                        // IPv4 addresses come first in `addresses`.
+                        let ip = r.addresses.iter().find_map(|a| match a {
+                            std::net::IpAddr::V4(v) => Some(*v),
+                            std::net::IpAddr::V6(_) => None,
+                        });
+                        Some(
+                            DiscoveredServer::new(
+                                address,
+                                ServerSource::DisplayAnnouncement,
+                                Some(format!("announced by {}", r.name)),
+                            )
+                            .with_ip(ip),
+                        )
                     })
                     .collect();
                 (servers, Vec::new())
@@ -393,6 +412,37 @@ mod tests {
         );
         assert!(!r.locked);
         assert_eq!(r.policy, PolicyState::Absent);
+    }
+
+    #[tokio::test]
+    async fn an_announced_server_carries_the_ipv4_address_of_the_announcement() {
+        let mut box_ = receiver("box", Some("wss://cometcast.box:443"));
+        // Addresses come IPv4 first (`receiver_from_parts` sorts them).
+        box_.addresses = vec!["192.168.1.20".parse().unwrap(), "fd00::2".parse().unwrap()];
+        let mut only_v6 = receiver("v6", Some("wss://v6.example:443"));
+        only_v6.addresses = vec!["fd00::3".parse().unwrap()];
+        let m = FakeMdns(Ok(vec![box_, only_v6]));
+        let r = discover_servers_with(&opts_with(None), None, &m).await;
+        let ips: Vec<(&str, Option<String>)> = r
+            .servers
+            .iter()
+            .filter(|s| s.source == ServerSource::DisplayAnnouncement)
+            .map(|s| (s.address.as_str(), s.ip.map(|i| i.to_string())))
+            .collect();
+        assert_eq!(
+            ips,
+            [
+                ("wss://cometcast.box:443", Some("192.168.1.20".to_owned())),
+                ("wss://v6.example:443", None)
+            ]
+        );
+        // Other sources carry none.
+        assert!(
+            r.servers
+                .iter()
+                .filter(|s| s.source != ServerSource::DisplayAnnouncement)
+                .all(|s| s.ip.is_none())
+        );
     }
 
     #[tokio::test]

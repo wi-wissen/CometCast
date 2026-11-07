@@ -83,7 +83,7 @@ void main() {
           joinMode: UiJoinMode.open,
         ),
       )
-      ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'));
+      ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
     await tick();
     await c.stop();
     expect(c.roomCode, isNull);
@@ -102,7 +102,7 @@ void main() {
           joinMode: UiJoinMode.open,
         ),
       )
-      ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+      ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
       ..add(const ReceiverUiEvent.videoTrack(mime: 'video/VP9', codec: 'vp9'));
     await tick();
     expect(c.codec, 'vp9');

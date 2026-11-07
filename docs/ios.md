@@ -52,8 +52,8 @@ App and extension exchange three files in the App Group container (`<container>/
 
 | File | Writer | Content | Rule |
 | --- | --- | --- | --- |
-| `config.json` | app (`prepare`) | room code, server, size/fps/bit rate limits, request time | The extension **deletes it after reading** and refuses one older than 5 minutes (`configExpired`). A broadcast started from Control Center without the app finds none (`noConfig`) and says what to do. Values are clamped (320..1920 px, 5..30 fps, 0.2..8 Mbit/s) |
-| `status.json` | extension | state, error, counters, picture size, free memory (`os_proc_available_memory`), time, sequence number | At least once per second while it runs. The app calls a status older than 5 s **lost** (the extension was killed, probably by the memory limit) |
+| `config.json` | app (`prepare`) | room code, server, size/fps/bit rate limits, request time, the person's `name` and the single-use hand-over token `handover` (both optional) | The extension **deletes it after reading** and refuses one older than 5 minutes (`configExpired`). A broadcast started from Control Center without the app finds none (`noConfig`) and says what to do. Values are clamped (320..1920 px, 5..30 fps, 0.2..8 Mbit/s) |
+| `status.json` | extension | state (`pending` while the host decides), error, counters, picture size, free memory (`os_proc_available_memory`), time, sequence number, and optional `check`, `timeoutSecs`, `roomName`, `sas`, `nextHandover` | At least once per second while it runs. The app calls a status older than 5 s **lost** (the extension was killed, probably by the memory limit) |
 | `stop` | app | empty flag | The extension watches the Darwin notification `<group>.broadcast.stop`, ends with `stoppedByApp` |
 
 The room code is a secret that decides who sees the screen: the file lives in the App Group container (readable by the app and the extension only), is deleted after use, and is never logged (the log file in the container, `cc-ios.log`, 64 KB, two files, contains states and error texts but not the code). The App Group needs **no** network entitlement.
@@ -61,6 +61,21 @@ The room code is a secret that decides who sees the screen: the file lives in th
 Names and raw values are shared between Swift and Dart; a Dart test pins them (`test/ios_broadcast_test.dart`, "the Dart enums match the Swift raw values"), and the Rust numbers are pinned by `abi_numbers_are_stable` in `cc-ios`.
 
 **Stopping.** iOS has no API for an app to stop a broadcast. The extension can end itself with `finishBroadcastWithError`, which shows the error text in an alert (UNCERTAIN: whether iOS shows the alert for `stoppedByApp` or ends silently, test item **B8**). The person can always stop with the red status bar or Control Center. Leaving the Send screen stops the broadcast (like the Android capture).
+
+### Hand-over of the approval (N32, native-apps.md 20.5)
+
+The extension is a second connection of the same person, and the host approves a person once. The app therefore hands its approval over with a **single-use token** (128 random bits, base64url, made by the app with `Random.secure`, valid 60 s on the display):
+
+1. Screen is tapped, the app asks the display over the content control channel (`{"kind":"handover","token":T}`; core: `request_handover`, event `HandoverResult`), then leaves the room. It writes the room code, the server, the **name** and `T` into `config.json` (`name`, `handover`; both optional, an old file without them still decodes).
+2. The extension calls `cc_ios_start(code, relay, dir, name, handover, ...)`. The Rust sender joins with `join_room {name, handover}`; a display that holds `T` lets it in without a dialog and without `toast.left` / `toast.connected` (a display that does not know it, an old server that drops the field, a web display: an ordinary request, the **fallback** below).
+3. While it streams the extension writes `room_name` and `sas` to `status.json`; the app shows the Presenting page (`presenting.where`, `presenting.sas`) from them.
+4. Before the extension leaves (red status pill, Control Center, or **Stop** in the app) it makes a new token and calls `cc_ios_request_handover(token)` (blocks up to about four seconds, over the control channel of its media connection); on success it writes it as `nextHandover` to `status.json`. The app, when active again, joins with it and lands on "What to show", connected, without a dialog.
+
+**Fallbacks (no new copy):** a join that is not let in at once is reported by the extension as state `pending` with `check` and `timeoutSecs` (the same number the display shows); the app shows the waiting page with them. `join_denied`, `approval_timeout` and `room_locked` come back as the extension errors `joinDenied`, `approvalTimeout`, `roomLocked` and show the normal error pages of the app (Locked refuses hand-over joins). If the rejoin after the broadcast fails or there is no `nextHandover`, the app joins with the code like Connect. If the person cancels the system sheet, the app joins again with its own token (still valid, so no dialog).
+
+**Test builds only:** option (a) of the F2 answer (no hand-over; the extension joins like any sender) is switched on with `--dart-define=COMETCAST_IOS_OPTION_A=true`. A release build ignores the define (`iosOptionAAllowed`, tested), so it cannot be turned on in a shipped app.
+
+C ABI **version 2** (`crates/cc-ios/include/cc_ios.h`): `cc_ios_start` has two new strings (`name`, `handover`), `cc_ios_request_handover` is new, `CcIosStatus` has `check`, `timeout_secs`, `room_name`, `sas` (88 bytes on 64-bit), the state `CC_IOS_STATE_PENDING` (7) and the error numbers 9 to 11 are new. Tests: `cargo test -p cc-ios` (the loopback test of the extension engine with a real display), `BroadcastTests.swift` (token format, config and status with and without the new fields; never run, no Xcode here).
 
 ## State machine
 
