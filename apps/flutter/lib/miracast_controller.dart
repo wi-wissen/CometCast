@@ -94,7 +94,8 @@ class MiracastController extends ChangeNotifier {
     if (_libraryIssue != null) return _libraryIssue;
     if (_state.issue != null) return _state.issue;
     if (phase == MiracastPhase.idle) return _probe?.issue;
-    if (_state.adapter == 'not_optimized') return MiracastIssue.adapterNotOptimized;
+    if (_state.adapter == 'not_optimized')
+      return MiracastIssue.adapterNotOptimized;
     return null;
   }
 
@@ -140,7 +141,10 @@ class MiracastController extends ChangeNotifier {
 
   /// Start receiving with [displayName] and [pairing].
   Future<void> start() async {
-    if (_starting || phase == MiracastPhase.listening || phase == MiracastPhase.consent || phase == MiracastPhase.connected) {
+    if (_starting ||
+        phase == MiracastPhase.listening ||
+        phase == MiracastPhase.consent ||
+        phase == MiracastPhase.connected) {
       return;
     }
     _starting = true;
@@ -164,7 +168,9 @@ class MiracastController extends ChangeNotifier {
       } else {
         _state = MiracastState(
           status: MiracastStatus.failed,
-          issue: e.code == -2 ? MiracastIssue.invalidSettings : MiracastIssue.other,
+          issue: e.code == -2
+              ? MiracastIssue.invalidSettings
+              : MiracastIssue.other,
           lastError: e.toString(),
         );
       }
@@ -172,7 +178,11 @@ class MiracastController extends ChangeNotifier {
       return;
     } catch (e) {
       _starting = false;
-      _state = MiracastState(status: MiracastStatus.failed, issue: MiracastIssue.other, lastError: '$e');
+      _state = MiracastState(
+        status: MiracastStatus.failed,
+        issue: MiracastIssue.other,
+        lastError: '$e',
+      );
       _notify();
       return;
     }
@@ -280,9 +290,10 @@ class MiracastController extends ChangeNotifier {
     _timer?.cancel();
     _ticks = 0;
     // Counted in ticks, not read from a clock, so tests with a fake clock behave the same.
-    final every = (statePollInterval.inMicroseconds / pollInterval.inMicroseconds)
-        .ceil()
-        .clamp(1, 1 << 20);
+    final every =
+        (statePollInterval.inMicroseconds / pollInterval.inMicroseconds)
+            .ceil()
+            .clamp(1, 1 << 20);
     _timer = Timer.periodic(pollInterval, (_) {
       _ticks++;
       final due = _ticks % every == 0;

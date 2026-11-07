@@ -198,7 +198,8 @@ class _MiracastPageState extends State<MiracastPage> {
     final t = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final phase = _c.phase;
-    final running = phase == MiracastPhase.listening ||
+    final running =
+        phase == MiracastPhase.listening ||
         phase == MiracastPhase.consent ||
         phase == MiracastPhase.connected;
     final issue = _c.issue;
@@ -511,22 +512,27 @@ class _MiracastVideoViewState extends State<MiracastVideoView> {
     if (_decoding || f.seq == _lastSeq) return;
     _decoding = true;
     _lastSeq = f.seq;
-    widget.decoder(f).then((img) {
-      _decoding = false;
-      if (!mounted) {
-        img.dispose();
-        return;
-      }
-      setState(() {
-        final old = _image;
-        _image = img;
-        old?.dispose();
-      });
-      // A newer picture may have arrived while decoding.
-      _onChange();
-    }, onError: (Object _) {
-      _decoding = false;
-    });
+    widget
+        .decoder(f)
+        .then(
+          (img) {
+            _decoding = false;
+            if (!mounted) {
+              img.dispose();
+              return;
+            }
+            setState(() {
+              final old = _image;
+              _image = img;
+              old?.dispose();
+            });
+            // A newer picture may have arrived while decoding.
+            _onChange();
+          },
+          onError: (Object _) {
+            _decoding = false;
+          },
+        );
   }
 
   @override

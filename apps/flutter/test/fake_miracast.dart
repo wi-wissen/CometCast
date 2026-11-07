@@ -46,7 +46,10 @@ class FakeMiracastCore implements MiracastCore {
   }
 
   void listening() {
-    current = MiracastState(status: MiracastStatus.listening, generation: generation);
+    current = MiracastState(
+      status: MiracastStatus.listening,
+      generation: generation,
+    );
   }
 
   /// The request timed out on the Rust side.
@@ -65,7 +68,10 @@ class FakeMiracastCore implements MiracastCore {
   }
 
   @override
-  Future<void> start({required String name, required MiracastPairing pairing}) async {
+  Future<void> start({
+    required String name,
+    required MiracastPairing pairing,
+  }) async {
     calls.add('start');
     final e = startError;
     if (e != null) {
@@ -78,7 +84,10 @@ class FakeMiracastCore implements MiracastCore {
     if (listenOnStart) {
       listening();
     } else {
-      current = MiracastState(status: MiracastStatus.starting, generation: generation);
+      current = MiracastState(
+        status: MiracastStatus.starting,
+        generation: generation,
+      );
     }
   }
 

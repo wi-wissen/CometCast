@@ -198,7 +198,9 @@ class MiracastState {
   /// The same state with the waiting request removed (answered locally, not confirmed by the
   /// core yet). A pending status falls back to listening.
   MiracastState withoutPending() => MiracastState(
-    status: status == MiracastStatus.connectionPending ? MiracastStatus.listening : status,
+    status: status == MiracastStatus.connectionPending
+        ? MiracastStatus.listening
+        : status,
     issue: issue,
     generation: generation,
     pending: null,
@@ -301,7 +303,8 @@ class MiracastCallException implements Exception {
   bool get isLibraryProblem => code == 0;
 
   @override
-  String toString() => 'MiracastCallException($code${message == null ? '' : ', $message'})';
+  String toString() =>
+      'MiracastCallException($code${message == null ? '' : ', $message'})';
 }
 
 /// What the screens use. The real one talks to the DLL; tests use a fake.
@@ -398,7 +401,11 @@ typedef _SizeNative = Int32 Function(Uint32, Uint32);
 typedef _SizeDart = int Function(int, int);
 typedef _IntNative = Int32 Function(Int32);
 typedef _IntDart = int Function(int);
-typedef _FrameNative = Int32 Function(Pointer<Uint8>, Size, Pointer<CcFrameInfo>);
+typedef _FrameNative = Int32 Function(
+  Pointer<Uint8>,
+  Size,
+  Pointer<CcFrameInfo>,
+);
 typedef _FrameDart = int Function(Pointer<Uint8>, int, Pointer<CcFrameInfo>);
 
 /// Return codes of the C interface (crates/cc-miracast-ffi/src/abi.rs).
@@ -411,7 +418,8 @@ const _errBuffer = -3;
 /// parts (start, stop) on threads of its own.
 class FfiMiracastCore implements MiracastCore {
   FfiMiracastCore({DynamicLibrary Function()? opener})
-    : _opener = opener ?? (() => DynamicLibrary.open(resolveMiracastLibraryPath()));
+    : _opener =
+          opener ?? (() => DynamicLibrary.open(resolveMiracastLibraryPath()));
 
   final DynamicLibrary Function() _opener;
   _Api? _api;
@@ -428,7 +436,10 @@ class FfiMiracastCore implements MiracastCore {
     final api = _Api(lib);
     final v = api.abiVersion();
     if (v != miracastAbiVersion) {
-      throw MiracastCallException(0, 'interface version $v, expected $miracastAbiVersion');
+      throw MiracastCallException(
+        0,
+        'interface version $v, expected $miracastAbiVersion',
+      );
     }
     return _api = api;
   }
@@ -444,11 +455,17 @@ class FfiMiracastCore implements MiracastCore {
   }
 
   @override
-  Future<void> start({required String name, required MiracastPairing pairing}) async {
+  Future<void> start({
+    required String name,
+    required MiracastPairing pairing,
+  }) async {
     final a = _a;
-    final bytes = utf8.encode(jsonEncode({'name': name, 'pairing': pairing.wire}));
+    final bytes = utf8.encode(
+      jsonEncode({'name': name, 'pairing': pairing.wire}),
+    );
     final p = a.alloc(bytes.length);
-    if (p == nullptr) throw const MiracastCallException(-2, 'allocation failed');
+    if (p == nullptr)
+      throw const MiracastCallException(-2, 'allocation failed');
     try {
       p.asTypedList(bytes.length).setAll(0, bytes);
       final rc = a.start(p, bytes.length);
@@ -464,7 +481,8 @@ class FfiMiracastCore implements MiracastCore {
   }
 
   @override
-  Future<MiracastState> state() async => MiracastState.fromJson(_a.readJson(_a.state));
+  Future<MiracastState> state() async =>
+      MiracastState.fromJson(_a.readJson(_a.state));
 
   @override
   Future<void> respond(int id, bool accept) async {
@@ -495,18 +513,30 @@ class FfiMiracastCore implements MiracastCore {
 /// Looked-up functions and the buffers that are reused between calls.
 class _Api {
   _Api(DynamicLibrary lib)
-    : abiVersion = lib.lookupFunction<_AbiNative, _AbiDart>('cc_miracast_abi_version'),
+    : abiVersion = lib.lookupFunction<_AbiNative, _AbiDart>(
+        'cc_miracast_abi_version',
+      ),
       alloc = lib.lookupFunction<_AllocNative, _AllocDart>('cc_miracast_alloc'),
       free = lib.lookupFunction<_FreeNative, _FreeDart>('cc_miracast_free'),
       probe = lib.lookupFunction<_BufNative, _BufDart>('cc_miracast_probe'),
       start = lib.lookupFunction<_BufNative, _BufDart>('cc_miracast_start'),
       stop = lib.lookupFunction<_VoidNative, _VoidDart>('cc_miracast_stop'),
       state = lib.lookupFunction<_BufNative, _BufDart>('cc_miracast_state'),
-      respond = lib.lookupFunction<_RespondNative, _RespondDart>('cc_miracast_respond'),
-      disconnect = lib.lookupFunction<_VoidNative, _VoidDart>('cc_miracast_disconnect'),
-      setMaxSize = lib.lookupFunction<_SizeNative, _SizeDart>('cc_miracast_set_max_size'),
-      setMuted = lib.lookupFunction<_IntNative, _IntDart>('cc_miracast_set_muted'),
-      _pollFrame = lib.lookupFunction<_FrameNative, _FrameDart>('cc_miracast_poll_frame');
+      respond = lib.lookupFunction<_RespondNative, _RespondDart>(
+        'cc_miracast_respond',
+      ),
+      disconnect = lib.lookupFunction<_VoidNative, _VoidDart>(
+        'cc_miracast_disconnect',
+      ),
+      setMaxSize = lib.lookupFunction<_SizeNative, _SizeDart>(
+        'cc_miracast_set_max_size',
+      ),
+      setMuted = lib.lookupFunction<_IntNative, _IntDart>(
+        'cc_miracast_set_muted',
+      ),
+      _pollFrame = lib.lookupFunction<_FrameNative, _FrameDart>(
+        'cc_miracast_poll_frame',
+      );
 
   final _AbiDart abiVersion;
   final _AllocDart alloc;
@@ -532,7 +562,8 @@ class _Api {
   /// Call a function that writes JSON into a buffer and decode it.
   Map<String, Object?> readJson(_BufDart fn) {
     final buf = _json ??= alloc(_jsonCap);
-    if (buf == nullptr) throw const MiracastCallException(-2, 'allocation failed');
+    if (buf == nullptr)
+      throw const MiracastCallException(-2, 'allocation failed');
     final n = fn(buf, _jsonCap);
     if (n < 0) throw MiracastCallException(n);
     final decoded = jsonDecode(utf8.decode(buf.asTypedList(n)));
@@ -542,7 +573,8 @@ class _Api {
 
   MiracastFrame? pollFrame() {
     final info = _info ??= alloc(sizeOf<CcFrameInfo>()).cast<CcFrameInfo>();
-    if (info == nullptr) throw const MiracastCallException(-2, 'allocation failed');
+    if (info == nullptr)
+      throw const MiracastCallException(-2, 'allocation failed');
     if (_frame == null) {
       _frame = alloc(_defaultFrameBytes);
       _frameCap = _defaultFrameBytes;

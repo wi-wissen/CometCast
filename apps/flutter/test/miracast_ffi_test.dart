@@ -43,39 +43,46 @@ void main() {
     expect(s.pending, isNull);
   }, skip: skip);
 
-  test('probe, start refusal and unsupported state through the real library', () async {
-    final core = FfiMiracastCore(opener: () => DynamicLibrary.open(lib!));
-    final probe = await core.probe();
-    expect(probe.issue, MiracastIssue.notWindows);
+  test(
+    'probe, start refusal and unsupported state through the real library',
+    () async {
+      final core = FfiMiracastCore(opener: () => DynamicLibrary.open(lib!));
+      final probe = await core.probe();
+      expect(probe.issue, MiracastIssue.notWindows);
 
-    // Bad arguments are refused by the Rust side.
-    await expectLater(
-      core.start(name: '   ', pairing: MiracastPairing.confirm),
-      throwsA(isA<MiracastCallException>().having((e) => e.code, 'code', -2)),
-    );
+      // Bad arguments are refused by the Rust side.
+      await expectLater(
+        core.start(name: '   ', pairing: MiracastPairing.confirm),
+        throwsA(isA<MiracastCallException>().having((e) => e.code, 'code', -2)),
+      );
 
-    await core.start(name: 'Test PC', pairing: MiracastPairing.pinIfRequested);
-    MiracastState s = MiracastState.off;
-    for (var i = 0; i < 100; i++) {
-      s = await core.state();
-      if (s.status != MiracastStatus.starting) break;
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
-    expect(s.status, MiracastStatus.unsupported);
-    expect(s.issue, MiracastIssue.notWindows);
-    expect(s.lastError, isNotNull);
-    expect(s.generation, greaterThan(0));
+      await core.start(
+        name: 'Test PC',
+        pairing: MiracastPairing.pinIfRequested,
+      );
+      MiracastState s = MiracastState.off;
+      for (var i = 0; i < 100; i++) {
+        s = await core.state();
+        if (s.status != MiracastStatus.starting) break;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(s.status, MiracastStatus.unsupported);
+      expect(s.issue, MiracastIssue.notWindows);
+      expect(s.lastError, isNotNull);
+      expect(s.generation, greaterThan(0));
 
-    // Nothing runs: no picture, answering is refused.
-    expect(await core.pollFrame(), isNull);
-    await expectLater(
-      core.respond(1, true),
-      throwsA(isA<MiracastCallException>()),
-    );
-    await core.setMaxSize(1280, 720);
-    await core.setMuted(true);
-    await core.stop();
-    final after = await core.state();
-    expect(after.status, MiracastStatus.off);
-  }, skip: skip);
+      // Nothing runs: no picture, answering is refused.
+      expect(await core.pollFrame(), isNull);
+      await expectLater(
+        core.respond(1, true),
+        throwsA(isA<MiracastCallException>()),
+      );
+      await core.setMaxSize(1280, 720);
+      await core.setMuted(true);
+      await core.stop();
+      final after = await core.state();
+      expect(after.status, MiracastStatus.off);
+    },
+    skip: skip,
+  );
 }

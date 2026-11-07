@@ -44,7 +44,10 @@ void main() {
         'adapter': 'supported',
       });
       expect(s.status, MiracastStatus.connectionPending);
-      expect(s.pending, const MiracastRequest(id: 7, name: 'Pixel', pin: '4711'));
+      expect(
+        s.pending,
+        const MiracastRequest(id: 7, name: 'Pixel', pin: '4711'),
+      );
       expect(s.rejected, 2);
       expect(s.frames.dropped, 2);
       expect(s.frames.width, 1280);
@@ -57,7 +60,10 @@ void main() {
       expect(parseMiracastStatus(null), MiracastStatus.failed);
       expect(parseMiracastIssue('banana'), MiracastIssue.other);
       expect(parseMiracastIssue(null), isNull);
-      final s = MiracastState.fromJson({'status': 'listening', 'pending': 'nonsense'});
+      final s = MiracastState.fromJson({
+        'status': 'listening',
+        'pending': 'nonsense',
+      });
       expect(s.pending, isNull);
     });
 
@@ -111,10 +117,10 @@ void main() {
 
   group('library lookup', () {
     test('candidates: next to the exe, then lib', () {
-      expect(
-        miracastLibraryCandidates(exeDir: r'C:\app', separator: r'\'),
-        [r'C:\app\cc_miracast_ffi.dll', r'C:\app\lib\cc_miracast_ffi.dll'],
-      );
+      expect(miracastLibraryCandidates(exeDir: r'C:\app', separator: r'\'), [
+        r'C:\app\cc_miracast_ffi.dll',
+        r'C:\app\lib\cc_miracast_ffi.dll',
+      ]);
     });
 
     test('the environment variable wins, then the first existing file', () {
@@ -147,15 +153,24 @@ void main() {
       );
     });
 
-    test('a library that cannot be loaded is reported as library problem', () async {
-      final core = FfiMiracastCore(opener: () => throw StateError('no file'));
-      final probe = await core.probe();
-      expect(probe.issue, MiracastIssue.libraryMissing);
-      await expectLater(
-        core.state(),
-        throwsA(isA<MiracastCallException>().having((e) => e.isLibraryProblem, 'library problem', true)),
-      );
-    });
+    test(
+      'a library that cannot be loaded is reported as library problem',
+      () async {
+        final core = FfiMiracastCore(opener: () => throw StateError('no file'));
+        final probe = await core.probe();
+        expect(probe.issue, MiracastIssue.libraryMissing);
+        await expectLater(
+          core.state(),
+          throwsA(
+            isA<MiracastCallException>().having(
+              (e) => e.isLibraryProblem,
+              'library problem',
+              true,
+            ),
+          ),
+        );
+      },
+    );
   });
 
   group('MiracastController', () {
@@ -170,19 +185,24 @@ void main() {
 
     test('idle at first, the probe hint shows only while idle', () async {
       expect(c.phase, MiracastPhase.idle);
-      core.probeResult = const MiracastProbe(issue: MiracastIssue.featureMissing);
+      core.probeResult = const MiracastProbe(
+        issue: MiracastIssue.featureMissing,
+      );
       await c.init();
       expect(c.issue, MiracastIssue.featureMissing);
       expect(c.phase, MiracastPhase.idle);
     });
 
-    test('start passes the trimmed name and the pairing, then listens', () async {
-      c.pairing = MiracastPairing.pinRequired;
-      await c.start();
-      expect(core.startedName, 'My PC');
-      expect(core.startedPairing, MiracastPairing.pinRequired);
-      expect(c.phase, MiracastPhase.listening);
-    });
+    test(
+      'start passes the trimmed name and the pairing, then listens',
+      () async {
+        c.pairing = MiracastPairing.pinRequired;
+        await c.start();
+        expect(core.startedName, 'My PC');
+        expect(core.startedPairing, MiracastPairing.pinRequired);
+        expect(c.phase, MiracastPhase.listening);
+      },
+    );
 
     test('starting stays visible until the core says otherwise', () async {
       core.listenOnStart = false;
@@ -233,7 +253,11 @@ void main() {
       core.request(5, 'Pixel');
       await c.poll();
       expect(c.frame, isNull, reason: 'consent pending');
-      expect(core.pollFrameCalls, 0, reason: 'no picture is even fetched before consent');
+      expect(
+        core.pollFrameCalls,
+        0,
+        reason: 'no picture is even fetched before consent',
+      );
       core.connect('Pixel');
       await c.poll();
       expect(c.phase, MiracastPhase.connected);
@@ -292,23 +316,29 @@ void main() {
         (MiracastStatus.stopping, MiracastPhase.stopping),
         (MiracastStatus.listening, MiracastPhase.listening),
       ]) {
-        core.current = MiracastState(status: status, generation: core.generation);
+        core.current = MiracastState(
+          status: status,
+          generation: core.generation,
+        );
         await c.poll();
         expect(c.phase, phase, reason: '$status');
       }
     });
 
-    test('an adapter that is not optimised is a warning while listening', () async {
-      await c.start();
-      core.current = MiracastState(
-        status: MiracastStatus.listening,
-        generation: core.generation,
-        adapter: 'not_optimized',
-      );
-      await c.poll();
-      expect(c.phase, MiracastPhase.listening);
-      expect(c.issue, MiracastIssue.adapterNotOptimized);
-    });
+    test(
+      'an adapter that is not optimised is a warning while listening',
+      () async {
+        await c.start();
+        core.current = MiracastState(
+          status: MiracastStatus.listening,
+          generation: core.generation,
+          adapter: 'not_optimized',
+        );
+        await c.poll();
+        expect(c.phase, MiracastPhase.listening);
+        expect(c.issue, MiracastIssue.adapterNotOptimized);
+      },
+    );
 
     test('a failing poll is skipped, a library problem is shown', () async {
       await c.start();
@@ -367,11 +397,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
-        CometCastApp(
-          locale: locale,
-          core: FakeCoreApi(),
-          miracast: core,
-        ),
+        CometCastApp(locale: locale, core: FakeCoreApi(), miracast: core),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('miracastTile')));
@@ -419,10 +445,16 @@ void main() {
       expect(find.textContaining('choose "Test PC"'), findsOneWidget);
       expect(find.byKey(const Key('miracastStopButton')), findsOneWidget);
       await close(tester);
-      expect(core.calls.last, 'stop', reason: 'leaving the screen stops receiving');
+      expect(
+        core.calls.last,
+        'stop',
+        reason: 'leaving the screen stops receiving',
+      );
     });
 
-    testWidgets('consent dialog: name, PIN, Decline is focused first', (tester) async {
+    testWidgets('consent dialog: name, PIN, Decline is focused first', (
+      tester,
+    ) async {
       final core = FakeMiracastCore();
       await pumpDirect(tester, core);
       await tester.tap(find.byKey(const Key('miracastStartButton')));
@@ -431,10 +463,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pump();
       expect(find.byKey(const Key('miracastConsentDialog')), findsOneWidget);
-      expect(find.textContaining('"Pixel 9" wants to show its screen'), findsOneWidget);
-      expect(find.text('PIN: 4711. Enter it on the sending device if it asks for it.'), findsOneWidget);
-      expect(find.byKey(const Key('miracastVideo')), findsNothing, reason: 'nothing before consent');
-      final deny = tester.widget<TextButton>(find.byKey(const Key('miracastDeny')));
+      expect(
+        find.textContaining('"Pixel 9" wants to show its screen'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'PIN: 4711. Enter it on the sending device if it asks for it.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('miracastVideo')),
+        findsNothing,
+        reason: 'nothing before consent',
+      );
+      final deny = tester.widget<TextButton>(
+        find.byKey(const Key('miracastDeny')),
+      );
       expect(deny.autofocus, isTrue);
       await tester.tap(find.byKey(const Key('miracastDeny')));
       await tester.pump(const Duration(milliseconds: 200));
@@ -444,7 +490,9 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('Allow answers yes, then the video view appears', (tester) async {
+    testWidgets('Allow answers yes, then the video view appears', (
+      tester,
+    ) async {
       final core = FakeMiracastCore();
       final decoded = <int>[];
       await pumpDirect(
@@ -478,7 +526,9 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('the dialog closes by itself when the request times out', (tester) async {
+    testWidgets('the dialog closes by itself when the request times out', (
+      tester,
+    ) async {
       final core = FakeMiracastCore();
       await pumpDirect(tester, core);
       await tester.tap(find.byKey(const Key('miracastStartButton')));
@@ -495,33 +545,45 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('a hostile name is shown as plain text of one line of the dialog', (tester) async {
-      final core = FakeMiracastCore();
-      await pumpDirect(tester, core);
-      await tester.tap(find.byKey(const Key('miracastStartButton')));
-      await tester.pump(const Duration(milliseconds: 200));
-      // The Rust side already cleaned the name; the screen shows it inside quotes in the body.
-      core.request(3, 'Laptop Accept?');
-      await tester.pump(const Duration(milliseconds: 200));
-      await tester.pump();
-      final body = tester.widget<Text>(find.byKey(const Key('miracastConsentBody')));
-      expect(body.data, contains('"Laptop Accept?" wants to show'));
-      await close(tester);
-    });
+    testWidgets(
+      'a hostile name is shown as plain text of one line of the dialog',
+      (tester) async {
+        final core = FakeMiracastCore();
+        await pumpDirect(tester, core);
+        await tester.tap(find.byKey(const Key('miracastStartButton')));
+        await tester.pump(const Duration(milliseconds: 200));
+        // The Rust side already cleaned the name; the screen shows it inside quotes in the body.
+        core.request(3, 'Laptop Accept?');
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pump();
+        final body = tester.widget<Text>(
+          find.byKey(const Key('miracastConsentBody')),
+        );
+        expect(body.data, contains('"Laptop Accept?" wants to show'));
+        await close(tester);
+      },
+    );
 
-    testWidgets('the feature hint names the Settings path and the DISM capability', (tester) async {
-      final core = FakeMiracastCore()
-        ..probeResult = const MiracastProbe(issue: MiracastIssue.featureMissing);
-      await pumpDirect(tester, core);
-      final hint = tester.widget<Text>(find.byKey(const Key('miracastHint')));
-      expect(hint.data, contains('Optional features'));
-      expect(hint.data, contains('App.WirelessDisplay.Connect~~~~0.0.1.0'));
-      await close(tester);
-    });
+    testWidgets(
+      'the feature hint names the Settings path and the DISM capability',
+      (tester) async {
+        final core = FakeMiracastCore()
+          ..probeResult = const MiracastProbe(
+            issue: MiracastIssue.featureMissing,
+          );
+        await pumpDirect(tester, core);
+        final hint = tester.widget<Text>(find.byKey(const Key('miracastHint')));
+        expect(hint.data, contains('Optional features'));
+        expect(hint.data, contains('App.WirelessDisplay.Connect~~~~0.0.1.0'));
+        await close(tester);
+      },
+    );
 
     testWidgets('German texts use the formal address', (tester) async {
       final core = FakeMiracastCore()
-        ..probeResult = const MiracastProbe(issue: MiracastIssue.featureMissing);
+        ..probeResult = const MiracastProbe(
+          issue: MiracastIssue.featureMissing,
+        );
       await pumpDirect(tester, core, locale: const Locale('de'));
       expect(find.text('Nicht gestartet.'), findsOneWidget);
       expect(find.text('Empfang starten'), findsOneWidget);
@@ -530,16 +592,22 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('a missing library shows its hint instead of crashing', (tester) async {
+    testWidgets('a missing library shows its hint instead of crashing', (
+      tester,
+    ) async {
       final core = FakeMiracastCore()
-        ..probeResult = const MiracastProbe(issue: MiracastIssue.libraryMissing);
+        ..probeResult = const MiracastProbe(
+          issue: MiracastIssue.libraryMissing,
+        );
       await pumpDirect(tester, core);
       expect(find.byKey(const Key('miracastHint')), findsOneWidget);
       expect(find.textContaining('cc_miracast_ffi.dll'), findsWidgets);
       await close(tester);
     });
 
-    testWidgets('a second sender that was turned away is mentioned', (tester) async {
+    testWidgets('a second sender that was turned away is mentioned', (
+      tester,
+    ) async {
       final core = FakeMiracastCore();
       await pumpDirect(tester, core);
       await tester.tap(find.byKey(const Key('miracastStartButton')));
@@ -554,7 +622,9 @@ void main() {
       await close(tester);
     });
 
-    testWidgets('home screen: the row exists only with a Miracast core', (tester) async {
+    testWidgets('home screen: the row exists only with a Miracast core', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         CometCastApp(locale: const Locale('en'), core: FakeCoreApi()),
       );
@@ -574,7 +644,9 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('home screen: German row text and opening the screen', (tester) async {
+    testWidgets('home screen: German row text and opening the screen', (
+      tester,
+    ) async {
       final core = FakeMiracastCore();
       await pumpPage(tester, core, locale: const Locale('de'));
       expect(find.text('Miracast-Empfänger'), findsOneWidget);
