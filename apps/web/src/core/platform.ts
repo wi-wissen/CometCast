@@ -30,7 +30,7 @@ export function detectBrowser(ua: string): string {
   if (/\bOPR\/|\bOpera\b/.test(ua)) return 'Opera'
   if (/\bSamsungBrowser\//.test(ua)) return 'Samsung Internet'
   if (/\bFirefox\/|\bFxiOS\//.test(ua)) return 'Firefox'
-  if (/\bCriOS\/|\bChrome\/|\bChromium\//.test(ua)) return 'Chrome'
+  if (/CriOS\/|Chrome\/|Chromium\//.test(ua)) return 'Chrome'
   if (/\bSafari\//.test(ua) && /\bVersion\//.test(ua)) return 'Safari'
   return 'Browser'
 }

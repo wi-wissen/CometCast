@@ -13,6 +13,7 @@ import { createServer } from 'node:http'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import assert from 'node:assert/strict'
+import { contentSender, openDisplay, presenterJoin, status } from './helpers.mjs'
 
 const en = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src/locales/en.json'), 'utf8')).receive.media
 
@@ -156,22 +157,12 @@ try {
   await rctx.addCookies([{ name: 'session', value: 'secret', url: `http://${mhost}/` }])
   const sctx = await mk()
   const receiver = await rctx.newPage()
-  await receiver.goto(base)
-  await receiver.getByRole('button', { name: /Receive on this device/ }).click()
-  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
-  const code = (await receiver.getByTestId('room-code').innerText()).trim()
+  const code = await openDisplay(receiver, base)
   const cs = await sctx.newPage()
-  await cs.goto(base)
-  await cs.getByRole('button', { name: /Send file or link/ }).click()
-  await cs.locator('#room-code').fill(code)
-  await cs.getByRole('button', { name: 'Connect' }).click()
-  await cs.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 15000 })
-  await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 15000 })
-
-  const sendLink = async (u) => {
-    await cs.locator('#link-url').fill(u)
-    await cs.getByRole('button', { name: 'Send link' }).click()
-  }
+  await presenterJoin(cs, base, code)
+  await status(receiver, 'receiving')
+  const content = contentSender(cs)
+  const sendLink = (u) => content.link(u)
   const card = receiver.getByTestId('link-card')
   const player = receiver.getByTestId('media-player')
   const elCount = () => receiver.evaluate(() => document.querySelectorAll('[data-testid=media-element]').length)
@@ -240,7 +231,7 @@ try {
     await play.click()
     await waitFor(() => receiver.getByTestId('media-element').evaluate((m) => !m.paused && m.videoWidth === 160), 'video playing')
     // Sender "stop showing" (cmd stop) closes the player and releases the element
-    await cs.getByTestId('stop-showing').click()
+    await content.stop()
     await player.waitFor({ state: 'detached' })
     assert.equal(await elCount(), 0)
   }
@@ -268,7 +259,7 @@ try {
   await receiver.getByTestId('link-dismiss').click()
 
   await startPlaying('/r2.wav')
-  await cs.getByTestId('image-input').setInputFiles({ name: 't.png', mimeType: 'image/png', buffer: png1 })
+  await content.file({ name: 't.png', mimeType: 'image/png', buffer: png1 })
   await receiver.getByTestId('received-image').waitFor({ timeout: 10000 })
   assert.equal(await elCount(), 0, 'an image closes the player')
   assert.equal(await player.count(), 0)
@@ -276,12 +267,12 @@ try {
   await receiver.getByTestId('content-close').click()
 
   await startPlaying('/r3.wav')
-  await cs.getByTestId('pdf-input').setInputFiles({ name: 't.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  await content.file({ name: 't.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
   await player.waitFor({ state: 'detached', timeout: 10000 })
   assert.equal(await elCount(), 0, 'a document closes the player')
   await expectQuiet('/r3.wav', 'after replacement by a document')
   await receiver.getByTestId('content-close').click().catch(() => undefined)
-  await cs.getByTestId('stop-showing').click()
+  await content.stop()
 
   // ---- errors: translated, host only. Chrome reports a bad file, a 404 and a missing CORS header all as ----
   // MediaError code 4, so all three show the combined "cannot be played here" notice (UNCERTAIN for others).

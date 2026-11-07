@@ -259,3 +259,11 @@ describe('display: presenting', () => {
     expect(w.find('[data-testid=settings-modal]').exists()).toBe(false)
   })
 })
+
+describe('display: content that cannot be shown', () => {
+  it('is told as a toast, because the idle screen has no other place for it', async () => {
+    const w = mk()
+    await set({ contentError: 'document_invalid' })
+    expect(w.get('[data-testid=toast]').text()).toBe('The PDF is damaged or not supported and cannot be shown.')
+  })
+})

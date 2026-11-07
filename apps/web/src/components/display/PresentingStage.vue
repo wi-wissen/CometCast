@@ -205,7 +205,7 @@ defineExpose({ stage })
     <p
       v-if="toolbar.frozen"
       data-testid="frozen-badge"
-      class="absolute bottom-3 left-3 z-[27] rounded-full bg-black/75 px-3 py-1 text-sm text-white"
+      class="absolute left-3 top-3 z-[27] rounded-full bg-black/75 px-3 py-1 text-sm text-white"
     >
       {{ t('toolbar.frozenHint') }}
     </p>

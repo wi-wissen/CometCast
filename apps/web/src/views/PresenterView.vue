@@ -30,6 +30,7 @@ const page = ref<Page>('start')
 const errorKind = ref<ErrorKind>('code')
 const errorCode = ref<string | null>(null)
 const presKind = ref<'screen' | 'file' | 'link'>('screen')
+const presPdf = ref(false)
 
 const platform = currentPlatform()
 const caps = detectCapabilities()
@@ -97,6 +98,13 @@ async function onScreen() {
   } else if (r === 'failed') toError('noScreen', 'capture_failed')
   // Cancelling the system dialog returns to this page without an error.
 }
+function turnPage(cmd: 'next_page' | 'prev_page') {
+  try {
+    sendCmd(cmd)
+  } catch {
+    /* channel closed; the state already says so */
+  }
+}
 async function onStop() {
   if (presKind.value === 'screen') await stopScreen()
   else {
@@ -108,8 +116,9 @@ async function onStop() {
   }
   page.value = 'what'
 }
-function started(kind: 'file' | 'link') {
+function started(kind: 'file' | 'link', pdf = false) {
   presKind.value = kind
+  presPdf.value = pdf
   page.value = 'presenting'
 }
 function withdraw() {
@@ -167,10 +176,19 @@ onBeforeUnmount(() => {
       v-else-if="page === 'file'"
       :send="(f, p) => (f.type === 'application/pdf' || /\.pdf$/i.test(f.name) ? sendDocument(f, p) : sendImage(f, p))"
       @back="page = 'what'"
-      @started="started('file')"
+      @started="started('file', $event)"
     />
     <LinkPage v-else-if="page === 'link'" :send="sendLink" @back="page = 'what'" @started="started('link')" />
-    <PresentingPage v-else-if="page === 'presenting'" :kind="presKind" :room="room" :keep-bar="keepBar" :sas="state.sas" @stop="onStop" />
+    <PresentingPage
+      v-else-if="page === 'presenting'"
+      :kind="presKind"
+      :room="room"
+      :keep-bar="keepBar"
+      :sas="state.sas"
+      :pdf="presKind === 'file' && presPdf"
+      @stop="onStop"
+      @page="turnPage"
+    />
     <ErrorPage
       v-else-if="page === 'error'"
       :kind="errorKind"

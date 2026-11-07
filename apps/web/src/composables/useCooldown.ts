@@ -13,6 +13,7 @@ export function useDeniedCooldown(state: ShallowRef<SenderState>) {
   return computed(() => {
     const s = state.value
     if (s.phase !== 'error' || s.errorCode !== 'join_denied' || s.errorAt === undefined) return 0
-    return Math.max(0, DENIED_COOLDOWN_SECS - Math.floor((now.value - s.errorAt) / 1000))
+    // `now` is refreshed every 500 ms and can be a moment older than the error: never count backwards.
+    return Math.max(0, DENIED_COOLDOWN_SECS - Math.max(0, Math.floor((now.value - s.errorAt) / 1000)))
   })
 }

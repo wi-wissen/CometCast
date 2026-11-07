@@ -165,8 +165,7 @@ describe('setup wizard (4.1)', () => {
     expect(document.activeElement).toBe(w.get('[data-testid=wz-finish]').element)
     await w.get('[data-testid=wz-finish]').trigger('click')
     const [setup] = w.emitted('finish')![0] as [{ room: string; mode: string; server: string }]
-    expect(setup).toMatchObject({ room: 'Room 12', mode: 'confirm' })
-    expect(setup.server).toMatch(/^wss?:\/\/.*\/ws$/)
+    expect(setup).toMatchObject({ room: 'Room 12', mode: 'confirm', server: null }) // default address: nothing to remember
   })
 
   it('Back goes one step back; on the welcome screen it does nothing', async () => {
@@ -195,6 +194,10 @@ describe('setup wizard (4.1)', () => {
     await f.trigger('keydown', { key: 'Enter' })
     expect(w.get('[data-testid=wz-domain]').text()).toBe('cast.example.org')
     expect(w.text()).toContain('Found via the company network')
+    // an address that the person chose is kept; one from a link is not
+    await w.get('[data-testid=wz-ok]').trigger('click')
+    await w.get('[data-testid=wz-finish]').trigger('click')
+    expect((w.emitted('finish')![0] as [{ server: string }])[0].server).toBe('wss://cast.example.org/ws')
   })
 })
 

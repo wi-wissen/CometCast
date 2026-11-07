@@ -8,7 +8,7 @@ import { IMAGE_MIME_TYPES, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, SendError } from
 // file dialog is the only way to pick (see docs/design/implementation-questions.md); a picked file
 // starts presenting.
 const props = defineProps<{ send: (file: File, onProgress: (sent: number, total: number) => void) => Promise<void> }>()
-const emit = defineEmits<{ back: []; started: [] }>()
+const emit = defineEmits<{ back: []; started: [pdf: boolean] }>()
 const { t, te } = useI18n()
 const input = ref<HTMLInputElement | null>(null)
 const progress = ref<{ name: string; sent: number; total: number } | null>(null)
@@ -26,7 +26,7 @@ async function onPick(e: Event) {
   const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
   try {
     await props.send(f, (sent, total) => (progress.value = { name: f.name, sent, total }))
-    emit('started')
+    emit('started', pdf)
   } catch (err) {
     const code = err instanceof SendError ? err.code : 'failed'
     const kind = pdf ? 'document' : 'image'

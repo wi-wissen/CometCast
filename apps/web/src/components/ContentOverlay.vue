@@ -103,7 +103,7 @@ function onKey(e: KeyboardEvent) {
       ref="closeBtn"
       type="button"
       data-testid="content-close"
-      class="absolute bottom-3 right-3 z-[26] rounded-cc bg-black/70 px-3 py-1.5 text-sm font-medium text-white hover:bg-black/85"
+      class="absolute top-3 right-3 z-[26] rounded-cc bg-black/70 px-3 py-1.5 text-sm font-medium text-white hover:bg-black/85"
       @click="emit('close')"
       @keydown="onKey"
     >

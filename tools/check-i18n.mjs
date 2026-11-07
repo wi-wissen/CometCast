@@ -68,10 +68,35 @@ function checkXcstrings(label, rel) {
   return { label, status: 'checked', problems };
 }
 
+// The second German set (the "du" form, apps/web/src/locales/de-du.json) is not loaded by the app. It
+// must only have keys that de.json has, with the same {placeholders} (docs/design/first-run-and-display.md, 11.1).
+function checkGermanDu(label, deRel, duRel) {
+  const de = join(root, deRel);
+  const du = join(root, duRel);
+  if (![de, du].every((p) => existsSync(p))) {
+    return { label, status: 'skipped', problems: [], note: 'file missing: ' + [de, du].filter((p) => !existsSync(p)).map((p) => p.slice(root.length + 1)).join(', ') };
+  }
+  const problems = [];
+  try {
+    const flat = (o, prefix = '') =>
+      Object.entries(o).flatMap(([k, v]) => (v !== null && typeof v === 'object' ? flat(v, prefix + k + '.') : [[prefix + k, String(v)]]));
+    const holders = (t) => [...t.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+    const sie = new Map(flat(readJson(de)));
+    for (const [k, v] of flat(readJson(du))) {
+      if (!sie.has(k)) problems.push(`"${k}" is in de-du.json but missing in de.json`);
+      else if (holders(v) !== holders(sie.get(k))) problems.push(`"${k}": placeholders differ between de.json and de-du.json`);
+    }
+  } catch (e) {
+    problems.push(`cannot read file: ${e.message}`);
+  }
+  return { label, status: 'checked', problems };
+}
+
 const arbKeys = (p) => Object.keys(readJson(p)).filter((k) => !k.startsWith('@'));
 
 const results = [
   comparePair('web (en.json vs de.json)', 'apps/web/src/locales/en.json', 'apps/web/src/locales/de.json', (p) => flatten(readJson(p))),
+  checkGermanDu('web (de-du.json vs de.json)', 'apps/web/src/locales/de.json', 'apps/web/src/locales/de-du.json'),
   comparePair('flutter (app_en.arb vs app_de.arb)', 'apps/flutter/lib/l10n/app_en.arb', 'apps/flutter/lib/l10n/app_de.arb', arbKeys),
   checkXcstrings('apple-tv (Localizable.xcstrings)', 'apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings'),
 ];

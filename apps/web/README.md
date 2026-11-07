@@ -1,19 +1,26 @@
 # Comet Cast web app
 
-The no-install variant of Comet Cast: runs in a browser. Early version (v0.1): a browser
-receiver and a browser sender work end to end (screen video over WebRTC, signalling over WebSocket
-`/ws`, protocol in `docs/protocol.md`). Without a STUN/TURN list from the server it works over the local
-network only and may not work across networks. Servers in open mode require a small proof-of-work
-(ALTCHA) before a room is created; the page solves it by itself (see "Open servers and TURN" below). The receiver has a local annotation toolbar, and images and links can be sent over a WebRTC DataChannel
-(milestone M2, see `docs/web-m2.md`). A PDF can be sent and is shown page by page on the receiver; it is
-rendered by `crates/cc-docs-wasm` (hayro compiled to WebAssembly, in a Web Worker). Build it with
+The no-install variant of Comet Cast: runs in a browser. Early version (v0.1). Its pages follow the approved design
+spec [docs/design/first-run-and-display.md](../../docs/design/first-run-and-display.md) (colours, sizes, texts, timings and
+behaviour come from there; nothing visual was invented in the code). Two kinds of page:
+
+- **The display** at `/display`: the setup wizard (first run), the idle screen with the address, the join code and a QR code,
+  Settings (join mode, appearance), the join request dialog, and the full-bleed presentation with the name tag and End.
+- **The presenter** at `/` and `/{CODE}` (the QR code opens the latter with the code filled in): browser or app, waiting for
+  approval, what to show (screen, photo or file, link), presenting, and the error pages.
+
+Screen video goes over WebRTC, signalling over WebSocket `/ws` (protocol in `docs/protocol.md`). Without a STUN/TURN list from
+the server it works over the local network only and may not work across networks. Servers in open mode require a small
+proof-of-work (ALTCHA) before a room is created; the page solves it by itself (see "Open servers and TURN" below). The display
+has a local annotation toolbar, and images, PDFs and links can be sent over a WebRTC DataChannel (milestone M2, see
+`docs/web-m2.md`). A PDF is rendered by `crates/cc-docs-wasm` (hayro compiled to WebAssembly, in a Web Worker). Build it with
 `npm run build:wasm` (needs the Rust target `wasm32-unknown-unknown` and a `wasm-bindgen` CLI of exactly the
 version in `Cargo.lock`) **before** `npm run build`; it is written to `public/pdf/` (git-ignored). Without it
 the app works as before and a received PDF only gives the notice that documents cannot be shown. Office
 documents are not implemented. The rest of the Rust core is not used in the browser yet (see `src/core/index.ts`).
 End-to-end test: `npm run build:wasm && npm run build && npm run e2e:pdf`. The Docker image (`deploy/Dockerfile`) does **not** contain the renderer (`public/pdf` is excluded from its build context and the image has no Rust target), so a PDF received by a web app served from that image only gives the "cannot show documents" notice.
 
-Stack: Vue 3, TypeScript, Vite, Tailwind CSS 4, vue-i18n (English and German).
+Stack: Vue 3, TypeScript, Vite, Tailwind CSS 4 (only for the older toolbar and card components; the pages use the spec's tokens in plain CSS), vue-i18n (English and German), qrcode-generator (MIT, QR code), Atkinson Hyperlegible Next and Mono (OFL, bundled, no font service).
 
 ## Commands
 
@@ -29,28 +36,40 @@ cd apps/web && npm ci && npm run dev
 - `npm run e2e:native` - interop test with the native Rust peers, see below
 - `npm run e2e:m2` - end-to-end test for toolbar, freeze, images and links (needs `npm run build` first)
 - `npm run e2e:static` - app on its own static origin, relay on another (builds by itself, see "Static hosting")
+- `npm run e2e:display` - the display and presenter pages, see "Display and presenter tests" (needs `npm run build` first; builds a second copy by itself for the dimming test)
+- `npm run e2e:join` - join approval with the request dialog, see "Join approval test"
+- `npm run e2e:shots` - writes a PNG of every state (display: Dark / Light / OLED black, presenter: light / dark; 1280 x 720 and a phone viewport) to `$E2E_SHOTS` (default `/tmp/shots`); checks nothing
 
 ## Trying it
 
 ```sh
 npm run build
-cargo run -p cometcast-server -- --listen 127.0.0.1:8443 --web-dir apps/web/dist   # from the repo root
+cargo run -p cometcast-server -- --listen 127.0.0.1:8443 --web-dir apps/web/dist   # from the repo root; it answers /display and /<CODE> with index.html
 ```
 
-Open `http://127.0.0.1:8443` in two tabs/browsers: "Receive on this device" shows a room code; on the
-other one choose "Send screen", enter the code and share. For development with `npm run dev`, add
+Open `http://127.0.0.1:8443/display` in one tab (click through the setup, it asks once) and `http://127.0.0.1:8443/` in
+another: the display shows a join code and a QR code; type the code on the other page, choose "Continue in the browser" and
+then "Share screen". For development with `npm run dev`, add
 `?server=127.0.0.1:8443` to the URL so the page talks to the running server (works in every build, see below).
 
 ## Code layout
 
 - `src/core/signaling.ts` - WebSocket client and typed messages (mirrors `cc-proto`)
-- `src/core/relay.ts`, `src/composables/useRelay.ts`, `src/components/RelayField.vue` - relay validation and selection, `config.json`, the relay field
+- `src/core/relay.ts`, `src/composables/useRelay.ts`, `src/components/RelayConfirm.vue` - relay validation and selection, `config.json`, the confirmation dialog for a relay from a link
 - `src/core/peer.ts` - RTCPeerConnection wrapper (takes the STUN/TURN list from the server; none by default)
 - `src/core/altcha.ts`, `altchaWorker.ts`, `altchaClient.ts` - ALTCHA solver (WebCrypto PBKDF2, runs in a Web Worker), `GET /altcha/challenge` and `GET /ice-servers`
 - `src/core/receiverSession.ts`, `senderSession.ts` - explicit state machines
 - `src/core/control.ts` - DataChannel "control": message format, chunking, reassembly, link validation
 - `src/core/annotations.ts`, `toolbarState.ts` - local annotation model and toolbar state (pure, unit-tested)
 - `src/composables/useReceiver.ts`, `useSender.ts` - Vue glue
+- `src/core/router.ts` - the page is chosen by the path (`/display`, `/{CODE}`, anything else = presenter start), also under a `VITE_BASE`
+- `src/styles/display.css`, `presenter.css` - the tokens and sizes of the spec (display: reference px on a 960 x 540 canvas scaled with `transform`, `--s` set by `useDisplayScale`)
+- `src/views/DisplayView.vue`, `components/display/*` - setup wizard, idle screen, Settings, request dialog, presenting stage, toast
+- `src/views/PresenterView.vue`, `components/presenter/*` - the presenter pages
+- `src/core/appearance.ts`, `displaySetup.ts` - appearance (Dark default, OLED black, Light, Automatic; kept in `localStorage` of the display device) and the first-run setup (room name, default join mode, server)
+- `src/core/idleDim.ts`, `controlsReveal.ts`, `wakeLock.ts`, `dpad.ts` - idle dimming, controls on input while presenting, Screen Wake Lock, focus moving in rows
+- `src/core/qr.ts`, `platform.ts`, `presenterErrors.ts`, `codeFormat.ts` - QR code, "Detected: ...", which error page, code grouping
+- `src/config/stores.ts` - the store and download addresses: **placeholders** (empty) until the apps are published
 
 ## Open servers and TURN
 
@@ -83,33 +102,34 @@ relay serve it (`--web-dir`, the Docker image does). The relay (`cometcast-serve
 
 **Which relay the page uses**, first match wins (`src/core/relay.ts`, tests in `tests/relay.test.ts`):
 
-1. `?server=` in the page URL, or a relay typed into the relay field of the start page (kept for this tab only,
-   `sessionStorage`). Accepts `wss://host[:port][/ws]`, `https://...` as a spelling of it, or a bare `host[:port]`.
+1. `?server=` in the page URL, or an address typed in the display's setup wizard (step 3, "Other address"; kept for this
+   tab in `sessionStorage`, and in the display's setup in `localStorage`). Accepts `wss://host[:port][/ws]`, `https://...` as a spelling of it, or a bare `host[:port]`.
    `ws://` is accepted only for localhost, single-label names, `.local`/`.lan` and private/loopback/link-local IP
    addresses (LAN, development). No user info, query, fragment or other path. An invalid value is ignored.
 2. `config.json` next to `index.html` (optional; fetched at start with a 1.5 s timeout, no credentials):
    `{ "relays": ["wss://relay.example.org/ws", "wss://second.example.org/ws"] }` (or `{ "relay": "..." }`). Only ws/wss
-   URLs, at most 8, invalid entries dropped, first = default, the others show up as buttons. It is parsed as JSON and
+   URLs, at most 8, invalid entries dropped, first = default, the others are what "Other address" in the wizard cycles through. It is parsed as JSON and
    never executed and read with a streaming reader that stops at 8 KiB. A missing file (404) or an HTML fallback page
    means "no config" silently; a timeout, a network or server error, a body over 8 KiB, invalid JSON or a file without
-   a usable relay shows a visible, translated hint on the start page ("relay configuration could not be read, using the
-   default") and the default is used. A `ws://` entry is dropped on an https page (mixed content).
+   a usable relay is reported by `useRelay().configFailed` and the default is used (the spec has no place for a visible hint,
+   see `docs/design/implementation-questions.md`). A `ws://` entry is dropped on an https page (mixed content).
    Example: `deploy/config/web-app-config.example.json`.
 3. Build-time default `VITE_DEFAULT_RELAY`, e.g. `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws npm run build`.
 4. The page's own origin (the relay serves the page: Docker image, `--web-dir`, `npm run dev` with `?server=`).
 
-The start page shows the relay in use (host only) in a field with the tag "default" or "custom", lets you enter another
-relay (validated, translated errors, German with Sie) and reset it. The send and receive pages show the host read-only
-(the relay can only be changed on the start page, because the rooms exist on one relay). **When the relay in use is not
-the default (`?server=` or a change in the field) a warning is shown**: a link can point to any relay. Sender and
-receiver must use the same relay.
+The display's setup wizard shows the address in use (host only) in step 3 and the same address is the big address on the
+idle screen and inside the QR code (`https://{dom}/{CODE}`, plain `http://` for a local relay). The presenter pages take the relay
+from the same rules; a link (`?server=`) is the only way to point a presenter somewhere else. Presenter and display must use
+the same relay. The earlier relay field (tag "default" or "custom", a warning for a non-default relay) is gone: the spec has no
+such element.
 
-**A relay chosen only by a link (`?server=`) is never used silently.** Before any connection or screen capture (the
-"Receive", "Share screen" and content-send buttons) a blocking dialog names the host and says that the operator of that
+**A relay chosen only by a link (`?server=`) is never used silently.** Before any connection (the display when it starts, the
+presenter's "Continue in the browser") a blocking dialog names the host and says that the operator of that
 relay can see who connects, the room codes and network addresses, and can redirect the connection. "Use this relay"
 remembers the confirmation for this tab (`sessionStorage`) and for exactly that relay; "Cancel (use the default relay)"
 drops the `?server=` for this page view and starts nothing. `config.json` relays, the build default, the page's own
-origin and a relay typed into the field are trusted without the dialog. There is no URL parameter or other switch that
+origin and an address typed in the wizard are trusted without the dialog. An address that came from a link is never written
+into the display's setup. There is no URL parameter or other switch that
 skips it (the e2e tests click through it). A `ws://` relay on an https page is refused when entered or in `?server=`
 (mixed content, translated message).
 
@@ -127,13 +147,15 @@ against a relay that really swaps fingerprints.
 
 **Base path.** `VITE_BASE=/app/ npm run build` builds for `https://cometcast.de/app/` (default `/`; must be an absolute
 path, `./` is rejected because the PDF worker builds its URLs from it). Assets, the two Web Workers, the logo in the
-header and `<base>pdf/` (the optional WASM renderer from `npm run build:wasm`) all follow it; there is no service
-worker, web manifest, web font or other remote asset (system fonts only). Checked by building with `/app/` and
-serving it at that path (`npm run e2e:static`). `config.json` is read from `<base>config.json`.
+logos and fonts and `<base>pdf/` (the optional WASM renderer from `npm run build:wasm`) all follow it; there is no service
+worker, web manifest or other remote asset (the Atkinson Hyperlegible fonts are bundled). Checked by building with `/app/` and
+serving it at that path (`npm run e2e:static`). `config.json` is read from `<base>config.json`. The pages are chosen by
+path (`<base>display`, `<base><CODE>`), so a **static host must answer those paths with `index.html`**: `cometcast-server` does
+(docs/server.md), GitHub Pages needs a copy of `index.html` named `404.html`, `e2e:static` does it in its own static server.
 
 The relay must allow the page's origin: `allowed_origins = ["https://cometcast.de"]` (docs/server.md, "Web app on
 another origin"); otherwise the browser blocks `/ice-servers` and `/altcha/challenge` and `/ws` is refused with
-`403` when a list is set. The page then shows "The connection to the server was lost or could not be made".
+`403` when a list is set. The display then shows its offline box ("No connection to {dom}") and tries again; the presenter shows "No internet on this device".
 `npm run e2e:static` (Chrome or Chromium, `E2E_CHROME=...`) builds the app with `VITE_BASE=/app/`, serves it from a
 second plain static server, starts relays on other ports, and checks `?server=`, `config.json`, ALTCHA across origins,
 video through the relay, the confirmation dialog (nothing connects before it, Cancel falls back to the default), the
@@ -164,13 +186,30 @@ on the page: the sender then sends an animated canvas instead of the screen. Run
 ## Join approval test
 
 `npm run build && E2E_CHROME=/usr/bin/google-chrome npm run e2e:join` starts a real server (join requests wait 5 s) and
-several Chromium pages and checks join approval ([protocol.md](../../docs/protocol.md#join-approval)): the default mode is
-open; "End presentation" removes a sender; in "Ask first" a request takes over the display with the same check number as
-on the sender's waiting screen, the name is plain text and "No" has the focus; Yes, No and keyboard-only answers; "Later"
-hides the takeover; locking discards waiting requests and tells the senders; "End and block" and "No and block" make
-the sender hear "denied" at once, unblocking lets it join again; a request nobody answers times out; cancelling while
-waiting tells the host; German texts; "End session" shows a new code. It does not test the banner (a request while
-somebody presents is refused with `room_full` by the server) or a TV remote.
+several Chromium pages and checks join approval ([protocol.md](../../docs/protocol.md#join-approval)) with the request dialog
+of the spec: the default mode is Open; in Approval on a request appears over the idle screen with the same check number as
+on the presenter's waiting page, the name is plain text, Yes has the focus and presses inside the first second answer
+nothing; Yes, No, No and block and keyboard-only answers (arrows, Enter); Locked and Open again; a blocked address is refused at
+once and not shown; a request nobody answers times out (presenter: "No answer", display: toast); withdrawing tells the host;
+German texts (Sie) on both pages; the default mode is kept on the display. Not covered any more because the spec removed
+the controls: "End presentation" and the block list with Unblock, "Later", the join menu and its notice. Their logic
+(`ReceiverSession.removePeer`, `unblock`, `denyAll`) stays and is covered by `tests/joinApproval.test.ts`.
+
+## Display and presenter tests
+
+`npm run build && E2E_CHROME=/usr/bin/google-chrome npm run e2e:display` (real server, real Chrome) covers: the setup wizard
+(focus per step, Back, what Finish stores), the idle screen (address, code, QR URL, pill), Settings (join mode, appearance
+Dark / Light / OLED black / Automatic, kept after a reload; arrow keys in rows; Escape and the Menu key), the request dialog
+(queue "+1 waiting", first come first served, 1 s guard), Yes -> presenting full bleed (the picture fills 1280 x 720, nothing
+else drawn) -> mouse and key reveal the name tag and End (first key only reveals, hides after 5 s) -> End -> new code and toast ->
+the presenter sees "Presentation ended"; "Stop showing" leaves the display on idle with the same code; No and No and block;
+Locked; the screen wake lock (`navigator.wakeLock` is replaced by a counting mock: nothing on idle, one `acquire` while presenting, `release`
+afterwards, also for a link); idle dimming; the presenter's start page (empty code, QR path, German, dark, a phone viewport with
+Android user agent, no horizontal scroll) and error pages. `E2E_SHOTS=/tmp/shots` also writes a PNG of each state.
+
+**Idle dimming in tests.** The delay is 7 minutes (`IDLE_DIM_MS`). Only a build made with the environment variable
+`VITE_E2E_DIM_MS` (milliseconds) changes it; `e2e:display` makes such a build in a temporary folder. The normal build has no
+such value and no URL parameter, storage key or other runtime switch can change the delay.
 
 ## Open mode and TURN test
 
@@ -196,6 +235,12 @@ flags as `npm run e2e`. See [../../docs/transport.md](../../docs/transport.md).
 ## Translations
 
 UI strings live in `src/locales/en.json` and `src/locales/de.json`. Both files must have identical keys
-(checked by a test). Screen sharing needs a desktop browser and HTTPS (or localhost).
+(checked by a test). The German file is the formal **"Sie"** set (shipped). The spec's wording with **"du"** is kept ready in
+`src/locales/de-du.json`: it has only the spec's keys and is **not loaded** by the app. To ship it, merge it over `de.json`
+in `src/i18n/index.ts` (one import and one object spread; no other code changes). `tests/locales.test.ts` reads the copy
+tables of the spec and checks every row word for word in all three files, plus identical keys and `{placeholders}`;
+`node tools/check-i18n.mjs` checks `de-du.json` against `de.json`. The key `settings.join` of the spec is stored as
+`settings.join.label` because nested JSON cannot hold a text and a group under the same name. The language follows the
+browser (`navigator.language`, German or English); there is no language switch in the spec. Screen sharing needs a desktop browser and HTTPS (or localhost).
 
 License: GPL-3.0-or-later

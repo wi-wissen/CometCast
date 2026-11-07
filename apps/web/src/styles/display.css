@@ -104,20 +104,20 @@
   pointer-events: auto;
 }
 
-/* D-pad focus ring (3.5): outline 4 --focus, offset 3, glow 9, scale 1.03, 120 ms */
-.cd :focus {
-  outline: none;
-}
-.cd button,
-.cd .cd-focusable {
+/* D-pad focus ring (3.5): outline 4 --focus, offset 3, glow 9, scale 1.03, 120 ms. Only on the
+   display's own controls; the picture's own controls (annotation toolbar, link card) keep theirs. */
+.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob) {
+  position: relative;
   transition: transform 0.12s ease;
 }
-.cd :focus-visible {
-  outline: 4px solid var(--focus) !important;
+.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus {
+  outline: none;
+}
+.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus-visible {
+  outline: 4px solid var(--focus);
   outline-offset: 3px;
   box-shadow: 0 0 0 9px rgba(255, 201, 77, 0.18);
   transform: scale(1.03);
-  position: relative;
   z-index: 2;
 }
 
@@ -710,7 +710,7 @@
   .cd-dim.on {
     transition: none;
   }
-  .cd :focus-visible {
+  .cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus-visible {
     transform: none;
   }
 }

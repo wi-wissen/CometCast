@@ -6,6 +6,10 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
 
 ## What is in it
 
+- **Where it lives now.** The pages of the web app follow [design/first-run-and-display.md](design/first-run-and-display.md)
+  (see `apps/web/README.md`): the display at `/display` shows the received screen, image, link or PDF edge to edge; the
+  toolbar below is unchanged and is drawn over it. "Send file or link" is the presenter's "Show a photo or file" and
+  "Show a link" pages. Everything else in this file (control channel, limits, safety) is as written.
 - **Receiver toolbar** over the received screen (floating, draggable, collapsible to a dot): pen
   (5 colours, 3 sizes), highlighter, eraser, undo, clear, laser pointer, freeze, black screen, full
   screen. Pointer events (mouse, touch, pen); the toolbar is a keyboard-operable `role="toolbar"`
@@ -16,8 +20,9 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
   ([flutter-bridge.md](flutter-bridge.md#toolbar-over-the-received-screen)).
 - **Freeze** paints the current video frame to a canvas shown above the video. The `<video>` element
   keeps playing the live stream underneath, so unfreezing continues at the live position.
-- **Send file or link** view on the sender: image and PDF (picker or drag and drop) and http(s) link, all over
-  a WebRTC DataChannel; two buttons (previous and next page) send the page commands. The signalling server only mediates the connection setup (SDP and ICE); it never
+- **Show a photo or file** and **Show a link** on the presenter's pages: image and PDF (the system file dialog) and
+  http(s) link, all over a WebRTC DataChannel; while a PDF is shown, two buttons (previous and next page) send the
+  page commands. A new item replaces the old one only after "Stop showing". The signalling server only mediates the connection setup (SDP and ICE); it never
   sees the payloads.
 - **PDF documents** (receiver and sender) are implemented, see "Receiver behaviour and safety" and
   [documents.md](documents.md#in-the-web-client). The receiver renders pages with hayro compiled to WebAssembly,
@@ -25,7 +30,7 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
   `npm run build:wasm` (a separate step that needs Rust, see `apps/web/README.md`); **without them the app still
   works, but a received PDF only gives the notice "cannot show documents yet"**.
 - **Media links** are played by the web receiver (see "Media links" below). Office documents are **not
-  implemented in the web client**; the sender view lists them as "coming later".
+  implemented in the web client**.
 
 ## DataChannel `control`
 

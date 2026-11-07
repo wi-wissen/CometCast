@@ -2,7 +2,6 @@
   "app": {
     "name": "Comet Cast",
     "tagline": "Bildschirm, Dokumente, Links und Dateien teilen.",
-    "preview": "Frühe Version (v0.1): funktioniert nur im lokalen Netzwerk, ohne STUN/TURN-Relay-Server. Die Verbindung aus einem anderen Netzwerk funktioniert möglicherweise nicht.",
     "welcome": "Willkommen bei Comet Cast",
     "codeFromLink": "aus dem Link übernommen",
     "codeScanned": "gescannt",
@@ -10,30 +9,7 @@
     "scanQr": "QR-Code scannen",
     "connect": "Verbinden"
   },
-  "lang": {
-    "label": "Sprache",
-    "en": "English",
-    "de": "Deutsch"
-  },
-  "nav": {
-    "back": "Zurück zum Start"
-  },
   "relay": {
-    "label": "Relay-Server",
-    "using": "Verwendetes Relay: {host}",
-    "hint": "Das Relay verbindet die beiden Geräte: Raumcodes, Verbindungsdaten und Netzwerkadressen laufen darüber. Medien (Bildschirm, Bilder) werden direkt zwischen den Geräten übertragen, verschlüsselt (DTLS-SRTP), aber das Relay vermittelt die Signalisierung und könnte den Schlüsselaustausch grundsätzlich manipulieren. Vergleichen Sie den Verbindungs-Prüfcode auf beiden Geräten. Sender und Empfänger müssen dasselbe Relay verwenden.",
-    "defaultTag": "Standard",
-    "customTag": "eigenes",
-    "inputLabel": "Anderes Relay verwenden",
-    "inputHint": "Beispiel: wss://relay.example.org (eine Adresse im lokalen Netzwerk darf mit ws:// beginnen)",
-    "apply": "Dieses Relay verwenden",
-    "reset": "Standard verwenden",
-    "choose": "Bekannte Relays",
-    "warnTitle": "Es wird ein anderes Relay als der Standard verwendet.",
-    "warn": "Diese Seite würde normalerweise {def} verwenden, ausgewählt ist aber {host}. Fahren Sie nur fort, wenn Sie dem Betreiber dieses Relays vertrauen und nicht über einen unbekannten Link hierher gelangt sind.",
-    "insecureNote": "Unverschlüsselte Verbindung (ws://), nur für ein vertrauenswürdiges lokales Netzwerk geeignet.",
-    "applied": "Relay geändert auf {host}.",
-    "resetDone": "Standard-Relay wiederhergestellt.",
     "errors": {
       "empty": "Bitte geben Sie eine Adresse ein.",
       "invalid": "Das ist keine gültige Relay-Adresse.",
@@ -42,7 +18,6 @@
       "path": "Die Adresse darf keinen Pfad, keine Query und kein Fragment enthalten (nur optional /ws).",
       "mixed": "Eine über https geöffnete Seite kann kein unverschlüsseltes ws://-Relay verwenden (der Browser blockiert das). Bitte verwenden Sie wss://."
     },
-    "configFailed": "Die Relay-Konfiguration konnte nicht gelesen werden. Es wird das Standard-Relay verwendet.",
     "confirm": {
       "title": "Dieses Relay verwenden?",
       "body": "Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen.",
@@ -51,27 +26,7 @@
       "cancel": "Abbrechen (Standard-Relay verwenden)"
     }
   },
-  "home": {
-    "title": "Was möchten Sie tun?",
-    "sendScreen": {
-      "title": "Bildschirm senden",
-      "desc": "Ihren Bildschirm auf einem anderen Gerät zeigen."
-    },
-    "sendContent": {
-      "title": "Datei oder Link senden",
-      "desc": "Ein Bild, ein PDF oder einen Link übergeben. Office-Dokumente folgen später."
-    },
-    "receive": {
-      "title": "Auf diesem Gerät empfangen",
-      "desc": "Einen Code anzeigen und auf einen Absender warten."
-    }
-  },
   "receive": {
-    "title": "Auf diesem Gerät empfangen",
-    "codeLabel": "Raumcode",
-    "intro": "Dieses Gerät zeigt einen kurzen Raumcode an. Geben Sie ihn beim Absender ein; danach erscheint dessen Bildschirm hier.",
-    "codeHelp": "Geben Sie diesen Code auf dem sendenden Gerät ein.",
-    "retry": "Neuen Raum erstellen",
     "videoLabel": "Eingehender Bildschirm",
     "status": {
       "idle": "Nicht gestartet.",
@@ -84,7 +39,6 @@
       "error": "Es ist ein Fehler aufgetreten."
     },
     "stageLabel": "Empfangene Inhalte",
-    "stageWaiting": "Verbunden. Warten auf den Bildschirm oder Inhalte des Absenders …",
     "transfer": "{name} wird empfangen … {percent} %",
     "transferError": {
       "bad_message": "Eine Nachricht des Absenders konnte nicht verstanden werden und wurde ignoriert.",
@@ -158,19 +112,6 @@
     }
   },
   "send": {
-    "title": "Senden",
-    "codeLabel": "Raumcode des Empfängers",
-    "codeHint": "6 Zeichen: Buchstaben und Ziffern, ohne leicht verwechselbare (0, O, 1, I).",
-    "codeInvalid": "Bitte alle 6 Zeichen eingeben.",
-    "codeValid": "Das Codeformat passt.",
-    "connect": "Bildschirm teilen",
-    "capTitle": "Bildschirmfreigabe in diesem Browser",
-    "capOk": "Bildschirmfreigabe ist in diesem Browser verfügbar.",
-    "capUnavailable": "Bildschirmfreigabe ist hier nicht verfügbar. Sie funktioniert nur in Desktop-Browsern und setzt HTTPS (oder localhost) voraus.",
-    "capNoSecure": "Diese Seite läuft nicht in einem sicheren Kontext (HTTPS erforderlich).",
-    "capNoDisplay": "Dieser Browser bietet keine Bildschirmaufnahme (getDisplayMedia).",
-    "stop": "Freigabe beenden",
-    "tryAgain": "Erneut versuchen",
     "status": {
       "idle": "Geben Sie den Code des Empfängers ein, um zu beginnen.",
       "capturing": "Wählen Sie im Browser-Dialog aus, was geteilt werden soll …",
@@ -182,16 +123,6 @@
       "stopped": "Freigabe beendet.",
       "error": "Es ist ein Fehler aufgetreten.",
       "waiting_approval": "Warten, bis der Gastgeber den Beitritt erlaubt. Bis dahin wird nichts gesendet."
-    },
-    "waiting": {
-      "title": "Warten auf den Gastgeber",
-      "text": "Der Gastgeber muss Ihren Beitritt erlauben. Bis dahin wird nichts von Ihrem Gerät gesendet.",
-      "check": "Prüfnummer",
-      "checkHelp": "Wenn der Gastgeber fragt, welche Anfrage Ihre ist, nennen Sie diese Nummer.",
-      "timeLeft": "Die Anfrage endet in {s} s.",
-      "cancel": "Abbrechen",
-      "retryIn": "Sie können in {s} s erneut anfragen.",
-      "retryNow": "Erneut anfragen"
     }
   },
   "errors": {
@@ -330,67 +261,6 @@
   "sas": {
     "label": "Verbindungs-Prüfcode",
     "explain": "Beide Geräte sollten denselben Code anzeigen. Weichen sie ab, brechen Sie ab: Die Verbindung könnte abgefangen werden. Der Vergleich liegt bei Ihnen, die App erzwingt ihn nicht."
-  },
-  "join": {
-    "panelTitle": "Wer darf beitreten?",
-    "modeLabel": "Beitrittsmodus",
-    "mode": {
-      "open": {
-        "label": "Offen",
-        "help": "Wer den Raumcode kennt, tritt sofort bei."
-      },
-      "confirm": {
-        "label": "Erst fragen",
-        "help": "Jeder Beitritt wartet, bis Sie ihn hier erlauben."
-      },
-      "locked": {
-        "label": "Gesperrt",
-        "help": "Im Moment kann niemand beitreten. Der Code bleibt gleich."
-      }
-    },
-    "lockNow": "Raum sperren",
-    "requestsTitle": "Warten auf Beitritt",
-    "none": "Niemand wartet.",
-    "wantsToPresent": "möchte präsentieren",
-    "nameBoxLabel": "Vom Sender eingegebener Name (nicht geprüft)",
-    "check": "Prüfnummer {check}",
-    "checkHelp": "Dieselbe Nummer steht auf dem Bildschirm des Senders.",
-    "allow": "Ja",
-    "deny": "Nein",
-    "denyAll": "Alle ablehnen",
-    "more": "+{n} weitere warten",
-    "secondsLeft": "noch {s} s",
-    "connectedTitle": "Verbunden",
-    "noneConnected": "Niemand ist verbunden.",
-    "remove": "Entfernen",
-    "removeLabel": "{name} aus dem Raum entfernen",
-    "chip": "Beitritt: {mode}",
-    "pill": "{n} wartend",
-    "open": "Beitrittseinstellungen anzeigen",
-    "close": "Beitrittseinstellungen ausblenden",
-    "dismiss": "Schließen",
-    "announce": "{name} wartet auf den Beitritt. Prüfnummer {check}.",
-    "notice": {
-      "locked_discarded": "Raum gesperrt. {count} wartende Anfrage(n) wurden verworfen.",
-      "open_disabled": "Dieser Server erlaubt keine offenen Räume. Stattdessen wird „Erst fragen“ verwendet."
-    },
-    "denyBlock": "Nein und blockieren",
-    "later": "Später",
-    "takeoverTitle": "Jemand möchte beitreten",
-    "endPresentation": "Präsentation beenden",
-    "endAndBlock": "Beenden und blockieren",
-    "blockedTitle": "Für diese Sitzung blockiert",
-    "noneBlocked": "Niemand ist blockiert.",
-    "unblock": "Freigeben",
-    "blockedHelp": "Ein blockierter Sender kann diesem Raum nicht erneut beitreten, bis Sie ihn freigeben oder die Sitzung beenden. Blockiert wird nach Netzwerkadresse, daher sind auch Personen mit derselben Adresse betroffen.",
-    "endSession": "Sitzung beenden",
-    "endSessionConfirm": "Zum Beenden erneut drücken",
-    "endSessionHelp": "Entfernt alle und erstellt einen neuen Raum mit neuem Code."
-  },
-  "displayName": {
-    "label": "Ihr Name (wird dem Gastgeber angezeigt)",
-    "hint": "Wird dem Gastgeber angezeigt, wenn er Sie bestätigen muss. Optional; höchstens 40 Zeichen.",
-    "placeholder": "z. B. Alex"
   },
   "common": {
     "back": "Zurück",

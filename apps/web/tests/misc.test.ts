@@ -94,3 +94,9 @@ describe('scaling (3.1)', () => {
     expect(displayScale(480, 1000)).toBe(0.5)
   })
 })
+
+describe('browser names', () => {
+  it('a headless Chrome is still Chrome', () => {
+    expect(detectPlatform({ ua: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36' }).browser).toBe('Chrome')
+  })
+})

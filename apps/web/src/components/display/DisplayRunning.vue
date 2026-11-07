@@ -55,6 +55,14 @@ const { state, start, setJoinMode, decide, endRoom, clearContent, nextPage, prev
   onEvent,
 })
 
+// A file or link that could not be shown is told as a toast (the idle screen has no other place for it).
+watch(
+  () => state.value.contentError,
+  (c) => {
+    if (c) showToast(te(`receive.transferError.${c}`) ? t(`receive.transferError.${c}`) : t('receive.transferError.bad_message'))
+  },
+)
+
 // --- what is on screen ---------------------------------------------------------------------------
 const settingsOpen = ref(false)
 const streamPlaying = ref(false)
@@ -107,9 +115,12 @@ const idle = ref<InstanceType<typeof IdleScreen> | null>(null)
 watch(presenting, (p) => {
   if (!p) controls.hideNow()
 })
-watch(controlsShown, (v) => {
-  if (v) void nextTick(() => endBtn.value?.focus())
-})
+// The pointer hides together with the controls (7.2).
+function setPointerHidden(hidden: boolean) {
+  document.querySelector('[data-testid="display"]')?.classList.toggle('cd-hide-pointer', hidden)
+}
+watch([presenting, controlsShown], ([p, c]) => setPointerHidden(p && !c), { immediate: true, flush: 'post' })
+onBeforeUnmount(() => setPointerHidden(false))
 function endSession() {
   controls.hideNow()
   endRoom()
@@ -162,10 +173,17 @@ function onKey(e: KeyboardEvent) {
     return
   }
   if (presenting.value) {
+    // Keys for the picture's own controls (annotation toolbar, link card, document pages) are theirs.
+    const own = e.defaultPrevented || (e.target instanceof Element && e.target !== document.body && e.target.closest('[data-testid="stage"]') !== null)
+    if (own) {
+      controls.poke()
+      return
+    }
     const wasHidden = controls.poke()
     if (wasHidden) {
-      // The first input only reveals; it never activates anything.
+      // The first input only reveals (and puts the focus on End); it never activates anything.
       e.preventDefault()
+      void nextTick(() => endBtn.value?.focus())
       return
     }
     if (dir) {

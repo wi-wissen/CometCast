@@ -23,6 +23,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:net'
 import assert from 'node:assert/strict'
+import { contentSender, openDisplay, presenterJoin } from './helpers.mjs'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -188,31 +189,27 @@ try {
   const code = codeLine.slice('Room code: '.length).trim()
 
   const sender = await newPage()
-  await sender.goto(base)
-  await sender.getByRole('button', { name: /Send file or link/ }).click()
-  await sender.locator('#room-code').fill(code)
-  await sender.getByRole('button', { name: 'Connect' }).click()
-  await sender.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 20000 })
+  await presenterJoin(sender, base, code)
+  const content = contentSender(sender)
 
-  await sender.getByTestId('image-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
+  await content.file({ name: 'test.png', mimeType: 'image/png', buffer: png })
   const imageLine = await waitFor(() => rx.lines.find((l) => l.startsWith('Content: image ')), 'image line in CLI output')
   assert.ok(imageLine.includes('name="test.png"') && imageLine.includes('mime=image/png'), imageLine)
   assert.ok(imageLine.includes(`bytes=${png.length}`), `size: ${imageLine}`)
   assert.ok(imageLine.includes(`fnv1a64=${fnv1a64(png)}`), `bytes differ: ${imageLine}`)
 
-  await sender.locator('#link-url').fill('https://example.org/path?x=1')
-  await sender.getByRole('button', { name: 'Send link' }).click()
+  await content.link('https://example.org/path?x=1')
   const linkLine = await waitFor(() => rx.lines.find((l) => l.startsWith('Content: link ')), 'link line in CLI output')
   assert.equal(linkLine, 'Content: link url=https://example.org/path?x=1 (not opened)')
   assert.ok(!rx.lines.some((l) => l.startsWith('Content: error')), 'no content errors')
   // A PDF from the web sender (same protocol as `cometcast-cli send-file`) opens in the native receiver.
-  await sender.getByTestId('pdf-input').setInputFiles({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: readFileSync(pdfPath) })
+  await content.file({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: readFileSync(pdfPath) })
   await waitFor(() => rx.lines.includes('Content: document name="slides.pdf" pages=3'), 'document line in CLI output', 30000)
   await sender.getByTestId('send-next-page').click()
   await waitFor(() => rx.lines.some((l) => l.startsWith('Content: page=2 ')), 'page 2 line in CLI output')
   assert.ok(!rx.lines.some((l) => l.startsWith('Content: error')), 'no content errors after the PDF')
   // The web sender's "stop showing" is a cmd the native receiver understands.
-  await sender.getByTestId('stop-showing').click()
+  await content.stop()
   await waitFor(() => rx.lines.includes('Content: stopped'), 'stopped line in CLI output')
   await sender.context().close()
   assert.equal(await withTimeout(rx.exited, 15000, 'CLI receive exit'), 0, 'CLI receive exits 0 after the sender left')
@@ -220,10 +217,7 @@ try {
   // ---------- B) native sender -> web receiver ----------
   console.log('B) cometcast-cli send-file / send-link -> web receiver')
   const receiver = await newPage()
-  await receiver.goto(base)
-  await receiver.getByRole('button', { name: /Receive on this device/ }).click()
-  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
-  const code2 = (await receiver.getByTestId('room-code').innerText()).trim()
+  const code2 = await openDisplay(receiver, base)
   const pngFile = resolve(work, 'native.png')
   writeFileSync(pngFile, png)
   const send1 = startCli(['send-file', code2, pngFile, '--server', `127.0.0.1:${port}`])
@@ -265,7 +259,7 @@ try {
     )
     console.log('B) web receiver rendered the native PDF, non-white pixels:', nonWhite)
   } else {
-    const err = receiver.getByTestId('content-error')
+    const err = receiver.getByTestId('toast')
     await err.waitFor({ timeout: 20000 })
     assert.match(await err.innerText(), /cannot show documents yet/)
     console.log('B) web receiver says:', await err.innerText())
@@ -274,17 +268,14 @@ try {
   send3.proc.kill('SIGTERM')
   // German translation of the same notice.
   const de = await newPage('de-DE')
-  await de.goto(base)
-  await de.getByRole('button', { name: /Auf diesem Gerät empfangen/ }).click()
-  await de.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
-  const code3 = (await de.getByTestId('room-code').innerText()).trim()
+  const code3 = await openDisplay(de, base)
   const send4 = startCli(['send-file', code3, pdfPath, '--server', `127.0.0.1:${port}`])
   children.push(send4.proc)
   if (haveWasm) {
     await de.getByText('Seite 1 von 3').waitFor({ timeout: 30000 })
   } else {
-    await de.getByTestId('content-error').waitFor({ timeout: 20000 })
-    assert.match(await de.getByTestId('content-error').innerText(), /Dokumente noch nicht anzeigen/)
+    await de.getByTestId('toast').waitFor({ timeout: 20000 })
+    assert.match(await de.getByTestId('toast').innerText(), /Dokumente noch nicht anzeigen/)
   }
   await waitFor(() => send4.lines.includes('Sent.'), 'send-file pdf (de) reports Sent.')
 

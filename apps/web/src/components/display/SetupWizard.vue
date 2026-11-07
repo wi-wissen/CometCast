@@ -52,7 +52,10 @@ function applyField() {
 }
 
 function finish() {
-  emit('finish', { room: w.room || t(NAME_SUGGESTION_KEYS[0]), mode: w.mode, server: relay.current.value.wsUrl })
+  // Only an address the person chose here is kept. One that came from a link (?server=) is never
+  // remembered: it has to be confirmed again (src/composables/useRelay.ts).
+  const chosen = relay.current.value.source === 'user' ? relay.current.value.wsUrl : null
+  emit('finish', { room: w.room || t(NAME_SUGGESTION_KEYS[0]), mode: w.mode, server: chosen })
 }
 
 // Initial focus of every step (table in 4.1).

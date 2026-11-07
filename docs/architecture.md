@@ -50,7 +50,7 @@ Binaries: `cometcast-server`, `cometcast-cli`. Build helpers: `xtask/`.
 | iPhone, iPad | Flutter, both roles | Share extension and broadcast extension (Swift) |
 | Android, Google TV | Flutter, both roles | Share intent, MediaProjection service, MediaCodec (Kotlin) |
 | Apple TV | SwiftUI, receiver only | Own Swift implementation of signalling, content channel and ALTCHA (package `CometCastCore`, tested on Linux), WebRTC from a prebuilt xcframework with tvOS slices, VideoToolbox decoding. **Written to specification, never compiled or run**, see [appletv.md](appletv.md) and [appletv-device-test-plan.md](appletv-device-test-plan.md). No background operation; always-on use needs the app in the foreground with AppLock through MDM |
-| Browser | Vue 3 + TypeScript + Vite + Rust WASM | None. WebRTC and screen sharing come from the browser. No mDNS: room code or QR |
+| Browser | Vue 3 + TypeScript + Vite + Rust WASM | None. WebRTC and screen sharing come from the browser. No mDNS: room code or QR. Pages: the display at `/display` and the presenter at `/` and `/{CODE}`, built from [design/first-run-and-display.md](design/first-run-and-display.md) (`apps/web/README.md`) |
 
 **Uncertain:** that Flutter carries the TV receivers (remote control, video on weak boxes). Fallback: native Kotlin receiver. See [A2](measurement-points.md#1-beta-assumptions-a1-to-a17).
 
