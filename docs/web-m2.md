@@ -24,8 +24,8 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
   one page at a time on request, in a Web Worker. This needs the renderer files in `dist/pdf/`, which come from
   `npm run build:wasm` (a separate step that needs Rust, see `apps/web/README.md`); **without them the app still
   works, but a received PDF only gives the notice "cannot show documents yet"**.
-- Office documents and playing media links directly are **not implemented in the web client**; the sender view
-  lists them as "coming later".
+- **Media links** are played by the web receiver (see "Media links" below). Office documents are **not
+  implemented in the web client**; the sender view lists them as "coming later".
 
 ## DataChannel `control`
 
@@ -127,6 +127,46 @@ measurements behind them. 16 KiB is the size commonly considered interoperable a
 UNCERTAIN: whether a link opened by someone else's request is acceptable for every deployment (for
 example kiosks) is not decided; a policy or allow list may be needed later.
 
+## Media links
+
+A sender plays a video or audio file on the receiver by sending an ordinary `link`. **There is no new wire
+message and no new field**: the receiver classifies the validated URL by the extension of its path (query and
+fragment ignored, case-insensitive; `apps/web/src/core/media.ts`): `.mp4 .webm .ogv` video, `.mp3 .ogg .wav .m4a`
+audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the same link card as before.
+
+- The link card of a media link gets a **Play from `<host>`** button next to Open and Dismiss. **Nothing is
+  loaded, no request is made and no media element exists until the receiver's person clicks Play** (a click is
+  also the user activation that the browser's autoplay policy wants; the policy is not overridden). Dismiss
+  still has the initial focus.
+- The player is one `<video>` or `<audio>` element (native controls: play/pause, seek, volume, fullscreen for
+  video) plus our **Stop** button and Escape. Attributes: `crossorigin="anonymous"` (no cookies or credentials),
+  `referrerpolicy="no-referrer"`, `controlslist="nodownload noremoteplayback"`, `disablepictureinpicture`;
+  the page also sets `<meta name="referrer" content="same-origin">`, so cross-origin requests carry no referrer
+  (the e2e checks that the media host saw no cookie and no `Referer`). No download button is offered by us;
+  a browser's own context menu is not removed.
+- **One player at a time.** Stop, Dismiss, a `cmd` `stop` from the sender, new content (image, document, another
+  link) or the sender leaving closes the player: the element is paused, its `src` removed, `load()` called and it
+  is taken out of the page, which closes the connection.
+- Errors map `MediaError.code` to translated notices (aborted, network, decode, unsupported) that name only the
+  host, never the path or query. Because of `crossorigin="anonymous"` **a media server that sends no CORS
+  header (`Access-Control-Allow-Origin`) cannot be played** and gives the "network" notice; the link can still be
+  opened with Open. This is a deliberate price of not sending cookies.
+- **HLS (`.m3u8`)**: only where the browser plays it natively (Safari; recent Chrome on some platforms). The
+  Play button is offered only if `canPlayType` says so; otherwise the card says that the stream cannot be played
+  here and Open stays. **hls.js is not bundled** (Apache-2.0 would be compatible with GPL-3.0-or-later, but it was
+  not added in this step: a new runtime dependency, MSE code path, fetching segments from third-party hosts).
+  UNCERTAIN: HLS playback itself was not exercised in the e2e (no segments are served; only the Play/no-Play
+  decision is checked, which on the test machine's Chrome offered Play).
+- **Sender-side remote control is not done.** The `cmd` set (`next_page`, `prev_page`, `stop`, `go_to_page`)
+  has no play, pause or seek, and inventing one would be a protocol change; only `stop` works. UNCERTAIN as a
+  product question: whether a presenter needs it.
+- **No third-party players.** YouTube, Vimeo and similar page URLs are not recognised and no iframe is embedded:
+  their terms forbid it or make it unreliable, and they load trackers on the receiver. Such a link is an ordinary
+  link card. (Desktop and mini PC extraction with yt-dlp stays a native-core item of the architecture.)
+- Not done: Flutter. The Flutter link card is unchanged (Open and Dismiss only); a player there needs a media
+  package such as `media_kit` or `video_player` with native libraries, a heavy dependency (UNCERTAIN, not
+  evaluated further).
+
 ## Tests
 
 - Unit (vitest): `tests/control.test.ts` (chunking, reassembly, validation, back-pressure),
@@ -143,6 +183,12 @@ example kiosks) is not decided; a policy or allow list may be needed later.
   box on page 2, next/prev from the sender and on the receiver with clamping, a link annotation is not followed,
   a damaged PDF gives the notice, a non-PDF is refused by the sender, stop closes it). Set `E2E_CHROME=/path/to/chrome`
   to use an installed Chrome instead of Playwright's Chromium (also read by `e2e:m2` and `e2e:content`).
+- Media links: `tests/media.test.ts` (classification, HLS probe, error mapping, player state) and
+  `npm run build && npm run e2e:media`: sender sends a link to a generated `.wav` and `.webm` served by a local
+  server; nothing is requested before the click, playing after it with no cookie and no referrer, Stop and the
+  sender's `stop` release the element, a new link replaces a playing one, a broken file and a server without CORS
+  give a notice with the host only, HLS and plain links. Needs `ffmpeg` for the `.webm`; Chrome (Google Chrome
+  on Linux) only.
 - End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): image arrives
   (`naturalWidth > 0`), link card appears and nothing opens until the click, pen changes canvas pixels,
   freeze keeps the frame while the video's `currentTime` keeps advancing.

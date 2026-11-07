@@ -346,7 +346,6 @@ function stopShowing() {
       <h2 class="mb-1 font-semibold">{{ t('sendContent.later.title') }}</h2>
       <ul class="list-disc pl-5 text-sm text-muted">
         <li>{{ t('sendContent.later.office') }}</li>
-        <li>{{ t('sendContent.later.video') }}</li>
       </ul>
       <p class="mt-2 text-sm text-muted">{{ t('sendContent.later.note') }}</p>
     </div>

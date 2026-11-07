@@ -76,6 +76,22 @@
       "open": "Öffnen",
       "dismiss": "Verwerfen"
     },
+    "media": {
+      "hint": "Dieser Link verweist auf eine Mediendatei. Sie wird von {host} nur geladen, wenn Sie auf „Abspielen“ klicken.",
+      "play": "Von {host} abspielen",
+      "retry": "Erneut versuchen",
+      "stop": "Stopp",
+      "label": "Medienwiedergabe, {host}",
+      "from": "Wiedergabe von {host}",
+      "hlsUnsupported": "Dies sieht nach einem HLS-Stream aus, den dieser Browser nicht abspielen kann. Sie können den Link trotzdem öffnen.",
+      "error": {
+        "aborted": "Die Wiedergabe von {host} wurde abgebrochen.",
+        "network": "{host} ist nicht erreichbar oder erlaubt die Wiedergabe hier nicht (der Zugriff von anderen Ursprüngen muss erlaubt sein).",
+        "decode": "Die Datei von {host} ist beschädigt oder konnte nicht dekodiert werden.",
+        "unsupported": "Dieser Browser kann die Datei von {host} nicht abspielen.",
+        "blocked": "Der Browser hat die Wiedergabe von {host} blockiert."
+      }
+    },
     "announce": {
       "image": "Bild empfangen: {name}.",
       "link": "Link-Anfrage von {host}.",
@@ -216,7 +232,7 @@
     "link": {
       "title": "Link",
       "label": "Webadresse",
-      "hint": "Muss mit http:// oder https:// beginnen. Der Empfänger sieht die Adresse und entscheidet, ob er sie öffnet; nichts öffnet sich automatisch.",
+      "hint": "Muss mit http:// oder https:// beginnen. Der Empfänger sieht die Adresse und entscheidet, ob er sie öffnet; nichts öffnet sich automatisch. Einen Link auf eine Video- oder Audiodatei (.mp4, .webm, .ogv, .m3u8, .mp3, .ogg, .wav, .m4a) kann der Empfänger nach einem Klick abspielen.",
       "send": "Link senden",
       "invalid": "Bitte geben Sie eine vollständige Webadresse ein, die mit http:// oder https:// beginnt.",
       "sent": "Link gesendet. Der Empfänger muss bestätigen, bevor er sich öffnet.",
@@ -225,7 +241,6 @@
     "later": {
       "title": "Folgt später",
       "office": "Office-Dokumente (Word, Excel, PowerPoint)",
-      "video": "Medienlinks direkt abspielen",
       "note": "Dafür wird der native Kern benötigt; in der Browser-Version sind sie noch nicht verfügbar."
     },
     "document": {

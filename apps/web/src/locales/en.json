@@ -76,6 +76,22 @@
       "open": "Open",
       "dismiss": "Dismiss"
     },
+    "media": {
+      "hint": "This link points to a media file. It is loaded from {host} only if you click \"Play\".",
+      "play": "Play from {host}",
+      "retry": "Try again",
+      "stop": "Stop",
+      "label": "Media player, {host}",
+      "from": "Playing from {host}",
+      "hlsUnsupported": "This looks like an HLS stream, which this browser cannot play. You can still open the link.",
+      "error": {
+        "aborted": "Playback from {host} was stopped.",
+        "network": "{host} could not be reached or does not allow playback here (it must allow cross-origin access).",
+        "decode": "The file from {host} is damaged or could not be decoded.",
+        "unsupported": "This browser cannot play the file from {host}.",
+        "blocked": "The browser blocked playback from {host}."
+      }
+    },
     "announce": {
       "image": "Image received: {name}.",
       "link": "Link request from {host}.",
@@ -216,7 +232,7 @@
     "link": {
       "title": "Link",
       "label": "Web address",
-      "hint": "Must start with http:// or https://. The receiver sees the address and decides whether to open it; nothing opens automatically.",
+      "hint": "Must start with http:// or https://. The receiver sees the address and decides whether to open it; nothing opens automatically. A link to a video or audio file (.mp4, .webm, .ogv, .m3u8, .mp3, .ogg, .wav, .m4a) can be played by the receiver after a click.",
       "send": "Send link",
       "invalid": "Please enter a full web address starting with http:// or https://.",
       "sent": "Link sent. The receiver has to confirm before it opens.",
@@ -225,7 +241,6 @@
     "later": {
       "title": "Coming later",
       "office": "Office documents (Word, Excel, PowerPoint)",
-      "video": "Playing media links directly",
       "note": "These need the native core and are not available in the browser version yet."
     },
     "document": {
