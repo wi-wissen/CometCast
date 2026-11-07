@@ -11,6 +11,7 @@
 
 mod config;
 mod file_config;
+mod health;
 mod limits;
 mod net;
 mod puzzle;
@@ -40,6 +41,7 @@ pub use config::{
     TlsConfig, TurnConfig,
 };
 pub use file_config::{DEFAULT_CONFIG_TOML, load_config, overrides_from_env};
+pub use health::healthcheck;
 pub use turn::{IceServer, credential_for, ice_servers};
 
 /// Version of this server library (from Cargo.toml).

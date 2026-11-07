@@ -16,7 +16,8 @@
 #  - The output file is written with mode 600 (also when an older file with other
 #    permissions exists), via a temporary file that replaces it in one step.
 #
-# UNCERTAIN: tested with dry renders (deploy/coturn/test-render.sh), not with a real coturn.
+# Tested with dry renders (deploy/coturn/test-render.sh) and, in the first real run, rendered output
+# was read by coturn 4.18.0 in Docker (docs/server.md).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -160,4 +161,18 @@ awk '
 mv -f "$tmp" "$out"
 chmod 600 "$out"
 trap - EXIT HUP INT TERM
+# The coturn image runs as user "nobody" (UID/GID 65534), NOT as root, and cannot read a root-only 600
+# file: coturn then does not stop, it prints "Cannot find config file" and starts with its DEFAULTS
+# (found in the first run). So: TURN_CONF_GROUP=65534 deploy/coturn/render.sh (needs root, or
+# membership of that group) gives the file to that group with mode 640. Without it the mode stays 600.
+if [ -n "${TURN_CONF_GROUP:-}" ]; then
+  case $TURN_CONF_GROUP in
+    *[!A-Za-z0-9._-]*) die "TURN_CONF_GROUP has characters that are not allowed here" ;;
+  esac
+  chgrp "$TURN_CONF_GROUP" "$out" || die "cannot chgrp $out to $TURN_CONF_GROUP (run as root?)"
+  chmod 640 "$out"
+  echo "mode 640, group $TURN_CONF_GROUP"
+else
+  echo "note: mode 600; the coturn container (user nobody, GID 65534) cannot read it. Run again with TURN_CONF_GROUP=65534 (as root) before docker compose up." >&2
+fi
 echo "wrote $out"

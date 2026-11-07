@@ -34,7 +34,11 @@ ignored). The file is optional; every key is optional.
   for example `COMETCAST__LIMITS__MAX_ROOMS=500`. Short forms: `COMETCAST_LISTEN`,
   `COMETCAST_MODE`, `COMETCAST_WEB_DIR`.
 - Command line: `--mode`, `--listen`, `--web-dir`, `--tls-cert`, `--tls-key`,
-  `--tls-self-signed`, and `--set section.key=value` for anything else.
+  `--tls-self-signed`, `--healthcheck` (see below) and `--set section.key=value` for anything else.
+  `--healthcheck` reads the same settings, asks the server on this machine (loopback, same port,
+  HTTP or HTTPS with the certificate not checked) for `GET /healthz`, and exits 0 only for `200`.
+  It exists for the container health check (the image has no shell and no curl).
+  The server stops on SIGTERM as well as Ctrl-C (so `docker stop` is immediate).
 - Values given outside the file are read as TOML values where possible: numbers, `true`,
   and arrays like `["10.0.0.0/8"]`. Lists of networks may also be written as plain
   comma-separated text (`10.0.0.0/8, 192.168.0.0/16`).
@@ -324,8 +328,8 @@ id is a random value, not the room code, is our choice (the endpoint knows no ro
 
 The coturn template is `deploy/coturn/turnserver.conf.template` (render it with
 `deploy/coturn/render.sh`; the script checks every value, refuses a `turn_secret` file with more than one line, validates ports (1-65535, min <= max) and addresses, and writes the result with mode 600; `deploy/coturn/test-render.sh` tests it with hostile inputs and is run by `cargo test -p cc-server`). It follows the plan's hardening list: narrow relay port range,
-`use-auth-secret`, `no-multicast-peers`, `no-tcp-relay`, quotas, `no-cli`, TLS port 5349, and
-`denied-peer-ip` for private and special ranges. Pitfall from the plan: if you deny all private
+`use-auth-secret`, `no-multicast-peers`, `no-tcp-relay`, quotas, no CLI (off by default), TLS port 5349, and
+`denied-peer-ip` for private and special ranges (the CLI is off by default in coturn 4.18, so there is no `no-cli` line: that option is rejected there). Pitfall from the plan: if you deny all private
 ranges, relaying between two devices in the same private network breaks, because the TURN
 server's own relay address is private; therefore `allowed-peer-ip=<relay IP>` is set.
 Further denied ranges were added after security reviews: documentation ranges, `::`,
@@ -334,9 +338,17 @@ and `192.88.99.0/24`, Teredo `2001::/32`, discard-only `100::/64`, `fec0::/10`.
 **Host networking:** the compose file runs coturn with `network_mode: host`, so the
 `allowed-peer-ip` address is the host itself. A client with valid credentials can then
 send packets to whatever listens on that address. Use a relay address without other
-services, or firewall it. **UNCERTAIN: coturn was not run and the template was not tested
-against any coturn version.** Every option marked UNCERTAIN in it needs checking, and the same-network case
-needs a real test with two devices.
+services, or firewall it. **Run once against coturn 4.18.0 only** (see [First real run](#first-real-run)); other versions
+are untested. Options still marked UNCERTAIN in the template were not checked by that run, and the
+same-network case still needs a real test with two devices.
+
+Where relaying may go (what the run showed, with the `allowed-peer-ip` of the relay address
+192.0.2.2 and everything else as in the template): private, loopback, link-local, CGNAT
+(100.64/10), benchmarking, multicast, reserved, documentation and `0.0.0.0` peers are refused
+(403 on CreatePermission); public addresses are allowed; the relay address itself is allowed.
+**Configured exception:** `allowed-peer-ip=<relay IP>`: with host networking that is the host.
+If you relay between devices inside a private network through this server, the relay IP must
+be the address those devices reach; nothing else private is reachable.
 
 ## Deployment
 
@@ -376,12 +388,43 @@ need the same care.
 ### Docker
 
 `deploy/` has a `Dockerfile` (multi-stage; Node builds the web app, Rust builds the server,
-`gcr.io/distroless/cc-debian12:nonroot` runs it as a non-root user), `docker-compose.yml`
-(server plus coturn), an example config and an `.env.example`.
-**UNCERTAIN: none of it was built or started.** The machine used had the Docker CLI but no
-Docker daemon; at most `docker compose config` (a syntax check) was run. Image tags (Node,
-Rust, distroless, coturn 4.18 from the plan) are unchecked assumptions. Read the comments at the top of
-each file before the first use.
+`gcr.io/distroless/cc-debian12:nonroot` runs it as UID 65532), `docker-compose.yml` (server plus
+coturn), an example config and an `.env.example`. **The steps for the first start are in the
+comment at the top of `docker-compose.yml`; follow them in order** (secret and key file owners
+matter, see below).
+
+What the image and compose file give you (all checked in the first run, see below):
+
+| Item | State |
+| --- | --- |
+| Server user | non-root (UID 65532); coturn image runs as `nobody` (65534) |
+| Root file system | read-only for both containers (coturn gets tmpfs `/tmp`, `/var/tmp`) |
+| Capabilities | `cap_drop: ALL` and `no-new-privileges` for both; coturn needs `NET_BIND_SERVICE` added back, otherwise its binary cannot start |
+| Health check | in the Dockerfile: `cometcast-server --healthcheck`; `docker compose ps` shows `healthy` |
+| Secrets | `turn_secret`, `altcha_secret` as compose file secrets (`/run/secrets/...`), read by the server from `secret_file`; never in the image, `.dockerignore` excludes `deploy/secrets`, `deploy/certs`, `.env`, `*.pem`, `*.key` |
+| coturn secret | has to be in `turnserver.conf` (coturn has no secret-file option; UNCERTAIN: not looked for other ways), written by `render.sh` with mode 600, or 640 for group 65534 with `TURN_CONF_GROUP=65534` |
+| TLS files | mounted read-only from `deploy/certs/`; the key must be readable by 65532 (server) and 65534 (coturn): `chown 65532:65534 certs/privkey.pem; chmod 640` |
+| Ports | server `8443/tcp` published on all host addresses; coturn on the host network (3478 udp/tcp, 5349 tcp, relay range) |
+| Trusted proxy | none by default; set `network.trusted_proxies` only for your proxy's address |
+
+Silent failure modes found in the run, and what to look for:
+
+- coturn cannot read `turnserver.conf` (mode 600 root file, container user `nobody`): it does **not**
+  stop. It logs `Cannot find config file ... Default and command-line settings will be used` and
+  starts with defaults, so there is no TURN REST authentication and no hardening from the file. Check
+  `docker compose logs coturn` for that line and for `Bad configuration format` or `ERROR`.
+- coturn cannot read the TLS key: it logs `cannot start TLS and DTLS listeners` and runs without 5349.
+- The server cannot read the TLS key: it stops with a clear message and Docker restarts it in a loop
+  (the start banner `listening on https://...` is printed before that check, which is misleading).
+
+**Build behind a TLS-intercepting proxy** (as in the test environment): pass the proxy CA with
+`docker build --secret id=extra_ca,src=<ca.pem> ...`; the secret is only mounted during the `npm ci`
+and `cargo build` steps and is not part of the image. With `docker compose up --build` this secret
+is not passed (UNCERTAIN: `build.secrets` in the compose file was not tried), so build with
+`docker build` first and run `docker compose up -d` without `--build`.
+
+The image does **not** contain the WASM PDF renderer, so the web app served from it cannot show PDFs
+([web README](../apps/web/README.md)).
 
 ### Where these files may live later
 
@@ -390,9 +433,85 @@ to a separate repository, planned name **`CometCast-Relay`**. The server code
 (`crates/cc-server`, `bins/cometcast-server`) stays in this repository. Nothing about that
 repository exists yet.
 
+## First real run
+
+Date 2026-11-07. Machine: one Linux container with root, Docker Engine 29.9.2 (the daemon was not
+running at first: `dockerd` was started by hand and worked, storage driver overlayfs), Compose 5.6.1,
+linux/amd64, all network through a TLS-intercepting proxy. Everything ran on that single machine
+(client and server on the same host; the host address 192.0.2.2 was used as the relay address).
+Test secrets and a throw-away self-signed certificate were generated for the run and deleted.
+
+**Ran and passed**
+
+- `docker build -f deploy/Dockerfile` (with the fixes below): web stage (`npm ci`, `vite build`),
+  Rust stage (`cargo build --release --locked -p cometcast-server`, about 1 minute), distroless
+  runtime. Image about 43 MB on disk.
+- `docker compose up -d`: server `Up (healthy)`; `docker inspect`: user `nonroot`, read-only root
+  file system, `cap_drop ALL`, `no-new-privileges`; coturn user `nobody:nogroup`, read-only, cap
+  `NET_BIND_SERVICE` only, host network. `docker stop` of the server took 0.2 s.
+- HTTPS with the mounted certificate: `/healthz` returned `ok`, `/` served the web app,
+  `/altcha/challenge` and `/ice-servers` answered. `curl --cacert` validated the certificate for `localhost`.
+- WebSocket over WSS (a small Node.js script): receiver `hello`, `create_room`, `room_created`;
+  sender `hello`, `join_room`, `joined`; receiver `peer_joined`; `offer` and `answer` relayed;
+  `peer_left` on sender disconnect; a wrong code gave `room_not_found`. (`cometcast-cli` was not built:
+  only the server crate was built, as agreed.)
+- Trusted proxy and allow list (`trusted_proxies = ["172.16.0.0/12"]`, `allow = ["203.0.113.0/24"]`):
+  `X-Forwarded-For: 203.0.113.9` gave 200, `8.8.8.8` gave 403, `8.8.8.8, 203.0.113.9` gave 200 (read
+  from the right), no header gave 403.
+- coturn 4.18.0 with the rendered template: starts without `Bad configuration format` or `ERROR`
+  lines (after the fixes), listens on 3478 and 5349 tcp, **nothing on 5766 (no CLI)**.
+- TURN REST credentials from `GET /ice-servers` are **accepted by coturn**: a small Python TURN client
+  (raw STUN messages, long-term credential with `username` and `credential` from the endpoint)
+  got a UDP allocation (`ALLOCATE OK`, relayed address 192.0.2.2:port); `turnutils_uclient -y` (from
+  the coturn image) relayed 20 of 20 packets between two allocations, 0 lost.
+- Refused as intended: a wrong password and a missing credential (no allocation: no open relay),
+  an expired username (401); relaying to peers 127.0.0.1, 172.16/12 (docker bridges), 10/8,
+  192.168/16, 100.64/10, 169.254/16, 198.18/15, 224/4, 240/4, 0.0.0.0, 192.0.2.x (except the relay
+  address), 198.51.100.x, 203.0.113.x, 192.88.99.x: all `403` on CreatePermission. Allowed: 8.8.8.8
+  and 1.1.1.1 (permission only; no packets were sent to the internet) and the relay address.
+- `cargo test -p cc-server -p cometcast-server`: passed (including the new health check test);
+  `cargo clippy` clean for both crates; `deploy/coturn/test-render.sh`: 125 checks passed.
+
+**Bugs found and fixed**
+
+1. Dockerfile: `rust-toolchain.toml` says `channel = "stable"`; rustup tried to download a toolchain
+   called `stable` inside `rust:1-bookworm` and the build failed. Fixed: the file is removed in the
+   build stage; the tag is pinned to `rust:1.99-bookworm` (the workspace needs 1.92+).
+2. Dockerfile/health check: there was none ("needs a flag in the server"). Added
+   `cometcast-server --healthcheck` and a `HEALTHCHECK` (also works with TLS).
+3. Server ignored SIGTERM (only Ctrl-C), so `docker stop` would wait 10 s and kill it. Fixed.
+4. compose: coturn container could not start (`/usr/bin/turnserver: Operation not permitted`) because
+   `cap_drop: ALL` removes the capability the binary's file capability asks for. Fixed with
+   `cap_add: NET_BIND_SERVICE`. coturn also got `read_only` and tmpfs.
+5. coturn config: `no-cli` is an ERROR in 4.18 (the CLI is off by default; `cli` turns it on),
+   `no-tlsv1`/`no-tlsv1_1` are not valid options, `no-rfc5780` is deprecated (default). Removed.
+6. coturn config: **`denied-peer-ip=::-::` made coturn refuse every IPv4 peer, public ones too**, so no
+   relay could work at all. Removed (bisected with a second coturn instance).
+7. File permissions: the 600 `turnserver.conf` is unreadable for the coturn user and coturn silently
+   falls back to defaults; the TLS key (owner root, 600) is unreadable for both. Added
+   `TURN_CONF_GROUP` to `render.sh` and exact `chown`/`chmod` steps to the compose header.
+8. `.env.example` had an empty `COTURN_VERSION`; set to `4.18.0` (the tag exists).
+
+**Not run / not verified (UNCERTAIN)**
+
+- Real network: two devices, NAT, the same-network relay case, TURN over TLS (5349 was only checked
+  to be listening, no TLS client), TURN over TCP (switched off by `no-tcp-relay`), IPv6 relay and the
+  IPv6 `denied-peer-ip` lines (the relay was IPv4 only; those lines were accepted by coturn but no
+  IPv6 peer was tried), a browser WebRTC connection through this TURN server.
+- coturn quotas (`user-quota`, `total-quota`) and relay port exhaustion were not exercised.
+- Certificate from a real CA, renewal, split DNS, any public name. `relay.cometcast.de` was not set up.
+- Other CPU architectures, other tags of the base images, a build without the intercepting proxy
+  (the build used `--network=host` and the proxy CA as a build secret).
+- `docker compose up --build` (the extra CA secret is not passed there).
+- `denied-peer-ip` protects only the relayed side. Whether a client with valid credentials can reach
+  host services on the relay address (host networking, the `allowed-peer-ip` exception) was not
+  tested; the warning in the template stands.
+
 ## Not done / open
 
-- Docker images and compose were not built or run; coturn was not run (see above).
+- Not verified by the first run: two real devices relaying through coturn (also in one private
+  network), NAT, TURN over TLS on 5349, IPv6 peers, other coturn versions, arm64, a real certificate,
+  load, and what source address the server sees for remote clients behind Docker port publishing.
 - ACME (`instant-acme`) is out of scope; certificate reload without restart is not built.
 - A metrics endpoint (for example the number of untracked failures); sharing bans between several server instances;
 - ALTCHA for joining; CORS for other origins (the web app works on the server's own origin only).

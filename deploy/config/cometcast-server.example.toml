@@ -16,7 +16,12 @@ key_file = "/etc/cometcast/certs/privkey.pem"
 
 [network]
 # Only if a reverse proxy runs in front: its address. Then X-Forwarded-For is believed
-# from it and from nobody else.
+# from it and from nobody else. Checked in the first run: with "172.16.0.0/12" a request that
+# reached the published port from the same host (it arrived from the Docker bridge address)
+# had its X-Forwarded-For honoured (read from the right), and without the header it was refused
+# when `allow` did not contain the bridge address. Do not trust a wider range than your proxy.
+# UNCERTAIN: which source address the server sees for a REMOTE client through Docker's port
+# publishing (NAT keeps it, the userland proxy replaces it) was not tested.
 # trusted_proxies = ["172.16.0.0/12"]
 # Networks of the organisation. Empty = everybody may connect.
 # allow = ["10.0.0.0/8", "192.168.0.0/16"]

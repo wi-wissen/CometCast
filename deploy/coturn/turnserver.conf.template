@@ -3,10 +3,11 @@
 # coturn configuration template for Comet Cast (internal mode, TURN REST credentials).
 # Fill in the @PLACEHOLDERS@ with ./render.sh (it reads ../.env and ../secrets/turn_secret).
 #
-# UNCERTAIN: This file was written from the planning page and from memory of coturn's
-# options. coturn was NOT run here, so NOTHING in this file is tested. Options and
-# values marked UNCERTAIN are assumptions; run `turnserver --help` / read the coturn
-# man page of the version you install before relying on any line.
+# First real run (2026-11-07): coturn 4.18.0 (docker image coturn/coturn:4.18.0) read this file
+# and accepted every line (no "Bad configuration format" left); TURN REST credentials from
+# cometcast-server were accepted and a UDP relay allocation worked (docs/server.md, "First real
+# run"). Lines still marked UNCERTAIN were not checked by that run. Other coturn versions: run
+# `turnserver --help` and watch the start log for "Bad configuration format" or "ERROR".
 
 # ---- Ports ----
 listening-port=3478
@@ -32,16 +33,16 @@ relay-ip=@TURN_RELAY_IP@
 no-multicast-peers
 # WebRTC needs only UDP relaying. UNCERTAIN: remove this line if a client needs TCP relaying.
 no-tcp-relay
-# No management interface (telnet CLI).
-no-cli
+# No management interface (telnet CLI): coturn 4.18 has it OFF by default and "no-cli" is
+# rejected there ("deprecated, see --cli"; found in the first run). So there is deliberately NO
+# "cli" line here; never add one. Checked in the run: nothing listens on 5766.
 # Add a fingerprint to messages (standard for WebRTC).
 fingerprint
-# UNCERTAIN: switches off the NAT-behaviour-discovery feature (RFC 5780) so the server
-# is not used for scanning. Check that the option exists in your coturn version.
-no-rfc5780
-# UNCERTAIN: switch off old TLS versions on the TLS port.
-no-tlsv1
-no-tlsv1_1
+# RFC 5780 (NAT behaviour discovery) is OFF by default in coturn 4.18 ("no-rfc5780" is deprecated),
+# so nothing is set. TLS 1.0/1.1 are not offered by default either ("no-tlsv1", "no-tlsv1_1" are not
+# valid options in 4.18 and were logged as "Bad configuration format").
+# Keep the pid file where a read-only root file system still allows writing (tmpfs in compose).
+pidfile=/tmp/turnserver.pid
 
 # ---- Quotas ----
 # UNCERTAIN: placeholders from the planning page. Too low a total-quota lets someone with
@@ -67,12 +68,13 @@ denied-peer-ip=198.18.0.0-198.19.255.255
 denied-peer-ip=240.0.0.0-255.255.255.255
 # UNCERTAIN: added after a security review (not on the planning page): documentation
 # ranges, and IPv6 forms that can reach IPv4 or internal targets (IPv4-mapped ::ffff:0:0/96,
-# NAT64 64:ff9b::/96, 6to4 2002::/16, old site-local fec0::/10, unspecified ::).
+# NAT64 64:ff9b::/96, 6to4 2002::/16, old site-local fec0::/10).
 # Ranges are written as "first-last"; whether coturn also accepts CIDR here was not checked.
 denied-peer-ip=192.0.2.0-192.0.2.255
 denied-peer-ip=198.51.100.0-198.51.100.255
 denied-peer-ip=203.0.113.0-203.0.113.255
-denied-peer-ip=::-::
+# NOT "denied-peer-ip=::-::" (unspecified address): in coturn 4.18.0 that line made EVERY IPv4 peer
+# refused (403), public ones too, so no call could relay at all. Found in the first run.
 denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
 denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
 denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff

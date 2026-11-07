@@ -20,6 +20,8 @@ const USAGE: &str = "Usage: cometcast-server [options]\n\
   --tls-self-signed      DEVELOPMENT ONLY: make a throw-away self-signed certificate\n\
   --set <key=value>      set any setting, e.g. --set limits.max_rooms=500 (repeatable)\n\
   --print-default-config print the default configuration file and exit\n\
+  --healthcheck          ask the server on this machine for /healthz; exit 0 if it answers 200\n\
+                         (for container health checks; uses the same settings)\n\
   --version              print the version and exit\n\
   --help                 show this text\n\
 Order of precedence: config file, then COMETCAST_* environment variables, then these options.";
@@ -30,6 +32,7 @@ struct Cli {
     config_file: Option<PathBuf>,
     overrides: Vec<(String, String)>,
     print_default_config: bool,
+    healthcheck: bool,
     version: bool,
     help: bool,
 }
@@ -44,6 +47,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Cli, String> {
             "--help" | "-h" => cli.help = true,
             "--version" | "-V" => cli.version = true,
             "--print-default-config" => cli.print_default_config = true,
+            "--healthcheck" => cli.healthcheck = true,
             "--config" => cli.config_file = Some(PathBuf::from(value("--config")?)),
             "--mode" => cli.overrides.push(("mode".into(), value("--mode")?)),
             "--listen" => cli.overrides.push(("listen".into(), value("--listen")?)),
@@ -116,6 +120,27 @@ fn describe(config: &ServerConfig, addr: std::net::SocketAddr) {
     }
 }
 
+#[cfg(unix)]
+async fn wait_for_stop_signal() {
+    use tokio::signal::unix::{SignalKind, signal};
+    match signal(SignalKind::terminate()) {
+        Ok(mut term) => {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+        }
+        Err(_) => {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_stop_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = match parse_args(std::env::args().skip(1)) {
@@ -144,6 +169,15 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if cli.healthcheck {
+        return match cc_server::healthcheck(&config).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("unhealthy: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let listener = match tokio::net::TcpListener::bind(config.listen_addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -156,8 +190,10 @@ async fn main() -> ExitCode {
     describe(&config, addr);
     println!("press Ctrl-C to stop");
 
+    // Ctrl-C, and SIGTERM (what `docker stop` sends; as PID 1 the process would otherwise
+    // ignore it and be killed after the grace period).
     let shutdown = async {
-        let _ = tokio::signal::ctrl_c().await;
+        wait_for_stop_signal().await;
         println!("shutting down");
     };
     match cc_server::run(listener, config, shutdown).await {
