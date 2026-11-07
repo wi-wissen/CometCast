@@ -108,6 +108,7 @@ check_ip() {
 
 TURN_REALM=$(env_value TURN_REALM)
 TURN_EXTERNAL_IP=$(env_value TURN_EXTERNAL_IP)
+TURN_LISTENING_IP=$(env_value TURN_LISTENING_IP)   # optional
 TURN_RELAY_IP=$(env_value TURN_RELAY_IP)
 TURN_MIN_PORT=$(env_value TURN_MIN_PORT)
 TURN_MAX_PORT=$(env_value TURN_MAX_PORT)
@@ -124,8 +125,24 @@ cr=$(printf '\r')
 TURN_SECRET=${TURN_SECRET%"$cr"}   # a Windows line end
 
 check TURN_REALM "$TURN_REALM" '[A-Za-z0-9.-]+'
-check_ip TURN_EXTERNAL_IP "$TURN_EXTERNAL_IP"
+# TURN_EXTERNAL_IP is one address, or "public/private" (behind NAT; coturn's external-ip syntax):
+# each half is checked as an address on its own, and there may be only one slash.
+case $TURN_EXTERNAL_IP in
+  */*/*) die "TURN_EXTERNAL_IP has more than one slash" ;;
+  */*)
+    check_ip "TURN_EXTERNAL_IP (public part)" "${TURN_EXTERNAL_IP%%/*}"
+    check_ip "TURN_EXTERNAL_IP (private part)" "${TURN_EXTERNAL_IP#*/}"
+    ;;
+  *) check_ip TURN_EXTERNAL_IP "$TURN_EXTERNAL_IP" ;;
+esac
 check_ip TURN_RELAY_IP "$TURN_RELAY_IP"
+# Optional: listen only on this local address. Empty or missing = all addresses.
+if [ -n "$TURN_LISTENING_IP" ]; then
+  check_ip TURN_LISTENING_IP "$TURN_LISTENING_IP"
+  TURN_LISTENING_IP_LINE="listening-ip=$TURN_LISTENING_IP"
+else
+  TURN_LISTENING_IP_LINE="# listening-ip not set: coturn listens on every address of the host"
+fi
 # Ports: 1-65535, no leading zero (so the shell never reads them as octal numbers).
 check TURN_MIN_PORT "$TURN_MIN_PORT" '[1-9][0-9]{0,4}'
 check TURN_MAX_PORT "$TURN_MAX_PORT" '[1-9][0-9]{0,4}'
@@ -134,6 +151,10 @@ check TURN_MAX_PORT "$TURN_MAX_PORT" '[1-9][0-9]{0,4}'
 [ "$TURN_MIN_PORT" -le "$TURN_MAX_PORT" ] || die "TURN_MIN_PORT must not be above TURN_MAX_PORT"
 # The secret: at least 16 characters, from a safe set (openssl rand -hex 32 fits).
 check "secrets/turn_secret" "$TURN_SECRET" '[A-Za-z0-9._~+/=-]{16,}'
+# total-quota: 80 % of the relay ports (one port per allocation), at least 1. A quota above the
+# number of ports could never trigger (relay port exhaustion, see the template).
+TURN_TOTAL_QUOTA=$(( (TURN_MAX_PORT - TURN_MIN_PORT + 1) * 8 / 10 ))
+[ "$TURN_TOTAL_QUOTA" -ge 1 ] || TURN_TOTAL_QUOTA=1
 
 out="$here/turnserver.conf"
 umask 077   # the file contains the shared secret
@@ -143,6 +164,7 @@ chmod 600 "$tmp"
 # The values travel in the environment of awk and are inserted as literal text.
 TURN_REALM="$TURN_REALM" TURN_EXTERNAL_IP="$TURN_EXTERNAL_IP" TURN_RELAY_IP="$TURN_RELAY_IP" \
 TURN_MIN_PORT="$TURN_MIN_PORT" TURN_MAX_PORT="$TURN_MAX_PORT" TURN_SECRET="$TURN_SECRET" \
+TURN_TOTAL_QUOTA="$TURN_TOTAL_QUOTA" TURN_LISTENING_IP_LINE="$TURN_LISTENING_IP_LINE" \
 awk '
   function lit(line, name,    token, val, out, i) {
     token = "@" name "@"; val = ENVIRON[name]; out = ""
@@ -155,6 +177,7 @@ awk '
   {
     $0 = lit($0, "TURN_REALM"); $0 = lit($0, "TURN_EXTERNAL_IP"); $0 = lit($0, "TURN_RELAY_IP")
     $0 = lit($0, "TURN_MIN_PORT"); $0 = lit($0, "TURN_MAX_PORT"); $0 = lit($0, "TURN_SECRET")
+    $0 = lit($0, "TURN_TOTAL_QUOTA"); $0 = lit($0, "TURN_LISTENING_IP_LINE")
     print
   }' "$here/turnserver.conf.template" > "$tmp"
 # Replace the old file in one step; the new one keeps mode 600 whatever the old one had.

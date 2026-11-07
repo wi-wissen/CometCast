@@ -525,7 +525,7 @@ async fn ice_servers_endpoint_issues_verifiable_credentials() {
         .unwrap()
         .as_secs();
     assert!(
-        expiry > now + 3500 && expiry <= now + 3601,
+        expiry > now + 3600 && expiry <= now + 7201,
         "expiry {expiry}"
     );
     assert!(!id.is_empty());
@@ -533,11 +533,19 @@ async fn ice_servers_endpoint_issues_verifiable_credentials() {
         turn["credential"].as_str().unwrap(),
         credential_for("test-secret-0123456789", username)
     );
-    assert_eq!(turn["ttl"], 3600);
-    // Two requests get different users.
+    let ttl = turn["ttl"].as_u64().unwrap();
+    assert!((3600..=7200).contains(&ttl), "ttl {ttl}");
+    // Repeated requests of one client get the SAME user (coturn's user-quota counts them
+    // together). Only a request that lands on a bucket boundary may differ.
     let r2 = http_get(addr, "/ice-servers", &[]).await;
     let list2: Vec<Value> = serde_json::from_str(&r2.body).unwrap();
-    assert_ne!(list2[1]["username"], turn["username"]);
+    if list2[1]["username"]
+        .as_str()
+        .unwrap()
+        .starts_with(&format!("{expiry}:"))
+    {
+        assert_eq!(list2[1]["username"], turn["username"]);
+    }
 }
 
 #[tokio::test]

@@ -54,7 +54,20 @@ pub(crate) struct AppState {
     pub(crate) rooms: Arc<Mutex<rooms::Rooms>>,
     pub(crate) guard: Arc<limits::Guard>,
     pub(crate) puzzle: Arc<puzzle::Puzzle>,
+    /// Becomes `true` when the server is asked to stop; open WebSockets then close.
+    pub(crate) shutdown: tokio::sync::watch::Receiver<bool>,
 }
+
+/// Wait until shutdown was announced. Never returns when there is no sender (a router built
+/// with [`build_app`] alone is never shut down this way).
+pub(crate) async fn wait_shutdown(rx: &mut tokio::sync::watch::Receiver<bool>) {
+    if rx.wait_for(|stop| *stop).await.is_err() {
+        std::future::pending::<()>().await;
+    }
+}
+
+/// Longest wait for open connections after shutdown was asked for (HTTP and HTTPS alike).
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 /// Turn a refusal into an HTTP answer.
 pub(crate) fn deny_response(deny: limits::Deny) -> Response {
@@ -79,7 +92,15 @@ pub(crate) fn deny_response(deny: limits::Deny) -> Response {
 ///
 /// The router needs the peer address of each connection, so serve it with
 /// `into_make_service_with_connect_info::<SocketAddr>()` (as [`run`] does).
-pub fn build_app(mut config: ServerConfig) -> Router {
+pub fn build_app(config: ServerConfig) -> Router {
+    // The sender is dropped at once: this router never sees a shutdown announcement.
+    build_app_with_shutdown(config, tokio::sync::watch::channel(false).1)
+}
+
+fn build_app_with_shutdown(
+    mut config: ServerConfig,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+) -> Router {
     // Networks written as IPv4-mapped IPv6 (`::ffff:a.b.c.d/N`) are turned into IPv4 ones,
     // because client addresses are compared in their IPv4 form.
     config.network = net::canonical_network(config.network);
@@ -89,6 +110,7 @@ pub fn build_app(mut config: ServerConfig) -> Router {
         puzzle: Arc::new(puzzle::Puzzle::new(&config.altcha)),
         config: Arc::new(config),
         rooms: Arc::new(Mutex::new(rooms::Rooms::default())),
+        shutdown,
     };
     let mut app = Router::new()
         .route("/ws", get(ws::ws_handler))
@@ -121,19 +143,37 @@ pub async fn run(
     } else {
         None
     };
-    let app = build_app(config).into_make_service_with_connect_info::<SocketAddr>();
+    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    let app = build_app_with_shutdown(config, stop_rx.clone())
+        .into_make_service_with_connect_info::<SocketAddr>();
+    // One task turns the caller's signal into the announcement for WebSockets (they send a
+    // Close frame and end) and for the HTTP server (stop accepting, drain).
+    tokio::spawn(async move {
+        shutdown.await;
+        let _ = stop_tx.send(true);
+    });
+    let mut for_http = stop_rx.clone();
+    let mut for_timeout = stop_rx;
+    // Both paths give open connections SHUTDOWN_GRACE after the signal, then stop anyway.
+    let grace = async move {
+        wait_shutdown(&mut for_timeout).await;
+        tokio::time::sleep(SHUTDOWN_GRACE).await;
+    };
     match tls {
         None => {
-            axum::serve(listener, app)
-                .with_graceful_shutdown(shutdown)
-                .await
+            let serve = axum::serve(listener, app)
+                .with_graceful_shutdown(async move { wait_shutdown(&mut for_http).await });
+            tokio::select! {
+                r = serve => r,
+                () = grace => Ok(()),
+            }
         }
         Some(tls) => {
             let handle = axum_server::Handle::new();
             let for_shutdown = handle.clone();
             tokio::spawn(async move {
-                shutdown.await;
-                for_shutdown.graceful_shutdown(Some(Duration::from_secs(5)));
+                wait_shutdown(&mut for_http).await;
+                for_shutdown.graceful_shutdown(Some(SHUTDOWN_GRACE));
             });
             axum_server::from_tcp_rustls(listener.into_std()?, tls)?
                 .handle(handle)

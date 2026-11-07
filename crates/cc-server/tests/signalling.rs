@@ -75,6 +75,43 @@ async fn paired(addr: std::net::SocketAddr) -> (Ws, Ws, String) {
     (r, s, code)
 }
 
+#[tokio::test]
+async fn shutdown_closes_open_websockets_and_run_returns_in_time() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(run(listener, ServerConfig::default(), async move {
+        let _ = stopped.await;
+    }));
+    let (mut r, mut s, _) = paired(addr).await;
+
+    let t0 = std::time::Instant::now();
+    stop.send(()).unwrap();
+    // Both live clients get a Close frame from the server (not just a dropped socket).
+    for ws in [&mut r, &mut s] {
+        let mut got_close = false;
+        loop {
+            match tokio::time::timeout(Duration::from_secs(3), ws.next()).await {
+                Err(_) => panic!("no close in time"),
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    assert_eq!(frame.reason.as_str(), "server_shutdown");
+                    got_close = true;
+                }
+                Ok(Some(Ok(_))) => {}
+                Ok(None) | Ok(Some(Err(_))) => break,
+            }
+        }
+        assert!(got_close, "server ended the socket without a Close frame");
+    }
+    // run() returns inside the 5 s bound although clients were connected.
+    let res = tokio::time::timeout(Duration::from_secs(6), server)
+        .await
+        .expect("run() did not return after shutdown")
+        .unwrap();
+    assert!(res.is_ok());
+    assert!(t0.elapsed() < Duration::from_secs(6));
+}
+
 fn error_code(v: &Value) -> &str {
     assert_eq!(v["type"], "error", "expected error, got {v}");
     v["code"].as_str().unwrap()

@@ -57,9 +57,23 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    # Limits (UNCERTAIN: untuned guesses, not load-tested; raise them if the server is OOM-killed
+    # or cannot create threads). The server needs no tmpfs: with read_only it ran fine in the first
+    # run (it writes no files; a self-signed development certificate is made in memory).
+    mem_limit: 512m
+    pids_limit: 512
     # The health check is defined in the Dockerfile (`cometcast-server --healthcheck`: GET /healthz
-    # on loopback inside the container; no shell or curl needed). Status: `docker compose ps`.
-    # `docker stop` ends the server at once (it handles SIGTERM).
+    # on loopback inside the container; no shell or curl needed). It reads the SAME config file and
+    # COMETCAST_* environment variables as the server, but NOT the flags of a `command:` here: if you
+    # change the port, TLS or `--set` through `command:`, set the same values through `environment:`
+    # (COMETCAST_LISTEN=..., COMETCAST_TLS_*...) or override `healthcheck:` with the same flags,
+    # otherwise the check asks the wrong port or scheme and the container turns "unhealthy".
+    # Status: `docker compose ps`.
+    # `docker stop`: SIGTERM makes the server send a Close frame to every open WebSocket and stop
+    # within 5 s at the latest (open connections are given 5 s, then dropped). Measured: 0.2 s with
+    # no client connected; with live clients the integration test shows the Close frames and that
+    # run() returns in time, but `docker stop` with clients was not timed. Compose's default stop
+    # grace period is 10 s, so it stays below that.
 
   coturn:
     # Tested tag: 4.18.0 (exists on Docker Hub, run on 2026-11-07). Set COTURN_VERSION in .env.
@@ -84,6 +98,22 @@ services:
       - /var/tmp
     security_opt:
       - no-new-privileges:true
+    # UNCERTAIN: untuned guesses (relay traffic does not go through user space memory much, but
+    # one thread set per CPU core plus thousands of sockets needs room).
+    mem_limit: 1g
+    pids_limit: 512
+    # Health check: a STUN binding request over UDP to coturn itself (turnutils_stunclient is in
+    # the image; nc and a shell are not needed). Exit code 0 = coturn answered, 1 = no answer.
+    # It asks TURN_LISTENING_IP when you set it in .env (coturn then listens only there), else
+    # 127.0.0.1 (coturn listens on all addresses). Tested in the review run: exit 0 against the
+    # running server, 1 against a closed port. It proves that the UDP listener answers; it does
+    # not prove TLS on 5349 or relaying.
+    healthcheck:
+      test: ["CMD", "turnutils_stunclient", "-p", "3478", "${TURN_LISTENING_IP:-127.0.0.1}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 secrets:
   turn_secret:

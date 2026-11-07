@@ -65,8 +65,44 @@ has "extra denied range: Teredo" "denied-peer-ip=2001::-2001:0:ffff:ffff:ffff:ff
 has "extra denied range: discard" "denied-peer-ip=100::-100::ffff:ffff:ffff:ffff"
 has "extra denied range: local NAT64" "denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff"
 has "extra denied range: 6to4 relay anycast" "denied-peer-ip=192.88.99.0-192.88.99.255"
+has "extra denied range: documentation 2001:db8::/32" "denied-peer-ip=2001:db8::-2001:db8:ffff:ffff:ffff:ffff:ffff:ffff"
+has "extra denied range: ORCHID 2001:10::/28" "denied-peer-ip=2001:10::-2001:1f:ffff:ffff:ffff:ffff:ffff:ffff"
+has "extra denied range: ORCHIDv2 2001:20::/28" "denied-peer-ip=2001:20::-2001:2f:ffff:ffff:ffff:ffff:ffff:ffff"
+has "extra denied range: 5f00::/16" "denied-peer-ip=5f00::-5f00:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+has "extra denied range: 3fff::/20" "denied-peer-ip=3fff::-3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff"
+# The range 41 ports wide (49160-49200) gives 80 % = 32; user-quota and bandwidth lines exist.
+has "total quota below the port count" "total-quota=32"
+has "user quota" "user-quota=6"
+has "max-bps" "max-bps=750000"
+has "bps-capacity" "bps-capacity=125000000"
+count=$((count + 1)); grep -Eq '^denied-peer-ip=::(-|/)' "$work/deploy/coturn/turnserver.conf" && { echo "FAIL: a ::-based denied-peer-ip line (breaks all IPv4 peers in coturn 4.18.0)"; fails=$((fails + 1)); }
+count=$((count + 1)); grep -q '@[A-Z0-9_]*@' "$work/deploy/coturn/turnserver.conf" && { echo "FAIL: unreplaced @PLACEHOLDER@ left"; grep -n '@[A-Z0-9_]*@' "$work/deploy/coturn/turnserver.conf"; fails=$((fails + 1)); }
+has "no listening-ip set" "# listening-ip not set: coturn listens on every address of the host"
 mode=$(stat -c %a "$work/deploy/coturn/turnserver.conf" 2>/dev/null || stat -f %Lp "$work/deploy/coturn/turnserver.conf")
 count=$((count + 1)); [ "$mode" = 600 ] || { echo "FAIL: new file mode is $mode, want 600"; fails=$((fails + 1)); }
+# Optional listening address, NAT form "public/private", small and large ranges.
+setup "$good_secret"; setting TURN_LISTENING_IP 10.0.0.5
+ok "listening ip"
+has "listening ip line" "listening-ip=10.0.0.5"
+setup "$good_secret"; setting TURN_LISTENING_IP ''
+ok "empty listening ip is the same as unset"
+has "empty listening ip" "# listening-ip not set: coturn listens on every address of the host"
+for ip in 0.0.0.0 :: 127.0.0.1 999.1.1.1 'a;b' ff02::1 10.0.0.5/24 '1.2.3.4 x'; do
+  setup "$good_secret"; setting TURN_LISTENING_IP "$ip"; bad "listening ip '$ip'"
+done
+setup "$good_secret"; setting TURN_EXTERNAL_IP 203.0.113.10/10.0.0.5
+ok "NAT form public/private"
+has "NAT external-ip" "external-ip=203.0.113.10/10.0.0.5"
+setup "$good_secret"; setting TURN_EXTERNAL_IP 2001:db8::10/10.0.0.5; ok "NAT form with an IPv6 public part"
+for ip in '203.0.113.10/' '/10.0.0.5' '203.0.113.10/10.0.0.5/1' '203.0.113.10/0.0.0.0' '203.0.113.10/x' '203.0.113.10/24' '999.1.1.1/10.0.0.5' '203.0.113.10/10.0.0.5;id'; do
+  setup "$good_secret"; setting TURN_EXTERNAL_IP "$ip"; bad "external ip '$ip'"
+done
+setup "$good_secret"; setting TURN_MIN_PORT 50000; setting TURN_MAX_PORT 50000
+ok "one port"
+has "total quota is at least 1" "total-quota=1"
+setup "$good_secret"; setting TURN_MIN_PORT 49160; setting TURN_MAX_PORT 49660
+ok "default range"
+has "total quota 80 percent of 501 ports" "total-quota=400"
 # CRLF secret file and IPv6 addresses are fine.
 setup '0123456789abcdef0123456789abcdef\r\n'
 setting TURN_EXTERNAL_IP 2001:db8::10

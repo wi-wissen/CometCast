@@ -35,10 +35,22 @@ ignored). The file is optional; every key is optional.
   `COMETCAST_MODE`, `COMETCAST_WEB_DIR`.
 - Command line: `--mode`, `--listen`, `--web-dir`, `--tls-cert`, `--tls-key`,
   `--tls-self-signed`, `--healthcheck` (see below) and `--set section.key=value` for anything else.
-  `--healthcheck` reads the same settings, asks the server on this machine (loopback, same port,
-  HTTP or HTTPS with the certificate not checked) for `GET /healthz`, and exits 0 only for `200`.
-  It exists for the container health check (the image has no shell and no curl).
-  The server stops on SIGTERM as well as Ctrl-C (so `docker stop` is immediate).
+  `--healthcheck` reads the same settings (config file and `COMETCAST_*` environment, plus any
+  flags given to the `--healthcheck` call itself), asks the server on this machine (loopback, same
+  port, HTTP or HTTPS with the certificate not checked) for `GET /healthz`, and exits 0 only for
+  `200`. Addresses tried: for `0.0.0.0` or `127.0.0.1` only `127.0.0.1`; for `[::]` first
+  `127.0.0.1`, then `::1` (a refused connection moves on, any answer other than 200 is final); for
+  `[::1]` only `::1`; any other listen address is asked directly. It exists for the container health
+  check (the image has no shell and no curl). **Pitfall:** Docker's `HEALTHCHECK` in the image
+  uses only the config file path; flags you add in compose `command:` (`--listen`, `--tls-*`,
+  `--set`) are not seen by it. Give such settings through `environment:` instead, or override
+  `healthcheck:` with the same flags, or the container turns `unhealthy` (port/scheme mismatch).
+  The server stops on SIGTERM as well as Ctrl-C. On stop every open WebSocket gets a Close frame
+  (reason `server_shutdown`), and the server returns at the latest 5 s after the signal, with or
+  without TLS (open HTTP connections that do not end are dropped then). An integration test
+  (`shutdown_closes_open_websockets_and_run_returns_in_time`) checks this with two live clients over
+  plain HTTP; the 5 s bound with TLS uses `axum_server`'s graceful shutdown as before and has no
+  new test.
 - Values given outside the file are read as TOML values where possible: numbers, `true`,
   and arrays like `["10.0.0.0/8"]`. Lists of networks may also be written as plain
   comma-separated text (`10.0.0.0/8, 192.168.0.0/16`).
@@ -321,24 +333,64 @@ array shaped like the browser's `RTCIceServer` list:
 ```
 
 The scheme is coturn's `use-auth-secret` ("TURN REST"): `username = "<expiry unix time>:<id>"`
-(expiry = now + `ttl_secs`, id random per request), `credential = base64(HMAC-SHA1(secret, username))`.
-The HMAC is tested against values computed independently with Python's `hmac`/`hashlib`.
-`ttl` is an extra field that browsers ignore. UNCERTAIN: the plan says "about 1 h"; and that the
-id is a random value, not the room code, is our choice (the endpoint knows no room).
+(`credential = base64(HMAC-SHA1(secret, username))`). The HMAC is tested against values computed
+independently with Python's `hmac`/`hashlib`. The id is **stable per client and time bucket**: it
+is a keyed hash (HMAC with the TURN secret) of the client address (IPv4, or IPv6 /64) and the
+bucket `now / ttl_secs`, and the expiry is the end of the NEXT bucket, so a credential lives
+between `ttl_secs` and `2 * ttl_secs` and `ttl` in the answer is the real remaining time. Why: a
+fresh random user name per call would give every call a fresh coturn `user-quota`, so the quota
+would limit nothing. Now repeated calls of one client return the same user name (tested). Residual:
+(a) clients behind one NAT share one user name and its quota; (b) an attacker with many addresses
+(a botnet, or many IPv6 /64 networks) gets many user names; `/ice-servers` is also rate limited
+per address by `limits.http_per_min` (shared with `/altcha/challenge`), which does not help
+against many addresses. `ttl` is an extra field that browsers ignore. UNCERTAIN: the plan says
+"about 1 h"; the keyed hash instead of the room code is our choice (the endpoint knows no room).
+
+**DoS risk, honestly:** whoever can call `/ice-servers` (any address allowed by the access lists;
+in internal mode that is the internal network) can obtain valid credentials and use relay
+allocations. Defences here are the coturn quotas set in the template (see below), nothing else; the
+open points are a firewall rate limit for 3478 and a global limiter. The quota and bandwidth values
+are **untuned** (UNCERTAIN).
 
 The coturn template is `deploy/coturn/turnserver.conf.template` (render it with
 `deploy/coturn/render.sh`; the script checks every value, refuses a `turn_secret` file with more than one line, validates ports (1-65535, min <= max) and addresses, and writes the result with mode 600; `deploy/coturn/test-render.sh` tests it with hostile inputs and is run by `cargo test -p cc-server`). It follows the plan's hardening list: narrow relay port range,
-`use-auth-secret`, `no-multicast-peers`, `no-tcp-relay`, quotas, no CLI (off by default), TLS port 5349, and
+`use-auth-secret`, `no-multicast-peers`, `no-tcp-relay` (only RFC 6062 TCP *allocations*: TCP and TLS
+as the connection to coturn on 3478/5349 stay open, and UDP relaying is unaffected), quotas, no CLI (off by default), TLS port 5349, and
 `denied-peer-ip` for private and special ranges (the CLI is off by default in coturn 4.18, so there is no `no-cli` line: that option is rejected there). Pitfall from the plan: if you deny all private
 ranges, relaying between two devices in the same private network breaks, because the TURN
 server's own relay address is private; therefore `allowed-peer-ip=<relay IP>` is set.
-Further denied ranges were added after security reviews: documentation ranges, `::`,
-IPv4-mapped `::ffff:0:0/96`, NAT64 `64:ff9b::/96` and `64:ff9b:1::/48`, 6to4 `2002::/16`
-and `192.88.99.0/24`, Teredo `2001::/32`, discard-only `100::/64`, `fec0::/10`.
-**Host networking:** the compose file runs coturn with `network_mode: host`, so the
-`allowed-peer-ip` address is the host itself. A client with valid credentials can then
-send packets to whatever listens on that address. Use a relay address without other
-services, or firewall it. **Run once against coturn 4.18.0 only** (see [First real run](#first-real-run)); other versions
+Further denied ranges were added after security reviews: documentation ranges (IPv4 and
+`2001:db8::/32`, `3fff::/20`), IPv4-mapped `::ffff:0:0/96`, NAT64 `64:ff9b::/96` and
+`64:ff9b:1::/48`, 6to4 `2002::/16` and `192.88.99.0/24`, Teredo `2001::/32`, ORCHID
+`2001:10::/28` and `2001:20::/28`, `5f00::/16`, discard-only `100::/64`, `fec0::/10`. coturn 4.18.0
+accepted and listed all of them at start. **Not added: `::/96`**: `denied-peer-ip=::-::ffff:ffff`
+made coturn 4.18.0 refuse every public IPv4 peer (403, tested), as `::-::` did. The IPv6 lines
+were never exercised against a real IPv6 peer (the test relay was IPv4 only, an IPv6 peer is
+answered with "address family mismatch" before the deny list matters, and the test host had no
+IPv6), and the list does not cover your own routable IPv6 networks. IPv4 lines are unchanged.
+
+**Quotas (tested against coturn 4.18.0, values UNCERTAIN/untuned):** `user-quota=6`;
+`total-quota` is computed by `render.sh` as 80 % of the relay ports (400 for the default 501
+ports, so it is always below the port count; a quota above the port count never triggers);
+`max-bps=750000` and `bps-capacity=125000000` (bytes/s). Measured with a raw TURN client: one user
+name got 6 allocations and then error 486 (quota); with many user names the total stopped at
+exactly 400 (`total-quota`, with a large `bps-capacity`) and 167 with the shipped
+`bps-capacity` / `max-bps` = 166, because **each allocation reserves `max-bps` out of
+`bps-capacity`** (found by testing: the first guess of 1 MB/s and 60 MB/s capped the server at 60
+allocations). So the effective concurrent cap is `min(total-quota, bps-capacity / max-bps)` = 166
+allocations (about 80 calls) with the shipped values: raise `bps-capacity` for a bigger server.
+Not tested: the byte limit per allocation itself, per-user bandwidth (needs a coturn user database,
+not used), behaviour under real media load. Residual DoS: many addresses can still fill the total
+cap (then everybody is refused); no firewall rate limit for 3478 is provided.
+
+**Host networking:** the compose file runs coturn with `network_mode: host`, so coturn
+listens on **all host addresses** unless `TURN_LISTENING_IP` is set in `.env` (written as
+`listening-ip` by `render.sh`; tested: coturn then listens only there, and its health check must
+ask that address too), and the `allowed-peer-ip` address is the host itself. A client with valid
+credentials can then send **UDP** packets to UDP services that listen on that address (for example
+DNS, or coturn itself). Because UDP is the only relay type (`no-tcp-relay`), TCP services such as
+the Comet Cast server on 8443 or SSH are **not** reachable this way. Use a relay address without
+other UDP services, or firewall it. **Run only against coturn 4.18.0** (see [First real run](#first-real-run)); other versions
 are untested. Options still marked UNCERTAIN in the template were not checked by that run, and the
 same-network case still needs a real test with two devices.
 
@@ -400,8 +452,10 @@ What the image and compose file give you (all checked in the first run, see belo
 | Server user | non-root (UID 65532); coturn image runs as `nobody` (65534) |
 | Root file system | read-only for both containers (coturn gets tmpfs `/tmp`, `/var/tmp`) |
 | Capabilities | `cap_drop: ALL` and `no-new-privileges` for both; coturn needs `NET_BIND_SERVICE` added back, otherwise its binary cannot start |
-| Health check | in the Dockerfile: `cometcast-server --healthcheck`; `docker compose ps` shows `healthy` |
-| Secrets | `turn_secret`, `altcha_secret` as compose file secrets (`/run/secrets/...`), read by the server from `secret_file`; never in the image, `.dockerignore` excludes `deploy/secrets`, `deploy/certs`, `.env`, `*.pem`, `*.key` |
+| Health check | server: in the Dockerfile, `cometcast-server --healthcheck`; `docker compose ps` shows `healthy` (reads config file and `COMETCAST_*` env, not compose `command:` flags, see above). coturn: compose runs `turnutils_stunclient -p 3478 <TURN_LISTENING_IP or 127.0.0.1>` (a STUN request over UDP; exit 0 when answered, 1 when not; checked by hand with `docker exec`, not by waiting for Docker to report `healthy`); it does not test TLS on 5349 or relaying |
+| Resource limits | `mem_limit` 512m / `pids_limit` 512 (server), 1g / 512 (coturn): UNCERTAIN guesses, never load-tested; accepted by `docker compose config`, not exercised under load. The server needs no tmpfs (read-only root worked in the first run) |
+| Base images | **not digest-pinned**: `node:22-bookworm-slim`, `rust:1.99-bookworm` (minor-pinned), `gcr.io/distroless/cc-debian12:nonroot` and `coturn/coturn:${COTURN_VERSION}` are tags that can move. Digests could not be resolved reliably in the review (Docker Hub rate-limited the pulls), so none were invented. Pin with `image@sha256:...` before a production build |
+| Secrets | `turn_secret`, `altcha_secret` as compose file secrets (`/run/secrets/...`), read by the server from `secret_file`; never in the image, `Dockerfile.dockerignore` excludes `deploy/secrets`, `deploy/certs`, `deploy/.env`, `**/.env`, `**/.env.*` (except `.env.example`), `**/*.pem`, `**/*.key` (nested too; checked with a test build of a scratch context) |
 | coturn secret | has to be in `turnserver.conf` (coturn has no secret-file option; UNCERTAIN: not looked for other ways), written by `render.sh` with mode 600, or 640 for group 65534 with `TURN_CONF_GROUP=65534` |
 | TLS files | mounted read-only from `deploy/certs/`; the key must be readable by 65532 (server) and 65534 (coturn): `chown 65532:65534 certs/privkey.pem; chmod 640` |
 | Ports | server `8443/tcp` published on all host addresses; coturn on the host network (3478 udp/tcp, 5349 tcp, relay range) |
@@ -448,7 +502,9 @@ Test secrets and a throw-away self-signed certificate were generated for the run
   runtime. Image about 43 MB on disk.
 - `docker compose up -d`: server `Up (healthy)`; `docker inspect`: user `nonroot`, read-only root
   file system, `cap_drop ALL`, `no-new-privileges`; coturn user `nobody:nogroup`, read-only, cap
-  `NET_BIND_SERVICE` only, host network. `docker stop` of the server took 0.2 s.
+  `NET_BIND_SERVICE` only, host network. `docker stop` of the (idle) server took 0.2 s. That was
+  with no client connected; at that time open WebSockets were not closed by the server and the
+  plain-HTTP path had no time bound (both fixed since, see [Review fixes](#review-fixes-after-the-first-run)).
 - HTTPS with the mounted certificate: `/healthz` returned `ok`, `/` served the web app,
   `/altcha/challenge` and `/ice-servers` answered. `curl --cacert` validated the certificate for `localhost`.
 - WebSocket over WSS (a small Node.js script): receiver `hello`, `create_room`, `room_created`;
@@ -495,10 +551,13 @@ Test secrets and a throw-away self-signed certificate were generated for the run
 **Not run / not verified (UNCERTAIN)**
 
 - Real network: two devices, NAT, the same-network relay case, TURN over TLS (5349 was only checked
-  to be listening, no TLS client), TURN over TCP (switched off by `no-tcp-relay`), IPv6 relay and the
+  to be listening in this run; the review run did TLS handshakes with `openssl s_client`, but no TURN
+  traffic over TLS), TURN with TCP as the client transport (3478/tcp; `no-tcp-relay` does NOT switch
+  that off, it only switches off RFC 6062 TCP allocations), IPv6 relay and the
   IPv6 `denied-peer-ip` lines (the relay was IPv4 only; those lines were accepted by coturn but no
   IPv6 peer was tried), a browser WebRTC connection through this TURN server.
-- coturn quotas (`user-quota`, `total-quota`) and relay port exhaustion were not exercised.
+- coturn quotas (`user-quota`, `total-quota`) and relay port exhaustion were not exercised in this
+  first run (the shipped values were also ineffective: see Review fixes).
 - Certificate from a real CA, renewal, split DNS, any public name. `relay.cometcast.de` was not set up.
 - Other CPU architectures, other tags of the base images, a build without the intercepting proxy
   (the build used `--network=host` and the proxy CA as a build secret).
@@ -506,6 +565,52 @@ Test secrets and a throw-away self-signed certificate were generated for the run
 - `denied-peer-ip` protects only the relayed side. Whether a client with valid credentials can reach
   host services on the relay address (host networking, the `allowed-peer-ip` exception) was not
   tested; the warning in the template stands.
+
+## Review fixes after the first run
+
+Review of the deploy commit, same machine type (Docker Engine 29.9.2 started by hand, coturn
+4.18.0 from `coturn/coturn:4.18.0`, host address 192.0.2.2, no IPv6 on the host).
+
+**Done**
+
+1. TURN relay exhaustion: coturn quotas were ineffective (`user-quota=50`, `total-quota=5000` above
+   the ~501 relay ports) and `/ice-servers` minted a fresh user name per call. Now: stable user
+   name per client and time bucket (see [TURN credentials](#turn-credentials-and-coturn)),
+   `user-quota=6`, `total-quota` = 80 % of the ports (`render.sh`), `max-bps`, `bps-capacity`.
+   **Tested against coturn 4.18.0 with a raw TURN client:** 10 allocations with one user name gave
+   6 OK and 4 x error 486; many user names stopped at exactly 400 (`total-quota`) when the
+   bandwidth capacity was raised, and at 167 (about 166) with the shipped capacity (each
+   allocation reserves `max-bps`). Unit test: same client and bucket give the same user, other
+   client or bucket another one; integration test: repeated `/ice-servers` calls return one user.
+   Values remain untuned (UNCERTAIN); many-address attackers and a firewall limit are open.
+2. Graceful shutdown: the shutdown signal now reaches the WebSocket handlers (Close frame, reason
+   `server_shutdown`, task ends, peer and room cleanup run) and the plain-HTTP path has the same
+   5 s bound as TLS. Integration test with two live WebSocket clients over plain HTTP. Not tested:
+   the same with TLS, and `docker stop` timing with clients connected.
+3. Health check: tries `127.0.0.1` then `::1` for a `[::]` listener, reports every failed address,
+   treats any non-200 answer as unhealthy. Unit tests for the target lists (including `[::]`),
+   for non-200/garbage/empty answers, and for the fallback logic (with two IPv4 ports, since the
+   test host has no IPv6; a real `[::1]` listener test exists but was skipped here). The compose
+   `command:` pitfall is documented instead of solved.
+4. Template and docs corrections: `no-tcp-relay` only disables RFC 6062 TCP allocations; the
+   relay-address exposure is UDP services only. TLS: coturn 4.18.0 refused TLS 1.0 and 1.1 and
+   accepted 1.2 and 1.3 in a handshake test with OpenSSL 3.0.13 `s_client` (one image, one client:
+   UNCERTAIN for others); `no-tlsv1`/`no-tlsv1_1` stay invalid; `cipher-list=ECDHE+AESGCM:ECDHE+CHACHA20`
+   was verified to start and to take effect (a client offering only `AES128-SHA` was refused) and
+   was added for TLS 1.2/DTLS.
+5. IPv6 `denied-peer-ip`: added `2001:db8::/32`, `2001:10::/28`, `2001:20::/28`, `5f00::/16`,
+   `3fff::/20` (accepted by coturn). `::/96` NOT added (breaks all IPv4 peers, tested). Optional
+   `TURN_LISTENING_IP` (`listening-ip`) in `.env`/`render.sh`; `TURN_EXTERNAL_IP` may be
+   `public/private` (each half validated; coturn 4.18.0 accepted it and an allocation worked on a
+   single machine, **never run behind a real NAT**). Render tests: 164 checks.
+6. Compose: coturn health check (`turnutils_stunclient`), `mem_limit` and `pids_limit` for both
+   services, `Dockerfile.dockerignore` patterns for nested `.env*`, `*.pem`, `*.key` (verified with
+   a scratch build context). Base images remain **not digest-pinned**.
+
+**Not verified**: TLS shutdown with clients; IPv6 behaviour of any kind; the NAT form behind a real
+NAT; the memory and pid limits under load; a full `docker compose up` of the changed files (only
+`docker compose config`, the coturn container with the rendered config, and `docker exec` of the
+health command were run; the server image was not rebuilt).
 
 ## Not done / open
 

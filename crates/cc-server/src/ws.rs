@@ -140,6 +140,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     // The tick must be much shorter than the ping interval and the pong timeout.
     let tick = (limits.ping_interval.min(limits.pong_timeout) / 4)
         .clamp(Duration::from_millis(50), Duration::from_secs(1));
+    let mut shutdown = state.shutdown.clone();
     let mut ticker = tokio::time::interval(tick);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // Last sign of life: data or a pong (a client's own ping does not count, it is free).
@@ -169,6 +170,12 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             r = next => r,
             _ = &mut writer => { writer_done = true; break; }
             _ = kill.notified() => { killed = true; break; }
+            _ = crate::wait_shutdown(&mut shutdown) => {
+                // The server is stopping: say so with a Close frame, then leave the loop
+                // (the cleanup below tells the peer and frees the room).
+                conn.tx.send(Outgoing::Close("server_shutdown"));
+                break;
+            }
             _ = ticker.tick() => {
                 if let Some(reason) = tick_check(&conn, &state, last_seen, last_pong, &mut last_ping) {
                     conn.tx.send(Outgoing::Close(reason));
