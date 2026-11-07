@@ -13,11 +13,12 @@ import ByePage from '../components/presenter/ByePage.vue'
 import { detectCapabilities } from '../core/capabilities'
 import { isTestVideo } from '../core/capture'
 import { currentPlatform } from '../core/platform'
-import { errorKindFor, lockedWhileWaiting, type ErrorKind } from '../core/presenterErrors'
+import { displayOffWhy, errorKindFor, lockedWhileWaiting, type ErrorKind } from '../core/presenterErrors'
 import { isValidRoomCode } from '../core/roomCode'
 import { useDeniedCooldown } from '../composables/useCooldown'
 import { useRelay } from '../composables/useRelay'
 import { useSender } from '../composables/useSender'
+import type { SenderState } from '../core/senderSession'
 import { appUrlFor } from '../config/stores'
 
 // The presenter (sender) side (docs/design/first-run-and-display.md, 5 and 6): start page, waiting
@@ -28,6 +29,8 @@ type Page = 'start' | 'waiting' | 'what' | 'file' | 'link' | 'presenting' | 'err
 const page = ref<Page>('start')
 const errorKind = ref<ErrorKind>('code')
 const errorCode = ref<string | null>(null)
+/** `displayOff` after a failed STUN/TURN list: the "why" says the server could not help (decision 13.45). */
+const whyRelay = ref(false)
 const presKind = ref<'screen' | 'file' | 'link'>('screen')
 const presPdf = ref(false)
 
@@ -55,9 +58,15 @@ const statusText = computed(() => {
   return t(`send.status.${state.value.phase}`) + err
 })
 
-function toError(kind: ErrorKind, code: string | null = null) {
+function toError(kind: ErrorKind | null, code: string | null = null, ice?: SenderState['iceState']) {
+  // `capture_denied` (the system dialog was closed) has no page: back to where the person was.
+  if (kind === null) {
+    page.value = state.value.channelOpen ? 'what' : 'start'
+    return
+  }
   errorKind.value = kind
   errorCode.value = code
+  whyRelay.value = kind === 'displayOff' && displayOffWhy(ice) === 'relay'
   page.value = 'error'
 }
 
@@ -78,7 +87,7 @@ watch(
     } else if (s.phase === 'sharing' && s.channelOpen) {
       if (page.value === 'start' || page.value === 'waiting') page.value = 'what'
     } else if (s.phase === 'error') {
-      toError(errorKindFor(s.errorCode, { wasWaiting: wasWaiting.value }), s.errorCode)
+      toError(errorKindFor(s.errorCode, { wasWaiting: wasWaiting.value, ice: s.iceState }), s.errorCode, s.iceState)
     } else if (s.phase === 'peer_left') {
       toError('ended', 'peer_left')
     }
@@ -168,6 +177,7 @@ onBeforeUnmount(() => {
       v-else-if="page === 'what'"
       :room="room"
       :screen-ok="screenOk"
+      :app-offer="Boolean(appUrlFor(platform.store))"
       @screen="onScreen"
       @file="page = 'file'"
       @link="page = 'link'"
@@ -187,6 +197,8 @@ onBeforeUnmount(() => {
       :keep-bar="keepBar"
       :sas="state.sas"
       :pdf="presKind === 'file' && presPdf"
+      :page="state.pdfPage?.page"
+      :total="state.pdfPage?.pages"
       @stop="onStop"
       @page="turnPage"
     />
@@ -197,6 +209,7 @@ onBeforeUnmount(() => {
       :cooldown="cooldown"
       :code="errorCode"
       :app-offer="Boolean(appUrlFor(platform.store))"
+      :why-relay="whyRelay"
       @retype="retype"
       @retry="retry"
       @show-file="page = 'file'"

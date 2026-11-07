@@ -12,6 +12,7 @@ import type { PageBitmap } from '../core/pdfRenderer'
 import { arrowDir, moveFocus } from '../core/dpad'
 import { isArmed } from '../core/joinGuard'
 import DocumentView from './DocumentView.vue'
+import Icon from './Icon.vue'
 import MediaPlayer from './MediaPlayer.vue'
 import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, isMixedContent, playerReduce, shortHost, urlHostIsLocalOrIp, type MediaErrorCode, type PlayerEvent } from '../core/media'
 
@@ -162,11 +163,12 @@ function trapTab(e: KeyboardEvent) {
           <template v-else>
             <p id="link-card-desc" class="cd-body">{{ t('receive.link.hint') }}</p>
             <p v-if="canPlay" data-testid="media-hint" class="cd-body">{{ t('receive.media.hint', { host: content.host }) }}</p>
-            <p v-else-if="mixed" data-testid="media-mixed" class="cd-body">{{ t('receive.media.mixed') }}</p>
-            <p v-else-if="mediaKind === 'hls'" data-testid="media-hls-unsupported" class="cd-body">{{ t('receive.media.hlsUnsupported') }}</p>
-            <p v-if="hostWarn" data-testid="media-host-warning" class="cd-body cd-strong">{{ t('receive.media.localWarning') }}</p>
-            <p v-if="mediaError" data-testid="media-error" role="alert" class="cd-body cd-strong">
-              {{ t(`receive.media.error.${mediaError}`, { host: content.host }) }}
+            <!-- Warning and error lines: 16/700 --fg led by the info icon in --acc (the display's one signal colour, no red). -->
+            <p v-else-if="mixed" data-testid="media-mixed" class="cd-warn"><Icon name="info" /><span>{{ t('receive.media.mixed') }}</span></p>
+            <p v-else-if="mediaKind === 'hls'" data-testid="media-hls-unsupported" class="cd-warn"><Icon name="info" /><span>{{ t('receive.media.hlsUnsupported') }}</span></p>
+            <p v-if="hostWarn" data-testid="media-host-warning" class="cd-warn"><Icon name="info" /><span>{{ t('receive.media.localWarning') }}</span></p>
+            <p v-if="mediaError" data-testid="media-error" role="alert" class="cd-warn">
+              <Icon name="info" /><span>{{ t(`receive.media.error.${mediaError}`, { host: content.host }) }}</span>
             </p>
             <div class="cd-acts cd-actsl">
               <button

@@ -89,15 +89,16 @@
   transform-origin: center;
   overflow: hidden;
 }
-/* A viewport-sized layer in reference px (dialogs, toast, presenting controls) */
+/* A layer on the same centred 960 x 540 canvas (dialogs, toast, presenting controls): everything on the display is placed
+   on the canvas, never on the viewport; only the picture and its black background fill the viewport (3.5, decision 13.36). */
 .cd-hud {
   position: absolute;
-  left: 0;
-  top: 0;
-  width: calc(100vw / var(--s, 1));
-  height: calc(100vh / var(--s, 1));
-  transform: scale(var(--s, 1));
-  transform-origin: 0 0;
+  left: 50%;
+  top: 50%;
+  width: 960px;
+  height: 540px;
+  transform: translate(-50%, -50%) scale(var(--s, 1));
+  transform-origin: center;
   pointer-events: none;
 }
 .cd-hud > * {
@@ -122,6 +123,17 @@
   box-shadow: 0 0 0 9px rgba(255, 201, 77, 0.18);
   transform: scale(1.03);
   z-index: 2;
+}
+
+/* Text fields (wizard room name and server address): the same ring (outline 4, offset 3, glow 9) but no scale; the field's own
+   2 px border stays --line, the browser's thin focus border goes (3.5, decision 13.51). Hidden together with the other rings. */
+.cd input[type='text']:focus {
+  outline: none;
+}
+.cd:not(.cd-pointer) input[type='text']:focus {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 9px rgba(255, 201, 77, 0.18);
 }
 
 /* ---------- idle ---------- */
@@ -332,6 +344,11 @@
   justify-content: center;
   padding: 28px;
 }
+/* Steps 1 to 4: the card's top edge is fixed at 64 reference px (4.1, decision 13.46). */
+.cd-setup.top {
+  align-items: flex-start;
+  padding-top: 64px;
+}
 .cd-wz {
   width: 780px;
   background: var(--panel);
@@ -489,11 +506,13 @@
 }
 .cd-acts.cd-actsl {
   justify-content: flex-start;
+  flex-wrap: wrap;
 }
 .cd-acts .gap {
   flex: 1;
 }
 .cd-tbtn {
+  white-space: nowrap;
   border: 2px solid var(--line);
   background: var(--btn);
   color: var(--fg);
@@ -611,6 +630,8 @@
   align-items: center;
   justify-content: center;
   background: var(--scrim);
+  /* The scrim also covers the letterbox around the canvas. */
+  box-shadow: 0 0 0 100vmax var(--scrim);
   pointer-events: auto;
 }
 .cd-modal .cd-wz {
@@ -762,9 +783,27 @@
 }
 
 /* ---------- the picture's states and dialogs over it ---------- */
-/* A layer for dialogs that sit over another page: the tokens of .cd, but no background of its own. */
-.cd.cd-over {
-  background: transparent;
+/* Relay confirmation (7.2): plain --bg, the logo at the idle screen's top-left, the 600 card centred on the canvas. */
+.cd-relaylogo {
+  position: absolute;
+  left: 40px;
+  top: 26px;
+  width: 46px;
+  height: 46px;
+}
+.cd-relaycenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cd-relay .cd-wz {
+  width: 600px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.cd-relay .cd-wz .cd-addr {
+  color: var(--fg);
 }
 /* Reference-px layer inside the stage: frozen badge and annotation toolbar. */
 .cd-stagehud {
@@ -796,6 +835,61 @@
 .cd-blackhint {
   font-size: calc(15px * var(--s, 1));
   color: var(--mut);
+}
+/* Name-tag look (3.5): panel fill, 2 px --line, radius 10, min height 46, padding 6 14, 15/700 --fg. Used by the transfer pill
+   and the page-error box; the name tag, the frozen badge and End have their own classes with the same values. */
+.cd-tag {
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  min-height: 46px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+  text-align: center;
+  max-width: 880px;
+  overflow-wrap: anywhere;
+}
+.cd-transfer {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.cd-centertag {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.cd-centerline {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  color: var(--mut);
+}
+/* Warning and error lines of the link card: 16/700 --fg, led by the info icon 20 in --acc. */
+.cd-wz .cd-warn {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--fg);
+}
+.cd-wz .cd-warn svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--acc);
+  margin-top: 1px;
 }
 /* Link card and relay confirmation: texts of a dialog card (16 --mut), the address 18 mono --mut wrapping anywhere. */
 .cd-wz .cd-body {
@@ -837,8 +931,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
-  color: var(--mut);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
 }
 .cd-mpv {
   display: block;
@@ -851,7 +946,13 @@
 .cd-mpa {
   width: 100%;
 }
-/* The QR box while there is no code (connecting, offline): empty, kept in place. */
+/* QR box (3.2, decision 13.33): Light has a 1 px --line edge (white on white has none otherwise). The empty box
+   (connecting, offline) has no modules and no caption: --panel2 fill, 1 px --line border, full opacity (OLED: #000000 + border). */
+.cd[data-theme='light'] .cd-qrbox {
+  border: 1px solid var(--line);
+}
 .cd-qrbox.empty {
-  background: var(--qrbg);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  opacity: 1;
 }

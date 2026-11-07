@@ -177,6 +177,41 @@ describe('setup wizard (4.1)', () => {
     expect(setup).toMatchObject({ room: 'Room 12', mode: 'confirm', server: null }) // default address: nothing to remember
   })
 
+  it('emptying the custom field (or typing only spaces) selects the chip that was selected before typing again (decision 13.39)', async () => {
+    const w = mk()
+    await w.get('[data-testid=wz-start]').trigger('click')
+    await nextTick()
+    const chips = w.findAll('.cd-chip')
+    await chips[3].trigger('click')
+    await w.get('[data-testid=wz-room]').setValue('X')
+    expect(w.findAll('.cd-chip.on')).toHaveLength(0)
+    await w.get('[data-testid=wz-room]').setValue('')
+    expect(w.findAll('.cd-chip.on').map((c) => c.text())).toEqual(['Workshop'])
+    await w.get('[data-testid=wz-room]').setValue('   ')
+    expect(w.findAll('.cd-chip.on').map((c) => c.text())).toEqual(['Workshop'])
+    // Finish uses that name
+    await w.get('[data-testid=wz-next]').trigger('click')
+    await w.get('[data-testid=wz-next]').trigger('click')
+    await w.get('[data-testid=wz-ok]').trigger('click')
+    await w.get('[data-testid=wz-finish]').trigger('click')
+    expect((w.emitted('finish')![0] as [{ room: string }])[0].room).toBe('Workshop')
+  })
+
+  it('the text field is its own D-pad row between the chips and the buttons; the card is fixed at the top from step 1 on, the welcome card is centred', async () => {
+    const w = mk()
+    expect(w.get('[data-testid=setup]').classes()).not.toContain('top')
+    await w.get('[data-testid=wz-start]').trigger('click')
+    await nextTick()
+    expect(w.get('[data-testid=setup]').classes()).toContain('top')
+    expect(w.get('[data-testid=wz-room]').attributes('data-row')).toBe('1')
+    expect(w.get('[data-testid=wz-next]').attributes('data-row')).toBe('2')
+    for (let i = 0; i < 3; i++) {
+      await w.get('[data-testid=wz-next], [data-testid=wz-ok]').trigger('click')
+      await nextTick()
+      expect(w.get('[data-testid=setup]').classes()).toContain('top')
+    }
+  })
+
   it('Back goes one step back; on the welcome screen it does nothing', async () => {
     const w = mk()
     await w.get('[data-testid=wz-start]').trigger('click')
@@ -201,8 +236,13 @@ describe('setup wizard (4.1)', () => {
     expect(w.get('[data-testid=wz-addr-error]').text()).toContain('wss://')
     expect(w.get('label[for=wz-addr]').text()).toBe('Server address')
     // Back cancels the field (the card with the default address is back)
+    expect(w.get('[data-testid=wz-addr-error]').classes()).toContain('cd-warn') // 16 --fg with the info icon in --acc, no red
+    expect(w.find('[data-testid=wz-addr-error] svg').exists()).toBe(true)
+    // with the field open the rows are [field] and [Back, Looks right]; the field takes no caret from Up / Down (they leave it)
+    expect(w.findAll('[data-row]').map((e) => `${e.attributes('data-row')}:${e.attributes('data-testid')}`)).toEqual(['0:wz-addr', '1:wz-back', '1:wz-ok'])
     await w.get('[data-testid=wz-back]').trigger('click')
     expect(w.find('[data-testid=wz-addr]').exists()).toBe(false)
+    expect(document.activeElement).toBe(w.get('[data-testid=wz-change]').element) // Back puts the focus on "Other address"
     expect(w.get('[data-testid=wz-source]').text()).toBe('Set by the server of this page.')
     await w.get('[data-testid=wz-change]').trigger('click')
     await w.get('[data-testid=wz-addr]').setValue('cast.example.org')
@@ -246,15 +286,20 @@ describe('idle screen (4.2)', () => {
     expect(w.get('[data-testid=qr]').classes()).toContain('dim')
     expect(w.get('[data-testid=qr-caption]').text()).toBe('Locked')
   })
-  it('offline: the box replaces steps 1 and 2; the QR box is empty (no modules) at 25 % and has no caption', () => {
+  it('offline: the box replaces steps 1 and 2; the QR box is empty (no modules, panel2 fill, full opacity) and has no caption', () => {
     const w = mk({ view: 'offline', code: null })
     expect(w.get('[data-testid=offline]').text()).toContain('No connection to cometcast.de')
     expect(w.get('[data-testid=offline-body]').text()).toBe('This screen is offline right now. Code and QR code come back by themselves once the network is back.')
     expect(w.find('[data-testid=room-code]').exists()).toBe(false)
-    expect(w.get('[data-testid=qr]').classes()).toContain('dim')
+    expect(w.get('[data-testid=qr]').classes()).toContain('empty')
+    expect(w.get('[data-testid=qr]').classes()).not.toContain('dim') // full opacity: the 25 % is only for a QR code that exists
     expect(w.get('[data-testid=qr]').attributes('data-empty')).toBe('true')
     expect(w.find('[data-testid=qr] svg').exists()).toBe(false)
     expect(w.get('[data-testid=qr-caption]').attributes('style')).toContain('visibility: hidden')
+  })
+  it('Locked while connecting: the empty box is not dimmed (nothing to dim); a locked QR code keeps its 25 %', () => {
+    const w = mk({ mode: 'locked', view: 'connecting', code: null })
+    expect(w.get('[data-testid=qr]').classes()).not.toContain('dim')
   })
   it('offline with a stale code never draws the old code', () => {
     const w = mk({ view: 'offline' })
@@ -265,13 +310,14 @@ describe('idle screen (4.2)', () => {
     expect(body('busy')).toBe('The server is busy right now. This screen tries again by itself.')
     expect(body('outdated')).toBe('This page is out of date. Reload it to get a code.')
   })
-  it('connecting: steps and pill as usual, the code line is empty but keeps its height, QR box empty at 25 %, no caption, no box', () => {
+  it('connecting: steps and pill as usual, the code line is empty but keeps its height, QR box empty, no caption, no box', () => {
     const w = mk({ view: 'connecting', code: null })
     expect(w.find('[data-testid=offline]').exists()).toBe(false)
     expect(w.get('[data-testid=address]').text()).toBe('cometcast.de')
     expect(w.get('[data-testid=room-code]').text()).toBe('')
     expect(w.get('[data-testid=room-code]').element.className).toContain('cd-icode')
-    expect(w.get('[data-testid=qr]').classes()).toEqual(expect.arrayContaining(['dim', 'empty']))
+    expect(w.get('[data-testid=qr]').classes()).toContain('empty')
+    expect(w.get('[data-testid=qr]').classes()).not.toContain('dim')
     expect(w.find('[data-testid=qr] svg').exists()).toBe(false)
     expect(w.get('[data-testid=qr-caption]').attributes('style')).toContain('visibility: hidden')
     expect(w.get('[data-testid=mode-pill]').text()).toBe('Open')

@@ -37,9 +37,10 @@ const icon = computed(() => (props.mode === 'open' ? 'open' : props.mode === 'co
 const modeText = computed(() => t(props.mode === 'open' ? 'mode.open' : props.mode === 'confirm' ? 'mode.approval' : 'mode.locked'))
 const url = computed(() => (props.code ? joinUrl(props.dom, props.code, props.scheme) : ''))
 const offline = computed(() => props.view === 'offline')
-// Empty (no modules) at 25 % while connecting or offline: an old code must never be scannable.
+// Empty (no modules) while connecting or offline, in the empty-box look at full opacity (spec 3.2): an old code must
+// never be scannable. Only a QR code that exists (Locked) is drawn at 25 %.
 const qrEmpty = computed(() => props.view !== 'online' || !props.code)
-const qrDim = computed(() => locked.value || qrEmpty.value)
+const qrDim = computed(() => locked.value && !qrEmpty.value)
 const bodyKey = computed(() => (props.cause === 'busy' ? 'idle.offline.bodyBusy' : props.cause === 'outdated' ? 'idle.offline.bodyOutdated' : 'idle.offline.body'))
 // The footer names the stores only when at least one link exists (src/config/stores.ts).
 const footKey = anyAppLink() ? 'idle.appLine' : 'idle.appLineWeb'

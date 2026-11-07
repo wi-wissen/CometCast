@@ -67,7 +67,8 @@
       "hint": "Der Absender bittet Sie, diesen Link zu öffnen. Öffnen Sie ihn nur, wenn Sie ihn erwarten. Er öffnet sich in einem neuen Tab, und nur wenn Sie auf „Öffnen“ klicken.",
       "address": "Adresse",
       "open": "Öffnen",
-      "dismiss": "Verwerfen"
+      "dismiss": "Verwerfen",
+      "hintTv": "Dieser Bildschirm kann keine Webseiten öffnen. Öffnen Sie die Adresse bei Bedarf auf Ihrem eigenen Gerät."
     },
     "media": {
       "hint": "Dieser Link verweist auf eine Mediendatei. Sie wird von {host} nur geladen, wenn Sie auf „Abspielen“ klicken.",
@@ -420,7 +421,8 @@
     "link": "Link zeigen",
     "linkSub": "Der Bildschirm fragt, bevor er die Seite öffnet",
     "disconnect": "Trennen",
-    "connected": "Verbunden"
+    "connected": "Verbunden",
+    "screenPhoneBrowserNoApp": "Geht im Handy-Browser nicht"
   },
   "file": {
     "title": "Was möchten Sie zeigen?",
@@ -476,12 +478,14 @@
     "noScreen": {
       "title": "Bildschirm teilen geht in diesem Browser nicht",
       "why": "Handy-Browser dürfen Ihren Bildschirm nicht weitergeben. Das liegt am Browser, nicht an Ihnen.",
-      "now": "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link. Oder holen Sie sich die App, dann geht auch der Bildschirm."
+      "now": "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link. Oder holen Sie sich die App, dann geht auch der Bildschirm.",
+      "nowNoApp": "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link."
     },
     "displayOff": {
       "title": "Der Bildschirm antwortet nicht",
       "why": "Das Anzeigegerät ist aus, schläft oder Comet Cast ist dort geschlossen. Ihre Anfrage ist nicht angekommen.",
-      "now": "Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen."
+      "now": "Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen.",
+      "whyRelay": "Die beiden Geräte haben sich nicht erreicht, und der Server konnte diesmal nicht helfen."
     },
     "denied": {
       "title": "Nicht zugelassen",
@@ -530,6 +534,10 @@
       "title": "Diese Seite ist veraltet",
       "why": "Der Server wurde inzwischen aktualisiert.",
       "now": "Die Seite neu laden."
+    },
+    "other": {
+      "title": "Etwas hat nicht geklappt",
+      "now": "Versuchen Sie es noch einmal. Wenn es wieder passiert, sagen Sie dem Gastgeber Bescheid."
     }
   }
 }

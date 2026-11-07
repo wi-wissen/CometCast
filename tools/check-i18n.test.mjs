@@ -81,3 +81,24 @@ test('de-du.json: only keys that de.json has, with the same placeholders', () =>
   assert.equal(ph.status, 1);
   assert.match(ph.stdout, /placeholders differ/);
 });
+
+test('de-du.json: a key whose Sie text addresses the reader must exist in du (spec 11.8)', () => {
+  const missing = run(fixture({
+    'apps/web/src/locales/de.json': { a: 'Bitte geben Sie den Code ein', b: 'Ihr Gerät', c: 'Neutral' },
+    'apps/web/src/locales/de-du.json': { a: 'Bitte gib den Code ein' },
+  }));
+  assert.equal(missing.status, 1);
+  assert.match(missing.stdout, /"b" addresses the reader/);
+  assert.doesNotMatch(missing.stdout, /"c" addresses/);
+  const ok = run(fixture({
+    'apps/web/src/locales/de.json': { a: 'Bitte geben Sie den Code ein', b: 'Ihr Gerät', c: 'Neutral' },
+    'apps/web/src/locales/de-du.json': { a: 'Bitte gib den Code ein', b: 'Dein Gerät' },
+  }));
+  assert.equal(ok.status, 0);
+  // the one known false alarm
+  const hint = run(fixture({
+    'apps/web/src/locales/de.json': { 'receive.media.hint': 'Sie wird nur geladen' },
+    'apps/web/src/locales/de-du.json': {},
+  }));
+  assert.equal(hint.status, 0);
+});

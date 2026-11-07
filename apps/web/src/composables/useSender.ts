@@ -4,7 +4,7 @@ import type { ControlCmd, ImageSource } from '../core/control'
 import { getScreenStream } from '../core/capture'
 import { SenderSession, type SenderState } from '../core/senderSession'
 import { useRelay } from './useRelay'
-import { fetchIceServers } from '../core/altchaClient'
+import { fetchIceServers, type IceFetchState } from '../core/altchaClient'
 import { loadDisplayName } from '../core/joinPrefs'
 
 /** `contentOnly`: no screen capture, only the control channel (images, links). */
@@ -13,11 +13,13 @@ export function useSender(opts: { contentOnly?: boolean } = {}) {
   // The relay is fixed while a session exists; it is changed on the start page.
   // The url is read when the session starts, after the relay was confirmed (see start below).
   const { current, ensureTrusted } = useRelay()
+  let iceState: IceFetchState | undefined
   const session = new SenderSession({
     get url() {
       return current.value.wsUrl
     },
-    iceServers: () => fetchIceServers(current.value.httpBase),
+    iceServers: () => fetchIceServers(current.value.httpBase, { onState: (s) => (iceState = s) }),
+    iceState: () => iceState,
     onChange: (s) => (state.value = s),
     // Shown to the host when it has to approve the join (read when the join is sent).
     name: () => loadDisplayName() || undefined,

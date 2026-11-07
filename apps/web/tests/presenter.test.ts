@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick, shallowRef } from 'vue'
 import { createAppI18n } from '../src/i18n'
 import type { SenderState } from '../src/core/senderSession'
+import en from '../src/locales/en.json'
 
 const state = shallowRef<SenderState>({ phase: 'idle', errorCode: null, channelOpen: false })
 const api = {
@@ -203,6 +204,14 @@ describe('error pages (6)', () => {
     const w = mk({ kind: 'noScreen', appOffer: true })
     expect(w.findAll('.cp-acts button').map((b) => b.text())).toEqual(['Show photo or file', 'Show a link', 'Get the app'])
   })
+  it('noScreen without an app to get does not promise one (the text of the spec: nowNoApp); with an app it keeps the old text', () => {
+    expect(mk({ kind: 'noScreen' }).get('[data-testid=error-now]').text()).toBe('Show a photo, a file or a link instead.')
+    expect(mk({ kind: 'noScreen', appOffer: true }).get('[data-testid=error-now]').text()).toBe('Show a photo, a file or a link instead. Or get the app, then the screen works too.')
+  })
+  it('displayOff has two why texts: the plain one and the one for a relay that could not help', () => {
+    expect(mk({ kind: 'displayOff' }).get('[data-testid=error-why]').text()).toBe('The display device is off, asleep, or Comet Cast is closed there. Your request did not arrive.')
+    expect(mk({ kind: 'displayOff', whyRelay: true }).get('[data-testid=error-why]').text()).toBe('The two devices could not reach each other, and the server could not help this time.')
+  })
   it('the new pages say why and what now, in the words of the spec', () => {
     const t = (kind: string) => {
       const w = mk({ kind })
@@ -233,10 +242,14 @@ describe('error pages (6)', () => {
     expect(w.get('[data-testid=error-ask]').text()).toBe('Ask again')
     expect(w.get('[data-testid=error-ask]').attributes('disabled')).toBeUndefined()
   })
-  it('a failure without a page of its own keeps the layout with the existing wording', () => {
-    const w = mk({ kind: 'generic', code: 'rate_limited' })
-    expect(w.get('[data-testid=error-title]').text()).toContain('Too many requests')
-    expect(w.find('[data-testid=error-why]').exists()).toBe(false)
+  it('a failure without a page of its own: "Something went wrong" with the existing text of the code as Why and "Try again"', () => {
+    const w = mk({ kind: 'other', code: 'forbidden' })
+    expect(w.get('[data-testid=error-title]').text()).toBe('Something went wrong')
+    expect(w.get('[data-testid=error-why]').text()).toBe(en.errors.forbidden)
+    expect(w.get('[data-testid=error-now]').text()).toBe('Try again. If it happens again, tell the host.')
+    expect(w.get('[data-testid=error-retry]').text()).toBe('Try again')
+    expect(w.get('.cp-ico').classes()).toContain('mut')
+    expect(mk({ kind: 'other', code: 'no_such_code' }).get('[data-testid=error-why]').text()).toBe(en.errors.unknown)
   })
 })
 
@@ -453,10 +466,77 @@ describe('presenter flow', () => {
     const w = mk('K7QM2W')
     await w.get('form').trigger('submit')
     await set({ phase: 'sharing', channelOpen: true })
-    expect(w.get('[data-testid=what-screen]').text()).toContain('On a phone only with the app')
+    // No store listing exists (the shipped constants are empty): the row does not promise an app (spec 5.5)
+    expect(w.get('[data-testid=what-screen]').text()).toContain('Not possible in a phone browser')
     await w.get('[data-testid=what-screen]').trigger('click')
     expect(w.get('[data-testid=error-title]').text()).toBe('Screen sharing does not work in this browser')
     expect(api.shareScreen).not.toHaveBeenCalled()
+  })
+
+  it('the Screen row does not promise an app when none can be offered, and does when one can', async () => {
+    ua(UA.android)
+    urls.googlePlay = 'https://play.example/app'
+    try {
+      const w = mk('K7QM2W')
+      await w.get('form').trigger('submit')
+      await set({ phase: 'sharing', channelOpen: true })
+      expect(w.get('[data-testid=what-screen]').text()).toContain('On a phone only with the app')
+      await w.get('[data-testid=what-screen]').trigger('click')
+      expect(w.get('[data-testid=error-now]').text()).toContain('Or get the app')
+      expect(w.find('[data-testid=error-getApp]').exists()).toBe(true)
+    } finally {
+      urls.googlePlay = ''
+    }
+  })
+
+  it('capture_denied has no page: back to "What to show"', async () => {
+    const w = mk('K7QM2W')
+    await w.get('form').trigger('submit')
+    await set({ phase: 'sharing', channelOpen: true })
+    expect(w.find('[data-testid=what-page]').exists()).toBe(true)
+    await set({ phase: 'error', errorCode: 'capture_denied', channelOpen: false })
+    expect(w.find('[data-testid=error-page]').exists()).toBe(false)
+  })
+
+  it('unlisted failures show "Something went wrong" with the text of the code; Try again connects again', async () => {
+    const w = mk('K7QM2W')
+    await w.get('form').trigger('submit')
+    await set({ phase: 'error', errorCode: 'wrong_role' })
+    expect(w.get('[data-testid=error-title]').text()).toBe('Something went wrong')
+    expect(w.get('[data-testid=error-why]').text()).toBe(en.errors.wrong_role)
+    api.start.mockClear()
+    await w.get('[data-testid=error-retry]').trigger('click')
+    expect(api.start).toHaveBeenCalledWith('K7QM2W', { capture: false })
+  })
+
+  it('peer_failed: "busy" when the STUN/TURN list was refused, "displayOff" with its own why when it failed, plain otherwise', async () => {
+    const w = mk('K7QM2W')
+    await w.get('form').trigger('submit')
+    await set({ phase: 'error', errorCode: 'peer_failed', iceState: { kind: 'refused' } })
+    expect(w.get('[data-testid=error-title]').text()).toBe('The server is busy')
+    await set({ phase: 'error', errorCode: 'peer_failed', iceState: { kind: 'unreachable', timedOut: true } })
+    expect(w.get('[data-testid=error-title]').text()).toBe('The screen does not answer')
+    expect(w.get('[data-testid=error-why]').text()).toContain('the server could not help this time')
+    await set({ phase: 'error', errorCode: 'peer_failed', iceState: { kind: 'none' } })
+    expect(w.get('[data-testid=error-why]').text()).toContain('The display device is off')
+    await set({ phase: 'error', errorCode: 'peer_failed', iceState: undefined })
+    expect(w.get('[data-testid=error-why]').text()).toContain('The display device is off')
+  })
+
+  it('a PDF shows "Page n of m" from the display and disables Previous on page 1', async () => {
+    const w = mk('K7QM2W')
+    await w.get('form').trigger('submit')
+    await set({ phase: 'sharing', channelOpen: true })
+    await w.get('[data-testid=what-file]').trigger('click')
+    const input = w.get('input[type=file]')
+    Object.defineProperty(input.element, 'files', { value: [new File([new Uint8Array(8)], 'a.pdf', { type: 'application/pdf' })], configurable: true })
+    await input.trigger('change')
+    await flushPromises()
+    expect(w.find('[data-testid=presenting-page]').exists()).toBe(true)
+    expect(w.find('[data-testid=presenting-pageof]').exists()).toBe(false) // unknown until the display reports it
+    await set({ pdfPage: { page: 1, pages: 7 } })
+    expect(w.get('[data-testid=presenting-pageof]').text()).toBe('Page 1 of 7')
+    expect(w.get('[data-testid=send-prev-page]').attributes('disabled')).toBeDefined()
   })
 
   it('keeps 76 px free under the button while a laptop browser shows its sharing bar', async () => {

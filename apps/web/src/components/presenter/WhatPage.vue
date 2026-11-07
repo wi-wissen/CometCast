@@ -10,10 +10,14 @@ const props = defineProps<{
   room?: string
   /** Screen sharing is possible in this browser (a laptop browser). */
   screenOk: boolean
+  /** The app can be offered for this device (src/config/stores.ts). Without it the Screen row does not promise one. */
+  appOffer?: boolean
 }>()
 const emit = defineEmits<{ screen: []; file: []; link: []; disconnect: [] }>()
 const { t } = useI18n()
-const screenSub = computed(() => t(props.screenOk ? 'what.screenLaptop' : 'what.screenPhoneBrowser'))
+const screenSub = computed(() =>
+  t(props.screenOk ? 'what.screenLaptop' : props.appOffer ? 'what.screenPhoneBrowser' : 'what.screenPhoneBrowserNoApp'),
+)
 </script>
 
 <template>

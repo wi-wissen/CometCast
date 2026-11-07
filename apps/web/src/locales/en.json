@@ -64,10 +64,11 @@
     },
     "link": {
       "title": "{host} wants to open a link",
-      "hint": "The sender asks you to open this link. Open it only if you expect it. It opens in a new tab, and only if you click \"Open\".",
+      "hint": "The sender asks you to open this link. Open it only if you expect it. It opens in a new tab, and only if you click “Open”.",
       "address": "Address",
       "open": "Open",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "hintTv": "This screen cannot open web pages. Open the address on your own device if you need it."
     },
     "media": {
       "hint": "This link points to a media file. It is loaded from {host} only if you click \"Play\".",
@@ -420,7 +421,8 @@
     "link": "Show a link",
     "linkSub": "The screen asks before it opens the page",
     "disconnect": "Disconnect",
-    "connected": "Connected"
+    "connected": "Connected",
+    "screenPhoneBrowserNoApp": "Not possible in a phone browser"
   },
   "file": {
     "title": "What would you like to show?",
@@ -476,12 +478,14 @@
     "noScreen": {
       "title": "Screen sharing does not work in this browser",
       "why": "Phone browsers may not pass on your screen. That is the browser, not you.",
-      "now": "Show a photo, a file or a link instead. Or get the app, then the screen works too."
+      "now": "Show a photo, a file or a link instead. Or get the app, then the screen works too.",
+      "nowNoApp": "Show a photo, a file or a link instead."
     },
     "displayOff": {
       "title": "The screen does not answer",
       "why": "The display device is off, asleep, or Comet Cast is closed there. Your request did not arrive.",
-      "now": "Is the code still on the screen? If not, ask the host to open Comet Cast there."
+      "now": "Is the code still on the screen? If not, ask the host to open Comet Cast there.",
+      "whyRelay": "The two devices could not reach each other, and the server could not help this time."
     },
     "denied": {
       "title": "Not allowed",
@@ -530,6 +534,10 @@
       "title": "This page is out of date",
       "why": "The server was updated in the meantime.",
       "now": "Reload the page."
+    },
+    "other": {
+      "title": "Something went wrong",
+      "now": "Try again. If it happens again, tell the host."
     }
   }
 }

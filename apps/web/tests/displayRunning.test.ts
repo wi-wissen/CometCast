@@ -173,7 +173,7 @@ describe('display: idle', () => {
     expect(w.get('[data-testid=toast]').text()).toBe('No name connected')
   })
 
-  it('a lost connection: the code and QR code go at once, the box comes only after 3 s, and the connection is tried again by itself', async () => {
+  it('a lost connection: the code and QR code go at once, the box comes only when the retry at 3 s has failed', async () => {
     const w = mk()
     await flushPromises()
     await set({ phase: 'error', errorCode: 'connection_lost', code: null })
@@ -181,17 +181,87 @@ describe('display: idle', () => {
     expect(w.find('[data-testid=offline]').exists()).toBe(false)
     expect(w.get('[data-testid=room-code]').text()).toBe('')
     expect(w.get('[data-testid=qr]').attributes('data-empty')).toBe('true')
-    vi.advanceTimersByTime(2900)
-    await nextTick()
-    expect(w.find('[data-testid=offline]').exists()).toBe(false)
-    vi.advanceTimersByTime(700)
-    await nextTick()
+    // 1 s and 2 s: the retries run (and fail) without a box
+    api.start.mockClear()
+    for (const failAt of [1000, 2000]) {
+      await vi.advanceTimersByTimeAsync(failAt === 1000 ? 1000 : 1000)
+      expect(api.start).toHaveBeenCalledTimes(failAt / 1000)
+      await set({ phase: 'connecting', errorCode: null })
+      await set({ phase: 'error', errorCode: 'connection_lost' })
+      expect(w.find('[data-testid=offline]').exists()).toBe(false)
+    }
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.start).toHaveBeenCalledTimes(3) // the attempt at 3 s
+    expect(w.find('[data-testid=offline]').exists()).toBe(false) // it is still running
+    await set({ phase: 'connecting', errorCode: null })
+    await set({ phase: 'error', errorCode: 'connection_lost' }) // ... and fails: now the box
     expect(w.find('[data-testid=offline]').exists()).toBe(true)
     expect(w.get('[data-testid=offline-body]').text()).toContain('This screen is offline right now')
     expect(w.get('[data-testid=qr]').attributes('data-empty')).toBe('true')
-    api.start.mockClear()
-    vi.advanceTimersByTime(500)
-    expect(api.start).toHaveBeenCalledTimes(1) // 4 s after the error
+    // the box stays while the next attempt runs, which comes 4 s later (at 7 s)
+    await vi.advanceTimersByTimeAsync(3900)
+    expect(api.start).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(api.start).toHaveBeenCalledTimes(4)
+    await set({ phase: 'connecting', errorCode: null })
+    expect(w.find('[data-testid=offline]').exists()).toBe(true) // no flicker while a later attempt runs
+  })
+
+  describe('reconnect schedule with a server that comes back (decision 13.30)', () => {
+    // A server that answers or not at the moment an attempt starts.
+    let up = false
+    const attempts: number[] = []
+    beforeEach(() => {
+      up = false
+      attempts.length = 0
+      api.start.mockImplementation(async () => {
+        attempts.push(Date.now() - t0)
+        await set({ phase: 'connecting', errorCode: null })
+        if (up) await set({ phase: 'waiting_sender', code: 'AB2CD3', errorCode: null })
+        else await set({ phase: 'error', errorCode: 'connection_lost', code: null })
+      })
+    })
+    afterEach(() => api.start.mockImplementation(async () => {}))
+    let t0 = 0
+    /** Mounts with a down server and returns the offline box state sampled every 250 ms for `ms`. */
+    async function run(w: ReturnType<typeof mk>, ms: number, backAt: number) {
+      const seen: boolean[] = []
+      for (let t = 0; t < ms; t += 250) {
+        if (t >= backAt) up = true
+        await vi.advanceTimersByTimeAsync(250)
+        seen.push(w.find('[data-testid=offline]').exists())
+      }
+      return seen
+    }
+    const start = async () => {
+      t0 = Date.now()
+      const w = mk()
+      await flushPromises() // onMounted: the first attempt fails at once
+      return w
+    }
+
+    it('tries again at 1 s, 2 s, 3 s, then every 4 s', async () => {
+      const w = await start()
+      await run(w, 12_000, Infinity)
+      expect(attempts).toEqual([0, 1000, 2000, 3000, 7000, 11_000])
+    })
+    it('server back at 2.5 s: no box ever (a screenshot series every 250 ms), the code is back at the attempt at 3 s', async () => {
+      const w = await start()
+      const seen = await run(w, 5000, 2500)
+      expect(seen.some(Boolean)).toBe(false)
+      expect(w.get('[data-testid=room-code]').text()).toBe('AB2 CD3')
+    })
+    it('server back at 3.5 s: the box from 3 s until the attempt at 7 s', async () => {
+      const w = await start()
+      const seen = await run(w, 8000, 3500) // sample i covers up to (i + 1) * 250 ms
+      const at = (ms: number) => seen[ms / 250 - 1]
+      expect(at(2750)).toBe(false)
+      expect(at(3250)).toBe(true)
+      expect(at(6750)).toBe(true)
+      expect(at(7250)).toBe(false)
+      expect(attempts).toEqual([0, 1000, 2000, 3000, 7000])
+      expect(w.get('[data-testid=room-code]').text()).toBe('AB2 CD3')
+    })
   })
 
   it('a drop that is over before 3 s never shows the box', async () => {

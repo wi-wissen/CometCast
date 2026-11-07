@@ -57,6 +57,7 @@ describe('the copy tables of the spec', () => {
     if (!line.startsWith('| `')) continue
     const c = line.trim().replace(/^\||\|$/g, '').split(' | ').map((x: string) => x.trim())
     const key = c[0].replace(/`/g, '')
+    if (c[2] === '' || c[2] === '|') continue // `error.other.why` has no text of its own: it shows the existing `errors.<code>` text
     const sie = c[3] === 'same as du' ? c[2] : c[3]
     if (key.startsWith('setup.name.s1')) {
       const [e, d] = [c[1].split(' · '), c[2].split(' · ')]
@@ -67,7 +68,7 @@ describe('the copy tables of the spec', () => {
     // The EN column of two rows carries a note of the spec ("(not used, ...)", "(apps only)"), not copy.
     rows.push({ key: key === 'settings.join' ? 'settings.join.label' : key, en: c[1].replace(/ \((not used, decision 13\.2|apps only)\)$/, ''), du: c[2], sie })
   }
-  it('has read all rows', () => expect(rows.length).toBe(205))
+  it('has read all rows', () => expect(rows.length).toBe(210))
   it('every row is in en.json, de.json (Sie) and de-du.json (du), word for word', () => {
     for (const r of rows) {
       expect(get(en, r.key), `en:${r.key}`).toBe(r.en)
@@ -75,8 +76,34 @@ describe('the copy tables of the spec', () => {
       expect(get(deDu, r.key), `de-du:${r.key}`).toBe(r.du)
     }
   })
+  // 11.7 (items the mockup did not draw, EN / du / Sie) and 11.8 (the du values of Sie texts that address the reader).
+  const more: Array<{ key: string; en?: string; du: string; sie?: string }> = []
+  const tail = spec.slice(spec.indexOf('### 11.7 Copy of items'), spec.indexOf('## 12. Open points'))
+  for (const line of tail.split('\n')) {
+    if (!line.startsWith('| `')) continue
+    const c = line.trim().replace(/^\||\|$/g, '').split(' | ').map((x: string) => x.trim())
+    const keys = [...c[0].matchAll(/`([^`]+)`/g)].map((m) => m[1])
+    if (keys.length !== 1 || c[0].includes(' · ') || c[1] === 'see 11.7') continue // grouped rows are checked by their own tests
+    if (c.length === 2) more.push({ key: keys[0], du: c[1] })
+    else more.push({ key: keys[0], en: c[1], du: c[2], sie: c[3] === 'same as du' ? c[2] : c[3] })
+  }
+  it('11.7 and 11.8: every single-key row is in the files, word for word', () => {
+    expect(more.length).toBeGreaterThan(50)
+    for (const r of more) {
+      if (get(en, r.key) === undefined) continue // native-only keys (app.beDisplay is there; others are Flutter's)
+      if (r.en !== undefined) expect(get(en, r.key), `en:${r.key}`).toBe(r.en)
+      if (r.sie !== undefined) expect(get(de, r.key), `de:${r.key}`).toBe(r.sie)
+      // The du file lists only the texts that differ from Sie; a key it lacks shows the Sie text.
+      expect(get(deDu, r.key) ?? get(de, r.key), `de-du:${r.key}`).toBe(r.du)
+    }
+  })
+  it('the du set has every key whose Sie text addresses the reader (spec 11.8)', () => {
+    const addresses = /\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b/
+    const du = new Set(keys(deDu))
+    for (const k of keys(de)) if (addresses.test(get(de, k)) && k !== 'receive.media.hint') expect(du.has(k), k).toBe(true)
+  })
   it('de-du.json has no key that is not in the spec', () => {
-    const known = new Set(rows.map((r) => r.key))
+    const known = new Set([...rows.map((r) => r.key), ...more.map((r) => r.key), 'relay.confirm.body', 'relay.confirm.risk', 'receive.link.hint', 'send.status.idle', 'sendContent.status.idle'])
     for (const k of keys(deDu)) expect(known.has(k), k).toBe(true)
   })
 })

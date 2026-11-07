@@ -4,6 +4,8 @@
 import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
 import { CONTROL_CHANNEL_LABEL, ControlSender, type ControlCmd, type ImageSource } from './control'
 import { SignalingClient, type ServerMessage, type SocketFactory } from './signaling'
+import { BusyMemory } from './busyMemory'
+import type { IceFetchState } from './altchaClient'
 
 export type SenderPhase =
   | 'idle'
@@ -33,6 +35,10 @@ export interface SenderState {
   roomName?: string
   /** Milliseconds since the epoch when an error happened (for "ask again in 15 s"). */
   errorAt?: number
+  /** With `peer_failed`: how the last `GET /ice-servers` of this connection ended (spec 6, decision 13.45). Absent when unknown. */
+  iceState?: IceFetchState
+  /** The shown PDF page and the page count, as reported by the display (`page` message of the control channel, decision 13.31). */
+  pdfPage?: { page: number; pages: number }
   /** True while the screen is being shown (see {@link SenderSession.shareScreen}). */
   screen?: boolean
 }
@@ -46,6 +52,8 @@ export interface SenderDeps {
   peerFactory?: PeerFactory
   /** STUN/TURN list (GET /ice-servers). Must not reject; an empty list means none. */
   iceServers?: () => Promise<RTCIceServer[]>
+  /** How the last fetch of `iceServers` ended (read when the connection fails; nothing is shown before that). */
+  iceState?: () => IceFetchState | undefined
   /** Name shown to the host when it has to approve the join (the server cleans it). */
   name?: () => string | undefined
   /** Test seam: the clock (default Date.now). */
@@ -64,6 +72,8 @@ export class SenderSession {
   private stream: MediaStream | null = null
   private screenOn = false
   private run = 0 // invalidates async work of an earlier start()/stop()
+  private readonly busy = new BusyMemory()
+  private pdfPage: { page: number; pages: number } | undefined
   private icePromise: Promise<RTCIceServer[]> = Promise.resolve([])
   private readonly peerFactory: PeerFactory
 
@@ -82,11 +92,25 @@ export class SenderSession {
       this.state.check = this.check.check
       this.state.timeoutSecs = this.check.timeoutSecs
     }
-    if (phase === 'error') this.state.errorAt = (this.deps.now ?? Date.now)()
+    if (phase === 'error') {
+      this.state.errorAt = (this.deps.now ?? Date.now)()
+      const ice = errorCode === 'peer_failed' ? this.deps.iceState?.() : undefined
+      if (ice) this.state.iceState = ice
+    }
+    if (this.pdfPage && phase === 'sharing') this.state.pdfPage = this.pdfPage
     if (this.roomName && (phase === 'waiting_approval' || phase === 'negotiating' || phase === 'sharing' || phase === 'peer_left')) {
       this.state.roomName = this.roomName
     }
     if (this.screenOn) this.state.screen = true
+    this.deps.onChange(this.state)
+  }
+
+  private setPdfPage(p: { page: number; pages: number } | undefined): void {
+    const cur = this.pdfPage
+    if (cur?.page === p?.page && cur?.pages === p?.pages) return
+    this.pdfPage = p
+    const { pdfPage: _gone, ...rest } = this.state
+    this.state = p ? { ...rest, pdfPage: p } : rest
     this.deps.onChange(this.state)
   }
 
@@ -108,6 +132,8 @@ export class SenderSession {
 
   /** Sends a PDF (same protocol as the native clients). `file` is a File or Blob. */
   sendDocument(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    // The previous document's page state does not apply to the next one.
+    this.setPdfPage(undefined)
     return this.requireControl().sendDocument(file, onProgress)
   }
 
@@ -242,6 +268,7 @@ export class SenderSession {
     this.roomName = undefined
     this.control = null
     this.channelOpen = false
+    this.pdfPage = undefined
     this.peer?.close()
     this.peer = null
     this.client?.close()
@@ -254,8 +281,10 @@ export class SenderSession {
   private fail(code: string): void {
     const p = this.state.phase
     if (p === 'error' || p === 'idle' || p === 'stopped') return
+    // For 60 s after a refusal a closed connection is the same refusal (the server closes it after a ban).
+    const reported = this.busy.apply(code, (this.deps.now ?? Date.now)())
     this.teardown()
-    this.set('error', code)
+    this.set('error', reported)
   }
 
   private onMessage(m: ServerMessage): void {
@@ -332,7 +361,9 @@ export class SenderSession {
       // Created before the offer so that the offer contains the data section.
       const ch = peer.openChannel(CONTROL_CHANNEL_LABEL)
       ch.binaryType = 'arraybuffer'
-      this.control = new ControlSender(ch)
+      this.control = new ControlSender(ch, (p) => {
+        if (run === this.run) this.setPdfPage(p)
+      })
       ch.onopen = () => {
         if (run === this.run) this.setChannelOpen(true)
       }

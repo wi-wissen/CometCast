@@ -69,7 +69,8 @@ function checkXcstrings(label, rel) {
 }
 
 // The second German set (the "du" form, apps/web/src/locales/de-du.json) is not loaded by the app. It
-// must only have keys that de.json has, with the same {placeholders} (docs/design/first-run-and-display.md, 11.1).
+// must only have keys that de.json has, with the same {placeholders} (docs/design/first-run-and-display.md, 11.1), and
+// must have every key whose Sie text addresses the reader (11.8).
 function checkGermanDu(label, deRel, duRel) {
   const de = join(root, deRel);
   const du = join(root, duRel);
@@ -82,6 +83,14 @@ function checkGermanDu(label, deRel, duRel) {
       Object.entries(o).flatMap(([k, v]) => (v !== null && typeof v === 'object' ? flat(v, prefix + k + '.') : [[prefix + k, String(v)]]));
     const holders = (t) => [...t.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
     const sie = new Map(flat(readJson(de)));
+    const duKeys = new Set(flat(readJson(du)).map(([k]) => k));
+    // A Sie value that addresses the reader (Sie, Ihr..., Ihnen) must have its own du value (spec 11.8), otherwise the
+    // du set silently shows Sie text. The "Sie" of receive.media.hint means "it" (the media file): the one known false alarm.
+    const addresses = /\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b/;
+    const EXCEPTIONS = new Set(['receive.media.hint']);
+    for (const [k, v] of sie) {
+      if (addresses.test(v) && !EXCEPTIONS.has(k) && !duKeys.has(k)) problems.push(`"${k}" addresses the reader in de.json (Sie/Ihr...) but is missing in de-du.json`);
+    }
     for (const [k, v] of flat(readJson(du))) {
       if (!sie.has(k)) problems.push(`"${k}" is in de-du.json but missing in de.json`);
       else if (holders(v) !== holders(sie.get(k))) problems.push(`"${k}": placeholders differ between de.json and de-du.json`);

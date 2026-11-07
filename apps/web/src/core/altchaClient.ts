@@ -193,8 +193,8 @@ const ICE_FETCH_TIMEOUT_MS = 5000
  * no list" (`none`, normal) from "the relay refused us" (`rate_limited`, `refused`) and from a
  * broken answer or network. Every state except `ok` yields an empty list, so a connection that could
  * work directly is never stopped, but only `none` is silent: the others are logged by
- * {@link fetchIceServers}. TODO(design): whether the UI should say anything about it is open, see
- * docs/design/implementation-questions.md.
+ * {@link fetchIceServers}. The sessions keep the last state; only when the connection then fails the presenter's
+ * page uses it (spec 6, decision 13.45): nothing is shown before that.
  */
 export type IceFetchState =
   | { kind: 'ok' }
@@ -263,10 +263,14 @@ export function describeIceFetchState(state: IceFetchState): string | null {
  * GET /ice-servers. `404` (no list configured) and every failure mean "no list": the page then
  * connects without STUN/TURN, as before. A failure other than 404 is logged to the console
  * (`console.warn`) so that a 429 is not mistaken for a relay without STUN; see
- * {@link fetchIceServersDetailed} for the typed state.
+ * {@link fetchIceServersDetailed} for the typed state; `onState` hands it to the caller.
  */
-export async function fetchIceServers(baseUrl: string, deps: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<RTCIceServer[]> {
+export async function fetchIceServers(
+  baseUrl: string,
+  deps: { fetchImpl?: typeof fetch; timeoutMs?: number; /** Gets how the fetch ended (the sessions keep it, see `iceState`). */ onState?: (s: IceFetchState) => void } = {},
+): Promise<RTCIceServer[]> {
   const { servers, state } = await fetchIceServersDetailed(baseUrl, deps)
+  deps.onState?.(state)
   const note = describeIceFetchState(state)
   if (note) console.warn(`[cometcast] GET /ice-servers ${note}`)
   return servers

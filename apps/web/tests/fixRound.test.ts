@@ -15,7 +15,7 @@ import { anyAppLink, appUrlFor } from '../src/config/stores'
 import {
   connectionView,
   offlineCause,
-  OFFLINE_AFTER_FAILURE_MS,
+  FAILED_ATTEMPTS_FOR_BOX,
   OFFLINE_AFTER_SILENCE_MS,
   retryDelayMs,
 } from '../src/core/connectionView'
@@ -113,24 +113,30 @@ describe('app offers only when they exist (spec 5.2, 4.2)', () => {
 })
 
 describe('what the idle screen shows about the connection (spec 4, 4.2)', () => {
-  const base = { code: null as string | null, phase: 'connecting', failed: false, withoutCodeMs: 0 }
+  const base = { code: null as string | null, phase: 'connecting', failed: false, failedAttempts: 0, cause: 'network' as const, withoutCodeMs: 0 }
   it('a code means online', () => {
     expect(connectionView({ ...base, code: 'K7QM2W', phase: 'waiting_sender' })).toBe('online')
   })
-  it('a lost connection: connecting for 3 s, then the box (the code is gone at once even if the old one is still known)', () => {
+  it('a lost connection: connecting until the retry at 3 s has failed, then the box (the code is gone at once even if the old one is still known)', () => {
     const lost = { ...base, phase: 'error', failed: true }
-    expect(connectionView({ ...lost, code: 'K7QM2W', withoutCodeMs: 0 })).toBe('connecting')
-    expect(connectionView({ ...lost, withoutCodeMs: OFFLINE_AFTER_FAILURE_MS - 1 })).toBe('connecting')
-    expect(connectionView({ ...lost, withoutCodeMs: OFFLINE_AFTER_FAILURE_MS })).toBe('offline')
+    expect(connectionView({ ...lost, code: 'K7QM2W', failedAttempts: 1 })).toBe('connecting')
+    expect(connectionView({ ...lost, failedAttempts: FAILED_ATTEMPTS_FOR_BOX - 1 })).toBe('connecting')
+    expect(connectionView({ ...lost, failedAttempts: FAILED_ATTEMPTS_FOR_BOX })).toBe('offline')
     // a retry that is running does not make the box flicker away
-    expect(connectionView({ ...base, failed: true, withoutCodeMs: 4000 })).toBe('offline')
+    expect(connectionView({ ...base, failed: true, failedAttempts: FAILED_ATTEMPTS_FOR_BOX })).toBe('offline')
+    expect(connectionView({ ...base, failed: true, failedAttempts: 2 })).toBe('connecting')
+  })
+  it('busy refusals and an outdated page show the box at once (no 3 s wait)', () => {
+    expect(connectionView({ ...base, phase: 'error', failed: true, failedAttempts: 1, cause: 'busy' })).toBe('offline')
+    expect(connectionView({ ...base, phase: 'connecting', failed: true, failedAttempts: 1, cause: 'busy' })).toBe('offline')
+    expect(connectionView({ ...base, phase: 'error', failed: true, failedAttempts: 1, cause: 'outdated' })).toBe('offline')
   })
   it('no code and no failure: 8 s of connecting, then the box', () => {
     expect(connectionView({ ...base, withoutCodeMs: OFFLINE_AFTER_SILENCE_MS - 1 })).toBe('connecting')
     expect(connectionView({ ...base, withoutCodeMs: OFFLINE_AFTER_SILENCE_MS })).toBe('offline')
   })
-  it('the cause picks the body and the retry', () => {
-    for (const c of ['rate_limited', 'banned', 'server_full']) {
+  it('the cause picks the body and the retry: network 1 s, 2 s, 3 s after the loss then every 4 s; busy 30 s; outdated never', () => {
+    for (const c of ['rate_limited', 'banned', 'server_full', 'forbidden']) {
       expect(offlineCause(c)).toBe('busy')
       expect(retryDelayMs(c)).toBe(30_000)
     }
@@ -140,8 +146,12 @@ describe('what the idle screen shows about the connection (spec 4, 4.2)', () => 
     }
     for (const c of ['connection_lost', 'peer_failed', null, 'altcha_failed']) {
       expect(offlineCause(c)).toBe('network')
-      expect(retryDelayMs(c)).toBe(4000)
+      // the n-th retry is due at 1 s, 2 s, 3 s, 7 s, 11 s ... after the loss
+      expect([1, 2, 3, 4, 5, 6].map((n) => retryDelayMs(c, n, 0))).toEqual([1000, 2000, 3000, 7000, 11_000, 15_000])
     }
+    // measured from the loss: a failure that took 300 ms leaves 700 ms to the first retry; a late failure retries at once
+    expect(retryDelayMs('connection_lost', 1, 300)).toBe(700)
+    expect(retryDelayMs('connection_lost', 2, 5000)).toBe(0)
   })
 })
 
@@ -289,11 +299,14 @@ describe('relay confirmation (fix 9)', () => {
     resetRelayState()
     document.body.innerHTML = ''
   })
-  it('on /display it is the display dialog card; Cancel is secondary and has the focus, Use is primary; row [Cancel, Use]', async () => {
+  it('on /display it is the dialog card on the scaled canvas over plain --bg with only the logo; Cancel is secondary and has the focus, Use is primary; row [Cancel, Use]', async () => {
     const { w, r } = await ask('display')
-    expect(w.get('[data-testid=relay-confirm-backdrop]').classes()).toEqual(expect.arrayContaining(['cd', 'cd-over']))
+    expect(w.get('[data-testid=relay-confirm-backdrop]').classes()).toEqual(expect.arrayContaining(['cd', 'cd-relay']))
+    expect(w.find('[data-testid=relay-confirm-backdrop] .cd-canvas').exists()).toBe(true) // 960 x 540 reference px, scaled
+    expect(w.findAll('.cd-modal')).toHaveLength(0) // no scrim: there is nothing behind it
+    expect(w.findAll('img')).toHaveLength(1) // the logo, nothing else of the idle screen
+    expect(w.find('[data-testid=qr]').exists()).toBe(false)
     expect(w.get('[data-testid=relay-confirm]').classes()).toContain('cd-wz')
-    expect(w.find('.cd-modal').exists()).toBe(true)
     const cancel = w.get('[data-testid=relay-confirm-cancel]')
     const use = w.get('[data-testid=relay-confirm-use]')
     expect(cancel.classes()).not.toContain('p')
@@ -301,23 +314,27 @@ describe('relay confirmation (fix 9)', () => {
     expect(document.activeElement).toBe(cancel.element)
     expect(w.findAll('[data-row="0"]').map((b) => b.attributes('data-testid'))).toEqual(['relay-confirm-cancel', 'relay-confirm-use'])
     expect(w.get('#relay-confirm-title').text()).toBe('Use this relay?')
-    expect(w.text()).toContain('crafted.example.org')
-    // Enter on load cancels (the focus is on Cancel); Escape cancels; arrows move the focus
+    expect(w.get('[data-testid=relay-confirm-host]').text()).toBe('crafted.example.org')
+    // arrows move the focus; Escape (Back) = Cancel
     await w.get('[data-testid=relay-confirm-backdrop]').trigger('keydown', { key: 'ArrowRight' })
     expect(document.activeElement).toBe(use.element)
     await w.get('[data-testid=relay-confirm-backdrop]').trigger('keydown', { key: 'Escape' })
     expect(await r).toBe(false)
     w.unmount()
   })
-  it('on the presenter pages it is a presenter card with a heading, small print and buttons as on the error pages', async () => {
+  it('on the presenter pages it is its own page in the error-page layout: icon disc, heading, body, host line, small print, [Cancel, Use]', async () => {
     const { w, r } = await ask('presenter')
-    expect(w.get('[data-testid=relay-confirm-backdrop]').classes()).toEqual(expect.arrayContaining(['cp', 'cp-over']))
-    expect(w.get('[data-testid=relay-confirm]').classes()).toContain('cp-card')
+    expect(w.get('[data-testid=relay-confirm-backdrop]').classes()).toContain('cp')
+    expect(w.get('[data-testid=relay-confirm]').classes()).toEqual(expect.arrayContaining(['cp-page']))
+    expect(w.find('.cp-over').exists()).toBe(false) // not a card over another page
+    expect(w.get('.cp-ico').classes()).toContain('warn')
     expect(w.get('h1').classes()).toContain('cp-h')
+    expect(w.get('[data-testid=relay-confirm-host]').classes()).toContain('mono')
+    expect(w.get('.cp-small').text()).toContain('operator of this relay')
     expect(w.get('[data-testid=relay-confirm-cancel]').classes()).toContain('cp-sbtn')
     expect(w.get('[data-testid=relay-confirm-use]').classes()).toContain('cp-pbtn')
     expect(document.activeElement).toBe(w.get('[data-testid=relay-confirm-cancel]').element)
-    // Cancel is first in the focus order
+    // Cancel is first in the focus order (and on top on a phone, left on a laptop)
     expect(w.findAll('button').map((b) => b.attributes('data-testid'))).toEqual(['relay-confirm-cancel', 'relay-confirm-use'])
     await w.get('[data-testid=relay-confirm-use]').trigger('click')
     expect(await r).toBe(true)
