@@ -28,5 +28,11 @@ ureq = { version = "3", default-features = false, features = ["rustls"], optiona
 # Pure-Rust bzip2 decoder (Cisco serves its files as .bz2). MIT/Apache-2.0.
 bzip2-rs = { version = "0.1", optional = true }
 
+# The safe `geteuid` (no C code, no `unsafe`) for the owner checks of the folders and files.
+# MIT OR Apache-2.0 / Apache-2.0 WITH LLVM-exception.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
 [dev-dependencies]
 tempfile = "3"
+serde_json.workspace = true

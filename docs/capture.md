@@ -95,7 +95,18 @@ sources read:
   "OpenH264 backend not available: this program was built without the h264-source feature" (the CI step greps
   that phrase; the rest of the sentence now names the download and the two environment variables).
   `send --screen` creates the same encoder, so it should report the same error (not run).
-- **CI:** the job `release-variant` in `.github/workflows/rust.yml` builds that release variant, fails if the
+- **CLI and the codec.** The CLI never downloads by itself. `send`/`receive` find a library from
+  `COMETCAST_OPENH264_LIB`, an earlier download, or a **decompressed** file in `COMETCAST_CODEC_DIR`; a
+  folder that holds only Cisco's `.bz2` file is not enough for them. Run `cometcast-cli codec install --yes` once
+  (release variant only): it prints the host, file and size, then imports the `.bz2`/raw file from the
+  administrator folder or downloads it, with progress on stderr; without `--yes` (or
+  `COMETCAST_CODEC_AUTO=1`) it only explains and exits with 2. `cometcast-cli codec status` shows whether the
+  library is available (exit 0 only if so). Builds with `h264-source` answer that they need no download.
+- **macOS hardened runtime (UNCERTAIN, not tried):** the Developer ID build may refuse to load Cisco's
+  dylib (library validation), see "Hardened runtime and library validation" in `docs/releasing.md`.
+- **CI:** besides the job `release-variant`, the job `check` runs `cargo test -p cc-codec --features download`,
+  clippy for it, and `cargo check -p cc-ffi --no-default-features --features h264-libloading`, so the download
+  path is compiled in CI. The job `release-variant` in `.github/workflows/rust.yml` builds that release variant, fails if the
   dependency graph contains an OpenH264 source feature, and fails if the binary does not refuse to start the
   codec when `COMETCAST_OPENH264_LIB` is unset. The other CI job still builds and tests with the development
   default.
@@ -111,19 +122,37 @@ Firefox: it downloads Cisco's library once, after the user agreed, and checks it
 
 **Where the library is looked for, in this order:**
 
-1. `COMETCAST_OPENH264_LIB`: path of a library (developers). Not checked by `cc-codec`; the `openh264` crate
-   checks the hash when it loads the file.
-2. `COMETCAST_CODEC_DIR`: a folder that an administrator fills (networks without Internet access, schools).
-   It must contain the file under its **exact name** from the table below, either decompressed or exactly as
-   Cisco serves it (name plus `.bz2`). A `.bz2` file is decompressed, checked and copied to the per-user folder
-   when the user (or `COMETCAST_CODEC_AUTO=1`) triggers the codec setup; a decompressed file is used in place.
-3. The per-user folder: `$XDG_DATA_HOME` or `~/.local/share` (Linux), `~/Library/Application Support` (macOS),
+1. `COMETCAST_OPENH264_LIB`: path of a library (developers). The file must exist (otherwise the codec is
+   reported as failed, not ready); `cc-codec` does not hash it, the `openh264` crate checks the hash when it
+   loads the file.
+2. The per-user folder: `$XDG_DATA_HOME` or `~/.local/share` (Linux), `~/Library/Application Support` (macOS),
    `%LOCALAPPDATA%` (Windows), each plus `CometCast/codecs/openh264-2.6.0/`. On Android the app passes its
-   private files directory (`set_codec_dir`, from `lib/codec_setup.dart`).
+   private files directory (`set_codec_dir`, from `lib/codec_setup.dart`). This is where downloads and imports
+   end up, and the only place a library is loaded from (besides 1).
+3. `COMETCAST_CODEC_DIR`: a folder that an administrator fills (networks without Internet access, schools). It
+   must be an **absolute** path (a relative one is an error shown in the UI). It must contain the file under its
+   **exact name** from the table below, either decompressed or exactly as Cisco serves it (name plus `.bz2`).
+   **The file is never loaded in place.** `cc-codec` reads it (at most 8 MiB, or 4 MiB for the `.bz2`), checks
+   the SHA-256 of the decompressed bytes, writes them into the per-user folder (0700, atomic), reads that file
+   back, checks the hash again and returns the path of the copy. A decompressed file is copied by every lookup
+   (`find_library`, so also by `cometcast-cli`); a `.bz2` file needs the decompressor and is imported only by
+   `ensure_codec` (the app's setup, or `cometcast-cli codec install`). A wrong or oversized file there does not
+   stop the download from Cisco (the error is added to the message if the download fails too); a wrong
+   *folder* setting (relative path, see below) does.
 4. Otherwise the download below.
 
-Files from 2 and 3 are only used if their SHA-256 matches the table (a symlink in the per-user folder is
-refused). **Version required: OpenH264 2.6.0**, because the pinned `openh264-sys2` 0.9.9 in Cargo.lock accepts
+**Who may own what (Unix):** the administrator folder and the file in it must belong to the current user or to
+root and must not be writable by group or others, otherwise they are refused (message: file name only). The
+per-user folder is created with mode 0700; if it exists it must belong to the current user and its mode is set
+to 0700; the library in it must not be writable by others either. **UNCERTAIN: Windows** has no such check
+(ACLs are not read; nothing was written or tried there), only the hash checks apply. **Residual risk
+(UNCERTAIN):** after the last hash check of the copy and before `openh264` opens it, a process of the same
+user (or root) could replace the file; the private folder keeps other users out, not the user's own
+processes. `openh264-sys2` reads the file and hashes it again itself when loading (read from its source, not
+tried with a swapped file), so the window is small but exists: hashing and loading are two opens of the path.
+
+A symlink in the per-user folder is refused (the administrator's file may be a symlink; its content is
+copied and hashed). **Version required: OpenH264 2.6.0**, because the pinned `openh264-sys2` 0.9.9 in Cargo.lock accepts
 exactly these builds:
 
 | Platform | File name (also the name inside `COMETCAST_CODEC_DIR`) | Compressed size |
@@ -146,19 +175,26 @@ new table by hand** (the compressed sizes are only shown to the user).
 
 **Download:** `https://ciscobinary.openh264.org/<name>.bz2`, HTTPS only (`ureq` 3 with rustls/ring and the
 webpki root store, no OpenSSL; proxy settings of the environment are honoured), **no redirects at all**, timeouts
-(15 s to connect, 120 s per attempt), 3 retries with backoff (2, 4, 8 s) for network errors and HTTP 5xx/408/429,
+(15 s to connect, 30 s without any data = stall, 10 minutes in total per attempt, so a slow link can finish as
+long as bytes keep arriving), 3 retries with backoff (2, 4, 8 s) for network errors and HTTP 5xx/408/429,
 compressed size at most 4 MiB, decompressed size at most 8 MiB (the real files are 0.4 to 0.7 MB and 0.8 to
 1.6 MB), progress reported to the UI. The file is recognised by its magic bytes (bzip2, or ELF/PE/Mach-O as
 is), decompressed with the pure-Rust `bzip2-rs` (MIT/Apache-2.0), and the SHA-256 of the **decompressed**
 library must equal the pinned value before anything is written. Writing is atomic: a temporary file in the same
 folder (created exclusively, so a planted file or symlink is not followed), `fsync`, rename, `fsync` of the
 folder; the folder is 0700 and the file 0755 (0555 on Android); a symlink as folder or target is refused.
+Leftover `.name.pid.n.tmp` files of an interrupted installation that are older than one day are deleted
+when the next installation starts. A panic in the download thread ends the "downloading" state with a failure
+message (the UI cannot hang on it).
 
 **Consent:** the Flutter app shows a card on the receive screen and, when "Share this screen" is on, on the
 send screen (not on Android, where MediaCodec encodes): what the codec is, that it is Cisco's, the host, the
 file name and the size, a "Download" button, a progress bar, a "Try again" button after a failure and a hint for
-offline networks (the administrator folder and the file name). The first press is remembered in the settings;
-later downloads start without asking. An administrator can set `COMETCAST_CODEC_AUTO=1` to skip the question
+offline networks (the administrator folder and the file name). The first press is remembered in the settings
+as `host|version` (`ciscobinary.openh264.org|2.6.0`); a new OpenH264 version or another host asks again, and
+the boolean that the first release stored is not read (one more question after the update). Later downloads of
+the same host and version start without asking. If the core says "downloading" (another screen or process owns
+the download), the card follows it until it is ready, failed or missing, on both screens. An administrator can set `COMETCAST_CODEC_AUTO=1` to skip the question
 (not remembered as consent). Nothing is ever downloaded before one of the two. The web app does not use any of
 this (browser codecs). Development and CI builds with `h264-source` contain the codec and never ask.
 
@@ -171,7 +207,7 @@ executable code from elsewhere. For a Play release the codec would have to be bu
 or replaced by MediaCodec (the Android sender already uses MediaCodec; only receiving on Android needs the
 decoder). Decide before a Play release; sideloaded builds are not affected.
 
-**What was checked (2026-11-07, this machine):** all nine files were downloaded from Cisco with HTTP 200 and
+**What was checked (2026-11-07, once, on one machine, Linux x86_64):** all nine files were downloaded from Cisco with HTTP 200 and
 no redirect, are bzip2 (`BZh`), and their decompressed SHA-256 values equal the pinned table; the real path
 (`ensure_codec` into a temporary folder, then `find_library`) and `cargo test -p cc-media --no-default-features
 --features h264-libloading` with only `COMETCAST_CODEC_DIR` set (no `COMETCAST_OPENH264_LIB`) pass: the
@@ -193,7 +229,8 @@ roots is an open improvement).
 | X11 capture under Xvfb | same (starts a private Xvfb; skips with a note if `Xvfb` is missing) | A window of a known colour is read with the right colour at the right place; many `Unchanged` calls while nothing happens; a colour change gives a frame again; DAMAGE is in use; pacing about right |
 | Encoder / decoder | `cargo test -p cc-media` | Encode a solid frame, decode it, mean colour within 12 of the original; IDR on request only; SPS is Baseline; odd sizes cropped; RTP reassembly incl. FU-A and lost packets; static refresh timing |
 | Same through Cisco's binary | `COMETCAST_OPENH264_LIB=<file> cargo test -p cc-media --no-default-features --features h264-libloading` (or `COMETCAST_CODEC_DIR=<folder with the exact file name>`) | The prebuilt library works through the same API; an unknown file is refused |
-| Codec manager | `cargo test -p cc-codec --features download` (`-- --ignored` adds two tests that download from Cisco) | Hash check (tamper), platform table, bzip2/raw sniffing, size caps and a decompression bomb, atomic write, symlink refusal, no redirects, https only, retries; local HTTP server with a fake library |
+| Codec manager | `cargo test -p cc-codec --features download` (`-- --ignored` adds two tests that download from Cisco) | Hash check (tamper), platform table (and that it equals `hashes.txt` of `openh264-sys2`, found with `cargo metadata`; skipped loudly if the crate is not on disk), bzip2/raw sniffing, size caps and a decompression bomb, atomic write, symlink refusal, owner and mode checks, copy of the administrator file into the private folder, no redirects, https only, retries, stall timeout versus a slow link, a panic during a download; local HTTP server with a fake library |
+| CLI codec command | `cargo test -p cometcast-cli --no-default-features --features h264-libloading` | `codec status`/`install` parse, need `--yes`, report a missing, existing and nonexistent `COMETCAST_OPENH264_LIB` |
 | Screen pipeline with a scripted source | `cargo test -p cc-sender` | First frame is IDR; no capture while a frame is in flight; a static screen gives exactly one picture plus 3 refreshes and then silence; a key frame request is answered on a static screen. With a scripted encoder that skips pictures: 40 skipped encodes after the first frame still end with the 3 refreshes sent; a skipped new picture is retried until sent; a key frame request survives 5 skipped attempts and is cleared only when the key frame went out; 1000 requests within half a second give one accepted request and 999 counted as ignored; a panic in the capture thread is reported; `stop` returns within its time limit while the capture call is stuck |
 | RandR change of a monitor | `cargo test -p cc-capture` (`a_monitor_source_follows_a_randr_change`) | Under Xvfb a second client gives the CRT controller a 400x300 mode; the `monitor:0` source then delivers 400x300 frames (without listening to RandR events it stayed at the old rectangle and delivered nothing; checked by disabling the event handling once) |
 | End to end | `cargo test -p cc-receiver --test screen` | Real `cc-server`, Xvfb with a full-screen red window, `SenderCore` with the X11 source, `ReceiverCore` with the packet tap; the received H.264 is reassembled and decoded with OpenH264; the decoded picture is red, 640x480; after the window turns blue the decoded picture turns blue; then the sender produces no frames while the screen is static; a PLI from the receiver is answered with a key frame |

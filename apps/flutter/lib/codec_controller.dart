@@ -30,6 +30,7 @@ class CodecController extends ChangeNotifier {
   late UiCodecState state;
   UiCodecInfo? info;
   Timer? _poll;
+  Completer<void>? _followDone;
   bool _disposed = false;
   bool _busy = false;
 
@@ -42,7 +43,7 @@ class CodecController extends ChangeNotifier {
   /// The person has to be asked before a download starts.
   bool get needsConsent =>
       state is UiCodecState_Missing &&
-      !settings.codecConsent &&
+      !settings.codecConsentFor(info) &&
       !(info?.autoDownload ?? false);
 
   /// Call once when the screen opens: reads the remembered consent and, if the person agreed
@@ -53,10 +54,43 @@ class CodecController extends ChangeNotifier {
     state = core.codecState();
     info = core.codecInfo();
     notifyListeners();
-    final allowed = settings.codecConsent || (info?.autoDownload ?? false);
-    if (state is UiCodecState_Missing && allowed) {
+    final allowed =
+        settings.codecConsentFor(info) || (info?.autoDownload ?? false);
+    if (state is UiCodecState_Downloading) {
+      // Another screen, controller or process owns the download: follow it.
+      if (_busy) return;
+      _busy = true;
+      try {
+        await _follow();
+      } finally {
+        _busy = false;
+      }
+    } else if (state is UiCodecState_Missing && allowed) {
       await download(askedBefore: true);
     }
+  }
+
+  /// Poll the core until the state is no longer "downloading" (ready, failed or missing).
+  /// The download that this state belongs to is not ours (or ensureCodec said so), so only
+  /// the core's state tells when it is over.
+  Future<void> _follow() {
+    _poll?.cancel();
+    final done = _followDone = Completer<void>();
+    _poll = Timer.periodic(pollInterval, (timer) {
+      if (_disposed) return;
+      try {
+        state = core.codecState();
+      } catch (e) {
+        state = UiCodecState.failed(reason: e.toString());
+      }
+      notifyListeners();
+      if (state is! UiCodecState_Downloading) {
+        timer.cancel();
+        _poll = null;
+        if (!done.isCompleted) done.complete();
+      }
+    });
+    return done.future;
   }
 
   /// Start the download. [askedBefore] is false when the person just pressed the button: the
@@ -65,7 +99,8 @@ class CodecController extends ChangeNotifier {
     if (_busy || _disposed) return;
     _busy = true;
     if (!askedBefore && !(info?.autoDownload ?? false)) {
-      await settings.rememberCodecConsent();
+      final i = info;
+      if (i != null) await settings.rememberCodecConsent(i);
     }
     if (_disposed) return;
     state = const UiCodecState.downloading(progress: 0);
@@ -79,6 +114,13 @@ class CodecController extends ChangeNotifier {
     });
     try {
       state = await core.ensureCodec();
+      _poll?.cancel();
+      _poll = null;
+      if (!_disposed && state is UiCodecState_Downloading) {
+        // Somebody else runs the download (ensureCodec returns at once then): wait for it.
+        notifyListeners();
+        await _follow();
+      }
     } catch (e) {
       state = UiCodecState.failed(reason: e.toString());
     } finally {
@@ -93,6 +135,8 @@ class CodecController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _poll?.cancel();
+    final d = _followDone;
+    if (d != null && !d.isCompleted) d.complete();
     super.dispose();
   }
 }

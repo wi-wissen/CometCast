@@ -19,11 +19,13 @@ abstract class SettingsStore {
   /// Save the server. Failures are ignored: remembering is a convenience.
   Future<void> saveServer(String server);
 
-  /// Did the person agree to download the video codec? (Asked once, then remembered.)
-  Future<bool> loadCodecConsent() async => false;
+  /// What the person agreed to download, as `host|version` (see AppSettings.codecConsentValue);
+  /// null if never asked. The agreement belongs to that host and version only: a new version
+  /// or another host asks again. The old boolean of earlier releases is not read.
+  Future<String?> loadCodecConsent() async => null;
 
   /// Remember the agreement. Failures are ignored.
-  Future<void> saveCodecConsent(bool consent) async {}
+  Future<void> saveCodecConsent(String consent) async {}
 }
 
 /// Keeps the value in memory only (tests).
@@ -38,13 +40,13 @@ class MemorySettingsStore implements SettingsStore {
   @override
   Future<void> saveServer(String server) async => this.server = server;
 
-  bool codecConsent = false;
+  String? codecConsent;
 
   @override
-  Future<bool> loadCodecConsent() async => codecConsent;
+  Future<String?> loadCodecConsent() async => codecConsent;
 
   @override
-  Future<void> saveCodecConsent(bool consent) async => codecConsent = consent;
+  Future<void> saveCodecConsent(String consent) async => codecConsent = consent;
 }
 
 /// Saves the value with the `shared_preferences` package.
@@ -77,23 +79,25 @@ class PrefsSettingsStore implements SettingsStore {
     }
   }
 
-  static const _consentKey = 'codecConsent';
+  // The key of the first release held a boolean ('codecConsent'); it is not migrated: the
+  // person is asked again once, now for a host and version.
+  static const _consentKey = 'codecConsentFor';
 
   @override
-  Future<bool> loadCodecConsent() async {
+  Future<String?> loadCodecConsent() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(_consentKey) ?? false;
+      return prefs.getString(_consentKey);
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
   @override
-  Future<void> saveCodecConsent(bool consent) async {
+  Future<void> saveCodecConsent(String consent) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_consentKey, consent);
+      await prefs.setString(_consentKey, consent);
     } catch (_) {
       // Not saved; the person is asked again next time.
     }
@@ -359,20 +363,25 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  bool _codecConsent = false;
+  String? _codecConsent;
 
-  /// The person agreed to download the video codec (remembered between runs).
-  bool get codecConsent => _codecConsent;
+  /// The text stored for an agreement to download [info]: `host|version`.
+  static String codecConsentValue(UiCodecInfo info) =>
+      '${info.host}|${info.version}';
+
+  /// The person agreed to download exactly this host and version (remembered between runs).
+  bool codecConsentFor(UiCodecInfo? info) =>
+      info != null && _codecConsent == codecConsentValue(info);
 
   /// Read the remembered consent from the store.
   Future<void> loadCodecConsent() async {
     _codecConsent = await store?.loadCodecConsent() ?? _codecConsent;
   }
 
-  /// Remember that the person agreed to the download.
-  Future<void> rememberCodecConsent() async {
-    _codecConsent = true;
-    await store?.saveCodecConsent(true);
+  /// Remember that the person agreed to download [info].
+  Future<void> rememberCodecConsent(UiCodecInfo info) async {
+    _codecConsent = codecConsentValue(info);
+    await store?.saveCodecConsent(_codecConsent!);
   }
 
   /// Remember the current server for the next start (call when it is used). Not under a lock,

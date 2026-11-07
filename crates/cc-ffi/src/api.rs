@@ -1940,6 +1940,15 @@ pub fn set_codec_dir(path: Option<String>) {
 mod tests {
     use super::*;
 
+    /// Both features on (cargo unifies them in a workspace build): the backend is the source
+    /// build, nothing is missing, so the UI must not ask for a download.
+    #[cfg(all(feature = "h264-libloading", feature = "h264-source"))]
+    #[test]
+    fn source_backend_is_ready_and_needs_no_download() {
+        assert_eq!(codec_state(), UiCodecState::Ready);
+        assert!(codec_info().is_none());
+    }
+
     #[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
     #[test]
     fn codec_status_maps_to_the_ui_state() {

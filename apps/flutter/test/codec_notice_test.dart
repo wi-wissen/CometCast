@@ -29,7 +29,7 @@ Future<(FakeCoreApi, CodecController, MemorySettingsStore)> open(
   String locale = 'en',
   UiCodecState state = const UiCodecState.missing(),
   UiCodecInfo info = _info,
-  bool consent = false,
+  String? consent,
 }) async {
   final core = FakeCoreApi()
     ..codecStateResult = state
@@ -53,7 +53,12 @@ Future<(FakeCoreApi, CodecController, MemorySettingsStore)> open(
       home: Scaffold(body: CodecNotice(controller: controller)),
     ),
   );
-  await controller.init();
+  if (state is UiCodecState_Downloading) {
+    // init() follows the download until it ends; the test ends it.
+    unawaited(controller.init());
+  } else {
+    await controller.init();
+  }
   await tester.pump();
   return (core, controller, store);
 }
@@ -97,7 +102,7 @@ void main() {
     await tester.tap(find.byKey(const Key('codecDownload')));
     await tester.pump();
     expect(core.ensureCodecCalls, 1);
-    expect(store.codecConsent, isTrue);
+    expect(store.codecConsent, 'ciscobinary.openh264.org|2.6.0');
     expect(find.byKey(const Key('codecProgress')), findsOneWidget);
     // The core reports progress while the download runs.
     core.codecStateResult = const UiCodecState.downloading(progress: 0.5);
@@ -126,9 +131,27 @@ void main() {
   });
 
   testWidgets('remembered consent downloads at once', (tester) async {
-    final (core, _, _) = await open(tester, consent: true);
+    final (core, _, _) = await open(
+      tester,
+      consent: 'ciscobinary.openh264.org|2.6.0',
+    );
     await tester.pumpAndSettle();
     expect(core.ensureCodecCalls, 1);
+  });
+
+  testWidgets('consent for another version or host asks again', (tester) async {
+    for (final old in [
+      'ciscobinary.openh264.org|2.5.0',
+      'other.example|2.6.0',
+      // The boolean of the first release is never read back as consent.
+      'true',
+    ]) {
+      final (core, controller, _) = await open(tester, consent: old);
+      await tester.pumpAndSettle();
+      expect(core.ensureCodecCalls, 0, reason: old);
+      expect(controller.needsConsent, isTrue, reason: old);
+      expect(find.byKey(const Key('codecDownload')), findsOneWidget);
+    }
   });
 
   testWidgets('administrator policy skips the question', (tester) async {
@@ -144,7 +167,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(core.ensureCodecCalls, 1);
     // The policy is no consent of the person: nothing is stored.
-    expect(store.codecConsent, isFalse);
+    expect(store.codecConsent, isNull);
+  });
+
+  testWidgets('a download owned by someone else is followed to the end', (
+    tester,
+  ) async {
+    // ensureCodec answers "downloading" at once (another controller or process runs it).
+    final (core, controller, _) = await open(tester);
+    core.codecStateAfter = const UiCodecState.downloading(progress: 0.2);
+    await tester.tap(find.byKey(const Key('codecDownload')));
+    await tester.pump(const Duration(milliseconds: 30));
+    expect(core.ensureCodecCalls, 1);
+    expect(find.byKey(const Key('codecProgress')), findsOneWidget);
+    core.codecStateResult = const UiCodecState.downloading(progress: 0.7);
+    await tester.pump(const Duration(milliseconds: 30));
+    expect(find.text('70 %'), findsOneWidget);
+    expect(controller.ready, isFalse);
+    core.codecStateResult = const UiCodecState.ready();
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pumpAndSettle();
+    expect(controller.ready, isTrue);
+    expect(find.byKey(const Key('codecNotice')), findsNothing);
+  });
+
+  testWidgets('a shared download that fails ends in the failed card', (
+    tester,
+  ) async {
+    final (core, controller, _) = await open(tester);
+    core.codecStateAfter = const UiCodecState.downloading(progress: 0);
+    await tester.tap(find.byKey(const Key('codecDownload')));
+    await tester.pump(const Duration(milliseconds: 30));
+    core.codecStateResult = const UiCodecState.failed(reason: 'disk full');
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pumpAndSettle();
+    expect(controller.state, isA<UiCodecState_Failed>());
+    expect(find.byKey(const Key('codecRetry')), findsOneWidget);
+  });
+
+  testWidgets('init() follows a download that is already running', (
+    tester,
+  ) async {
+    final (core, controller, _) = await open(
+      tester,
+      state: const UiCodecState.downloading(progress: 0.3),
+    );
+    // Not started by us: no ensureCodec call, but the card shows the progress.
+    expect(core.ensureCodecCalls, 0);
+    expect(find.byKey(const Key('codecProgress')), findsOneWidget);
+    core.codecStateResult = const UiCodecState.downloading(progress: 0.9);
+    await tester.pump(const Duration(milliseconds: 30));
+    expect(find.text('90 %'), findsOneWidget);
+    core.codecStateResult = const UiCodecState.ready();
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pumpAndSettle();
+    expect(controller.ready, isTrue);
+    expect(find.byKey(const Key('codecNotice')), findsNothing);
   });
 
   testWidgets('shows the administrator folder when one is configured', (
@@ -173,9 +251,13 @@ void main() {
     expect(find.byKey(const Key('codecDownload')), findsNothing);
   });
 
-  Future<FakeCoreApi> openScreen(WidgetTester tester, String entry) async {
+  Future<FakeCoreApi> openScreen(
+    WidgetTester tester,
+    String entry, {
+    UiCodecState state = const UiCodecState.missing(),
+  }) async {
     final core = FakeCoreApi()
-      ..codecStateResult = const UiCodecState.missing()
+      ..codecStateResult = state
       ..codecInfoResult = _info;
     tester.view.physicalSize = const Size(900, 1800);
     tester.view.devicePixelRatio = 1;
@@ -208,6 +290,39 @@ void main() {
     await tester.tap(find.byKey(const Key('startButton')));
     await tester.pump();
     expect(core.senderScreen, isNotNull);
+  });
+
+  testWidgets('send screen follows a download that another owner runs', (
+    tester,
+  ) async {
+    final core = await openScreen(
+      tester,
+      'Send screen',
+      state: const UiCodecState.downloading(progress: 0.4),
+    );
+    await tester.tap(find.byKey(const Key('shareScreenSwitch')));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const Key('codecProgress')), findsOneWidget);
+    expect(core.ensureCodecCalls, 0);
+    core.codecStateResult = const UiCodecState.ready();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('codecNotice')), findsNothing);
+  });
+
+  testWidgets('receive screen follows a download that another owner runs', (
+    tester,
+  ) async {
+    final core = await openScreen(
+      tester,
+      'Receive on this device',
+      state: const UiCodecState.downloading(progress: 0.4),
+    );
+    expect(find.byKey(const Key('codecProgress')), findsOneWidget);
+    core.codecStateResult = const UiCodecState.ready();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('codecNotice')), findsNothing);
   });
 
   testWidgets('receive screen shows the card but can still start', (

@@ -836,6 +836,8 @@ version = "0.1.0"
 dependencies = [
  "bzip2-rs",
  "dirs",
+ "rustix",
+ "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.21",
@@ -1286,6 +1288,7 @@ dependencies = [
  "cc-airplay",
  "cc-airplay-sender",
  "cc-cast",
+ "cc-codec",
  "cc-discovery",
  "cc-docs",
  "cc-files",
@@ -1297,6 +1300,7 @@ dependencies = [
  "cc-sender",
  "cc-transport",
  "flate2",
+ "tempfile",
  "tokio",
 ]
 

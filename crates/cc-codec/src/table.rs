@@ -170,4 +170,58 @@ mod tests {
             }
         }
     }
+
+    /// The directory of the `openh264-sys2` crate in this build's dependency graph, found with
+    /// `cargo metadata`. `None` if it cannot be found (no cargo, no registry sources).
+    fn sys2_dir() -> Option<std::path::PathBuf> {
+        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+        let out = std::process::Command::new(cargo)
+            .args(["metadata", "--format-version", "1", "--locked", "--offline"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let meta: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+        let pkg = meta["packages"]
+            .as_array()?
+            .iter()
+            .find(|p| p["name"] == "openh264-sys2")?;
+        let manifest = std::path::Path::new(pkg["manifest_path"].as_str()?);
+        Some(manifest.parent()?.to_path_buf())
+    }
+
+    /// The table must agree with the list that the `openh264` crate checks when it loads a
+    /// library: otherwise a file that passes our check would be refused at load time (or the
+    /// other way round). Skips, loudly, if the crate's sources are not on this machine.
+    #[test]
+    fn table_matches_openh264_sys2_hashes_txt() {
+        let Some(dir) = sys2_dir() else {
+            eprintln!("SKIPPED: cannot find openh264-sys2 with `cargo metadata`");
+            return;
+        };
+        let file = dir.join("src").join("blobs").join("hashes.txt");
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            eprintln!("SKIPPED: {} cannot be read", file.display());
+            return;
+        };
+        // Lines are `<sha256> <*| >name`; `*` marks binary mode in sha256sum files.
+        let theirs: std::collections::HashMap<&str, &str> = text
+            .lines()
+            .filter_map(|l| {
+                let (hash, name) = l.split_once(' ')?;
+                Some((name.trim_start_matches([' ', '*']), hash))
+            })
+            .collect();
+        assert!(theirs.len() > 9, "hashes.txt looks empty: {}", theirs.len());
+        for a in ALL {
+            assert_eq!(
+                theirs.get(a.name).copied(),
+                Some(a.sha256),
+                "{} differs from (or is missing in) hashes.txt of openh264-sys2",
+                a.name
+            );
+        }
+    }
 }

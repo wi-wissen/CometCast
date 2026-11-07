@@ -21,6 +21,11 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # The download path (HTTPS client, bzip2) is behind a feature that the workspace build
+      # does not enable for cc-codec alone; compile and test it here.
+      - run: cargo test -p cc-codec --features download
+      - run: cargo clippy -p cc-codec --features download --all-targets -- -D warnings
+      - run: cargo check -p cc-ffi --no-default-features --features h264-libloading
       # cc-proto must stay usable in the browser (WebAssembly).
       - run: cargo check -p cc-proto --target wasm32-unknown-unknown
   # The release variant of the CLI must not contain an OpenH264 source build (docs/capture.md,

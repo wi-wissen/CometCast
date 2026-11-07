@@ -118,7 +118,8 @@ fn test_endpoint(base_url: String) -> Endpoint {
         no_proxy: true,
         retries: 2,
         backoff: Duration::from_millis(1),
-        timeout: Duration::from_secs(10),
+        total_timeout: Duration::from_secs(10),
+        stall_timeout: Duration::from_secs(5),
     }
 }
 
@@ -202,10 +203,7 @@ fn body_over_the_cap_without_content_length_is_refused() {
     let t = tempfile::tempdir().unwrap();
     let err =
         install_from_network(&test_endpoint(url), &art, t.path(), &mut |_, _| {}).unwrap_err();
-    assert!(
-        matches!(err, CodecError::TooLarge | CodecError::Network(_)),
-        "{err}"
-    );
+    assert!(matches!(err, CodecError::TooLarge), "{err}");
 }
 
 #[test]
@@ -281,38 +279,224 @@ fn plain_http_is_refused_when_https_only() {
     let mut ep = test_endpoint(url);
     ep.https_only = true;
     ep.retries = 0;
-    assert!(install_from_network(&ep, &art, t.path(), &mut |_, _| {}).is_err());
+    let err = install_from_network(&ep, &art, t.path(), &mut |_, _| {}).unwrap_err();
+    // Refused before any connection; not a retryable error.
+    assert!(
+        matches!(&err, CodecError::Network(m) if m.to_lowercase().contains("https")),
+        "{err}"
+    );
     assert_eq!(count.load(Ordering::SeqCst), 0);
     // The real endpoint is HTTPS only.
     let c = Endpoint::cisco();
     assert!(c.https_only && c.base_url.starts_with("https://ciscobinary.openh264.org"));
 }
 
+/// A directory that passes the checks for an administrator folder.
+fn admin_dir_in(t: &tempfile::TempDir) -> PathBuf {
+    let admin = t.path().join("admin");
+    fs::create_dir_all(&admin).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&admin, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    admin
+}
+
 #[test]
-fn imports_the_administrators_bz2_file() {
+fn imports_the_administrators_bz2_file_as_a_copy() {
     let lib = fake_lib();
     let art = artifact_for_bytes(&lib);
     let t = tempfile::tempdir().unwrap();
-    let admin = t.path().join("admin");
+    let admin = admin_dir_in(&t);
     let user = t.path().join("user");
-    fs::create_dir_all(&admin).unwrap();
-    assert!(import_from_dir(&art, &admin, &user).unwrap().is_none());
+    assert!(matches!(
+        import_from_dir(&art, &admin, &user).unwrap(),
+        Imported::Nothing
+    ));
     fs::write(admin.join(format!("{}.bz2", art.name)), bz2_of_fake()).unwrap();
-    let p = import_from_dir(&art, &admin, &user).unwrap().unwrap();
+    let Imported::Done(p) = import_from_dir(&art, &admin, &user).unwrap() else {
+        panic!("not imported");
+    };
+    // The library is loaded from the private copy, never from the administrator folder.
+    assert_eq!(p, user.join(art.name));
+    assert!(!p.starts_with(&admin));
     assert_eq!(fs::read(p).unwrap(), lib);
 }
 
 #[test]
-fn import_rejects_a_wrong_file() {
+fn import_rejects_a_wrong_file_without_failing_the_folder() {
     let art = artifact_for_bytes(&fake_lib());
     let t = tempfile::tempdir().unwrap();
-    let admin = t.path().join("admin");
-    fs::create_dir_all(&admin).unwrap();
+    let admin = admin_dir_in(&t);
     let mut other = fake_lib();
     other[10] ^= 0xff;
     fs::write(admin.join(art.name), &other).unwrap();
-    let err = import_from_dir(&art, &admin, &t.path().join("user")).unwrap_err();
-    assert!(matches!(err, CodecError::HashMismatch { .. }));
+    let user = t.path().join("user");
+    let Imported::Rejected(e) = import_from_dir(&art, &admin, &user).unwrap() else {
+        panic!("not rejected");
+    };
+    assert!(matches!(e, CodecError::HashMismatch { .. }), "{e}");
+    assert!(!user.join(art.name).exists());
+}
+
+#[test]
+fn import_rejects_an_oversized_bz2() {
+    let art = artifact_for_bytes(&fake_lib());
+    let t = tempfile::tempdir().unwrap();
+    let admin = admin_dir_in(&t);
+    let big = fs::File::create(admin.join(format!("{}.bz2", art.name))).unwrap();
+    big.set_len(MAX_COMPRESSED_BYTES + 1).unwrap();
+    let Imported::Rejected(e) = import_from_dir(&art, &admin, &t.path().join("u")).unwrap() else {
+        panic!("not rejected");
+    };
+    assert!(matches!(e, CodecError::TooLarge), "{e}");
+}
+
+#[test]
+fn a_bad_admin_file_does_not_stop_the_download() {
+    let lib = fake_lib();
+    let art = artifact_for_bytes(&lib);
+    let t = tempfile::tempdir().unwrap();
+    let admin = admin_dir_in(&t);
+    fs::write(admin.join(format!("{}.bz2", art.name)), b"not bzip2").unwrap();
+    let user = t.path().join("user");
+    let (url, count) = serve(vec![ok(bz2_of_fake())]);
+    let p = run_in(&test_endpoint(url), &art, Some(admin.clone()), &user).unwrap();
+    assert_eq!(fs::read(p).unwrap(), lib);
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+
+    // If the download fails too, the message tells about both.
+    let t2 = tempfile::tempdir().unwrap();
+    let (url, _) = serve(vec![status("404 Not Found", "")]);
+    let err = run_in(
+        &test_endpoint(url),
+        &art,
+        Some(admin),
+        &t2.path().join("user"),
+    )
+    .unwrap_err();
+    let CodecError::AfterAdminError { source, admin } = &err else {
+        panic!("{err}");
+    };
+    assert!(matches!(**source, CodecError::Http(404)));
+    assert!(admin.contains("unexpected format"), "{admin}");
+    assert!(err.to_string().contains("administrator folder"));
+}
+
+#[test]
+fn a_relative_admin_dir_is_a_clear_error_and_nothing_is_downloaded() {
+    let art = artifact_for_bytes(&fake_lib());
+    let t = tempfile::tempdir().unwrap();
+    let (url, count) = serve(vec![ok(bz2_of_fake())]);
+    let err = run_in(
+        &test_endpoint(url),
+        &art,
+        Some(PathBuf::from("relative/codecs")),
+        &t.path().join("user"),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&err, CodecError::BadConfig(m) if m.contains("absolute")),
+        "{err}"
+    );
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_admin_dir_that_others_can_write_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let art = artifact_for_bytes(&fake_lib());
+    let t = tempfile::tempdir().unwrap();
+    let admin = admin_dir_in(&t);
+    fs::write(admin.join(art.name), fake_lib()).unwrap();
+    for mode in [0o775, 0o777] {
+        fs::set_permissions(&admin, fs::Permissions::from_mode(mode)).unwrap();
+        let err = import_from_dir(&art, &admin, &t.path().join("user")).unwrap_err();
+        assert!(matches!(err, CodecError::Unsafe(_)), "{mode:o}: {err}");
+    }
+    // A world-writable file in a good folder is a bad file: rejected, not a folder error.
+    fs::set_permissions(&admin, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(admin.join(art.name), fs::Permissions::from_mode(0o666)).unwrap();
+    let Imported::Rejected(e) = import_from_dir(&art, &admin, &t.path().join("user")).unwrap()
+    else {
+        panic!("not rejected");
+    };
+    assert!(matches!(e, CodecError::Unsafe(_)), "{e}");
+}
+
+#[test]
+fn a_stalled_download_fails_after_the_stall_timeout() {
+    let art = artifact_for_bytes(&fake_lib());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 2048];
+        let _ = s.read(&mut buf);
+        let head = "HTTP/1.1 200 OK\r\nContent-Length: 695\r\nConnection: close\r\n\r\n";
+        let _ = s.write_all(head.as_bytes());
+        let _ = s.write_all(&bz2_of_fake()[..100]);
+        // Then nothing, but the connection stays open.
+        std::thread::sleep(Duration::from_secs(3));
+    });
+    let mut ep = test_endpoint(url);
+    ep.retries = 0;
+    ep.stall_timeout = Duration::from_millis(300);
+    let t = tempfile::tempdir().unwrap();
+    let start = std::time::Instant::now();
+    let err = install_from_network(&ep, &art, t.path(), &mut |_, _| {}).unwrap_err();
+    assert!(
+        matches!(&err, CodecError::Network(m) if m.contains("stalled")),
+        "{err}"
+    );
+    assert!(start.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn a_slow_download_that_makes_progress_finishes() {
+    let lib = fake_lib();
+    let art = artifact_for_bytes(&lib);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 2048];
+        let _ = s.read(&mut buf);
+        let body = bz2_of_fake();
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let _ = s.write_all(head.as_bytes());
+        // Six pieces, 150 ms apart: 750 ms in all, longer than the stall timeout of 400 ms.
+        for piece in body.chunks(body.len() / 6 + 1) {
+            let _ = s.write_all(piece);
+            let _ = s.flush();
+            std::thread::sleep(Duration::from_millis(150));
+        }
+    });
+    let mut ep = test_endpoint(url);
+    ep.retries = 0;
+    ep.stall_timeout = Duration::from_millis(400);
+    let t = tempfile::tempdir().unwrap();
+    let p = install_from_network(&ep, &art, t.path(), &mut |_, _| {}).unwrap();
+    assert_eq!(fs::read(p).unwrap(), lib);
+}
+
+#[test]
+fn the_real_endpoint_has_the_documented_limits() {
+    let c = Endpoint::cisco();
+    assert_eq!(c.stall_timeout, Duration::from_secs(30));
+    assert_eq!(c.total_timeout, Duration::from_secs(600));
+}
+
+#[test]
+fn messages_name_files_not_folders() {
+    let e = CodecError::SymlinkRefused(PathBuf::from("/home/someone/private/codecs/lib.so"));
+    let m = e.to_string();
+    assert!(m.contains("lib.so") && !m.contains("someone"), "{m}");
 }
 
 /// Real download from Cisco into a temporary directory (needs Internet and a TLS path that
