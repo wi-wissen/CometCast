@@ -18,7 +18,7 @@
 use std::collections::HashSet;
 
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
@@ -107,6 +107,9 @@ pub(crate) struct OriginPolicy {
 impl OriginPolicy {
     /// An entry that is not a valid origin never matches (it is reported by `validate()`);
     /// it still counts as "a list was given", so a typo cannot silently switch the check off.
+    /// An empty list means "not configured". A value that was written down but names no origin
+    /// (`""`, `","`) never gets here: the configuration loader refuses it at start
+    /// (`check_allowed_origins_text`), so "empty" can only mean "absent".
     pub(crate) fn new(list: &[String]) -> Self {
         let mut p = Self {
             active: !list.is_empty(),
@@ -167,6 +170,10 @@ pub(crate) async fn cors_middleware(
         && req
             .headers()
             .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
+    let pna_requested = req
+        .headers()
+        .get("access-control-request-private-network")
+        .is_some_and(|v| v.as_bytes() == b"true");
     if preflight {
         let mut resp = if allowed {
             let mut r = StatusCode::NO_CONTENT.into_response();
@@ -193,6 +200,14 @@ pub(crate) async fn cors_middleware(
                 header::ACCESS_CONTROL_MAX_AGE,
                 HeaderValue::from_static("600"),
             );
+            // Private Network Access: only for an allowed origin and only on a relay that is
+            // meant for a private network. UNCERTAIN: not tried in a real Chrome PNA flow.
+            if pna_requested && private_network_relay(&state.config) {
+                h.insert(
+                    HeaderName::from_static("access-control-allow-private-network"),
+                    HeaderValue::from_static("true"),
+                );
+            }
             r
         } else {
             (StatusCode::FORBIDDEN, "origin not allowed\n").into_response()
@@ -206,9 +221,29 @@ pub(crate) async fn cors_middleware(
     let mut resp = next.run(req).await;
     if allowed {
         allow_origin(&mut resp, policy.any, &origin);
+        // Without this a page on another origin cannot read Retry-After of a 429 or a ban.
+        resp.headers_mut().insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static("Retry-After"),
+        );
     }
     vary_origin(&mut resp);
     resp
+}
+
+/// Is this relay meant for a private network (so a public page may reach it, PNA)?
+/// Internal mode always is; otherwise the listen address must be loopback or private.
+fn private_network_relay(config: &crate::ServerConfig) -> bool {
+    use std::net::IpAddr;
+    config.mode == crate::Mode::Internal
+        || match config.listen_addr.ip() {
+            IpAddr::V4(a) => a.is_loopback() || a.is_private() || a.is_link_local(),
+            IpAddr::V6(a) => {
+                a.is_loopback()
+                    || (a.segments()[0] & 0xfe00) == 0xfc00
+                    || (a.segments()[0] & 0xffc0) == 0xfe80
+            }
+        }
 }
 
 fn allow_origin(resp: &mut Response, any: bool, origin: &HeaderValue) {

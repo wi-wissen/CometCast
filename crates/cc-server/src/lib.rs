@@ -41,7 +41,9 @@ pub use config::{
     DEFAULT_WIDE_FAILURE_FACTOR, LimitsConfig, Mode, NetworkConfig, Secret, ServerConfig,
     TlsConfig, TurnConfig,
 };
-pub use file_config::{DEFAULT_CONFIG_TOML, load_config, overrides_from_env};
+pub use file_config::{
+    DEFAULT_CONFIG_TOML, check_allowed_origins_text, load_config, overrides_from_env,
+};
 pub use health::healthcheck;
 pub use turn::{IceServer, credential_for, ice_servers};
 

@@ -40,6 +40,25 @@ impl StringList {
     }
 }
 
+/// An `allowed_origins` text (one string, comma separated) that was written down but names no
+/// origin: `""`, `","`, `" , "`. Treating it as "not set" would switch the Origin check off
+/// without anyone noticing, so it is an error. Absent (and a TOML `[]`) still mean "not set".
+fn origins_text_is_empty(text: &str) -> bool {
+    StringList::One(text.to_string()).items().is_empty()
+}
+
+/// Error for an explicitly given `allowed_origins` text that names no origin. `source` says
+/// where it came from (for example `--allowed-origins` or `COMETCAST_ALLOWED_ORIGINS`).
+pub fn check_allowed_origins_text(source: &str, text: &str) -> Result<(), ConfigError> {
+    if origins_text_is_empty(text) {
+        return Err(ConfigError::new(format!(
+            "{source}: {text:?} names no origin, which would silently switch the Origin check off. \
+             List the exact web origins (https://host[:port], comma separated) or leave the setting out"
+        )));
+    }
+    Ok(())
+}
+
 fn parse_nets(what: &str, list: StringList) -> Result<Vec<IpNet>, ConfigError> {
     list.items()
         .into_iter()
@@ -183,6 +202,9 @@ impl FileConfig {
             c.web_dir = Some(v);
         }
         if let Some(v) = self.allowed_origins {
+            if let StringList::One(text) = &v {
+                check_allowed_origins_text("allowed_origins", text)?;
+            }
             c.allowed_origins = v.items();
         }
         if let Some(v) = self.idle_room_secs {
@@ -492,6 +514,13 @@ pub fn load_config(
         }
         None => toml::Table::new(),
     };
+    if let Some(toml::Value::String(text)) = table.get("allowed_origins") {
+        let source = match file {
+            Some(p) => format!("{}: allowed_origins", p.display()),
+            None => "allowed_origins".to_string(),
+        };
+        check_allowed_origins_text(&source, text)?;
+    }
     // Secret values (from `--set` / environment, or the file) are removed from error texts.
     let mut secrets: Vec<String> = overrides
         .iter()
@@ -501,6 +530,12 @@ pub fn load_config(
     collect_file_secrets(&table, &mut secrets);
     let hide = |e: ConfigError| ConfigError::new(redact(&e.0, &secrets));
     for (k, v) in overrides {
+        if k == "allowed_origins" && !v.trim_start().starts_with('[') {
+            check_allowed_origins_text(
+                "allowed_origins (environment, --allowed-origins or --set)",
+                v,
+            )?;
+        }
         apply_override(&mut table, k, v).map_err(hide)?;
     }
     check_secret_types(&table, "").map_err(hide)?;
