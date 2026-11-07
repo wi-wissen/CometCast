@@ -63,7 +63,13 @@ pub(super) fn map_error(e: &ashpd::Error) -> CaptureError {
 
 /// Connect to the portal and ask what it offers. Fails with `Unsupported` when there is no
 /// session bus or no ScreenCast portal.
-pub(super) async fn connect() -> Result<(Screencast, Probe), CaptureError> {
+pub(super) async fn connect(app_id: Option<&str>) -> Result<(Screencast, Probe), CaptureError> {
+    // Decision N57: tell the portal which application this process is (the id of the installed
+    // `.desktop` file), so that the picker names "Comet Cast". Old portals have no registry;
+    // the picker then shows the generic name, which is no reason to fail.
+    if let Some(id) = app_id.and_then(|i| i.parse::<ashpd::AppID>().ok()) {
+        let _ = ashpd::register_host_app(id).await;
+    }
     let sc = Screencast::new().await.map_err(|e| match map_error(&e) {
         CaptureError::Display(_) => CaptureError::NoPortal("no desktop portal on the session bus"),
         other => other,

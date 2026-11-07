@@ -34,6 +34,8 @@ pub mod x11;
 
 #[cfg(target_os = "macos")]
 pub mod macos_sck;
+#[cfg(target_os = "linux")]
+pub mod pwplugin;
 #[cfg(target_os = "windows")]
 pub mod windows_wgc;
 
@@ -132,7 +134,15 @@ pub struct PickerOptions {
     pub owner_window: Option<u64>,
     /// X11 display name for the fallback (`None` = `$DISPLAY`).
     pub x11_display: Option<String>,
+    /// Linux/Wayland: the application id to register with the desktop portal, so that the system
+    /// picker names the app (decision N57; the id of the installed `.desktop` file). `None`
+    /// registers nothing. Ignored elsewhere.
+    pub app_id: Option<String>,
 }
+
+/// The application id of the Comet Cast desktop app (`apps/flutter/linux/CMakeLists.txt`,
+/// `APPLICATION_ID`, and its `.desktop` file).
+pub const APP_ID: &str = "de.cometcast.cometcast";
 
 impl Default for PickerOptions {
     fn default() -> Self {
@@ -141,6 +151,7 @@ impl Default for PickerOptions {
             use_restore_token: false,
             owner_window: None,
             x11_display: None,
+            app_id: None,
         }
     }
 }
@@ -219,37 +230,27 @@ pub fn open_picker(opts: &PickerOptions) -> Result<Box<dyn ScreenSource + Send>,
     #[cfg(target_os = "linux")]
     {
         let have_x = opts.x11_display.is_some() || std::env::var_os("DISPLAY").is_some();
-        #[cfg(feature = "wayland")]
-        let (built, mut portal_source): (
-            bool,
-            Option<Result<wayland::WaylandSource, CaptureError>>,
-        ) = (true, None);
-        #[cfg(not(feature = "wayland"))]
-        let built = false;
-        let plan = plan_linux(is_wayland_session(), have_x, built, || {
+        // The portal backend is always there in principle: in the process (feature `wayland`)
+        // or as the plug-in library that is loaded now (decision N57); a missing plug-in or a
+        // missing libpipewire makes the portal "not available" and ends as `NoPortal` on a
+        // Wayland session.
+        let mut portal_source: Option<Result<Box<dyn ScreenSource + Send>, CaptureError>> = None;
+        let plan = plan_linux(is_wayland_session(), have_x, true, || {
             #[cfg(feature = "wayland")]
-            {
-                let r = wayland::WaylandSource::connect(opts);
-                let ok = r.is_ok();
-                portal_source = Some(r);
-                ok
-            }
+            let r = wayland::WaylandSource::connect(opts)
+                .map(|s| Box::new(s) as Box<dyn ScreenSource + Send>);
             #[cfg(not(feature = "wayland"))]
-            {
-                false
-            }
+            let r = pwplugin::PluginSource::connect(opts)
+                .map(|s| Box::new(s) as Box<dyn ScreenSource + Send>);
+            let ok = r.is_ok();
+            portal_source = Some(r);
+            ok
         });
         match plan {
-            #[cfg(feature = "wayland")]
             LinuxPlan::Portal => match portal_source {
-                Some(Ok(s)) => Ok(Box::new(s)),
-                Some(Err(e)) => Err(e),
+                Some(r) => r,
                 None => Err(CaptureError::Display("portal was not opened".into())),
             },
-            #[cfg(not(feature = "wayland"))]
-            LinuxPlan::Portal => Err(CaptureError::NoPortal(
-                "no portal/PipeWire capture in this build",
-            )),
             LinuxPlan::X11 => Ok(Box::new(x11::X11Source::connect(
                 opts.x11_display.as_deref(),
                 x11::X11Options { fps: opts.fps },

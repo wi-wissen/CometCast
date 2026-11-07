@@ -31,7 +31,7 @@ Time: about 75 minutes.
 | A3 | Stop; tap Screen; pick one window | Only that window on the receiver; other windows over it are not in the picture |
 | A4 | Tap Screen, then cancel the picker | Back at "What to show", **no error page** (`capture_denied`), session still joined; Screen again opens the picker |
 | A5 | Check System Settings > Privacy & Security > Screen & System Audio Recording | Record whether the app is listed after a share, and what happens if it is switched off and Screen is tapped again (expected: `capture_denied` or the unavailable page, never a crash) |
-| A6 | macOS 13 or older | The unavailable page (the picker needs macOS 14) |
+| A6 | macOS 13 or older | The screen-sharing page `error.capture` with the `capture_os_old` text ("Sharing the screen needs macOS 14 or later. This Mac has an older version."); buttons Show photo or file, Show a link, Back; still connected; no crash |
 | A7 | Tap Screen twice quickly | One picker only |
 | A8 | The picker while the app is full screen / in Stage Manager / on another Space | The picker is visible and usable; record |
 
@@ -44,8 +44,8 @@ Time: about 75 minutes.
 | B3 | Static screen 30 s | Receiver keeps the picture; "unchanged" polls, no encoded frames after the 3 refreshes (A10); CPU near idle (record) |
 | B4 | 1080p30 video full screen 10 min | Smooth; CPU (target under 25 %), latency (target under 200 ms), frozen pictures |
 | B5 | Resize the shared window, move it to another display, change the display's scaling while sharing | Record: ScreenCaptureKit scales to the configured size, so the picture size should stay the one at pick time (UNCERTAIN: no resize handling in the code; a window that becomes much larger may look blurry) |
-| B6 | Minimise the shared window | Receiver keeps the last picture; after restore it updates; no error (`Blank`/`Suspended` frame status) |
-| B7 | Close the shared window | The share ends: back at "What to show", no error page. If the picture freezes, record it |
+| B6 | Minimise the shared window | Display keeps the last picture, no timeout, no message on either side (N55); after restore it updates (`Blank`/`Suspended` frame status) |
+| B7 | Close the shared window, and end the share with the system's own "stop sharing" control | The presentation stops like Stop (N55): the presenter is back at "What to show" and still connected, the display goes to Idle with the same code, no toast, no error page. If the picture freezes, record it |
 | B8 | Click the system's "stop sharing" in the menu bar indicator | Ends like the presenter's stop (`SCStreamErrorUserStopped` is a normal end), no error page |
 | B9 | Disconnect the shared external display | Ends like B7 |
 | B10 | Lock the Mac and unlock; sleep and wake | Record: continues, ends or black. Never a crash |

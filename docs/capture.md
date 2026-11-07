@@ -239,7 +239,8 @@ picker in the UI (no page for a cancel, `capture_denied`, `capture_unavailable`)
 Flutter: present_screen(None)
   -> cc-ffi presenter  -> cc-sender ScreenOptions { picker: true }
   -> cc_capture::open_picker(PickerOptions)            (on a blocking thread: the picker waits for a person)
-       Linux:   plan_linux(): portal + PipeWire (feature `wayland`)  else  X11 whole desktop  else  unavailable
+       Linux:   plan_linux(): portal + PipeWire (in the process with feature `wayland`, else the plug-in library)
+                else  X11 whole desktop (X11 sessions only)  else  capture_no_portal (Wayland) / unavailable
        Windows: GraphicsCapturePicker + Windows.Graphics.Capture
        macOS:   SCContentSharingPicker + ScreenCaptureKit (macOS 14+)
   -> ScreenSource::list_sources()   one entry, id "system-picker"
@@ -258,6 +259,33 @@ Flutter: present_screen(None)
   portal answers on the session bus, on Wayland sessions **and** on X11 sessions that have one; (2) otherwise X11
   whole-desktop capture, but **only when the session is not Wayland** (XWayland would give an empty or partial
   picture); (3) otherwise `capture_unavailable`. A cancelled portal picker is `capture_denied`, with no fallback to X11.
+* **Fix list 3 (decisions N55 to N57).** (a) Two more non-fatal codes besides `capture_unavailable`:
+  `capture_os_old` (`CaptureError::OsTooOld`, macOS before 14) and `capture_no_portal`
+  (`CaptureError::NoPortal`: Wayland without the ScreenCast portal, a portal that offers neither monitors nor windows,
+  a build without the portal backend, or no libpipewire). The three show the page `error.capture` in the apps. (b) The
+  Flutter app calls `present_screen(None)` on desktops, so the picker opens on every tap; `present_screen(Some(..))`
+  (X11 whole desktop) is used only when a display is forced (`COMETCAST_CAPTURE_DISPLAY`, development and tests).
+  (c) **Windows:** the picker is owned by the app's own window: `windows_wgc::own_window()` finds the visible
+  top-level window of this process (class `FLUTTER_RUNNER_WIN32_WINDOW` first) and `PickerOptions::owner_window`
+  overrides it; the foreground window is used only by a program without a window (the command-line program). `cc-ffi`
+  needed no new function for this (the Rust core runs in the Flutter process). (d) **Closed or ended share:**
+  `Capture::Ended` (PipeWire stream removed, `GraphicsCaptureItem.Closed`, `SCStream` stopped, the portal's `Closed`
+  signal) ends the capture; `cc-sender` turns it into `RunEnd::Stopped` and the presenter task into
+  `PresentingStopped`, the same event as Stop: the app is back at "What to show", no page, no toast. A minimised window
+  delivers nothing (`Unchanged`): the display keeps the last picture. (e) **Linux without libpipewire (N57):** the
+  program (`libcc_ffi.so`) does not link libpipewire. The portal and PipeWire code is built as its own library,
+  `libcc_capture_pw.so` (`crates/cc-capture-pw`, feature `plugin`, a C interface of six functions, version 1), which
+  `cc_capture::pwplugin` loads with `dlopen` when Screen is tapped on a session with a portal (search order:
+  `COMETCAST_CAPTURE_PW_LIB`, `lib/` beside the executable, the executable's folder, the system). A missing library,
+  a missing libpipewire or another interface version is `NoPortal`; X11 sessions fall back to X11 as before. With the
+  feature `wayland` the backend is linked into the program instead (development, CI, the loopback test).
+  `apps/flutter/linux/CMakeLists.txt` builds and installs the library when `pkg-config libpipewire-0.3` finds the
+  development files. (f) **Application id (N57):** the portal backend registers `de.cometcast.cometcast`
+  (`ashpd::register_host_app`, `PickerOptions::app_id`) so the picker names the app; the desktop entry
+  `apps/flutter/linux/de.cometcast.cometcast.desktop` is installed to `share/applications/` of the bundle and must
+  end up in `/usr/share/applications` in a package. No package format is shipped from this repository yet (see
+  question J7); a package should list `libpipewire-0.3-0` as a recommended dependency, not a hard one. Restore tokens
+  stay off.
 * **Blocking.** `start` blocks while the picker is open; `cc-sender` runs `prepare` with `spawn_blocking`.
   Nothing else in the process waits for it.
 * **Shared logic** (platform independent, unit-tested): `convert` (BGRA/BGRx/RGBA/RGBx/ARGB/XRGB/ABGR/XBGR/RGB/BGR,
@@ -344,7 +372,7 @@ Flutter: present_screen(None)
 
 ### macOS (`macos_sck.rs`, macOS targets only)
 
-* macOS 14 or newer (`SCContentSharingPicker`); older systems answer `Unsupported` = `capture_unavailable`
+* macOS 14 or newer (`SCContentSharingPicker`); older systems answer `OsTooOld` = `capture_os_old`
   (the designer's text names the picker for macOS 14+; a fallback for 12.3 to 13 would need our own picker UI and was
   not built).
 * The picker is presented on the **main queue** (the app's main run loop must run: it does in Flutter, not in a plain

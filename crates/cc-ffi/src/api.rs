@@ -2570,13 +2570,15 @@ pub fn send_content_cmd(cmd: UiContentCmd) -> bool {
 /// Order: `WaitingForApproval` (only where the room asks), `Joined`, then per presentation
 /// `Presenting`, `ConnectionCode`, (`Page`, `Progress`...), `PresentingStopped`. The stream ends
 /// after `Ended` and after every `Error` except the ones of a presentation that could not
-/// start (`capture_denied`, `capture_unavailable`: the session stays joined, the person is back
+/// start (`capture_denied`, `capture_unavailable`, `capture_os_old`, `capture_no_portal`: the
+/// session stays joined, the person is back
 /// at "What to show"). `Error.code` is a protocol code (`room_not_found`, `join_denied`,
 /// `room_locked`, `room_locked_waiting`, `approval_timeout`, `removed_by_host`, `room_full`,
 /// `rate_limited`, `banned`, `server_full`, `proto_mismatch`, `bad_hello`, `bad_message`,
 /// `forbidden`, `altcha_*`, `wrong_role`, `not_in_room`) or a local one: `connection_lost`
 /// (could not reach or lost the server, timeouts included), `peer_failed` (WebRTC failed),
-/// `ice_refused` / `ice_failed`, `capture_denied`, `capture_unavailable`, `unknown`.
+/// `ice_refused` / `ice_failed`, `capture_denied`, `capture_unavailable`, `capture_os_old` (macOS
+/// before 14), `capture_no_portal` (Wayland without the ScreenCast portal or PipeWire), `unknown`.
 /// The apps map the code, never the English `message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PresenterUiEvent {

@@ -9,7 +9,7 @@
 //! calls free functions, like `encoded.rs`); events leave through the stream sink.
 //!
 //! Errors that happen **while starting a presentation** (`capture_denied`,
-//! `capture_unavailable`) do not end the session: the stream stays open and the person is back
+//! `capture_unavailable`, `capture_os_old`, `capture_no_portal`) do not end the session: the stream stays open and the person is back
 //! at "What to show". Every other `Error` and every `Ended` is final: the stream ends.
 
 use std::sync::Mutex;
@@ -442,6 +442,18 @@ mod tests {
             message: "screen capture was cancelled or refused".into(),
         });
         assert_eq!(code, "capture_denied");
+    }
+
+    #[test]
+    fn the_new_desktop_codes_pass_through_and_do_not_end_the_session() {
+        // Decision N56: macOS before 14 and Wayland without the portal or PipeWire.
+        for code in ["capture_os_old", "capture_no_portal"] {
+            let (c, _) = start_failure(&TransportError::Server {
+                code: code.into(),
+                message: "x".into(),
+            });
+            assert_eq!(c, code);
+        }
     }
 
     #[test]

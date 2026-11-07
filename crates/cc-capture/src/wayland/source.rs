@@ -54,7 +54,7 @@ impl WaylandSource {
             .thread_name("cometcast-portal")
             .build()
             .map_err(|e| CaptureError::Display(format!("cannot start the portal runtime: {e}")))?;
-        let (sc, probe) = rt.block_on(portal::connect())?;
+        let (sc, probe) = rt.block_on(portal::connect(opts.app_id.as_deref()))?;
         Ok(Self {
             rt,
             sc,

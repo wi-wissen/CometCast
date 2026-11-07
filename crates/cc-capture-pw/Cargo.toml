@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "cc-capture-pw"
+description = "Linux Wayland screen capture (desktop portal + PipeWire) as a plug-in library that the app loads at run time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# A shared library `libcc_capture_pw.so` with a small C interface (see src/lib.rs). It links
+# libpipewire; the app (`libcc_ffi.so`) does not: it loads this library with dlopen when the
+# person shares the screen, so the app starts on a machine without libpipewire and then reports
+# `capture_no_portal` (decision N57). Built by `apps/flutter/linux/CMakeLists.txt` with
+# `cargo build -p cc-capture-pw --features plugin`; without the feature the library is empty,
+# so `cargo build --workspace` needs no PipeWire files.
+[lib]
+crate-type = ["cdylib"]
+
+# Same lints as the workspace, except `unsafe_code` is `deny`: the C interface needs raw
+# pointers; only `src/lib.rs` opts out, with a comment on every `unsafe` block.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[features]
+plugin = ["dep:cc-capture", "cc-capture/wayland"]
+
+[dependencies]
+cc-capture = { workspace = true, optional = true }

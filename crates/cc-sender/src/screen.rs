@@ -332,6 +332,8 @@ pub(crate) fn prepare(
         cc_capture::open_picker(&cc_capture::PickerOptions {
             fps: options.fps,
             x11_display: options.display.clone(),
+            // The system picker names the app (decision N57).
+            app_id: Some(cc_capture::APP_ID.to_owned()),
             ..cc_capture::PickerOptions::default()
         })
     } else {

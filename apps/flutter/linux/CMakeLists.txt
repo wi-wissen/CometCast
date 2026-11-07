@@ -100,6 +100,26 @@ set(CC_DOCS_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-docs-worker")
 # `cc-office` without the engine, and building both in one command would unify the features
 # and link the engine (Typst) into libcc_ffi.so again.
 set(CC_OFFICE_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-office-worker")
+# The Wayland screen capture (desktop portal + PipeWire, crates/cc-capture-pw) is a separate
+# library, `libcc_capture_pw.so`, that the app loads with dlopen when the person shares the screen
+# (decision N57). libcc_ffi.so does not link libpipewire, so the app starts on a machine without
+# it and then reports `capture_no_portal`. It is built when the PipeWire development files are
+# there (`pkg-config libpipewire-0.3`, libclang for the bindings), in its own cargo command
+# because of its feature `plugin`. Without them the app still builds; Wayland sharing then
+# reports `capture_no_portal` and X11 sessions capture as before. Packages: depend on
+# `libpipewire-0.3-0` (deb) / `pipewire-libs` (rpm) as a *recommended* package, not a hard one.
+find_package(PkgConfig QUIET)
+set(CC_CAPTURE_PW_LIB "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/libcc_capture_pw.so")
+set(CC_CAPTURE_PW_BUILD FALSE)
+if(PkgConfig_FOUND)
+  pkg_check_modules(CC_PIPEWIRE QUIET libpipewire-0.3)
+  if(CC_PIPEWIRE_FOUND)
+    set(CC_CAPTURE_PW_BUILD TRUE)
+  endif()
+endif()
+if(NOT CC_CAPTURE_PW_BUILD)
+  message(STATUS "libpipewire-0.3 development files not found: Wayland screen capture is not built (capture_no_portal)")
+endif()
 add_custom_target(cc_ffi_build ALL
   COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi -p cc-docs ${CC_FFI_CARGO_FLAGS}
           --manifest-path "${CC_REPO_ROOT}/Cargo.toml"
@@ -110,6 +130,17 @@ add_custom_target(cc_ffi_build ALL
   BYPRODUCTS "${CC_FFI_LIB}" "${CC_DOCS_WORKER}" "${CC_OFFICE_WORKER}"
   COMMENT "Building the Rust core (cc-ffi), the PDF worker (cc-docs-worker) and the Office worker (cc-office-worker, ${CC_FFI_PROFILE})"
   USES_TERMINAL)
+if(CC_CAPTURE_PW_BUILD)
+  add_custom_target(cc_capture_pw_build ALL
+    COMMAND ${CARGO_EXECUTABLE} build -p cc-capture-pw --features plugin ${CC_FFI_CARGO_FLAGS}
+            --manifest-path "${CC_REPO_ROOT}/Cargo.toml"
+            --target-dir "${CC_FFI_TARGET_DIR}"
+    BYPRODUCTS "${CC_CAPTURE_PW_LIB}"
+    COMMENT "Building the Wayland capture library (cc-capture-pw, ${CC_FFI_PROFILE})"
+    USES_TERMINAL)
+  add_dependencies(cc_capture_pw_build cc_ffi_build)
+  add_dependencies(${BINARY_NAME} cc_capture_pw_build)
+endif()
 add_dependencies(${BINARY_NAME} cc_ffi_build)
 
 # Only the install-generated bundle's copy of the executable will launch
@@ -154,6 +185,20 @@ install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
 
 # The Rust core (see the cc_ffi_build target above).
 install(FILES "${CC_FFI_LIB}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
+# The Wayland capture library, next to libcc_ffi.so (bundle/lib/); the Rust core loads it from
+# `lib/` beside the executable (cc_capture::pwplugin). Optional: see the target above.
+if(CC_CAPTURE_PW_BUILD)
+  install(FILES "${CC_CAPTURE_PW_LIB}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
+
+# The desktop entry of the application id: the portal's screen picker names "Comet Cast" from
+# it (decision N57; the core registers the id `${APPLICATION_ID}` with the portal). A package
+# installs it as /usr/share/applications/${APPLICATION_ID}.desktop.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${APPLICATION_ID}.desktop"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications"
   COMPONENT Runtime)
 
 # The PDF render worker, a program next to the executable (bundle/cc-docs-worker). Not in lib/:

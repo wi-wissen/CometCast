@@ -181,14 +181,27 @@ the display does **not** show or that has been withdrawn on purpose:
 
 **Timing.** A change (code, mode, name) is published at once (the spec's limit is 1 s). The record
 is published again every 10 s (`REFRESH_EVERY`) and the presenter side drops a row after 30 s
-without a refresh (`SCREEN_TTL`); a goodbye removes it at once. **UNCERTAIN, found while building:**
-`mdns-sd` 0.21 has no public setter for the TTL of the records of a service; they go out with the
-library's 4500 s (TXT, PTR) and 120 s (SRV, address). So "record lifetime at most 30 s" is met by
-the receiving side (expiry plus a browse that is started again every 10 s,
-`announce::start_raw_mdns_browse`) and not by the TTL on the wire. Checked on one machine over real
-multicast (`tests/nearby_loopback.rs`, including a 45 s run in which an unchanged record stays);
-**not** checked: a display that dies without any goodbye on a real network (the loopback test
-cannot make a machine vanish), Android's `NsdManager` and Apple's `NWBrowser` caches.
+without a refresh (`SCREEN_TTL`); a goodbye removes it at once. **Record lifetime (decision N50).** `mdns-sd` 0.21.7 announces with 120 s (SRV, address) and 4500 s (PTR, TXT)
+and has no public setter, and Android's `NsdManager` and Apple's `NWBrowser` answer from the system's cache until a
+record's lifetime has passed, so a display that dies without a goodbye would stay in a list for minutes. The repository
+therefore carries a patched copy, `vendor/mdns-sd` (the published crate plus two public setters, see
+`vendor/mdns-sd/COMETCAST-PATCH.md`, wired in by `[patch.crates-io]`), and every announcement (`display.rs`,
+`announce.rs`) sets both lifetimes to **30 s** (`RECORD_TTL_SECS`); the display publishes again every 10 s, so the caches
+refresh while it is alive and drop it within 30 s after it died (acceptance of spec 14.8 point 5: at most 35 s). The
+receiving side keeps its expiry as a second guard (30 s without a refresh; a browse started again every 10 s on
+desktops). Checked on one machine over real multicast (`tests/nearby_loopback.rs`, including a 45 s run in which an
+unchanged record stays); the lifetime is unit-tested; **not** checked: a display that dies without any goodbye on a
+real network, Android's `NsdManager` and Apple's `NWBrowser` caches (device test plans).
+
+**Who announces how (N50).** Computers and Android (TV, tablet, phone in the display role): the Rust core with
+`mdns-sd`; Android holds a `WifiManager.MulticastLock` while it announces (`announceLock` on the channel
+`de.cometcast/nearby`, called from `DisplayRoot`). iPad in the display role: the core builds the record and hands it to
+Swift (`watch_native_announcements`, `NativeAnnounceEvent`; `lib/core/native_announce.dart`, `AnnounceBridge.swift`),
+which publishes it with `NWListener`; the multicast entitlement is not counted on. Apple TV: its own Swift
+announcer (`Announcer.swift`, with the pure record builder `displayAnnouncementTxt` in `CometCastCore`, a port of
+`txt_records`), same layout, no room name (the app has no setup for one). macOS browses with `NWBrowser` through the
+iOS bridge (`macos/Runner/NearbyBridge.swift`; the Local Network permission of macOS 15 gives "Not asked yet" and
+"Not allowed"); Linux and Windows browse in the core.
 
 **Size.** The record has at most 400 bytes (`MAX_TXT_BYTES`, DNS-SD lengths included); a server name
 so long that it would not fit is not announced. A normal record is about 100 bytes. Nothing else is
@@ -256,8 +269,9 @@ way ([measurement-points.md](measurement-points.md), A8).
   the row only when it comes from the same instance, or from an address the row already knew (a
   second device cannot take over a row); the same instance announcing a new id replaces its row.
 * A row leaves on goodbye, after 30 s without a refresh, or when the same instance announces
-  something unusable. At most 32 rows; beyond that the **first found is dropped** (spec 14.8 point 10;
-  spec 14.3 says "further screens are not shown": see question G3).
+  something unusable. At most 32 rows: the **first 32 found stay**; a 33rd and later screen is neither
+  reported nor stored until a row leaves, then it is added at the end with its next refresh (spec 14.8 point 10,
+  decision N49).
 * Nothing is picked, remembered or saved here. In the Flutter app a row is tapped by the person; the
   announced server is used for that one join and is **not** saved as "last used" (a server the
   person confirmed is saved in the list of confirmed servers only).

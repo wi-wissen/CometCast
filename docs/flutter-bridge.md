@@ -233,3 +233,14 @@ Spec: `docs/design/first-run-and-display.md` section 14, `docs/design/native-app
 - **Never saved.** The announced server is used for that one join (`PresenterSessionController.connect(server: ...)`), never put in `AppSettings.serverAddress` and so never saved as "last used"; "Use this relay" adds the host to the confirmed servers only (test `nearby_page_test.dart`).
 - **Codegen.** Run twice, the second run changed no file (`cc-ffi`'s default feature was `h264-libloading` for the run and restored).
 - **Tests.** `cargo test -p cc-discovery -p cc-ffi`; Dart: `nearby_controller_test.dart`, `nearby_page_test.dart`, `nearby_platform_test.dart`, `display_announce_test.dart`, and the group "screens on this network (the real core)" in `rust_core_test.dart`; screenshots of every state: `COMETCAST_SHOTS=/tmp/shots-nearby flutter test test/screenshots_test.dart --plain-name nearby`.
+
+## Fix list 3 additions (nearby and desktop capture)
+
+* **New:** `watch_native_announcements` (stream of `NativeAnnounceEvent`: `Publish { instance, txt }`, `Withdraw`) and
+  `stop_native_announcements`: the platform announces the display itself (iPadOS, `NWListener`) and the core only builds
+  the record; without a watcher the core announces with `mdns-sd`. The bridge code was regenerated twice (second run:
+  no difference).
+* **Codes:** `PresenterUiEvent.Error.code` may be `capture_os_old` and `capture_no_portal` besides `capture_unavailable`;
+  all three are non-fatal (the join stays) and show the page `error.capture`.
+* `present_screen(None)` is what the desktop app calls (the system picker on every tap); the owner window of the Windows
+  picker is found in Rust (`cc_capture::windows_wgc::own_window`), so no signature carries a window handle.

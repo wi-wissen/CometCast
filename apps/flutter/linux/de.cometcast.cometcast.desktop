@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Comet Cast
+Exec=cometcast
+Terminal=false
+StartupWMClass=de.cometcast.cometcast

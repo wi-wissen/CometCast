@@ -450,8 +450,9 @@ fn the_picker_option_goes_through_the_picker_backend_selection() {
         ..ScreenOptions::default()
     };
     match prepare(options, Arc::new(Counters::default())) {
-        Err(PrepareError::Failed(_)) => {}
+        Err(PrepareError::Failed(_) | PrepareError::NoPortal(_)) => {}
         Err(PrepareError::Denied(m)) => panic!("unexpected denial: {m}"),
+        Err(PrepareError::OsOld(m)) => panic!("not macOS: {m}"),
         Ok(_) => panic!("no capture backend can work here"),
     }
 }

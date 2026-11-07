@@ -25,11 +25,11 @@ Time: about 75 minutes.
 
 | # | Do | Expect |
 | --- | --- | --- |
-| A1 | Join a room as presenter, tap Screen | The Windows picker ("Choose what to share" with Screens and Windows) opens as a dialog **owned by the Comet Cast window** (not behind it, not on another monitor). If it opens behind the app or fails with an error about the window handle, record it: the owner window is the foreground window unless `PickerOptions::owner_window` is passed (UNCERTAIN, open question H3) |
+| A1 | Join a room as presenter, tap Screen | The Windows picker ("Choose what to share" with Screens and Windows) opens as a dialog **owned by the Comet Cast window** (not behind it, not on another monitor). If it opens behind the app or fails with an error about the window handle, record it: the owner window is the Comet Cast window itself (decision N55: `cc_capture::windows_wgc::own_window`, the window of class `FLUTTER_RUNNER_WIN32_WINDOW` of this process; the foreground window only for a program without one). Click another app's window just before tapping Screen: the picker must still belong to Comet Cast |
 | A2 | Pick a screen, confirm | Presenting starts; first picture on the receiver within a few seconds (record time). The system's yellow capture border is visible around the screen or window (expected; the code does not hide it) |
 | A3 | Stop, tap Screen, pick one window | Only that window is on the receiver (acceptance of B7); windows that cover it are **not** in the picture (Graphics Capture reads the window itself) — record whether that is so |
-| A4 | Tap Screen, then cancel (X, Esc, Cancel) | Back at "What to show", **no error page**, session still joined. Record the error code in the log: the code treats `E_POINTER`, `E_ABORT`, `E_ACCESSDENIED`, `ERROR_CANCELLED` and `S_OK` as "denied" (UNCERTAIN); any other code would show as unavailable, which is a bug to report with the hex code |
-| A5 | Windows 10 older than 1803, or a Windows Server without the feature (if available) | The unavailable page; no crash |
+| A4 | Tap Screen, then cancel (X, Esc, Cancel) | Back at "What to show", **no error page**, session still joined. Record the error code in the log: the code treats `E_POINTER`, `E_ABORT`, `E_ACCESSDENIED`, `ERROR_CANCELLED` and `S_OK` as "denied" (UNCERTAIN); any other code would show the page `error.capture` (`capture_unavailable`), which is a bug to report with the hex code |
+| A5 | Windows 10 older than 1803, or a Windows Server without the feature (if available) | The screen-sharing page `error.capture` with the `capture_unavailable` text (buttons Show photo or file, Show a link, Back; still connected); no crash |
 | A6 | Tap Screen from a remote desktop (RDP) session | Record: works, picker fails, or black pictures |
 
 ## B. Picture and behaviour
@@ -41,8 +41,8 @@ Time: about 75 minutes.
 | B3 | Static screen for 30 s | Receiver keeps the picture; the sender's counters show "unchanged" polls and no encoded frames after 3 refreshes (A10); CPU near idle (record) |
 | B4 | 1080p30 video full screen for 10 min | Smooth; CPU of the app (target under 25 %), latency with the stopwatch (target under 200 ms); frozen pictures |
 | B5 | Resize the shared window larger and smaller, maximise, restore | Picture follows the new size within about a second (frame pool is recreated); no stretched or cropped picture; no crash. Record the receiver's size after each step |
-| B6 | Minimise the shared window | Receiver keeps the last picture, no error; after restore it updates (Windows may deliver nothing while minimised: UNCERTAIN) |
-| B7 | Close the shared window | The share ends: back at "What to show", no error page (`GraphicsCaptureItem.Closed`). If the picture freezes forever, record it |
+| B6 | Minimise the shared window | Display keeps the last picture, no timeout, no message on either side (N55); after restore it updates (Windows may deliver nothing while minimised: UNCERTAIN) |
+| B7 | Close the shared window | The presentation stops like Stop (N55): the presenter is back at "What to show" and still connected, the display goes to Idle with the same code, no toast, no error page (`GraphicsCaptureItem.Closed`). If the picture freezes forever, record it |
 | B8 | Unplug the shared monitor, or change its resolution/scale while sharing | Ends as in B7, or follows the new size (record which; the size path is `SizeTracker`) |
 | B9 | Lock the PC (Win+L) and unlock; sleep and resume | Record: continues, ends or black. Never a crash |
 | B10 | Click "Stop sharing" in the system's own capture border control (Windows 11 builds that have one) | Ends like the presenter's stop |

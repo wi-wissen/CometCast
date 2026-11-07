@@ -32,6 +32,9 @@ ashpd = { version = "=0.14.0", default-features = false, features = ["tokio", "s
 pipewire = { version = "=0.10.1", features = ["v0_3_34"], optional = true }
 tokio = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
+# Loads `libcc_capture_pw.so` (crates/cc-capture-pw) when the person shares the screen, so that
+# the app starts without libpipewire (decision N57). Not needed with the feature `wayland`.
+libloading = "0.8"
 
 # Windows only. Same crate and version as cc-miracast; only the features this backend needs.
 [target.'cfg(windows)'.dependencies]

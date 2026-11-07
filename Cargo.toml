@@ -10,6 +10,7 @@ members = [
     "crates/cc-codec",
     "crates/cc-media",
     "crates/cc-capture",
+    "crates/cc-capture-pw",
     "crates/cc-docs",
     "crates/cc-docs-wasm",
     "crates/cc-office",
