@@ -81,6 +81,7 @@ Questions found while implementing part B of `fix-list-flutter.md` (core, protoc
   - **Found:** the three picker APIs need code that cannot be built or run in this environment. Linux: xdg-desktop-portal ScreenCast over D-Bus plus a PipeWire stream (no PipeWire development files here; `ashpd`/`zbus`/`pipewire` are not in the offline registry and their licences were not checked). Windows: `GraphicsCapturePicker` (WinRT; `cc-miracast` has the `windows` crate but nothing for capture). macOS 14: `SCContentSharingPicker` (ScreenCaptureKit, Swift or Objective-C; no Xcode here). `cc-capture` has the X11 backend only; the Wayland, Windows and macOS backends are `unsupported` stubs.
   - **Options:** (a) a separate round per desktop with the right machine and the crate choices reviewed (licences, MSRV, binary size); (b) one Rust trait `CaptureSource` backend per system behind `present_screen(None)`; (c) keep X11 whole-desktop only on Linux.
   - **Done meanwhile:** the interface is in: `present_screen(screen: Option<ScreenRequest>)` (Rust, bridge, `CoreApi.presentScreen`, `PresenterSessionController.presentScreen`). `Some(request)` is the existing X11 capture; `None` is the system picker and answers `capture_unavailable` (no page for `capture_denied` is needed yet; both are non-fatal and keep the join). Cancelling a picker later maps to `capture_denied` with no change to the interface. Nothing else was changed in `cc-capture`. **Updated in the capture round (section H):** the three backends are built to specification behind `present_screen(None)` and a cancelled picker is `capture_denied`; none was run on its system.
+  - **Answered (N55–N57):** design side complete: picker on every share, Windows owner = the app window, `error.capture` for `capture_unavailable` / `capture_os_old` / `capture_no_portal`, no UI for cancel, minimised or closed windows. B7 closes when the three manual test plans pass (fix list 3 B4–B6).
 - **E2 B6: how the display learns that a presentation stopped while the presenter stays.**
   - **Found:** the protocol has no message for it (`peer_left` is a leave; the server relays only the setup). The spec leaves the mechanism to the engineers ("renegotiation or a pre-negotiated track").
   - **Options:** (a) a new server message (protocol change); (b) renegotiate one peer connection; (c) a fresh WebRTC session per presentation over the same signalling connection, with the end announced by the control channel.
@@ -168,40 +169,53 @@ Questions found while building "screens on the same network" (spec 14, native-ap
   - **Found:** `mdns-sd` 0.21.7 has no public setter for the TTL of a service's records (they go out with 4500 s for TXT and PTR, 120 s for SRV and addresses). A browser that trusts the TTL would keep a display that died without a goodbye for a long time, and `mdns-sd` itself reports a record only when it is new or changed, so an unchanged refresh is invisible to the browser.
   - **Options:** (a) patch or vendor `mdns-sd` to set a 30 s TTL; (b) add a heartbeat field to the TXT record (a protocol change, the record then changes on every refresh and every browser sees it); (c) another library; (d) keep the long TTL and do the expiry on the receiving side (as built).
   - **Done meanwhile:** (d). The display publishes its record again every 10 s; the list drops a row after 30 s without a refresh; the desktop browse is started again every 10 s so that unchanged records are reported again (checked on one machine over real multicast, including 45 s without a change); the Android and Apple bridges report their known services again every 10 s. Not checked: a display that vanishes without any goodbye on a real network; what `NsdManager` and `NWBrowser` do with a service whose records are still cached.
+  - **Answered:** (d) accepted on desktops; on Android and iOS a refresh from the system's cache must not keep a row alive: set the record lifetime to ≤ 30 s (patched/newer `mdns-sd`, option (a)) or prove the screen answered; acceptance ≤ 35 s after a display loses power on each platform (N50, 14.8 point 5, fix list 3 B1).
 - **G2 native-apps.md 4.1: the announcement of displays through `NsdManager.registerService` and `NWListener` is not built.**
   - **Found:** the table lists them for Android TV and tablets, iPad and Apple TV. The announcement is made once, in the Rust core (`mdns-sd`), for every display that runs the Flutter app. On iOS `mdns-sd` needs the multicast entitlement (docs/ios.md) and probably fails silently without it; on Android it may need a multicast lock that the display path does not hold. The Apple TV (Swift) app is not part of this round and keeps its own announcement.
   - **Options:** (a) native announcers per platform fed from the core's record (core to Dart to channel); (b) request the multicast entitlement and keep `mdns-sd`; (c) accept.
   - **Done meanwhile:** (c) as built; browse (the presenter side) is native on Android and iOS as the table says.
+  - **Answered:** (c) accepted for Android (TV, tablets) and computers in the display role, with a `WifiManager.MulticastLock` held while announcing; iPad in the display role must announce with `NWListener` and Apple TV with the 14.8 TXT layout before release (N50, native-apps.md 4.1, fix list 3 B2). Test builds: iPads and Apple TVs are found by code only; nothing drawn changes.
 - **G3 14.3 and 14.8 point 10 disagree about the 33rd screen.**
   - **Found:** 14.3 says "At most 32 rows; further screens are not shown", 14.8 point 10 says "drop the oldest-seen beyond that". "Oldest-seen" can mean first found or longest without a refresh.
   - **Done meanwhile:** the core keeps 32 rows and drops the **first found** when a 33rd arrives (the row leaves, the new one is added at the end). One of the two sentences should be changed.
+  - **Answered:** Keep the first 32 found; ignore further screens until a row leaves (rows never leave because of others). 14.8 point 10 now says so; the built behaviour is a defect (N49, fix list 3 A5).
 - **G4 14.2: no state for "the search cannot run at all" (no multicast, no interface).**
   - **Found:** the table has no row for it. The core reports `Unavailable`.
   - **Done meanwhile:** it is shown as "Nothing found" (`nearby.none` and `nearby.noneWhy`) at once, without waiting for 8 s. A separate text would need copy.
+  - **Answered:** Accepted: "Nothing found" at once, no new copy; tried again on a network change or when the page is shown again (N48, 14.2).
 - **G5 14.4: after a stale code the other rows are not kept.**
   - **Found:** the spec says the row is removed and the search starts again. A new search has an empty list in the core (rows of an earlier search are never kept, 14.8 point 9), so rows that stay on the page would never expire.
   - **Done meanwhile:** the other rows are cleared too; under the line `nearby.gone` the list fills again within about a second (the searching placeholder shows meanwhile).
+  - **Answered:** Accepted (clear and refill), with one fix: `nearby.gone` stays while the list refills and goes only with the next tap or when the page is left; today `_put` and `Removed` clear it within a second (N51, 14.4, fix list 3 A1).
 - **G6 14.2 and native-apps.md 4.1: macOS 15 "Local Network" cannot be detected.**
   - **Found:** the desktop apps browse with `mdns-sd` and raw sockets; a refusal by macOS shows as silence, not as `PolicyDenied`. The state "Not allowed" can therefore never appear on macOS, and `nearby.allow` (which would open the Privacy and Security pane) is only reachable if a state is reported.
   - **Done meanwhile:** macOS shows "Nothing found" in that case. The Dart side opens the pane `Privacy_LocalNetwork` when asked.
+  - **Answered:** macOS browses with `NWBrowser` (the iOS bridge) so Not asked yet / Not allowed work as on iOS; required for release, "Nothing found" accepted in test builds (N50, native-apps.md 4.1, fix list 3 B3).
 - **G7 14.10 "reused without change": `start.or` and `common.cancel` did not exist as Flutter keys.**
   - **Found:** the web has them, the Flutter ARB sets did not (`startOr`, `commonCancel`).
   - **Done meanwhile:** added with the values of the spec (`or`/`oder`, `Cancel`/`Abbrechen`) in the three sets.
+  - **Answered:** Accepted (N52).
 - **G8 `ios.localNetworkUsage`: the German `InfoPlist.strings` used "Sie".**
   - **Found:** `ios/Runner/de.lproj/InfoPlist.strings` was written in the formal form while the loaded German set is "du".
   - **Done meanwhile:** replaced with the "DE du (shipped)" text of 14.10; the Sie text is in `lib/l10n/sie/app_de.arb` as `iosLocalNetworkUsage`. The English text and `Info.plist` use the new text. The Apple TV prompt text is untouched.
+  - **Answered:** Accepted: the shipped German is du; a Sie build takes `iosLocalNetworkUsage` from the Sie set (N52).
 - **G9 14.4 and 14.8 point 11: is a confirmed relay also "last used"?**
   - **Found:** "never save an announced server as last used unless the person confirmed it" can be read as "after the confirmation it may be saved as last used". 14.4 says only "the host is remembered as confirmed on this device".
   - **Done meanwhile:** the confirmed host goes into the list of confirmed servers only (it is joined at once next time); it is never put in the server field, so it is never saved as last used. A server that is announced and trusted already (default relay, policy, DNS-SRV) is not saved either: what is saved is the server of the settings.
+  - **Answered:** Accepted: a confirmed host goes only into the confirmed servers; never "last used", never into a field (14.8 point 11, N52).
 - **G10 14.3: the accessible name of a locked row.**
   - **Found:** `nearby.aria` has a code, a locked row has none.
   - **Done meanwhile:** "{name}, {mode}" (for example "„Clubhouse“, Locked right now"), the row is not focusable.
+  - **Answered:** Accepted: "{name}, {mode}" (nearby.aria without the code part), not focusable (14.3, N52).
 - **G11 14.2: what the section shows while the platform is asked.**
   - **Found:** between showing the page and the first answer (a few milliseconds, longer on iOS) no state applies.
   - **Done meanwhile:** the section label alone, no placeholder.
+  - **Answered:** Accepted: label alone (14.2, N48).
 - **G12 mockup against 5.3: Connect.**
   - **Found:** the mockup draws Connect disabled until there is a code; 5.3 (N22) says Connect is always enabled and validates on submit.
   - **Done meanwhile:** as 5.3 (enabled).
+  - **Answered:** Accepted: 5.3 wins; Connect always enabled with a code field. The mockup's disabled Connect was wrong (N52). While a row connects, Connect and Scan are disabled (N54).
+
 ## H. Questions from the capture round
 
 Questions found while building the desktop system screen picker (B7, E1 above) in `cc-capture`: Linux/Wayland portal + PipeWire, Windows `GraphicsCapturePicker`, macOS `SCContentSharingPicker`. The engineering side is in [capture.md](../capture.md). Each question has what was found, and what was done meanwhile (a neutral behaviour). None of them blocks the code that is in. E1 is answered by the backends below for what can be built without the platforms; **nothing was run on a real Wayland compositor, Windows or macOS**, so B7's acceptance is still open until the manual plans ([Linux](../linux-wayland-test-plan.md), [Windows](../windows-capture-test-plan.md), [macOS](../macos-capture-test-plan.md)) are done.
@@ -210,23 +224,47 @@ Questions found while building the desktop system screen picker (B7, E1 above) i
   - **Found:** the ScreenCast portal can skip its picker for a share it was told to remember (a restore token). Measurement point spike 1 says "Wayland dialog once per session"; native-apps.md 8 and 20.3 say Screen opens the system picker "directly" and that the person chooses the screen or window, which reads as every time. A token would also re-share the previously chosen screen without asking, which is a privacy decision.
   - **Options:** (a) always show the picker (every share); (b) remember the choice for the running app session only (portal persist mode "transient") and show the picker again after the app restarts; (c) remember across restarts (persist until revoked).
   - **Done meanwhile:** (a). The token store exists, is tested (0600 in the per-user data directory) and is switched off (`PickerOptions::use_restore_token = false`, nothing sets it).
+  - **Answered:** (a): the picker on every share, tokens stay off, no remember option. The measurement point "Wayland dialog once per session" is superseded (N55).
 - **H2 Wayland: libpipewire is a hard run-time dependency of a build with the `wayland` feature.**
   - **Found:** the `pipewire` crate links `libpipewire-0.3.so.0` dynamically. A Linux app built with the feature does not start on a machine without it, also for X11 users. Every current Wayland desktop has the library; an X11-only or server install may not.
   - **Options:** (a) ship the feature on and declare the library as a package dependency; (b) load PipeWire at run time (`dlopen`) so its absence only turns the portal off (more code, not built); (c) ship two Linux builds.
   - **Done meanwhile:** the feature is not in any default feature set. Builds without it answer `capture_unavailable` on Wayland and use the X11 whole desktop on X11 sessions. Release packaging has to choose (a), (b) or (c); CI builds and tests the feature in its own job.
+  - **Answered:** The app must start without libpipewire: load it at run time (b), or declare it in every Linux package format shipped (a); without it Wayland Screen shows `error.capture` with `errors.capture_no_portal` (N57, fix list 3 B5).
 - **H3 Windows and macOS: which window owns the picker, and what does a refusal look like?**
   - **Found:** `GraphicsCapturePicker` needs an owner window handle from a desktop app; `cc-capture` does not know the Flutter window. `SCContentSharingPicker` is presented on the main queue of the app. Which error codes each system gives for a cancel were not observed.
   - **Done meanwhile:** Windows uses the foreground window (or `PickerOptions::owner_window`, which `cc-ffi` does not pass yet). Every plausible cancel code is `capture_denied`; any other failure is `capture_unavailable`. No UI is involved.
   - **Needs:** the first run on each system (test plans A1, A4).
+  - **Answered:** Pass the Flutter window's `HWND` through `cc-ffi` as `owner_window`; the foreground window is not acceptable for release. Cancel and refusal = `capture_denied` (no page), other failures `capture_unavailable` (page `error.capture`); confirm the codes in test plans A1/A4 (N55, fix list 3 B4).
 - **H4 macOS: below macOS 14 there is no system picker.**
   - **Found:** `SCContentSharingPicker` needs macOS 14. For 12.3 to 13 the only ScreenCaptureKit way is to list windows and displays and draw our own chooser, which the designer excluded (N26: no monitor list).
   - **Done meanwhile:** macOS before 14 answers `capture_unavailable` (the page of N33).
+  - **Answered:** New code `capture_os_old` → page `error.capture` with `errors.capture_os_old` ("needs macOS 14 or later"); no own chooser (N56, 11.9, fix list 3 A6).
 - **H5 Which sources the picker offers.**
   - **Found:** the portal and the macOS picker are asked for one monitor or one window. The Windows picker offers screens and windows by itself. Applications (macOS), multiple windows and virtual monitors are not requested.
   - **Done meanwhile:** as stated. `what.screenLaptop` ("Whole screen or one window") matches.
+  - **Answered:** Accepted: what the system offers; `what.screenLaptop` stays (N55).
 - **H6 What the viewers should see when a shared window is minimised or the compositor pauses the stream.**
   - **Found:** the stream pauses; the capture then returns "unchanged", so the display keeps the last picture. Nothing tells the viewers that the picture is stale, and the sender never ends the share for it.
   - **Done meanwhile:** keep the last picture, no timeout, no message (no UI was designed for it).
+  - **Answered:** Accepted: last picture, no timeout, no message on either side (as browser sharing). A closed shared window or a share ended in the system UI = `PresentingStopped` (presenter to "What to show", display Idle, no toast) (N55, fix list 3 B6).
 - **H7 `capture_info` and the Linux "Wayland" answer.**
   - **Found:** `capture_info` (cc-ffi, unchanged) still reports Wayland as not supported; the Flutter app does not call it for the screen flow any more (it uses `present_screen(None)`), so nothing breaks.
   - **Done meanwhile:** left as is. It can be removed or updated with the next bridge change.
+  - **Answered:** Accepted; remove or update with the next bridge change (N57).
+
+## I. Differences listed in the nearby and capture hand-off
+
+| Difference | Answer |
+| --- | --- |
+| During platform resolution the section shows only the label | Accepted (G11, N48) |
+| `unavailable` shown as "Nothing found" at once, not after 8 s | Accepted (G4, N48) |
+| After a stale code the whole list is cleared | Accepted; the `nearby.gone` line must survive the refill (G5, N51, fix list 3 A1) |
+| A locked row's accessible name has no code | Accepted (G10, N52) |
+| Connect enabled while the mockup draws it disabled | Accepted, 5.3 wins (G12, N52); disabled only while a row connects (N54, A2) |
+| Laptop card edge `#E2E4E9` | Correct: it is the card value of `p-divider` (3.3; dark `#2B2F38`) (N52) |
+| iOS Local Network prompt and German InfoPlist use the du copy | Accepted (G8, N52) |
+| macOS never shows "Not allowed" | Test builds only; release browses with `NWBrowser` on macOS (G6, N50, B3) |
+| More than 32 screens: the first found leaves | Defect: keep the first 32, ignore the rest (G3, N49, A5) |
+| After "Use this relay" the rows are those frozen when the relay page opened | Accepted: shown disabled only until the join answers (N51) |
+| Relay page uses the generic icon and layout | Correct: it is the presenter variant of 7.2 (N52) |
+| Debug banner visible in screenshots | Re-shoot without it (N58, C1) |

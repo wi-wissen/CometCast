@@ -89,9 +89,9 @@ The app start page of every presenter app (Android phone and tablet, iPhone, iPa
 
 | | Android phone / tablet | iPhone / iPad | Linux / Windows / macOS | Displays (Android TV, Apple TV, tablet or computer in the display role) |
 | --- | --- | --- | --- | --- |
-| Browse | `NsdManager.discoverServices` (`_cometcast._tcp`), resolve with `registerServiceInfoCallback` (API 34+) or `resolveService` | `NWBrowser` with `.bonjourWithTXTRecord`; TXT via `NWTXTRecord` | the existing `mdns-sd` backend of `cc-discovery` | n/a (no list on a display) |
-| Announce | n/a on phones; `NsdManager.registerService` on tablets in the display role and Android TV | n/a on iPhone; `NWListener` service on iPad in the display role | `cc-discovery` `advertise_receiver` in the display role | Android TV: `NsdManager.registerService`; Apple TV: `NWListener.service` with TXT (replaces today's announcement fields, spec 14.8) |
-| Permission | none for browsing; a future Android local-network permission is handled like iOS | **Local Network** prompt, shown when the person taps `nearby.search` the first time (spec 14.2 "Not asked yet"); `NSLocalNetworkUsageDescription` = `ios.localNetworkUsage`; `NSBonjourServices` lists `_cometcast._tcp`. Denied (`PolicyDenied`) → state "Not allowed", link to `UIApplication.openSettingsURLString` | none (macOS 15+ may ask for Local Network for the desktop app the same way: handle it as iOS) | Apple TV and iPad already ask when announcing starts (`docs/appletv-device-test-plan.md` B1) |
+| Browse | `NsdManager.discoverServices` (`_cometcast._tcp`), resolve with `registerServiceInfoCallback` (API 34+) or `resolveService` | `NWBrowser` with `.bonjourWithTXTRecord`; TXT via `NWTXTRecord` | Linux, Windows: the existing `mdns-sd` backend of `cc-discovery`; **macOS: `NWBrowser` (the iOS bridge), so the Local Network permission can be read (spec N50)** | n/a (no list on a display) |
+| Announce | n/a on phones; tablets in the display role and Android TV: the core's `mdns-sd` announcer is accepted (N50) **with a `WifiManager.MulticastLock` held while announcing**, or `NsdManager.registerService` | n/a on iPhone; `NWListener` service on iPad in the display role (required for release, N50: the multicast entitlement is not counted on) | `cc-discovery` `advertise_receiver` in the display role | Android TV: as Android tablets; Apple TV: `NWListener.service` with the TXT layout of spec 14.8 (required, or Apple TVs never appear in the lists) |
+| Permission | none for browsing; a future Android local-network permission is handled like iOS | **Local Network** prompt, shown when the person taps `nearby.search` the first time (spec 14.2 "Not asked yet"); `NSLocalNetworkUsageDescription` = `ios.localNetworkUsage`; `NSBonjourServices` lists `_cometcast._tcp`. Denied (`PolicyDenied`) → state "Not allowed", link to `UIApplication.openSettingsURLString` | Linux, Windows: none. macOS 15+: Local Network, read through `NWBrowser` and handled as iOS (Not asked yet / Not allowed, `nearby.allow` opens `Privacy_LocalNetwork`). Until macOS browses with `NWBrowser` (test builds only) a refusal shows "Nothing found" | Apple TV and iPad already ask when announcing starts (`docs/appletv-device-test-plan.md` B1) |
 | Search time | 60 s, then Paused (spec 14.5) | 60 s, then Paused | while the window is visible | announce while Idle or Presenting |
 | "No local network" | `ConnectivityManager`: no `TRANSPORT_WIFI` / `TRANSPORT_ETHERNET` | `NWPathMonitor`: no `.wifi` / `.wiredEthernet` | no non-loopback interface with a private address | n/a |
 | Open the system settings (`nearby.allow`) | n/a (no permission) | `openSettingsURLString` | macOS: the Privacy & Security pane | n/a |
@@ -166,7 +166,7 @@ Touch first. Keyboard (desktop, tablets with a keyboard): Tab order = reading or
 | Open a link (link card Open) | `url_launcher`, external browser | n/a (presenter only) | default browser | default browser | default browser | n/a |
 | Permissions asked before use | Notifications (Android 13+, for the capture foreground service) when Share screen is first chosen | Local network (when the person taps `nearby.search` the first time, spec 14.2), camera (on Scan) | | | Screen Recording | |
 
-Rules: open a system dialog only as the direct result of the person's choice (spec 5.5: no explainer page before it). Cancelling it returns to the page it came from without an error. A refused permission is handled exactly like a cancelled dialog (back to the page, no error page; spec 5.5: `capture_denied` never shows a page). The system itself tells the person how to allow it later.
+Rules: open a system dialog only as the direct result of the person's choice (spec 5.5: no explainer page before it). Cancelling it returns to the page it came from without an error. **Share screen on desktops (spec N55):** the picker opens on every share (Wayland portal restore tokens off); on Windows it is owned by the Comet Cast window; macOS before 14 and Linux without the ScreenCast portal or PipeWire get the page `error.capture` instead of a picker (spec 6, N56); the app registers its application id with the portal so the picker names "Comet Cast" (N57). A refused permission is handled exactly like a cancelled dialog (back to the page, no error page; spec 5.5: `capture_denied` never shows a page). The system itself tells the person how to allow it later.
 
 TV text input: a text field gets focus like a button (with the ring) and opens the keyboard only on OK. When the keyboard closes with Done/Enter, focus moves to the row's primary button (wizard step 1: Next; step 3 field: Looks right). Up/Down leave the field.
 
@@ -406,7 +406,13 @@ One session per join, replacing "join when sending" (N5):
 
 ### 20.3 Desktop capture (`cc-capture`)
 
-Screen sharing on Linux, Windows and macOS opens the system picker directly (section 8): xdg-desktop-portal ScreenCast, `GraphicsCapturePicker`, `SCContentSharingPicker`. Cancel or refusal = `capture_denied` (no error page). No monitor list, duration or test stream in the UI (N26).
+Screen sharing on Linux, Windows and macOS opens the system picker directly (section 8): xdg-desktop-portal ScreenCast, `GraphicsCapturePicker`, `SCContentSharingPicker`. Cancel or refusal = `capture_denied` (no error page). No monitor list, duration or test stream in the UI (N26). Decisions of the capture round (spec N55–N57):
+
+- Codes reported by `present_screen(None)`, all non-fatal (the join stays): `capture_denied` (cancel, refused permission: no page), `capture_unavailable` (no backend, any other failure), `capture_os_old` (macOS before 14), `capture_no_portal` (Wayland without the ScreenCast portal or without libpipewire). The last three show `error.capture` with `errors.<code>` (spec 6, 11.9).
+- The picker every time; `PickerOptions::use_restore_token` stays false and nothing in the UI turns it on.
+- Windows: `cc-ffi` passes the Flutter window's `HWND` as `owner_window`; the foreground window is not used.
+- A minimised or paused shared window: the last picture stays, no timeout, nothing shown. A closed shared window or a share ended by the system: `PresentingStopped` (presenter to "What to show", display to Idle, no toast).
+- Linux: the app starts without libpipewire (run-time loading, or a declared dependency in every package format); `capture_info` may be removed with the next bridge change.
 
 ### 20.4 Links, install referrer and scanner (Flutter + platform)
 
@@ -433,5 +439,5 @@ The web display must accept the same `handover` messages to keep the promise aga
 ### 20.6 Rules from the second Flutter review
 
 - Error and failure lines show the key's text only; technical reasons (`message`, "network error", "no library") go to the log (N46).
-- `capture_unavailable` on a desktop without a capture backend: `error.other` with `errors.capture_unavailable`, action `common.back` (N33).
+- `capture_unavailable`, `capture_os_old`, `capture_no_portal` and the unsupported codec: the page `error.capture` (spec 6, N56; replaces `error.other` + Back of N33).
 
