@@ -72,7 +72,7 @@ has "extra denied range: 5f00::/16" "denied-peer-ip=5f00::-5f00:ffff:ffff:ffff:f
 has "extra denied range: 3fff::/20" "denied-peer-ip=3fff::-3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff"
 # The range 41 ports wide (49160-49200) gives 80 % = 32; user-quota and bandwidth lines exist.
 has "total quota below the port count" "total-quota=32"
-has "user quota" "user-quota=6"
+has "user quota" "user-quota=24"
 has "max-bps" "max-bps=750000"
 has "bps-capacity" "bps-capacity=125000000"
 count=$((count + 1)); grep -Eq '^denied-peer-ip=::(-|/)' "$work/deploy/coturn/turnserver.conf" && { echo "FAIL: a ::-based denied-peer-ip line (breaks all IPv4 peers in coturn 4.18.0)"; fails=$((fails + 1)); }

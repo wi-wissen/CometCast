@@ -67,10 +67,10 @@ pidfile=/tmp/turnserver.pid
 # they never trigger and a few clients can use up ALL ports, so nobody else can relay.
 #  - total-quota is computed by render.sh as 80 % of the ports in the range (@TURN_TOTAL_QUOTA@),
 #    so some ports always stay free below the limit.
-#  - user-quota=6 allocations per user name. cometcast-server hands out the SAME user name to a
+#  - user-quota=24 allocations per user name. cometcast-server hands out the SAME user name to a
 #    client (IPv4 address or IPv6 /64) for a whole time bucket, so this is a per-client limit.
 #    Residual: an attacker with many addresses (a whole IPv6 /48, a botnet) still gets many user
-#    names, each with 6 allocations; the total-quota then stops the exhaustion only by refusing
+#    names, each with 24 allocations; the total-quota then stops the exhaustion only by refusing
 #    everybody. Firewall rate limits for 3478 are the missing part (not set up here).
 #  - max-bps (bytes/s per allocation) and bps-capacity (bytes/s for the whole server) bound the
 #    bandwidth. MEASURED with coturn 4.18.0: every allocation RESERVES max-bps out of
@@ -84,7 +84,7 @@ pidfile=/tmp/turnserver.pid
 #    is not used.
 # UNCERTAIN: all four values are untuned guesses. The user-quota and the capacity cap were tested
 # (docs/server.md, "Review fixes"); the per-allocation byte limit itself was not.
-user-quota=6
+user-quota=24
 total-quota=@TURN_TOTAL_QUOTA@
 max-bps=750000
 bps-capacity=125000000

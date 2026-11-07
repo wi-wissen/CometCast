@@ -369,7 +369,7 @@ were never exercised against a real IPv6 peer (the test relay was IPv4 only, an 
 answered with "address family mismatch" before the deny list matters, and the test host had no
 IPv6), and the list does not cover your own routable IPv6 networks. IPv4 lines are unchanged.
 
-**Quotas (tested against coturn 4.18.0, values UNCERTAIN/untuned):** `user-quota=6`;
+**Quotas (tested against coturn 4.18.0, values UNCERTAIN/untuned):** `user-quota=24` (was 6; raised because clients behind one NAT or one IPv6 /64 share one user name);
 `total-quota` is computed by `render.sh` as 80 % of the relay ports (400 for the default 501
 ports, so it is always below the port count; a quota above the port count never triggers);
 `max-bps=750000` and `bps-capacity=125000000` (bytes/s). Measured with a raw TURN client: one user
@@ -625,3 +625,24 @@ health command were run; the server image was not rebuilt).
 - Limits per IPv6 /64 and per IPv4 use the same quota; the plan's separate global limiter per
   action is only partly built (global caps for rooms and connections).
 - All numbers: placeholders, unmeasured.
+
+### Known costs of the stable TURN user name (from the second review, UNCERTAIN)
+
+- **Shared NAT:** all clients behind one IPv4 address or one IPv6 /64 share one TURN user name and
+  therefore one `user-quota` (24 after the review; 6 was too low for an office or a school with
+  several users, because a browser can use 2-3 allocations per PeerConnection). Whether 24 suits
+  real use is not measured.
+- **Bucket rollover:** the previous user name stays valid until the end of its bucket, so one client
+  can briefly hold up to twice the quota.
+- **Behind a reverse proxy without `trusted_proxies`:** the server sees only the proxy address, so
+  the whole world shares one user name and one quota, and the next caller gets error 486. This fails
+  safe (the header cannot be forged to mint user names) but looks like an outage. Set
+  `trusted_proxies` whenever a proxy is in front.
+- **`TURN_EXTERNAL_IP`:** `render.sh` checks the syntax only, not whether the "public" half is really
+  public. A private address there renders without complaint and hands clients an unreachable relay.
+- **Healthcheck and `TURN_LISTENING_IP`:** compose reads it from its own `.env` handling and
+  `render.sh` from `deploy/.env`; with `--env-file` or another working directory the two can
+  disagree and coturn stays "unhealthy".
+- **Shutdown:** cleanup queues two Close frames (`server_shutdown`, then `bye`); harmless as long as
+  the writer stops at the first. Clients that reconnect automatically on `server_shutdown` could
+  cause a reconnect storm (not addressed).
