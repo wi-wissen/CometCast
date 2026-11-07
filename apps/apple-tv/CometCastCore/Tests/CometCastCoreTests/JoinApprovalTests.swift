@@ -221,7 +221,7 @@ final class JoinMachineTests: XCTestCase {
         _ = m.handle(.message(.joinRequest(id: 1, name: "A\u{202E}na\u{200B}", check: 42)))
         _ = m.handle(.message(.joinRequest(id: 2, name: "\u{202E}", check: 17)))
         _ = m.handle(.message(.joinRequest(id: 1, name: "dup", check: 99))) // same id: ignored
-        XCTAssertEqual(m.state.requests, [JoinRequest(id: 1, name: "Ana", check: 42), JoinRequest(id: 2, name: "Guest 2", check: 17)])
+        XCTAssertEqual(m.state.requests, [JoinRequest(id: 1, name: "Ana", check: 42), JoinRequest(id: 2, name: "Guest 2", check: 17, unnamed: true)])
         XCTAssertEqual(m.state.phase, .waitingSender) // a request does not change the phase
     }
 
@@ -289,13 +289,15 @@ final class JoinMachineTests: XCTestCase {
         XCTAssertEqual(m.handle(.endRoom), [.send(.endRoom)])
         XCTAssertEqual(m.state.code, "K7M2QX") // nothing changes before the server answers
         let fx = m.handle(.message(.roomEnded))
-        XCTAssertEqual(fx, [.closePeer, .resetContent, .send(.createRoom(altcha: nil, joinMode: .locked))])
+        // End: the next session starts in the default mode (Open here), Locked lasts only until End (spec 4.3)
+        XCTAssertEqual(fx, [.closePeer, .resetContent, .send(.createRoom(altcha: nil, joinMode: .open))])
+        XCTAssertEqual(m.state.joinMode, .open)
         XCTAssertEqual(m.state.phase, .connecting)
         XCTAssertNil(m.state.code)
         XCTAssertNil(m.state.peerName)
         XCTAssertEqual(m.state.requests, [])
         XCTAssertEqual(m.state.blocks, []) // the block list lives as long as the room
-        XCTAssertEqual(m.handle(.message(.roomCreated(code: "B4N9HT", joinMode: .locked))), [])
+        XCTAssertEqual(m.handle(.message(.roomCreated(code: "B4N9HT", joinMode: .open))), [])
         XCTAssertEqual(m.state.code, "B4N9HT")
         XCTAssertEqual(m.state.phase, .waitingSender)
     }

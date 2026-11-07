@@ -89,6 +89,13 @@ final class PeerSession: NSObject {
         pc.add(cand) { _ in } // a single bad candidate is not fatal
     }
 
+    /// Sends one text message on the content control channel (display to presenter), for example the page message
+    /// `{"kind":"page","page":n,"pages":m}` (CometCastCore `pageMessageJSON`). Does nothing while the channel is not open.
+    func sendControl(text: String) {
+        guard !closed, let channel, channel.readyState == .open else { return }
+        _ = channel.sendData(LKRTCDataBuffer(data: Data(text.utf8), isBinary: false))
+    }
+
     func close() {
         closed = true
         channel?.delegate = nil

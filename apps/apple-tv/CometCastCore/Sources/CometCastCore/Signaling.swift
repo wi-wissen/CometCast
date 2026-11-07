@@ -162,6 +162,12 @@ private func isUnsafeNameScalar(_ s: Unicode.Scalar) -> Bool {
 /// 40 characters (Unicode scalars) and `Guest N` is used when nothing is left. The server does this already; this is
 /// defence in depth. The result is still untrusted text: show it as plain text, never as markup.
 public func sanitizeDisplayName(_ raw: String?, guestNumber: Int) -> String {
+    sanitizedDisplayNameOrNil(raw) ?? "Guest \(guestNumber)"
+}
+
+/// The same cleaning without the fallback: nil when nothing is left. The design shows `common.noName` then (spec
+/// 4.4), so the screens need to know that the name was empty.
+public func sanitizedDisplayNameOrNil(_ raw: String?) -> String? {
     var out: [Unicode.Scalar] = []
     var pendingSpace = false
     for c in (raw ?? "").unicodeScalars {
@@ -177,7 +183,7 @@ public func sanitizeDisplayName(_ raw: String?, guestNumber: Int) -> String {
     }
     var cut = Array(out.prefix(maxDisplayNameChars))
     while let l = cut.last, l.properties.isWhitespace { cut.removeLast() }
-    if cut.isEmpty { return "Guest \(guestNumber)" }
+    if cut.isEmpty { return nil }
     var r = String.UnicodeScalarView()
     r.append(contentsOf: cut)
     return String(r)

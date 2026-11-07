@@ -16,7 +16,7 @@ Checks:
 - `apps/web/src/locales/en.json` vs `de.json` (nested keys flattened with dots)
 - `apps/web/src/locales/de-sie.json` vs `de.json` (same keys and placeholders; `de.json` must have no formal forms)
 - `apps/flutter/lib/l10n/app_en.arb` vs `app_de.arb` (keys starting with `@` ignored)
-- `apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings` (each key needs `en` and `de`; the Swift tests also check that every key the core can produce exists, and that placeholders agree)
+- `apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings` (each key needs `en` and `de`; the Swift tests also check that every key the core can produce and every key the views use exists, and that placeholders agree) and `Localizable-sie.xcstrings` (the formal German set, not loaded by default: same keys, English and `{placeholders}` as the du catalog; the loaded one must have no formal forms)
 
 Exit code 1 on a real mismatch or unreadable file. A missing file is reported
 as "skipped: file missing" and does not fail. Keys are compared only within
@@ -35,3 +35,13 @@ node --test tools/set-version.test.mjs
 `release-guard.sh` holds the duplicate guards (tag/release/draft exists, Docker version tag exists,
 `skip` typos); self-tests: `node --test tools/*.test.mjs` and `bash tools/release-guard.test.sh`.
 `release-summary.mjs` fails when no platform artefact exists.
+
+## gen-appletv-strings.mjs, gen-appletv-icons.mjs
+
+Generators for the Apple TV display (`apps/apple-tv`). Plain Node 22, no dependencies; `--check` fails when a generated file differs.
+
+```sh
+node tools/gen-appletv-strings.mjs [--check]   # Localizable.xcstrings (du) and Localizable-sie.xcstrings from the web and Flutter locale files and spec table 15.13
+node tools/gen-appletv-icons.mjs [--check]     # assets/icons/*.svg and the Apple TV asset catalog images from apps/web/src/components/Icon.vue and assets/logo
+node tools/gen-third-party.mjs [--check]       # also copies THIRD_PARTY_LICENSES.md and THIRD_PARTY_NOTICES.md to apps/apple-tv/Resources/Licenses
+```

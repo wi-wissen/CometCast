@@ -35,6 +35,16 @@
 	<dict/>
 	<key>CCDefaultRelay</key>
 	<string>$(CC_DEFAULT_RELAY)</string>
+	<key>CCStringsTable</key>
+	<string>$(CC_STRINGS_TABLE)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>AtkinsonHyperlegibleNext-400.ttf</string>
+		<string>AtkinsonHyperlegibleNext-500.ttf</string>
+		<string>AtkinsonHyperlegibleNext-700.ttf</string>
+		<string>AtkinsonHyperlegibleMono-500.ttf</string>
+		<string>AtkinsonHyperlegibleMono-700.ttf</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Comet Cast uses the local network to find servers and to receive the screen of a sending device directly.</string>
 	<key>NSBonjourServices</key>

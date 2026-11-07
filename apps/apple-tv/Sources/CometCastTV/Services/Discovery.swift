@@ -8,6 +8,7 @@
 //     search domains of the network to this name is not known (the Rust crate asks every search domain itself);
 //     tvOS has no public API for the search domain list. Device test plan D-section checks it.
 
+import Combine
 import CometCastCore
 import Foundation
 import Network
