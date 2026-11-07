@@ -32,6 +32,17 @@ fn free_port() -> u16 {
     l.local_addr().unwrap().port()
 }
 
+fn connect_retry(dev: &Device) -> Session {
+    let end = Instant::now() + Duration::from_secs(10);
+    loop {
+        match Session::connect(dev) {
+            Ok(s) => return s,
+            Err(e) if Instant::now() > end => panic!("cannot connect to UxPlay: {e:?}"),
+            Err(_) => std::thread::sleep(Duration::from_millis(200)),
+        }
+    }
+}
+
 #[test]
 fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
     let Some(x) = TestXServer::start(640, 480) else {
@@ -62,7 +73,7 @@ fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
         eprintln!("NOTE: SKIPPING UXPLAY INTEROP TEST, `uxplay` is not installed");
         return;
     };
-    let _guard = Uxplay(child);
+    let mut guard = Uxplay(child);
     // Depending on the UxPlay build, `-p N` listens on N or on N+1 (observed: N+1 with 1.68.2
     // from Ubuntu). Use whichever answers.
     let end = Instant::now() + Duration::from_secs(10);
@@ -73,6 +84,14 @@ fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
         {
             break p;
         }
+        // UxPlay exits at once when no DNS-SD daemon (avahi) is running; that is the
+        // environment, not a bug in the sender.
+        if let Ok(Some(status)) = guard.0.try_wait() {
+            eprintln!(
+                "NOTE: SKIPPING UXPLAY INTEROP TEST, uxplay exited early ({status}); is a DNS-SD daemon (avahi) running?"
+            );
+            return;
+        }
         if Instant::now() > end {
             eprintln!("NOTE: SKIPPING UXPLAY INTEROP TEST, uxplay did not open port {port}");
             return;
@@ -82,19 +101,21 @@ fn pairs_with_the_real_uxplay_and_gets_play_acknowledged() {
 
     let dev = Device::from_address(&format!("127.0.0.1:{port}")).unwrap();
 
-    let mut s = Session::connect(&dev).unwrap();
+    // UxPlay serves one connection at a time and may still be closing our readiness probe, so
+    // the first connect is retried for a short while.
+    let mut s = connect_retry(&dev);
     assert_eq!(s.proto(), Proto::Rtsp, "UxPlay answers only RTSP/1.0");
     legacy::pair_pin_start(s.conn_mut()).unwrap();
     let wrong = legacy::pair_finish(s.conn_mut(), "0000");
     assert!(matches!(wrong, Err(SenderError::Auth(_))), "{wrong:?}");
 
     drop(s);
-    let mut s = Session::connect(&dev).unwrap();
+    let mut s = connect_retry(&dev);
     legacy::pair_pin_start(s.conn_mut()).unwrap();
     let creds = legacy::pair_finish(s.conn_mut(), "4711").unwrap();
 
     drop(s);
-    let mut s = Session::connect(&dev).unwrap();
+    let mut s = connect_retry(&dev);
     assert_eq!(
         s.authenticate(Some(&creds)).unwrap(),
         AuthKind::LegacyVerify
