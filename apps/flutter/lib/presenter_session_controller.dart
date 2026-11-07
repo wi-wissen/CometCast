@@ -77,6 +77,18 @@ class PresenterSessionController extends ChangeNotifier {
   /// A TV session waits for the code the TV shows (`PairingRequired`, until `Joined`).
   bool pairingRequired = false;
 
+  /// The code the person typed for a TV was wrong (inline `pair.wrong`, the page stays; the
+  /// field is emptied). Cleared by the next [pair] call.
+  bool pairWrong = false;
+
+  /// The TV cannot show the link or photo (`tv_unsupported_content`, inline `link.tvUnsupported`);
+  /// the person stays connected. Cleared by the next presentation.
+  bool tvUnsupported = false;
+
+  /// The presented file is an Office file that was converted to a PDF here (spec 15.6): the
+  /// limits line and the way out show for the whole presentation.
+  bool converted = false;
+
   /// The check number and the wait while the host decides.
   int? check;
   int? timeoutSecs;
@@ -141,34 +153,55 @@ class PresenterSessionController extends ChangeNotifier {
     required String server,
     String? name,
     String? handover,
-  }) {
+  }) => _listen(
+    core.startPresenter(
+      code: code,
+      server: server.trim(),
+      name: name,
+      handover: handover,
+      udpBind: udpBind,
+    ),
+  );
+
+  /// Open a session to a TV without Comet Cast (`start_tv_presenter`, spec 15.5): the same
+  /// events, plus [pairingRequired]; `Joined` carries the TV's name.
+  void connectTv({required String id}) =>
+      _listen(core.startTvPresenter(id: id));
+
+  /// The code the TV shows (AirPlay, the first time). False: wrong, [pairWrong] is set.
+  Future<bool> pair(String pin) async {
+    pairWrong = false;
+    final ok = await core.tvPair(pin);
+    if (_disposed) return ok;
+    if (ok) {
+      pairingRequired = false;
+    } else {
+      pairWrong = true;
+    }
+    notifyListeners();
+    return ok;
+  }
+
+  void _listen(Stream<PresenterUiEvent> events) {
     _cancel();
     _reset();
     phase = PresenterSessionPhase.connecting;
     notifyListeners();
-    _sub = core
-        .startPresenter(
-          code: code,
-          server: server.trim(),
-          name: name,
-          handover: handover,
-          udpBind: udpBind,
-        )
-        .listen(
-          _onEvent,
-          onError: (Object e) {
-            _fail('unknown', e.toString());
-          },
-          onDone: () {
-            // The stream also ends after disconnect(); only an unexpected end is a failure.
-            if (!_disposed &&
-                (phase == PresenterSessionPhase.connecting ||
-                    phase == PresenterSessionPhase.waiting ||
-                    isJoined)) {
-              _fail('connection_lost', 'the presenter stream ended');
-            }
-          },
-        );
+    _sub = events.listen(
+      _onEvent,
+      onError: (Object e) {
+        _fail('unknown', e.toString());
+      },
+      onDone: () {
+        // The stream also ends after disconnect(); only an unexpected end is a failure.
+        if (!_disposed &&
+            (phase == PresenterSessionPhase.connecting ||
+                phase == PresenterSessionPhase.waiting ||
+                isJoined)) {
+          _fail('connection_lost', 'the presenter stream ended');
+        }
+      },
+    );
   }
 
   void _reset() {
@@ -180,6 +213,8 @@ class PresenterSessionController extends ChangeNotifier {
     errorMessage = null;
     startFailure = null;
     wasJoined = false;
+    pairingRequired = false;
+    pairWrong = false;
     _resetPresentation();
   }
 
@@ -196,6 +231,8 @@ class PresenterSessionController extends ChangeNotifier {
     rejection = null;
     sent = 0;
     total = 0;
+    converted = false;
+    tvUnsupported = false;
   }
 
   void _fail(String code, String message) {
@@ -236,6 +273,7 @@ class PresenterSessionController extends ChangeNotifier {
         startFailure = null;
         contentPhase = PresenterContentPhase.converting;
         contentName = name;
+        converted = true;
       case PresenterUiEvent_ContentPrepared(
         :final name,
         :final kind,
@@ -274,7 +312,12 @@ class PresenterSessionController extends ChangeNotifier {
         endedCode = code;
         _cancel();
       case PresenterUiEvent_Error(:final code, :final message):
-        if (presenterStartFailureCodes.contains(code) &&
+        if (code == 'tv_pair_wrong') {
+          pairWrong = true; // inline, the stream goes on
+        } else if (code == 'tv_unsupported_content') {
+          _resetPresentation();
+          tvUnsupported = true;
+        } else if (presenterStartFailureCodes.contains(code) &&
             phase != PresenterSessionPhase.connecting &&
             phase != PresenterSessionPhase.waiting) {
           startFailure = code;

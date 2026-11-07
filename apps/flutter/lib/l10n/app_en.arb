@@ -1785,5 +1785,441 @@
   "commonCancel": "Cancel",
   "@commonCancel": {
     "description": "Spec key common.cancel"
+  },
+  "beta": "Beta",
+  "@beta": {
+    "description": "Spec 15.13 key `beta` (round 5)."
+  },
+  "shareTitle": "Show with Comet Cast",
+  "@shareTitle": {
+    "description": "Spec 15.13 key `share.title` (round 5)."
+  },
+  "shareMetaPdf": "PDF · {size}",
+  "@shareMetaPdf": {
+    "description": "Spec 15.13 key `share.metaPdf` (round 5).",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "shareMetaImage": "Image · {size}",
+  "@shareMetaImage": {
+    "description": "Spec 15.13 key `share.metaImage` (round 5).",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "shareMetaOffice": "{kind} · {size} · shown as a PDF",
+  "@shareMetaOffice": {
+    "description": "Spec 15.13 key `share.metaOffice` (round 5).",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "shareMetaLink": "Link",
+  "@shareMetaLink": {
+    "description": "Spec 15.13 key `share.metaLink` (round 5)."
+  },
+  "shareShowOn": "Show on {room}",
+  "@shareShowOn": {
+    "description": "Spec 15.13 key `share.showOn` (round 5).",
+    "placeholders": {
+      "room": {
+        "type": "String"
+      }
+    }
+  },
+  "shareShowHere": "Show on the connected screen",
+  "@shareShowHere": {
+    "description": "Spec 15.13 key `share.showHere` (round 5)."
+  },
+  "shareOtherScreen": "Another screen",
+  "@shareOtherScreen": {
+    "description": "Spec 15.13 key `share.otherScreen` (round 5)."
+  },
+  "shareShow": "Show",
+  "@shareShow": {
+    "description": "Spec 15.13 key `share.show` (round 5)."
+  },
+  "shareStopClose": "Stop and close",
+  "@shareStopClose": {
+    "description": "Spec 15.13 key `share.stopClose` (round 5)."
+  },
+  "shareNoLink": "This text has no web address in it.",
+  "@shareNoLink": {
+    "description": "Spec 15.13 key `share.noLink` (round 5)."
+  },
+  "sendRejectOfficeOff": "Converting Office files is turned off in the settings. Pick a PDF instead.",
+  "@sendRejectOfficeOff": {
+    "description": "Spec 15.13 key `sendReject.officeOff` (round 5)."
+  },
+  "idleAlsoViaBoth": "Also via AirPlay and Miracast",
+  "@idleAlsoViaBoth": {
+    "description": "Spec 15.13 key `idle.alsoVia.both` (round 5)."
+  },
+  "idleAlsoViaAirplay": "Also via AirPlay",
+  "@idleAlsoViaAirplay": {
+    "description": "Spec 15.13 key `idle.alsoVia.airplay` (round 5)."
+  },
+  "idleAlsoViaMiracast": "Also via Miracast",
+  "@idleAlsoViaMiracast": {
+    "description": "Spec 15.13 key `idle.alsoVia.miracast` (round 5)."
+  },
+  "settingsReceiveLabel": "Without the app",
+  "@settingsReceiveLabel": {
+    "description": "Spec 15.13 key `settings.receive.label` (round 5)."
+  },
+  "settingsReceiveAirplay": "AirPlay",
+  "@settingsReceiveAirplay": {
+    "description": "Spec 15.13 key `settings.receive.airplay` (round 5)."
+  },
+  "settingsReceiveAirplaySub": "iPhone, iPad and Mac show their screen here.",
+  "@settingsReceiveAirplaySub": {
+    "description": "Spec 15.13 key `settings.receive.airplaySub` (round 5)."
+  },
+  "settingsReceiveMiracast": "Miracast",
+  "@settingsReceiveMiracast": {
+    "description": "Spec 15.13 key `settings.receive.miracast` (round 5)."
+  },
+  "settingsReceiveMiracastSub": "Windows and many Android devices show their screen here.",
+  "@settingsReceiveMiracastSub": {
+    "description": "Spec 15.13 key `settings.receive.miracastSub` (round 5)."
+  },
+  "settingsReceiveNoHw": "This Wi-Fi adapter cannot receive Miracast.",
+  "@settingsReceiveNoHw": {
+    "description": "Spec 15.13 key `settings.receive.noHw` (round 5)."
+  },
+  "settingsReceiveNoFeature": "Windows needs the optional feature “Wireless Display” for this.",
+  "@settingsReceiveNoFeature": {
+    "description": "Spec 15.13 key `settings.receive.noFeature` (round 5)."
+  },
+  "settingsReceivePolicy": "Switched off by the administrator of this device.",
+  "@settingsReceivePolicy": {
+    "description": "Spec 15.13 key `settings.receive.policy` (round 5)."
+  },
+  "settingsReceiveFailed": "Could not start. Switch it off and on again, or restart the app.",
+  "@settingsReceiveFailed": {
+    "description": "Spec 15.13 key `settings.receive.failed` (round 5)."
+  },
+  "settingsReceiveLocked": "Paused while Locked is on.",
+  "@settingsReceiveLocked": {
+    "description": "Spec 15.13 key `settings.receive.locked` (round 5)."
+  },
+  "requestAirplayDevice": "An AirPlay device",
+  "@requestAirplayDevice": {
+    "description": "Spec 15.13 key `request.airplayDevice` (round 5)."
+  },
+  "requestSubtitleAirplay": "wants to mirror via AirPlay",
+  "@requestSubtitleAirplay": {
+    "description": "Spec 15.13 key `request.subtitleAirplay` (round 5)."
+  },
+  "requestSubtitleMiracast": "wants to mirror via Miracast",
+  "@requestSubtitleMiracast": {
+    "description": "Spec 15.13 key `request.subtitleMiracast` (round 5)."
+  },
+  "rxPinTitleAirplay": "AirPlay code",
+  "@rxPinTitleAirplay": {
+    "description": "Spec 15.13 key `rx.pin.titleAirplay` (round 5)."
+  },
+  "rxPinTitleMiracast": "Miracast code",
+  "@rxPinTitleMiracast": {
+    "description": "Spec 15.13 key `rx.pin.titleMiracast` (round 5)."
+  },
+  "rxPinBody": "Enter this code on the device that wants to mirror.",
+  "@rxPinBody": {
+    "description": "Spec 15.13 key `rx.pin.body` (round 5)."
+  },
+  "rxPinBodyNamed": "Enter this code on {name}.",
+  "@rxPinBodyNamed": {
+    "description": "Spec 15.13 key `rx.pin.bodyNamed` (round 5).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "presentVia": "via {way}",
+  "@presentVia": {
+    "description": "Spec 15.13 key `present.via` (round 5).",
+    "placeholders": {
+      "way": {
+        "type": "String"
+      }
+    }
+  },
+  "toastRxEnded": "{way} ended",
+  "@toastRxEnded": {
+    "description": "Spec 15.13 key `toast.rxEnded` (round 5).",
+    "placeholders": {
+      "way": {
+        "type": "String"
+      }
+    }
+  },
+  "tvTitle": "Without Comet Cast",
+  "@tvTitle": {
+    "description": "Spec 15.13 key `tv.title` (round 5)."
+  },
+  "tvCast": "Google Cast",
+  "@tvCast": {
+    "description": "Spec 15.13 key `tv.cast` (round 5)."
+  },
+  "tvAirplay": "AirPlay",
+  "@tvAirplay": {
+    "description": "Spec 15.13 key `tv.airplay` (round 5)."
+  },
+  "tvAria": "{name}, {way}, Beta",
+  "@tvAria": {
+    "description": "Spec 15.13 key `tv.aria` (round 5).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "way": {
+        "type": "String"
+      }
+    }
+  },
+  "whatScreenTv": "Whole screen, live",
+  "@whatScreenTv": {
+    "description": "Spec 15.13 key `what.screenTv` (round 5)."
+  },
+  "whatScreenAirplay": "Whole screen, a few seconds behind",
+  "@whatScreenAirplay": {
+    "description": "Spec 15.13 key `what.screenAirplay` (round 5)."
+  },
+  "whatPhoto": "Show a photo",
+  "@whatPhoto": {
+    "description": "Spec 15.13 key `what.photo` (round 5)."
+  },
+  "whatPhotoSub": "The TV shows it until you stop",
+  "@whatPhotoSub": {
+    "description": "Spec 15.13 key `what.photoSub` (round 5)."
+  },
+  "whatVideo": "Show a video link",
+  "@whatVideo": {
+    "description": "Spec 15.13 key `what.video` (round 5)."
+  },
+  "whatVideoSub": "The TV loads and plays the video itself",
+  "@whatVideoSub": {
+    "description": "Spec 15.13 key `what.videoSub` (round 5)."
+  },
+  "fileBodyTv": "A photo from this device. It appears on the TV as soon as you pick it.",
+  "@fileBodyTv": {
+    "description": "Spec 15.13 key `file.bodyTv` (round 5)."
+  },
+  "linkHintTv": "The TV loads the video itself. Only direct links to a video file or an HLS stream work.",
+  "@linkHintTv": {
+    "description": "Spec 15.13 key `link.hintTv` (round 5)."
+  },
+  "linkTvUnsupported": "The TV cannot play this. Use a direct link to a video file, or a JPEG, PNG or WebP photo.",
+  "@linkTvUnsupported": {
+    "description": "Spec 15.13 key `link.tvUnsupported` (round 5)."
+  },
+  "pairTitle": "Pair with {tv}",
+  "@pairTitle": {
+    "description": "Spec 15.13 key `pair.title` (round 5).",
+    "placeholders": {
+      "tv": {
+        "type": "String"
+      }
+    }
+  },
+  "pairBody": "The TV now shows a four-digit code. Enter it here. This is needed only once.",
+  "@pairBody": {
+    "description": "Spec 15.13 key `pair.body` (round 5)."
+  },
+  "pairLabel": "Code from the TV",
+  "@pairLabel": {
+    "description": "Spec 15.13 key `pair.label` (round 5)."
+  },
+  "pairGo": "Pair",
+  "@pairGo": {
+    "description": "Spec 15.13 key `pair.go` (round 5)."
+  },
+  "pairWrong": "That code was not right. The TV now shows a new one.",
+  "@pairWrong": {
+    "description": "Spec 15.13 key `pair.wrong` (round 5)."
+  },
+  "errorTvTitle": "{tv} does not accept the connection",
+  "@errorTvTitle": {
+    "description": "Spec 15.13 key `error.tv.title` (round 5).",
+    "placeholders": {
+      "tv": {
+        "type": "String"
+      }
+    }
+  },
+  "errorTvWhyCast": "Google Cast is still Beta in Comet Cast and does not work with every TV.",
+  "@errorTvWhyCast": {
+    "description": "Spec 15.13 key `error.tv.whyCast` (round 5)."
+  },
+  "errorTvWhyAirplay": "AirPlay is still Beta in Comet Cast and does not work with every TV.",
+  "@errorTvWhyAirplay": {
+    "description": "Spec 15.13 key `error.tv.whyAirplay` (round 5)."
+  },
+  "errorTvWhyLost": "The connection to the TV was lost.",
+  "@errorTvWhyLost": {
+    "description": "Spec 15.13 key `error.tv.whyLost` (round 5)."
+  },
+  "errorTvNow": "If you can, install Comet Cast on the TV. Then the code on the screen works.",
+  "@errorTvNow": {
+    "description": "Spec 15.13 key `error.tv.now` (round 5)."
+  },
+  "presentingConverted": "Converted to PDF. Fonts, headers and footers may differ; animations are missing.",
+  "@presentingConverted": {
+    "description": "Spec 15.13 key `presenting.converted` (round 5)."
+  },
+  "presentingOwnPdf": "Pick my own PDF instead",
+  "@presentingOwnPdf": {
+    "description": "Spec 15.13 key `presenting.ownPdf` (round 5)."
+  },
+  "startVia": "via {dom}",
+  "@startVia": {
+    "description": "Spec 15.13 key `start.via` (round 5).",
+    "placeholders": {
+      "dom": {
+        "type": "String"
+      }
+    }
+  },
+  "startViaChange": "Change",
+  "@startViaChange": {
+    "description": "Spec 15.13 key `start.viaChange` (round 5)."
+  },
+  "startViaPolicy": "set by your IT",
+  "@startViaPolicy": {
+    "description": "Spec 15.13 key `start.viaPolicy` (round 5)."
+  },
+  "startAddrLabel": "Address from the screen",
+  "@startAddrLabel": {
+    "description": "Spec 15.13 key `start.addrLabel` (round 5)."
+  },
+  "startAddrUse": "Use",
+  "@startAddrUse": {
+    "description": "Spec 15.13 key `start.addrUse` (round 5)."
+  },
+  "startAddrChecking": "Checking …",
+  "@startAddrChecking": {
+    "description": "Spec 15.13 key `start.addrChecking` (round 5)."
+  },
+  "startAddrError": "No Comet Cast answers at this address. Compare it with the screen.",
+  "@startAddrError": {
+    "description": "Spec 15.13 key `start.addrError` (round 5)."
+  },
+  "appSettingsOpen": "Settings",
+  "@appSettingsOpen": {
+    "description": "Spec 15.13 key `appSettings.open` (round 5)."
+  },
+  "appSettingsTitle": "Settings",
+  "@appSettingsTitle": {
+    "description": "Spec 15.13 key `appSettings.title` (round 5)."
+  },
+  "appSettingsOffice": "Convert Office files to PDF",
+  "@appSettingsOffice": {
+    "description": "Spec 15.13 key `appSettings.office` (round 5)."
+  },
+  "appSettingsOfficeSub": "Word, PowerPoint and Excel (.docx, .pptx, .xlsx), on this device. Fonts and layout may differ.",
+  "@appSettingsOfficeSub": {
+    "description": "Spec 15.13 key `appSettings.officeSub` (round 5)."
+  },
+  "appSettingsOtherTvs": "TVs without Comet Cast",
+  "@appSettingsOtherTvs": {
+    "description": "Spec 15.13 key `appSettings.otherTvs` (round 5)."
+  },
+  "appSettingsOtherTvsSub": "Shows Google Cast and AirPlay TVs on the start page. Not tested with every TV.",
+  "@appSettingsOtherTvsSub": {
+    "description": "Spec 15.13 key `appSettings.otherTvsSub` (round 5)."
+  },
+  "aboutOpen": "About",
+  "@aboutOpen": {
+    "description": "Spec 15.13 key `about.open` (round 5)."
+  },
+  "aboutTitle": "About Comet Cast",
+  "@aboutTitle": {
+    "description": "Spec 15.13 key `about.title` (round 5)."
+  },
+  "aboutVersion": "Version {version}",
+  "@aboutVersion": {
+    "description": "Spec 15.13 key `about.version` (round 5).",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutLicence": "Free software under the GPL-3.0",
+  "@aboutLicence": {
+    "description": "Spec 15.13 key `about.licence` (round 5)."
+  },
+  "aboutPublisher": "Published by Schulverwalter GmbH",
+  "@aboutPublisher": {
+    "description": "Spec 15.13 key `about.publisher` (round 5)."
+  },
+  "aboutSource": "Source code",
+  "@aboutSource": {
+    "description": "Spec 15.13 key `about.source` (round 5)."
+  },
+  "aboutPrivacy": "Privacy",
+  "@aboutPrivacy": {
+    "description": "Spec 15.13 key `about.privacy` (round 5)."
+  },
+  "aboutImprint": "Imprint",
+  "@aboutImprint": {
+    "description": "Spec 15.13 key `about.imprint` (round 5)."
+  },
+  "aboutLicences": "Licences",
+  "@aboutLicences": {
+    "description": "Spec 15.13 key `about.licences` (round 5)."
+  },
+  "aboutLicencesSub": "Parts from other projects",
+  "@aboutLicencesSub": {
+    "description": "Spec 15.13 key `about.licencesSub` (round 5)."
+  },
+  "aboutSearch": "Search",
+  "@aboutSearch": {
+    "description": "Spec 15.13 key `about.search` (round 5)."
+  },
+  "aboutFeatured": "With their own notice",
+  "@aboutFeatured": {
+    "description": "Spec 15.13 key `about.featured` (round 5)."
+  },
+  "aboutAll": "All parts",
+  "@aboutAll": {
+    "description": "Spec 15.13 key `about.all` (round 5)."
+  },
+  "aboutNone": "Nothing found.",
+  "@aboutNone": {
+    "description": "Spec 15.13 key `about.none` (round 5)."
+  },
+  "aboutFlutter": "Flutter engine",
+  "@aboutFlutter": {
+    "description": "Spec 15.13 key `about.flutter` (round 5)."
+  },
+  "aboutSourceTv": "Source code: {url}",
+  "@aboutSourceTv": {
+    "description": "Spec 15.13 key `about.sourceTv` (round 5).",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutWebTv": "Privacy and imprint: {url}",
+  "@aboutWebTv": {
+    "description": "Spec 15.13 key `about.webTv` (round 5).",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
   }
 }

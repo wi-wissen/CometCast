@@ -8,6 +8,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:cometcast/l10n/app_localizations.dart';
+
 import '../design/icons.dart';
 import '../design/tokens.dart';
 
@@ -240,6 +242,8 @@ class PTap extends StatefulWidget {
     this.autofocus = false,
     this.label,
     this.focusNode,
+    this.toggled,
+    this.hint,
   });
 
   final VoidCallback? onPressed;
@@ -247,6 +251,10 @@ class PTap extends StatefulWidget {
   final Widget Function(BuildContext context) builder;
   final bool autofocus;
   final String? label;
+
+  /// Switch semantics (spec 15.10): one node with this toggled state instead of a button.
+  final bool? toggled;
+  final String? hint;
   final FocusNode? focusNode;
 
   @override
@@ -261,7 +269,9 @@ class _PTapState extends State<PTap> {
     final p = PresenterScope.of(context).tokens;
     final enabled = widget.onPressed != null;
     return Semantics(
-      button: true,
+      button: widget.toggled == null,
+      toggled: widget.toggled,
+      hint: widget.hint,
       enabled: enabled,
       label: widget.label,
       container: true,
@@ -590,8 +600,10 @@ class _PSpinnerState extends State<PSpinner>
 class PField extends StatefulWidget {
   const PField({
     super.key,
-    required this.label,
+    this.label,
     required this.controller,
+    this.leading,
+    this.digitsOnly = false,
     this.code = false,
     this.error = false,
     this.maxLength,
@@ -607,8 +619,15 @@ class PField extends StatefulWidget {
     this.readOnly = false,
   });
 
-  final String label;
+  /// Null: no label above the field (the search field has only a placeholder).
+  final String? label;
   final TextEditingController controller;
+
+  /// A widget inside the field at its left edge (the search icon).
+  final Widget? leading;
+
+  /// Only digits are kept (the code of a TV, spec 15.5).
+  final bool digitsOnly;
 
   /// Look unchanged, nothing can be typed (a row is connecting, N54).
   final bool readOnly;
@@ -654,8 +673,10 @@ class _PFieldState extends State<PField> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(widget.label, style: s.type.label),
-        const SizedBox(height: 5),
+        if (widget.label != null) ...[
+          Text(widget.label!, style: s.type.label),
+          const SizedBox(height: 5),
+        ],
         Container(
           height: 46,
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -672,24 +693,13 @@ class _PFieldState extends State<PField> {
                   : p.borderInput,
             ),
           ),
-          child: Stack(
-            alignment: Alignment.centerLeft,
+          child: Row(
             children: [
-              if (widget.hint != null)
-                // EditableText has no hint: drawn while the field is empty.
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: widget.controller,
-                  builder: (context, v, _) => v.text.isEmpty
-                      ? IgnorePointer(
-                          child: Text(
-                            widget.hint!,
-                            key: const Key('field-hint'),
-                            style: style.copyWith(color: p.fg3),
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              _editable(style, p),
+              if (widget.leading != null) ...[
+                widget.leading!,
+                const SizedBox(width: 8),
+              ],
+              Expanded(child: _fieldStack(style, p)),
             ],
           ),
         ),
@@ -704,6 +714,29 @@ class _PFieldState extends State<PField> {
             child: Text(widget.errorText!, style: s.type.errorText),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _fieldStack(TextStyle style, PresenterTokens p) {
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        if (widget.hint != null)
+          // EditableText has no hint: drawn while the field is empty.
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: widget.controller,
+            builder: (context, v, _) => v.text.isEmpty
+                ? IgnorePointer(
+                    child: Text(
+                      widget.hint!,
+                      key: const Key('field-hint'),
+                      style: style.copyWith(color: p.fg3),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        _editable(style, p),
       ],
     );
   }
@@ -727,6 +760,7 @@ class _PFieldState extends State<PField> {
       autocorrect: false,
       enableSuggestions: !widget.code,
       inputFormatters: [
+        if (widget.digitsOnly) FilteringTextInputFormatter.digitsOnly,
         if (widget.maxLength != null)
           LengthLimitingTextInputFormatter(widget.maxLength),
         if (widget.code) _UpperCase(),
@@ -815,4 +849,195 @@ class _SpinnerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SpinnerPainter old) => old.arc != arc || old.ring != ring;
+}
+
+// --- switch, Beta chip, switch row (spec 15.10, 15.8) -------------------------------------
+
+/// The Beta chip after a title: text `beta` 12/700 `p-fg2`, uppercase, letter-spacing .06em,
+/// 1 px `p-border`, radius 999, padding 1 7. Not read separately by screen readers.
+class PBetaChip extends StatelessWidget {
+  const PBetaChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = PresenterScope.of(context);
+    final p = s.tokens;
+    return ExcludeSemantics(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+        decoration: BoxDecoration(
+          border: Border.all(width: 1, color: p.borderInput),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          AppLocalizations.of(context).beta.toUpperCase(),
+          style: s.type.label.copyWith(
+            fontSize: 12,
+            letterSpacing: .06 * 12,
+            color: p.fg2,
+            height: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The presenter switch: track 44 x 26, radius 13: off 1 px `p-border`, `p-surface` fill, knob
+/// 20 `p-fg3`; on `p-primary` fill, knob `p-surface`; 120 ms (a jump with reduced motion).
+/// Disabled: `p-disabled` track, knob `p-ondisabled`. Drawn only; the row is the control.
+class PSwitch extends StatelessWidget {
+  const PSwitch({super.key, required this.on, this.disabled = false});
+  final bool on;
+  final bool disabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PresenterScope.of(context).tokens;
+    final d = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 120);
+    final track = disabled ? p.disabled : (on ? p.primary : p.surface);
+    final knob = disabled ? p.onDisabled : (on ? p.surface : p.fg3);
+    return AnimatedContainer(
+      duration: d,
+      width: 44,
+      height: 26,
+      decoration: BoxDecoration(
+        color: track,
+        border: Border.all(
+          width: 1,
+          color: disabled ? p.disabled : (on ? p.primary : p.borderInput),
+        ),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: AnimatedAlign(
+        key: const Key('switch-knob'),
+        duration: d,
+        curve: Curves.ease,
+        alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: knob),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A switch row of the app settings (spec 15.8): option-row look (min 58, laptop 50, radius 12,
+/// 1 px `p-border`, `p-surface`, padding 8 14, gap 12); title 17/700, sub 13 `p-fg3` (wraps);
+/// the switch at the right; the whole row toggles. One semantics node "title, Beta".
+class PSwitchRow extends StatelessWidget {
+  const PSwitchRow({
+    super.key,
+    required this.title,
+    required this.sub,
+    required this.on,
+    required this.onToggle,
+    this.beta = false,
+  });
+  final String title;
+  final String sub;
+  final bool on;
+  final bool beta;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = PresenterScope.of(context);
+    final p = s.tokens;
+    final betaWord = AppLocalizations.of(context).beta;
+    return PTap(
+      onPressed: onToggle,
+      radius: 12,
+      toggled: on,
+      label: beta ? '$title, $betaWord' : title,
+      hint: sub,
+      builder: (_) => Container(
+        constraints: BoxConstraints(minHeight: s.laptop ? 50 : 58),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.surface,
+          border: Border.all(width: 1, color: p.borderInput),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(child: Text(title, style: s.type.optionTitle)),
+                      if (beta) ...[
+                        const SizedBox(width: 8),
+                        const PBetaChip(),
+                      ],
+                    ],
+                  ),
+                  Text(sub, style: s.type.optionSub),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            PSwitch(on: on),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A text link of the pages (`app.beDisplay` style, N37): 15 `p-primary`, underlined, in a tap
+/// area 44 high with the text centred in it (phone) or at the left (laptop, [left]).
+class PTextLink extends StatelessWidget {
+  const PTextLink({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.left = false,
+    this.bold = false,
+    this.size = 15,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  /// Left-aligned (laptop) instead of centred.
+  final bool left;
+
+  /// 13/700 (the address line) instead of 15/400.
+  final bool bold;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = PresenterScope.of(context);
+    return PTap(
+      onPressed: onPressed,
+      radius: 4,
+      builder: (_) => SizedBox(
+        height: 44,
+        child: Align(
+          alignment: left ? Alignment.centerLeft : Alignment.center,
+          widthFactor: 1,
+          child: Text(
+            label,
+            style: s.type.body.copyWith(
+              fontSize: size,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+              color: s.tokens.primary,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

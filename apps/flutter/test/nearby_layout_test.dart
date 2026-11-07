@@ -102,7 +102,10 @@ void main() {
         server: 'wss://$host:443',
       ),
     ]);
-    final f = find.byType(HostText);
+    // The address line under the code field (spec 15.7) is a HostText too: take the row's.
+    final f = find.byWidgetPredicate(
+      (w) => w is HostText && w.data!.contains('Approval'),
+    );
     expect(f, findsOneWidget);
     final lines = _lines(t, f);
     expect(lines.length, greaterThan(1));

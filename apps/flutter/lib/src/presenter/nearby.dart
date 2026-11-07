@@ -31,51 +31,63 @@ class PCompactButton extends StatelessWidget {
   const PCompactButton({
     super.key,
     required this.label,
-    required this.icon,
+    this.icon,
     required this.onPressed,
+    this.centered = false,
   });
 
   final String label;
-  final CcIconName icon;
-  final VoidCallback onPressed;
+  final CcIconName? icon;
+
+  /// Null: disabled (`p-disabled`, as the primary button).
+  final VoidCallback? onPressed;
+
+  /// Not stretched to the left edge of its parent (a row of two buttons).
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
     final s = PresenterScope.of(context);
     final p = s.tokens;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: PTap(
-        onPressed: onPressed,
-        radius: 10,
-        builder: (_) => Container(
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: p.surface,
-            border: Border.all(width: 1, color: p.borderInput),
-            borderRadius: BorderRadius.circular(10),
+    final enabled = onPressed != null;
+    final button = PTap(
+      onPressed: onPressed,
+      radius: 10,
+      builder: (_) => Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: enabled ? p.surface : p.disabled,
+          border: Border.all(
+            width: 1,
+            color: enabled ? p.borderInput : Colors.transparent,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CcIcon(icon, color: p.fg, size: 18),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              CcIcon(icon!, color: enabled ? p.fg : p.onDisabled, size: 18),
               const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  style: s.type.secondaryButton.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: p.fg,
-                  ),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: s.type.secondaryButton.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: enabled ? p.fg : p.onDisabled,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+    return centered
+        ? button
+        : Align(alignment: Alignment.centerLeft, child: button);
   }
 }
 
@@ -87,7 +99,12 @@ class NearbySection extends StatelessWidget {
     required this.controller,
     required this.onTap,
     required this.via,
+    this.tvs,
   });
+
+  /// The TVs without Comet Cast (spec 15.5), below the Comet Cast states and rows; draws its
+  /// own gap and nothing when there are none.
+  final Widget? tvs;
 
   final NearbyController controller;
   final void Function(NearbyRow row) onTap;
@@ -249,6 +266,7 @@ class NearbySection extends StatelessWidget {
             ),
             if (body.isNotEmpty) const SizedBox(height: 8),
             ...body,
+            ?tvs,
           ],
         );
       },

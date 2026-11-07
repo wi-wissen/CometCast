@@ -5,18 +5,25 @@
 abstract final class Branding {
   /// `publisher_name`; empty when not set.
   static const String publisherName = "";
+
   /// `publisher_url`; empty when not set.
   static const String publisherUrl = "";
+
   /// `privacy_url.de`; empty when not set.
   static const String privacyUrlDe = "";
+
   /// `privacy_url.en`; empty when not set.
   static const String privacyUrlEn = "";
+
   /// `imprint_url.de`; empty when not set.
   static const String imprintUrlDe = "";
+
   /// `imprint_url.en`; empty when not set.
   static const String imprintUrlEn = "";
+
   /// `source_url`; empty when not set.
   static const String sourceUrl = "https://github.com/wi-wissen/CometCast";
+
   /// `contact`; empty when not set.
   static const String contact = "";
 }

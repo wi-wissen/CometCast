@@ -53,6 +53,12 @@ abstract class SettingsStore {
 
   /// Remember that it was read.
   Future<void> saveReferrerRead() async {}
+
+  /// A stored on/off setting of this device (round 5: `officeConvert`, `otherTvs`,
+  /// `airplayReceive`, `miracastReceive`); null = never set, the caller applies its default.
+  Future<bool?> loadFlag(String key) async => null;
+
+  Future<void> saveFlag(String key, bool value) async {}
 }
 
 /// Keeps the value in memory only (tests).
@@ -105,6 +111,14 @@ class MemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> saveReferrerRead() async => referrerRead = true;
+
+  final flags = <String, bool>{};
+
+  @override
+  Future<bool?> loadFlag(String key) async => flags[key];
+
+  @override
+  Future<void> saveFlag(String key, bool value) async => flags[key] = value;
 }
 
 /// Saves the value with the `shared_preferences` package.
@@ -217,6 +231,26 @@ class PrefsSettingsStore implements SettingsStore {
       await prefs.setBool(_referrerReadKey, true);
     } catch (_) {
       // Read again next time: harmless, the referrer is the same.
+    }
+  }
+
+  @override
+  Future<bool?> loadFlag(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('flag.$key');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveFlag(String key, bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('flag.$key', value);
+    } catch (_) {
+      // Not saved; the setting is back to its default next time.
     }
   }
 
@@ -341,6 +375,7 @@ class AppSettings extends ChangeNotifier {
       displayName: cleanDisplayName(savedName ?? ''),
     );
     await settings.loadConfirmedServers();
+    await settings.loadFlags();
     return settings;
   }
 
@@ -418,6 +453,60 @@ class AppSettings extends ChangeNotifier {
     _confirmed = {..._confirmed, server};
     await store?.saveConfirmedServers(_confirmed.toList()..sort());
     notifyListeners();
+  }
+
+  // --- on/off settings of this device (spec 15.4, 15.8; defaults: N81, N89) ---
+
+  bool _officeConvert = true;
+  bool _otherTvs = false;
+  bool _airplayReceive = false;
+  bool _miracastReceive = false;
+
+  /// Convert Office files to PDF on this device (default on, N81).
+  bool get officeConvert => _officeConvert;
+
+  /// Show Google Cast and AirPlay TVs on the start page (Beta, default off, N89).
+  bool get otherTvs => _otherTvs;
+
+  /// Receive AirPlay on this display (Beta, default off).
+  bool get airplayReceive => _airplayReceive;
+
+  /// Receive Miracast on this display (Beta, default off).
+  bool get miracastReceive => _miracastReceive;
+
+  set officeConvert(bool v) =>
+      _setFlag('officeConvert', v, _officeConvert, (x) {
+        _officeConvert = x;
+      });
+  set otherTvs(bool v) =>
+      _setFlag('otherTvs', v, _otherTvs, (x) => _otherTvs = x);
+  set airplayReceive(bool v) => _setFlag(
+    'airplayReceive',
+    v,
+    _airplayReceive,
+    (x) => _airplayReceive = x,
+  );
+  set miracastReceive(bool v) => _setFlag(
+    'miracastReceive',
+    v,
+    _miracastReceive,
+    (x) => _miracastReceive = x,
+  );
+
+  void _setFlag(String key, bool v, bool old, void Function(bool) apply) {
+    if (v == old) return;
+    apply(v);
+    unawaited(store?.saveFlag(key, v) ?? Future<void>.value());
+    notifyListeners();
+  }
+
+  Future<void> loadFlags() async {
+    final s = store;
+    if (s == null) return;
+    _officeConvert = await s.loadFlag('officeConvert') ?? _officeConvert;
+    _otherTvs = await s.loadFlag('otherTvs') ?? _otherTvs;
+    _airplayReceive = await s.loadFlag('airplayReceive') ?? _airplayReceive;
+    _miracastReceive = await s.loadFlag('miracastReceive') ?? _miracastReceive;
   }
 
   late UiJoinMode _joinMode;

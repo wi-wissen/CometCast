@@ -16,6 +16,7 @@ import '../core/launch_intake.dart';
 import '../core/link_target.dart';
 import '../core/miracast.dart';
 import '../core/nearby_platform.dart';
+import '../core/share_intake.dart';
 import '../miracast_page.dart';
 import '../receiver_controller.dart' show UrlOpener;
 import '../settings.dart';
@@ -48,7 +49,12 @@ class AppShell extends StatefulWidget {
     this.firstLaunch = false,
     this.canOpenLinks,
     this.nearbyPlatform,
+    this.pickFileFor,
+    this.shareIntake,
   });
+
+  final PickFileFor? pickFileFor;
+  final ShareIntake? shareIntake;
 
   final CoreApi core;
   final AppSettings settings;
@@ -141,6 +147,9 @@ class _AppShellState extends State<AppShell> {
           core: widget.core,
           settings: widget.settings,
           pickFile: widget.pickFile,
+          pickFileFor: widget.pickFileFor,
+          openUrl: widget.openUrl,
+          shareIntake: widget.shareIntake,
           androidCapture: widget.androidCapture,
           iosBroadcast: widget.iosBroadcast,
           scanQr: widget.scanQr,

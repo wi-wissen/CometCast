@@ -10,11 +10,12 @@ import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../codec_controller.dart';
 import '../../core/core_api.dart';
+import '../../tv_controller.dart' show TvRow;
 import '../design/icons.dart';
 import '../design/spans.dart';
 import 'kit.dart';
 import 'host_text.dart';
-import 'nearby.dart' show NearbyCard, PDividerOr;
+import 'nearby.dart' show NearbyCard, PCompactButton, PDividerOr;
 
 /// What kind of device the presenter runs on (spec 5.5, decision N15: by device kind, not by
 /// layout width).
@@ -40,7 +41,29 @@ class FirstRunPage extends StatelessWidget {
     this.nearby,
     this.connecting = false,
     this.onAnyTap,
+    this.onAppSettings,
+    this.settingsIsAbout = false,
+    this.addressLine,
+    this.intro,
+    this.primaryLabel,
   });
+
+  /// The entry to the app settings at the right end of the brand row (spec 15.8); null hides it.
+  final VoidCallback? onAppSettings;
+
+  /// iOS and iPadOS, where no switch exists: the button reads `about.open` with the info icon
+  /// and the callback opens About.
+  final bool settingsIsAbout;
+
+  /// The line "via {dom} . Change" under the code field (spec 15.7); null hides it.
+  final Widget? addressLine;
+
+  /// Replaces the brand row and the welcome heading (the share page's heading and item card,
+  /// spec 15.3); the page then also has no text links.
+  final List<Widget>? intro;
+
+  /// Replaces `app.connect` (`share.show`).
+  final String? primaryLabel;
 
   final TextEditingController codeController;
   final TextEditingController nameController;
@@ -116,14 +139,14 @@ class FirstRunPage extends StatelessWidget {
       ),
     );
     final links = <Widget>[
-      if (onBeDisplay != null)
+      if (intro == null && onBeDisplay != null)
         link(t.appBeDisplay, const Key('be-display'), onBeDisplay!),
-      if (onMiracast != null)
+      if (intro == null && onMiracast != null)
         link(t.appMiracast, const Key('miracast-link'), onMiracast!),
     ];
     final actions = <Widget>[
       PPrimaryButton(
-        label: t.appConnect,
+        label: primaryLabel ?? t.appConnect,
         onPressed: canConnect && !connecting ? onConnect : null,
       ),
       if (links.isNotEmpty)
@@ -136,8 +159,21 @@ class FirstRunPage extends StatelessWidget {
         ),
     ];
     final brand = <Widget>[
-      const PBrand(),
-      Text(t.appWelcome, style: s.type.heading),
+      ...?intro,
+      if (intro == null) ...[
+        PBrand(
+          trailing: onAppSettings == null
+              ? null
+              : PCompactButton(
+                  key: const Key('app-settings-open'),
+                  label: settingsIsAbout ? t.aboutOpen : t.appSettingsOpen,
+                  icon: settingsIsAbout ? CcIconName.info : CcIconName.gear,
+                  centered: true,
+                  onPressed: onAppSettings,
+                ),
+        ),
+        Text(t.appWelcome, style: s.type.heading),
+      ],
       PField(
         fieldKey: const Key('name-field'),
         label: t.startNameLabel,
@@ -204,18 +240,27 @@ class FirstRunPage extends StatelessWidget {
               ),
             ),
         ],
-        PField(
-          fieldKey: const Key('code-field'),
-          label: t.startCodeLabel,
-          controller: codeController,
-          code: true,
-          maxLength: 9,
-          hint: 'XXX XXX',
-          error: codeEmpty,
-          errorText: codeEmpty ? t.startCodeEmpty : null,
-          textInputAction: TextInputAction.done,
-          readOnly: connecting,
-          onSubmitted: connecting ? null : (_) => onConnect(),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PField(
+              fieldKey: const Key('code-field'),
+              label: t.startCodeLabel,
+              controller: codeController,
+              code: true,
+              maxLength: 9,
+              hint: 'XXX XXX',
+              error: codeEmpty,
+              errorText: codeEmpty ? t.startCodeEmpty : null,
+              textInputAction: TextInputAction.done,
+              readOnly: connecting,
+              onSubmitted: connecting ? null : (_) => onConnect(),
+            ),
+            if (addressLine != null) ...[
+              const SizedBox(height: 5),
+              addressLine!,
+            ],
+          ],
         ),
       ],
     ];
@@ -303,14 +348,17 @@ class _LinksBlock extends StatelessWidget {
 /// Brand row: logo 28 + "Comet Cast" (spec 5.2), the logo file that fits the device's
 /// light or dark setting.
 class PBrand extends StatelessWidget {
-  const PBrand({super.key});
+  const PBrand({super.key, this.trailing});
+
+  /// The settings button (spec 15.8): the row is then 44 high with the logo centred in it.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final s = PresenterScope.of(context);
     final t = AppLocalizations.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
+    final row = Row(
       key: const Key('brand'),
       children: [
         ExcludeSemantics(
@@ -323,9 +371,11 @@ class PBrand extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Text(t.appTitle, style: s.type.brand),
+        Expanded(child: Text(t.appTitle, style: s.type.brand)),
+        ?trailing,
       ],
     );
+    return trailing == null ? row : SizedBox(height: 44, child: row);
   }
 }
 
@@ -412,11 +462,15 @@ class WhatPage extends StatelessWidget {
     required this.onDisconnect,
     required this.device,
     this.room,
+    this.tv,
   });
   final VoidCallback onScreen;
   final VoidCallback onFile;
   final VoidCallback onLink;
   final VoidCallback onDisconnect;
+
+  /// A TV without Comet Cast is connected (spec 15.5): only the rows its way can do.
+  final TvRow? tv;
 
   /// Screen subtitle by device kind: `what.screenApp` (phone), `what.screenTablet`,
   /// `what.screenLaptop` (computer).
@@ -448,38 +502,75 @@ class WhatPage extends StatelessWidget {
           ],
         ),
         Text(t.whatTitle, style: s.type.heading),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            POption(
-              key: const Key('what-screen'),
-              icon: CcIconName.screen,
-              title: t.whatScreen,
-              subtitle: switch (device) {
-                PresenterDevice.phone => t.whatScreenApp,
-                PresenterDevice.tablet => t.whatScreenTablet,
-                PresenterDevice.computer => t.whatScreenLaptop,
-              },
-              onPressed: onScreen,
-            ),
-            const SizedBox(height: 8),
-            POption(
-              key: const Key('what-file'),
-              icon: CcIconName.file,
-              title: t.whatFile,
-              subtitle: t.whatFileSub,
-              onPressed: onFile,
-            ),
-            const SizedBox(height: 8),
-            POption(
-              key: const Key('what-link'),
-              icon: CcIconName.link,
-              title: t.whatLink,
-              subtitle: t.whatLinkSub,
-              onPressed: onLink,
-            ),
-          ],
-        ),
+        if (tv != null)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (tv!.canScreen)
+                POption(
+                  key: const Key('what-screen'),
+                  icon: CcIconName.screen,
+                  title: t.whatScreen,
+                  subtitle: tv!.kind == TvKind.cast
+                      ? t.whatScreenTv
+                      : t.whatScreenAirplay,
+                  onPressed: onScreen,
+                ),
+              if (tv!.kind == TvKind.airPlay && tv!.canPhoto) ...[
+                if (tv!.canScreen) const SizedBox(height: 8),
+                POption(
+                  key: const Key('what-photo'),
+                  icon: CcIconName.file,
+                  title: t.whatPhoto,
+                  subtitle: t.whatPhotoSub,
+                  onPressed: onFile,
+                ),
+              ],
+              if (tv!.kind == TvKind.airPlay && tv!.canVideo) ...[
+                if (tv!.canScreen || tv!.canPhoto) const SizedBox(height: 8),
+                POption(
+                  key: const Key('what-video'),
+                  icon: CcIconName.link,
+                  title: t.whatVideo,
+                  subtitle: t.whatVideoSub,
+                  onPressed: onLink,
+                ),
+              ],
+            ],
+          )
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              POption(
+                key: const Key('what-screen'),
+                icon: CcIconName.screen,
+                title: t.whatScreen,
+                subtitle: switch (device) {
+                  PresenterDevice.phone => t.whatScreenApp,
+                  PresenterDevice.tablet => t.whatScreenTablet,
+                  PresenterDevice.computer => t.whatScreenLaptop,
+                },
+                onPressed: onScreen,
+              ),
+              const SizedBox(height: 8),
+              POption(
+                key: const Key('what-file'),
+                icon: CcIconName.file,
+                title: t.whatFile,
+                subtitle: t.whatFileSub,
+                onPressed: onFile,
+              ),
+              const SizedBox(height: 8),
+              POption(
+                key: const Key('what-link'),
+                icon: CcIconName.link,
+                title: t.whatLink,
+                subtitle: t.whatLinkSub,
+                onPressed: onLink,
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -497,7 +588,11 @@ class FilePage extends StatelessWidget {
     this.convertingName,
     this.office = false,
     this.error,
+    this.bodyTv = false,
   });
+
+  /// A photo for a TV (`file.bodyTv`).
+  final bool bodyTv;
   final VoidCallback onPick;
   final VoidCallback onBack;
   final String? progressName;
@@ -517,10 +612,17 @@ class FilePage extends StatelessWidget {
     return PPage(
       actions: [PSecondaryButton(label: t.commonBack, onPressed: onBack)],
       children: [
-        Text(t.whatFile, style: s.type.heading),
+        Text(bodyTv ? t.whatPhoto : t.whatFile, style: s.type.heading),
         // The browser variant on every app platform; `file.bodyApp` where Office files are
         // converted (decision N16).
-        Text(office ? t.fileBodyApp : t.fileBodyWeb, style: s.type.body),
+        Text(
+          bodyTv
+              ? t.fileBodyTv
+              : office
+              ? t.fileBodyApp
+              : t.fileBodyWeb,
+          style: s.type.body,
+        ),
         PPrimaryButton(
           label: t.filePick,
           onPressed: progressName == null && convertingName == null
@@ -568,7 +670,11 @@ class LinkPage extends StatelessWidget {
     required this.onGo,
     required this.onBack,
     this.error,
+    this.hintTv = false,
   });
+
+  /// `link.hintTv` instead of `link.hint` (a TV loads the video itself).
+  final bool hintTv;
   final TextEditingController controller;
   final VoidCallback onGo;
   final VoidCallback onBack;
@@ -581,14 +687,14 @@ class LinkPage extends StatelessWidget {
     return PPage(
       actions: [PSecondaryButton(label: t.commonBack, onPressed: onBack)],
       children: [
-        Text(t.whatLink, style: s.type.heading),
+        Text(hintTv ? t.whatVideo : t.whatLink, style: s.type.heading),
         PField(
           fieldKey: const Key('link-url'),
           label: t.linkLabel,
           controller: controller,
           keyboardType: TextInputType.url,
           error: error != null,
-          helper: t.linkHint,
+          helper: hintTv ? t.linkHintTv : t.linkHint,
           errorText: error,
           textInputAction: TextInputAction.go,
           onSubmitted: (_) => onGo(),
@@ -615,7 +721,12 @@ class PresentingPage extends StatelessWidget {
     this.sas,
     this.page,
     this.pages,
+    this.onOwnPdf,
   });
+
+  /// A converted Office file is shown (spec 15.6): the limits line `presenting.converted` and the
+  /// link `presenting.ownPdf` (stops presenting and opens a PDF-only picker). Null: neither.
+  final VoidCallback? onOwnPdf;
   final PresentingKind kind;
   final VoidCallback onStop;
   final bool pdf;
@@ -706,6 +817,24 @@ class PresentingPage extends StatelessWidget {
             key: const Key('presenting-sas'),
             style: s.type.small,
           ),
+        if (onOwnPdf != null)
+          // Under the heading area, above the PDF page row (spec 15.6).
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                t.presentingConverted,
+                key: const Key('presenting-converted'),
+                style: s.type.small.copyWith(color: s.tokens.fg2),
+              ),
+              PTextLink(
+                key: const Key('presenting-own-pdf'),
+                label: t.presentingOwnPdf,
+                left: s.laptop,
+                onPressed: onOwnPdf!,
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -753,8 +882,14 @@ enum ErrorKind {
 
   /// Apps: the device cannot share its screen (N56).
   capture,
+
+  /// A TV without Comet Cast refused or was lost (spec 15.5, `error.tv`).
+  tv,
   other,
 }
+
+/// Why a TV did not take the connection (spec 15.5).
+enum TvErrorWhy { cast, airplay, lost }
 
 enum ErrorAction { retype, rescan, retry, showFile, showLink, ask, back }
 
@@ -770,7 +905,14 @@ class ErrorPage extends StatelessWidget {
     this.relayWhy = false,
     this.boxNow = false,
     this.dom = '',
+    this.tvName,
+    this.tvWhy,
   });
+
+  /// [ErrorKind.tv]: the TV's name, already quoted, and the "why" (`error.tv.whyCast`,
+  /// `.whyAirplay` or `.whyLost`).
+  final String? tvName;
+  final TvErrorWhy? tvWhy;
   final ErrorKind kind;
   final void Function(ErrorAction) onAction;
 
@@ -808,6 +950,7 @@ class ErrorPage extends StatelessWidget {
       ErrorKind.busy => (CcIconName.clock, PTone.warn),
       ErrorKind.outdated => (CcIconName.info, PTone.mut),
       ErrorKind.capture => (CcIconName.info, PTone.mut),
+      ErrorKind.tv => (CcIconName.info, PTone.mut),
       ErrorKind.other => (CcIconName.info, PTone.mut),
     };
     final (title, why, now) = switch (kind) {
@@ -865,6 +1008,15 @@ class ErrorPage extends StatelessWidget {
         otherWhy ?? t.errorsCaptureUnavailable,
         t.errorNoScreenNowNoApp,
       ),
+      ErrorKind.tv => (
+        t.errorTvTitle(tvName ?? ''),
+        switch (tvWhy) {
+          TvErrorWhy.airplay => t.errorTvWhyAirplay,
+          TvErrorWhy.lost => t.errorTvWhyLost,
+          _ => t.errorTvWhyCast,
+        },
+        t.errorTvNow,
+      ),
       ErrorKind.other => (
         t.errorOtherTitle,
         otherWhy ?? t.errorsUnknown,
@@ -903,6 +1055,12 @@ class ErrorPage extends StatelessWidget {
               ? t.errorActionAskIn('$cooldown')
               : t.errorActionAsk,
           onPressed: cooldown > 0 ? null : () => onAction(ErrorAction.ask),
+        ),
+        ErrorKind.tv => PPrimaryButton(
+          key: const Key('error-back'),
+          label: t.commonBack,
+          autofocus: true,
+          onPressed: () => onAction(ErrorAction.back),
         ),
         ErrorKind.timeout => PPrimaryButton(
           key: const Key('error-ask'),

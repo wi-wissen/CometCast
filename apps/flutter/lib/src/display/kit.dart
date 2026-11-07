@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:cometcast/l10n/app_localizations.dart';
+
 import '../design/icons.dart';
 import '../design/tokens.dart';
 
@@ -177,12 +179,20 @@ class DisplayControl extends StatefulWidget {
     this.scale = true,
     this.externalFocus = false,
     this.suppressRing = false,
+    this.toggled,
+    this.hint,
   });
 
   final int row;
   final int col;
   final double radius;
   final Widget child;
+
+  /// Switch semantics (spec 15.10): the control is one node with this toggled state.
+  final bool? toggled;
+
+  /// Accessible hint (the sub line of a switch row).
+  final String? hint;
 
   /// Null = inert (not focusable).
   final VoidCallback? onPressed;
@@ -272,9 +282,11 @@ class _DisplayControlState extends State<DisplayControl> {
     final enabled = widget.onPressed != null;
     return Semantics(
       container: true,
-      button: widget.selected == null,
+      button: widget.selected == null && widget.toggled == null,
       inMutuallyExclusiveGroup: widget.selected == null ? null : true,
       checked: widget.selected,
+      toggled: widget.toggled,
+      hint: widget.hint,
       enabled: enabled,
       label: widget.label,
       onTap: widget.onPressed,
@@ -596,6 +608,168 @@ class DLogo extends StatelessWidget {
     final t = DisplayScope.of(context).tokens;
     return ExcludeSemantics(
       child: SvgPicture.asset(t.logoAsset, width: size, height: size),
+    );
+  }
+}
+
+// --- switch, Beta chip, switch row (spec 15.10, 15.4) -------------------------------------
+
+/// The Beta chip after a title: text `beta` 13/700 `--mut`, uppercase, letter-spacing .06em, 1 px
+/// `--line` border, radius 999, padding 1 8. Not read separately by screen readers.
+class DBetaChip extends StatelessWidget {
+  const DBetaChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = DisplayScope.of(context);
+    final t = s.tokens;
+    return ExcludeSemantics(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+        decoration: BoxDecoration(
+          border: Border.all(width: 1, color: t.line),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          AppLocalizations.of(context).beta.toUpperCase(),
+          style: TextStyle(
+            fontFamily: fontUi,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: .06 * 13,
+            color: t.mut,
+            height: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The display switch: track 44 x 24, radius 12, border 2; off `--line` border, `--panel2`
+/// fill (OLED black), knob 16 `--mut`; on `--acc` border and fill, knob `--bg`. The knob moves
+/// in 120 ms (a jump with reduced motion). Disabled: 40 % opacity. Drawn only; the row is the
+/// control.
+class DSwitch extends StatelessWidget {
+  const DSwitch({super.key, required this.on, this.disabled = false});
+  final bool on;
+  final bool disabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = DisplayScope.of(context);
+    final t = s.tokens;
+    final d = s.reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 120);
+    return Opacity(
+      opacity: disabled ? .4 : 1,
+      child: AnimatedContainer(
+        duration: d,
+        width: 44,
+        height: 24,
+        decoration: BoxDecoration(
+          color: on ? t.acc : t.panel2,
+          border: Border.all(width: 2, color: on ? t.acc : t.line),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: AnimatedAlign(
+          key: const Key('switch-knob'),
+          duration: d,
+          curve: Curves.ease,
+          alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: on ? t.bg : t.mut,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One switch row of Settings (spec 15.4): full width, min height 50, radius 12, border 2
+/// `--line`, fill `--panel2`, padding 8 14, gap 12; title 16/700 with the Beta chip, sub line
+/// 15 `--mut`; the switch at the right. The whole row is the focusable control; one semantics
+/// node "title, Beta" with the toggled state and the sub line as its hint. [disabled] rows
+/// (policy) are not focusable.
+class DSwitchRow extends StatelessWidget {
+  const DSwitchRow({
+    super.key,
+    required this.row,
+    required this.title,
+    required this.sub,
+    required this.on,
+    required this.onToggle,
+    this.beta = false,
+    this.disabled = false,
+    this.subIsState = false,
+  });
+
+  final int row;
+  final String title;
+  final String sub;
+  final bool on;
+  final bool beta;
+  final bool disabled;
+  final bool subIsState;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = DisplayScope.of(context);
+    final t = s.tokens;
+    final betaWord = AppLocalizations.of(context).beta;
+    final body = Container(
+      constraints: const BoxConstraints(minHeight: 50),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.panel2,
+        border: Border.all(width: 2, color: t.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(child: Text(title, style: s.type.modeTile(true))),
+                    if (beta) ...[const SizedBox(width: 8), const DBetaChip()],
+                  ],
+                ),
+                Text(
+                  sub,
+                  key: subIsState ? const Key('switch-state-line') : null,
+                  style: s.type.description,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          DSwitch(on: on, disabled: disabled),
+        ],
+      ),
+    );
+    return DisplayControl(
+      row: row,
+      col: 0,
+      radius: 12,
+      scale: false,
+      toggled: on,
+      label: beta ? '$title, $betaWord' : title,
+      hint: sub,
+      onPressed: disabled ? null : onToggle,
+      child: disabled ? Opacity(opacity: .4, child: body) : body,
     );
   }
 }

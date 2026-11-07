@@ -21,6 +21,7 @@ import 'core/nearby_platform.dart';
 import 'core/link_target.dart' show LinkNothing;
 import 'core/link_target.dart' show LinkOutcome;
 import 'core/qr_scanner.dart';
+import 'core/share_intake.dart';
 import 'core/miracast.dart';
 import 'core/rust_loader.dart';
 import 'src/app_shell.dart';
@@ -98,6 +99,11 @@ Future<void> main() async {
       // The list of screens on the network (spec 14): Android NsdManager and iOS NWBrowser
       // through the bridge, mdns-sd in the core on computers. TVs never show it (no presenter).
       nearbyPlatform: android.tv ? null : nearbyPlatformFor(core),
+      pickFileFor: pickFileOfKind,
+      // Android: the item of the system share sheet (spec 15.3); the TV launcher ignores it.
+      shareIntake: Platform.isAndroid && !android.tv
+          ? ChannelShareIntake()
+          : null,
     ),
   );
 }
@@ -182,7 +188,15 @@ class CometCastApp extends StatelessWidget {
     this.scanQr,
     this.canOpenLinks,
     this.nearbyPlatform,
+    this.pickFileFor,
+    this.shareIntake,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
+
+  /// The file dialog by kind (spec 15.6); null: [pickFile] for every kind (tests).
+  final PickFileFor? pickFileFor;
+
+  /// The item of the Android share sheet; null elsewhere and in most tests.
+  final ShareIntake? shareIntake;
 
   /// What the display remembers (a memory store in tests).
   final DisplayStore displayStore;
@@ -308,6 +322,8 @@ class CometCastApp extends StatelessWidget {
         scanQr: scanQr,
         canOpenLinks: canOpenLinks,
         nearbyPlatform: nearbyPlatform,
+        pickFileFor: pickFileFor,
+        shareIntake: shareIntake,
       ),
     );
   }
