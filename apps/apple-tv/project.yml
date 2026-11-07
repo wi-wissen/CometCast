@@ -37,6 +37,9 @@ targets:
     sources:
       - path: Sources/CometCastTV
       - path: Assets.xcassets
+      # Licence texts for About (native-apps.md 21.7), copies made by tools/gen-third-party.mjs.
+      - path: Resources/Licenses
+        type: folder
     dependencies:
       - package: CometCastCore
       - package: LiveKitWebRTC

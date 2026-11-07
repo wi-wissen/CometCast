@@ -8,10 +8,15 @@
 //   * Flutter: apps/flutter/pubspec.lock; licence files are read from the pub cache when the package is there.
 // The header records the SHA-256 of the three lock files. `tools/release-guard.sh licenses-fresh` fails
 // when one of them changed after the file was generated.
+// The two root files (THIRD_PARTY_LICENSES.md and the hand-written THIRD_PARTY_NOTICES.md) are copied for the
+// apps (native-apps.md 21.7): unchanged to apps/flutter/assets/licenses/ and apps/apple-tv/Resources/Licenses/,
+// joined (notices first) to apps/web/public/third-party-licenses.txt (the web footer's "Licences" link).
+// `tools/release-guard.sh licenses-fresh` also fails when a copy differs from the root files.
 // Usage: node tools/gen-third-party.mjs [--check]     (--check: do not write, fail when out of date)
+//        node tools/gen-third-party.mjs --copies-only [--check]   (only the copies, no cargo/npm/pub needed)
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -205,12 +210,54 @@ ${pg.groups.length ? renderGroups({ groups: pg.groups, without: [] }) : '\nNo pu
   return { text: s, missing: r.items.filter((i) => !i.files.length), pubNoText: pubNoText.length, total: { rust: r.items.length, npm: n.length, pub: p.length } };
 }
 
+// The copies of the two root files (native-apps.md 21.7). Pure functions of the root files.
+const NOTICES = join(repo, 'THIRD_PARTY_NOTICES.md');
+function copies(licencesText, noticesText) {
+  return [
+    ['apps/flutter/assets/licenses/THIRD_PARTY_LICENSES.md', licencesText],
+    ['apps/flutter/assets/licenses/THIRD_PARTY_NOTICES.md', noticesText],
+    ['apps/apple-tv/Resources/Licenses/THIRD_PARTY_LICENSES.md', licencesText],
+    ['apps/apple-tv/Resources/Licenses/THIRD_PARTY_NOTICES.md', noticesText],
+    ['apps/web/public/third-party-licenses.txt', `${noticesText.replace(/\n+$/, '')}\n\n${licencesText}`],
+  ];
+}
+/** Names of the copies that differ from what the root files give (missing counts as different). */
+function staleCopies(licencesText, noticesText) {
+  return copies(licencesText, noticesText)
+    .filter(([f, t]) => !existsSync(join(repo, f)) || readFileSync(join(repo, f), 'utf8') !== t)
+    .map(([f]) => f);
+}
+function writeCopies(licencesText, noticesText) {
+  for (const [f, t] of copies(licencesText, noticesText)) {
+    mkdirSync(dirname(join(repo, f)), { recursive: true });
+    writeFileSync(join(repo, f), t);
+  }
+}
+
+if (process.argv.includes('--copies-only')) {
+  // The root files as they are in the checkout.
+  const l = readFileSync(OUT, 'utf8');
+  const n = readFileSync(NOTICES, 'utf8');
+  if (process.argv.includes('--check')) {
+    const stale = staleCopies(l, n);
+    if (stale.length) { console.error(`out of date: ${stale.join(', ')}: run node tools/gen-third-party.mjs --copies-only`); process.exit(1); }
+    console.log('the licence copies are up to date');
+  } else {
+    writeCopies(l, n);
+    console.log('wrote the licence copies');
+  }
+  process.exit(0);
+}
+
 const res = build();
 if (process.argv.includes('--check')) {
   const cur = existsSync(OUT) ? readFileSync(OUT, 'utf8') : '';
   if (cur !== res.text) { console.error('THIRD_PARTY_LICENSES.md is out of date: run node tools/gen-third-party.mjs'); process.exit(1); }
-  console.log('THIRD_PARTY_LICENSES.md is up to date');
+  const stale = staleCopies(res.text, readFileSync(NOTICES, 'utf8'));
+  if (stale.length) { console.error(`out of date: ${stale.join(', ')}: run node tools/gen-third-party.mjs`); process.exit(1); }
+  console.log('THIRD_PARTY_LICENSES.md and its copies are up to date');
 } else {
   writeFileSync(OUT, res.text);
+  writeCopies(res.text, readFileSync(NOTICES, 'utf8'));
   console.log(`wrote THIRD_PARTY_LICENSES.md (${(res.text.length / 1024).toFixed(0)} KiB): ${res.total.rust} crates, ${res.total.npm} npm, ${res.total.pub} pub; ${res.missing.length} crates without licence file${res.missing.length ? ': ' + res.missing.map((m) => m.name).join(', ') : ''}; ${res.pubNoText} pub packages without text`);
 }
