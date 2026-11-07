@@ -322,32 +322,55 @@ Questions found while implementing [fix-list-flutter-3.md](fix-list-flutter-3.md
   - **Found:** the "What" of A4 says the first link starts **14** below Connect (the column gap); its acceptance and N37 (5.3) say the first 44-high tap area starts **12** below Connect (text centred in it, so the text is about 34 below).
   - **Options:** (a) 12 as N37 and the acceptance; (b) 14 as the "What".
   - **Done meanwhile:** (a). The nearby laptop layout now has exactly the same 12 as the layout without the card (the extra 4 that made it 16 is gone); the second link touches the first. Test: `nearby_page_test.dart`, "laptop: the links follow Connect".
+  - **Answered:** (a), 12 (spec N60); the 14 in A4's "What" was a writing error. Accepted as built.
 - **J2 A6/N55: the desktop app now calls the system picker.**
   - **Found:** the built `_startScreen` always passed an X11 `ScreenRequest` on desktops, so the system picker of the capture round was never reached from the UI (the test plans assumed it).
   - **Done meanwhile:** on desktops `present_screen(None)` (the picker on every tap) unless `COMETCAST_CAPTURE_DISPLAY` forces an X11 display (development and tests). Non-desktop builds are unchanged. Say if the forced-display exception is not wanted.
+  - **Answered:** accepted (spec N67): the picker on every tap; `COMETCAST_CAPTURE_DISPLAY` stays as a development and test switch (no UI, not in user docs).
 - **J3 B4: where the Windows owner window comes from.**
   - **Found:** "cc-ffi passes the Flutter window's HWND as `owner_window`". The Rust core runs inside the Flutter process, so a bridge function (and a platform channel to read the HWND) would only hand the process's own window back to Rust.
   - **Options:** (a) find the window in Rust (done); (b) a new bridge function plus a channel in the Windows runner.
   - **Done meanwhile:** (a): `cc_capture::windows_wgc::own_window()` (class `FLUTTER_RUNNER_WIN32_WINDOW`, else the first visible top-level window of the process); `PickerOptions::owner_window` still wins when set. No bridge change for it. Never run on Windows.
+  - **Answered:** (a) accepted (spec N67); acceptance unchanged: the picker is owned by and in front of the Comet Cast window (Windows test plan).
 - **J4 B5: plug-in library instead of a declared dependency; the desktop entry.**
   - **Found:** the spec allows "load PipeWire at run time, or a declared dependency in every package format shipped". This repository ships no Linux package format (only the Flutter bundle), so there is nothing to declare a dependency in. The portal also needs a `.desktop` file for the app id.
   - **Done meanwhile:** run-time loading: the portal and PipeWire code is `libcc_capture_pw.so` (`crates/cc-capture-pw`, loaded with `dlopen`), `libcc_ffi.so` does not link libpipewire (checked with `ldd`). The desktop entry `de.cometcast.cometcast.desktop` has only `Type`, `Name=Comet Cast`, `Exec`, `Terminal` and `StartupWMClass`: no `Icon`, `Comment`, `Categories` (those are an asset and copy decision). Which package formats Comet Cast ships on Linux, and the icon, are open.
+  - **Answered:** run-time loading accepted (spec N68). Desktop entry: `Icon=de.cometcast.cometcast`, `GenericName`/`Comment`/`Keywords` EN and DE, `Categories=Office;Presentation;`; icons from `assets/logo/cometcast-app-icon.svg` and the 32/64/512 PNGs into hicolor (exact values in native-apps.md 20.3). Every Linux package format shipped later carries the same entry; which formats is a release choice, not a design one. Fix list 4 A5.
 - **J5 B1: a patched mdns-sd in the repository.**
   - **Found:** `mdns-sd` 0.21.7 (the newest release) has no public TTL setter.
   - **Options:** (a) a vendored copy with two public setters (done, `vendor/mdns-sd`, `[patch.crates-io]`; `tools/gen-third-party.mjs` lists crates under `vendor/`); (b) wait for an upstream release; (c) the bridges prove that the screen answered (not possible with `NsdManager` / `NWBrowser`).
   - **Done meanwhile:** (a). Nothing is checked on a real network or device.
+  - **Answered:** (a) accepted until an upstream release has a TTL setter (spec N69); expiry is proven by the device test plans.
 - **J6 B3: the macOS permission text in German.**
   - **Found:** `NSLocalNetworkUsageDescription` and `NSBonjourServices` are now in the macOS `Info.plist` (English text = `ios.localNetworkUsage`). The macOS project has no `de.lproj/InfoPlist.strings` (N52 wants the du text for iOS); adding one needs a variant group in the macOS project file.
   - **Done meanwhile:** English only on macOS.
+  - **Answered:** add the variant group and `de.lproj/InfoPlist.strings` with the du text (spec N70). Fix list 4 A4.
 - **J7 B2: Apple TV announces without a room name.**
   - **Found:** the Apple TV app has no setup that asks for a room name (the setup is not designed there), and 14.8 allows "none set → empty".
   - **Done meanwhile:** no `name` key; the row shows `common.noName`. The announcer runs while the receiver shows a code (waiting for a sender, connecting, receiving, sender left), in the foreground, with the policy allowing it.
+  - **Answered:** accepted for test builds only (spec N69). The Apple TV display uses the setup wizard of 4.1 (native-apps.md 1); once it sets a room name the `name` key carries it. No new design.
 - **J8 A6: styles of the three buttons.**
   - **Found:** 6 names the order and "primary" for Show photo or file only.
   - **Done meanwhile:** Show a link and Back are secondary buttons; initial focus on the primary.
+  - **Answered:** accepted as built (spec N65): Show a link and Back secondary, in that order.
 - **J9 Not run.**
   - **Found:** B6 (the three capture test plans, Android, iPad, Apple TV, macOS announcements) needs the devices; none exist here.
   - **Done meanwhile:** the plans were updated for the new behaviour (error.capture, closed window, picker owner, app id); nothing was run on a device. Kotlin and Swift were syntax-checked only (tree-sitter).
+  - **Answered:** not a design item (spec N69). The plans must pass on devices before release; no design review is needed for them.
 - **J10 `-p cc-ffi` clippy with `-D warnings` alone fails on `cc-office` (dead code in `worker.rs`).**
   - **Found:** with `--no-default-features` the `cc-office` worker fields are unused; the same failure exists on the base commit. The CI lints the whole workspace.
   - **Done meanwhile:** clippy for `cc-ffi` was run with `-A dead-code`; no code changed for it.
+  - **Answered:** not a design matter (spec N69); left to engineering.
+
+## J. Differences listed in the third UI-round hand-off
+
+Answered in spec 13, "Decisions after the third Flutter round" (N60–N72); work in [fix-list-flutter-4.md](fix-list-flutter-4.md).
+
+1. German laptop card, long name broken mid-word: **Answered:** fix (N61 columns 4 : 5, N62 break rules and title column minimum 160). Fix list 4 A1.
+2. "über cas / t.musterfirma.de": **Answered:** fix (N61 width; N62 a host breaks only after a dot). Fix list 4 A1, A2. Also found: the connecting row shrinks (N64, A3).
+3. Two-line `app.welcome` in German: **Answered:** accepted (N63).
+4. Three `error.capture` buttons in one row, two secondary: **Answered:** accepted (N65).
+5. Unsupported codec as `error.capture` inside the codec page: **Answered:** accepted (N66).
+6. Windows links 12 below Connect, 44 apart: **Answered:** accepted, correct (N60).
+7. Expiry, multicast lock, picker owner not visible: **Answered:** accepted; device test plans (N69).
+
