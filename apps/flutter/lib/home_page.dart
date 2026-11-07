@@ -8,6 +8,7 @@ import 'package:cometcast/l10n/app_localizations.dart';
 import 'core/android_capture.dart';
 import 'core/android_platform.dart';
 import 'core/core_api.dart';
+import 'core/ios_broadcast.dart';
 import 'receive_page.dart';
 import 'receiver_controller.dart' show UrlOpener;
 import 'send_content_page.dart';
@@ -21,6 +22,7 @@ class HomePage extends StatelessWidget {
     required this.core,
     required this.settings,
     this.androidCapture,
+    this.iosBroadcast,
     this.pickFile = pickImageOrPdf,
     this.openUrl = launchInBrowser,
   });
@@ -28,6 +30,9 @@ class HomePage extends StatelessWidget {
   final CoreApi core;
   final AppSettings settings;
   final AndroidCapture? androidCapture;
+
+  /// The iOS broadcast hand-over (a fake in tests); null on other platforms.
+  final IosBroadcast? iosBroadcast;
 
   /// The file dialog of "Send file or link" (replaced in tests).
   final PickFile pickFile;
@@ -116,6 +121,7 @@ class HomePage extends StatelessWidget {
                               core: core,
                               settings: settings,
                               androidCapture: androidCapture,
+                              iosBroadcast: iosBroadcast,
                             ),
                           ),
                         ),

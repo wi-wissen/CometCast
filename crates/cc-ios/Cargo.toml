@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "cc-ios"
+description = "C ABI of the sender for the iOS broadcast extension (docs/ios.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# `staticlib` = libcc_ios.a, linked into the ReplayKit Broadcast Upload Extension.
+# `rlib` = a normal Rust library, so `cargo test` and `cargo clippy` can use the crate too.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+# Own lint table (like cc-ffi): the workspace forbids `unsafe`, but the C ABI in `src/ffi.rs`
+# needs it. Everything outside that module stays free of `unsafe` (the module attribute is the
+# only `#[allow(unsafe_code)]`). Keep the rest in sync with the workspace table by hand.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# Deliberately small: only the encoded path of the sender. No OpenH264 (no `h264-*` feature of
+# cc-sender / cc-media, no cc-codec, no libloading): the extension never encodes in Rust, the
+# VideoToolbox hardware encoder does. Do not add dependencies without checking the memory
+# budget of the extension (docs/ios.md, "Memory budget") and `cargo tree -p cc-ios -e features`.
+[dependencies]
+cc-proto.workspace = true
+cc-transport.workspace = true
+cc-sender.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+cc-server.workspace = true
+cc-receiver.workspace = true
+tempfile = "3"

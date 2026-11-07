@@ -1,0 +1,3 @@
+/* Wird von iOS in den Berechtigungsdialogen und unter dem Symbol angezeigt. Wie en.lproj halten. */
+"CFBundleDisplayName" = "Comet Cast";
+"NSLocalNetworkUsageDescription" = "Comet Cast sucht Empfänger und den Comet-Cast-Server in Ihrem lokalen Netzwerk, damit Sie Ihren Bildschirm mit ihnen teilen können.";

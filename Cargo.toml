@@ -18,6 +18,7 @@ members = [
     "crates/cc-cast",
     "crates/cc-receiver",
     "crates/cc-ffi",
+    "crates/cc-ios",
     "crates/cc-server",
     "crates/cc-sfu",
     "crates/cc-airplay",

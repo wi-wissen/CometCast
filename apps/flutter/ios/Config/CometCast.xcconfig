@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The ONE place for identifiers of the iOS app. project.yml, both Info.plists and both
+// entitlement files read these build settings; nothing else in ios/ contains a bundle id.
+// Included by Flutter/Debug.xcconfig and Flutter/Release.xcconfig.
+//
+// UNCERTAIN: never opened in Xcode (docs/ios.md).
+
+// Bundle id of the app. Same value the committed project had before XcodeGen.
+COMETCAST_BUNDLE_ID = de.cometcast.cometcast
+
+// The Broadcast Upload Extension. Must be prefixed by the app's bundle id (Apple rule for
+// embedded extensions).
+COMETCAST_EXTENSION_BUNDLE_ID = $(COMETCAST_BUNDLE_ID).broadcast
+
+// App Group shared by app and extension (Developer portal: Identifiers, App Groups).
+COMETCAST_APP_GROUP = group.$(COMETCAST_BUNDLE_ID)
+
+// Name below the icon. Translations of the other strings: InfoPlist.strings (en, de).
+COMETCAST_DISPLAY_NAME = Comet Cast
+
+// Oldest iOS version. 15.0: what the committed Flutter project already used; the
+// VideoToolbox low-latency encoder mode needs 14.5, UIScreen.isCaptured 11.
+COMETCAST_DEPLOYMENT_TARGET = 15.0
+
+// Custom URL scheme (placeholder, see docs/ios.md "URL scheme and universal links").
+COMETCAST_URL_SCHEME = cometcast
+
+// Signing. Defaults: Xcode's automatic signing with your team (local development). The release
+// workflow overrides all five in Local.xcconfig with MANUAL signing and one provisioning profile
+// per target (docs/ios.md, "Signing"). Local.xcconfig is not committed.
+COMETCAST_DEVELOPMENT_TEAM =
+COMETCAST_SIGN_STYLE = Automatic
+COMETCAST_SIGN_IDENTITY = Apple Development
+COMETCAST_APP_PROFILE =
+COMETCAST_EXTENSION_PROFILE =
+
+// Must stay AFTER the defaults above: a later assignment wins.
+#include? "Local.xcconfig"
+
+DEVELOPMENT_TEAM = $(COMETCAST_DEVELOPMENT_TEAM)
+CODE_SIGN_STYLE = $(COMETCAST_SIGN_STYLE)
+CODE_SIGN_IDENTITY = $(COMETCAST_SIGN_IDENTITY)
