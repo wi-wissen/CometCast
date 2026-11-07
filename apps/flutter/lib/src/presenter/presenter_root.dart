@@ -18,14 +18,18 @@ import '../../core/android_capture.dart';
 import '../../core/core_api.dart';
 import '../../core/ios_broadcast.dart';
 import '../../core/launch_intake.dart';
+import '../../core/nearby_platform.dart';
 import '../../core/link_target.dart';
 import '../../join_state.dart';
+import '../../nearby_controller.dart';
 import '../../presenter_session_controller.dart';
 import '../../sender_controller.dart';
 import '../../settings.dart';
 import 'errors.dart';
 import 'file_picker.dart';
+import '../display/display_logic.dart' show displayHost;
 import 'kit.dart';
+import 'nearby.dart';
 import 'pages.dart';
 
 enum PresenterPage {
@@ -109,6 +113,8 @@ class PresenterRoot extends StatefulWidget {
     this.device,
     this.codec,
     this.firstLaunch = false,
+    this.nearbyPlatform,
+    this.nearbyController,
   });
 
   final CoreApi core;
@@ -150,11 +156,19 @@ class PresenterRoot extends StatefulWidget {
   /// First launch after the install and it brought no code: `app.scanAgainBody` is shown.
   final bool firstLaunch;
 
+  /// The platform part of "screens on this network" (spec 14). Null: the section is never shown
+  /// (the web, tests that do not need it).
+  final NearbyPlatform? nearbyPlatform;
+
+  /// Tests: a ready controller instead of one built from [nearbyPlatform].
+  final NearbyController? nearbyController;
+
   @override
   State<PresenterRoot> createState() => PresenterRootState();
 }
 
-class PresenterRootState extends State<PresenterRoot> {
+class PresenterRootState extends State<PresenterRoot>
+    with WidgetsBindingObserver {
   PresenterPage _page = PresenterPage.firstRun;
   final _code = TextEditingController();
   final _name = TextEditingController();
@@ -181,6 +195,20 @@ class PresenterRootState extends State<PresenterRoot> {
   String? _lastStartFailure;
   UiSendRejection? _lastRejection;
   StreamSubscription<String>? _linkSub;
+
+  // --- screens on this network (spec 14) ---
+  NearbyController? _nearby;
+  bool _ownsNearby = false;
+
+  /// The server a nearby screen announced, for the session started from a row (null: the
+  /// settings' server). Never saved as "last used" (spec 14.8, point 11).
+  String? _sessionServer;
+
+  /// The row that is being connected (a failure `room_not_found` removes it, spec 14.4).
+  String? _nearbyConnectId;
+
+  /// The screen waiting for the relay confirmation page (spec 14.4).
+  NearbyScreenInfo? _nearbyRelay;
 
   late final PresenterSessionController _session = PresenterSessionController(
     core: widget.core,
@@ -218,6 +246,67 @@ class PresenterRootState extends State<PresenterRoot> {
     _session.addListener(_onSession);
     _linkSub = widget.linkStream?.listen(_onLink);
     widget.settings.discover(widget.core);
+    widget.settings.addListener(_onSettings);
+    WidgetsBinding.instance.addObserver(this);
+    _nearby =
+        widget.nearbyController ??
+        (widget.nearbyPlatform == null
+            ? null
+            : NearbyController(
+                core: widget.core,
+                platform: widget.nearbyPlatform!,
+              ));
+    _ownsNearby = widget.nearbyController == null && _nearby != null;
+    _nearby?.addListener(_onNearby);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncNearby());
+  }
+
+  void _onNearby() {
+    if (mounted) setState(() {});
+  }
+
+  void _onSettings() {
+    if (!mounted) return;
+    _syncNearby();
+    setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Spec 14.5: the search stops in the background and starts again on the page when the app
+    // comes back. (`inactive` is also what a system dialog causes: it is not a background.)
+    if (state == AppLifecycleState.paused) {
+      _nearby?.stop();
+    } else if (state == AppLifecycleState.resumed) {
+      _syncNearby();
+    }
+  }
+
+  /// The section is shown, and the search runs, on the start page without a code, unless the
+  /// administrator's policy forbids announcements or locks the server (spec 14.1).
+  bool get _nearbyWanted =>
+      _nearby != null &&
+      _page == PresenterPage.firstRun &&
+      _chip == null &&
+      widget.settings.announcementsAllowed &&
+      !widget.settings.locked;
+
+  void _syncNearby() {
+    final n = _nearby;
+    if (n == null || !mounted) return;
+    if (_nearbyWanted) {
+      n.setEnabled(true);
+      if (!n.active &&
+          _nearbyConnectId == null &&
+          _session.phase != PresenterSessionPhase.connecting) {
+        unawaited(n.start());
+      }
+    } else if (_page == PresenterPage.relay && _nearbyRelay != null) {
+      n.freeze();
+    } else {
+      n.stop();
+      n.setEnabled(false);
+    }
   }
 
   @override
@@ -232,6 +321,10 @@ class PresenterRootState extends State<PresenterRoot> {
       _codecCtl?.dispose(); // an injected one is not ours
     }
     widget.settings.cancelDiscovery();
+    widget.settings.removeListener(_onSettings);
+    WidgetsBinding.instance.removeObserver(this);
+    _nearby?.removeListener(_onNearby);
+    if (_ownsNearby) _nearby?.dispose();
     _code.dispose();
     _name.dispose();
     _url.dispose();
@@ -246,6 +339,8 @@ class PresenterRootState extends State<PresenterRoot> {
 
   void _go(PresenterPage p) {
     setState(() => _page = p);
+    if (p != PresenterPage.firstRun) _nearbyConnectId = null;
+    _syncNearby();
     _tick?.cancel();
     if (p == PresenterPage.waiting ||
         (p == PresenterPage.error && _error == ErrorKind.denied)) {
@@ -277,6 +372,9 @@ class PresenterRootState extends State<PresenterRoot> {
       return;
     }
     widget.settings.setDisplayName(_name.text);
+    _nearby?.stop();
+    _nearbyConnectId = null;
+    _sessionServer = null;
     setState(() {
       _roomCode = check.code;
       _codeEmpty = false;
@@ -289,8 +387,63 @@ class PresenterRootState extends State<PresenterRoot> {
     _waited = false;
     _lastPhase = PresenterSessionPhase.idle;
     _lastStartFailure = null;
-    _session.connect(code: _roomCode!, server: _server, name: _myName);
+    _session.connect(
+      code: _roomCode!,
+      server: _sessionServer ?? _server,
+      name: _myName,
+    );
     setState(() {});
+  }
+
+  // --- screens on this network: tapping a row (spec 14.4) --------------------------------
+
+  /// The server of a row is one the app may use at once (default relay, policy, DNS-SRV, or
+  /// confirmed on this device). The announcement alone never makes a server trusted.
+  ServerTrust get _trust =>
+      widget.links?.trust ??
+      ServerTrust(
+        suggestions: widget.settings.serverSuggestions,
+        confirmed: widget.settings.confirmedServers,
+        builtIn: const {builtInRelay},
+      );
+
+  String? _viaFor(NearbyScreenInfo s) =>
+      _trust.isKnownSource(s.server) ? null : displayHost(s.server);
+
+  String _nearbyQuoted(AppLocalizations t, NearbyScreenInfo s) =>
+      s.name.isEmpty ? t.commonNoName : t.commonQuoted(s.name);
+
+  void _tapNearby(NearbyRow row) {
+    final s = row.screen;
+    if (s.code == null) return;
+    if (!_trust.trustsForNearby(s.server)) {
+      // Announced only: the relay confirmation page first; nothing is sent before.
+      _nearbyRelay = s;
+      _go(PresenterPage.relay);
+      return;
+    }
+    _connectNearby(s);
+  }
+
+  void _connectNearby(NearbyScreenInfo s) {
+    widget.settings.setDisplayName(_name.text);
+    _nearbyConnectId = s.id;
+    _nearby?.beginConnect(s.id);
+    _sessionServer = s.server;
+    _roomCode = s.code;
+    _codeEmpty = false;
+    _beginSession();
+  }
+
+  /// `room_not_found` after a tap: no error page; the row is removed, `nearby.gone` shows and
+  /// the search starts again (spec 14.4).
+  void _nearbyGone() {
+    final id = _nearbyConnectId;
+    _nearbyConnectId = null;
+    _roomCode = null;
+    _sessionServer = null;
+    if (id != null) _nearby?.markGone(id);
+    unawaited(_nearby?.restartKeepingLine());
   }
 
   /// The scan found something that is not a code of ours (shown as `app.scanWrong` by the
@@ -301,11 +454,17 @@ class PresenterRootState extends State<PresenterRoot> {
   String? _scannedRelay;
 
   Future<void> _scan() async {
+    _nearby?.stop(); // spec 14.5: the page is left while the scanner is open
     final scanned = await widget.scanQr?.call();
-    if (scanned == null || !mounted) return; // cancelled: nothing changes
+    if (!mounted) return;
+    if (scanned == null) {
+      _syncNearby(); // cancelled: nothing changes, the search starts again
+      return;
+    }
     final outcome = widget.links?.fromUrl(scanned);
     if (outcome == null || outcome is LinkNothing) {
       setState(() => scanWrong = true);
+      _syncNearby();
       return;
     }
     scanWrong = false;
@@ -345,6 +504,8 @@ class PresenterRootState extends State<PresenterRoot> {
           break;
       }
     });
+    _sessionServer = null;
+    _syncNearby();
   }
 
   // --- errors ----------------------------------------------------------------------------
@@ -391,6 +552,7 @@ class PresenterRootState extends State<PresenterRoot> {
         _chip = null;
         _code.clear();
         _roomCode = null;
+        _sessionServer = null;
         _go(PresenterPage.firstRun);
         if (a == ErrorAction.rescan) unawaited(_scan());
       case ErrorAction.retry || ErrorAction.ask:
@@ -447,7 +609,11 @@ class PresenterRootState extends State<PresenterRoot> {
           _showError(c.endedCode ?? 'removed_by_host');
         case PresenterSessionPhase.failed:
           _releaseCapture();
-          _showError(c.errorCode ?? 'unknown');
+          if (_nearbyConnectId != null && c.errorCode == 'room_not_found') {
+            _nearbyGone();
+          } else {
+            _showError(c.errorCode ?? 'unknown');
+          }
         case PresenterSessionPhase.idle || PresenterSessionPhase.connecting:
           break;
       }
@@ -561,7 +727,7 @@ class PresenterRootState extends State<PresenterRoot> {
     )..addListener(_onIos));
     widget.settings.rememberServer();
     _go(PresenterPage.firstRun);
-    await ios.startBroadcast(code: code, server: _server);
+    await ios.startBroadcast(code: code, server: _sessionServer ?? _server);
   }
 
   void _onIos() {
@@ -664,6 +830,7 @@ class PresenterRootState extends State<PresenterRoot> {
     await _releaseCapture();
     await _session.disconnect();
     _roomCode = null;
+    _sessionServer = null;
     _chip = null;
     _go(PresenterPage.bye);
   }
@@ -713,6 +880,16 @@ class PresenterRootState extends State<PresenterRoot> {
           codeEmpty: _codeEmpty,
           canConnect: c.phase != PresenterSessionPhase.connecting,
           onConnect: _connect,
+          nearby:
+              _nearby != null &&
+                  _nearbyWanted &&
+                  _nearby!.status != NearbyStatus.hidden
+              ? NearbySection(
+                  controller: _nearby!,
+                  onTap: _tapNearby,
+                  via: _viaFor,
+                )
+              : null,
         );
       case PresenterPage.what:
         return WhatPage(
@@ -786,6 +963,34 @@ class PresenterRootState extends State<PresenterRoot> {
           onAction: _errorAction,
         );
       case PresenterPage.relay:
+        final nearbyScreen = _nearbyRelay;
+        if (nearbyScreen != null) {
+          // A screen found nearby announced a relay this device does not know (spec 14.4).
+          final host = displayHost(nearbyScreen.server);
+          return RelayConfirmPage(
+            host: host,
+            nearbyName: _nearbyQuoted(t, nearbyScreen),
+            // Cancel: back to the start page, nothing was sent.
+            onCancel: () {
+              _nearbyRelay = null;
+              _go(PresenterPage.firstRun);
+            },
+            // Use: the host is remembered as confirmed on this device (not as last used), then
+            // the join goes on as for a known server.
+            onUse: () async {
+              final canonical = canonicalServer(
+                stripScheme(nearbyScreen.server),
+              );
+              if (canonical != null) {
+                await widget.settings.confirmServer(canonical);
+              }
+              if (!mounted) return;
+              _nearbyRelay = null;
+              setState(() => _page = PresenterPage.firstRun);
+              _connectNearby(nearbyScreen);
+            },
+          );
+        }
         final relay = _scannedRelay ?? widget.relayToConfirm ?? '';
         return RelayConfirmPage(
           host: relay,

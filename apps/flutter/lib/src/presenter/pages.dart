@@ -13,6 +13,7 @@ import '../../core/core_api.dart';
 import '../design/icons.dart';
 import '../design/spans.dart';
 import 'kit.dart';
+import 'nearby.dart' show NearbyCard, PDividerOr;
 
 /// What kind of device the presenter runs on (spec 5.5, decision N15: by device kind, not by
 /// layout width).
@@ -35,6 +36,7 @@ class FirstRunPage extends StatelessWidget {
     this.onMiracast,
     this.codeEmpty = false,
     this.canConnect = true,
+    this.nearby,
   });
 
   final TextEditingController codeController;
@@ -62,6 +64,11 @@ class FirstRunPage extends StatelessWidget {
   final bool codeEmpty;
   final bool canConnect;
 
+  /// The section `nearby.title` (spec 14.1), or null when it is not shown. It is placed between
+  /// the name field and the code (phone) or in a card on the right (laptop); with it the
+  /// divider `start.or` comes after it and `app.scanAgainBody` is not shown.
+  final Widget? nearby;
+
   @override
   Widget build(BuildContext context) {
     final s = PresenterScope.of(context);
@@ -83,99 +90,142 @@ class FirstRunPage extends StatelessWidget {
         ),
       ),
     );
-    return PPage(
-      actions: [
-        PPrimaryButton(
-          label: t.appConnect,
-          onPressed: canConnect ? onConnect : null,
+    final actions = <Widget>[
+      PPrimaryButton(
+        label: t.appConnect,
+        onPressed: canConnect ? onConnect : null,
+      ),
+      if (onBeDisplay != null)
+        Align(
+          alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
+          child: link(t.appBeDisplay, const Key('be-display'), onBeDisplay!),
         ),
-        if (onBeDisplay != null)
-          Align(
-            alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
-            child: link(t.appBeDisplay, const Key('be-display'), onBeDisplay!),
-          ),
-        if (onMiracast != null)
-          Align(
-            alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
-            child: link(t.appMiracast, const Key('miracast-link'), onMiracast!),
-          ),
-      ],
-      children: [
-        const PBrand(),
-        Text(t.appWelcome, style: s.type.heading),
-        PField(
-          fieldKey: const Key('name-field'),
-          label: t.startNameLabel,
-          controller: nameController,
-          maxLength: 40,
-          textInputAction: TextInputAction.next,
+      if (onMiracast != null)
+        Align(
+          alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
+          child: link(t.appMiracast, const Key('miracast-link'), onMiracast!),
         ),
-        if (codeChip != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: p.surface,
-              border: Border.all(color: p.borderInput),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  codeChip!,
-                  key: const Key('code-chip'),
-                  style: s.type.codeChip,
-                ),
-                Row(
-                  children: [
-                    CcIcon(CcIconName.check, color: p.ok, size: 16),
-                    const SizedBox(width: 5),
-                    Text(
-                      chipFromLink ? t.appCodeFromLink : t.appCodeScanned,
-                      style: s.type.label.copyWith(color: p.ok),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          )
-        else ...[
-          if (onScan != null) ...[
-            if (scanAgainBody)
+    ];
+    final brand = <Widget>[
+      const PBrand(),
+      Text(t.appWelcome, style: s.type.heading),
+      PField(
+        fieldKey: const Key('name-field'),
+        label: t.startNameLabel,
+        controller: nameController,
+        maxLength: 40,
+        textInputAction: TextInputAction.next,
+      ),
+    ];
+    final withNearby = nearby != null && codeChip == null;
+    final code = <Widget>[
+      if (codeChip != null)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: p.surface,
+            border: Border.all(color: p.borderInput),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
               Text(
-                t.appScanAgainBody,
-                key: const Key('scan-again-body'),
-                style: s.type.body,
+                codeChip!,
+                key: const Key('code-chip'),
+                style: s.type.codeChip,
               ),
-            PSecondaryButton(
-              key: const Key('scan-button'),
-              label: t.appScanQr,
-              icon: CcIconName.scan,
-              onPressed: onScan,
+              Row(
+                children: [
+                  CcIcon(CcIconName.check, color: p.ok, size: 16),
+                  const SizedBox(width: 5),
+                  Text(
+                    chipFromLink ? t.appCodeFromLink : t.appCodeScanned,
+                    style: s.type.label.copyWith(color: p.ok),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        )
+      else ...[
+        if (onScan != null) ...[
+          // `app.scanAgainBody` speaks of scanning "once more": not with the nearby section
+          // (spec 14.1).
+          if (scanAgainBody && !withNearby)
+            Text(
+              t.appScanAgainBody,
+              key: const Key('scan-again-body'),
+              style: s.type.body,
             ),
-            if (scanWrong)
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  t.appScanWrong,
-                  key: const Key('scan-wrong'),
-                  style: s.type.errorText,
-                ),
+          PSecondaryButton(
+            key: const Key('scan-button'),
+            label: t.appScanQr,
+            icon: CcIconName.scan,
+            onPressed: onScan,
+          ),
+          if (scanWrong)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                t.appScanWrong,
+                key: const Key('scan-wrong'),
+                style: s.type.errorText,
               ),
+            ),
+        ],
+        PField(
+          fieldKey: const Key('code-field'),
+          label: t.startCodeLabel,
+          controller: codeController,
+          code: true,
+          maxLength: 9,
+          hint: 'XXX XXX',
+          error: codeEmpty,
+          errorText: codeEmpty ? t.startCodeEmpty : null,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => onConnect(),
+        ),
+      ],
+    ];
+    if (withNearby && s.laptop) {
+      // Laptop (spec 14.1): left column brand, heading, name, code, Connect and the links; the
+      // section in a card on the right.
+      Widget column(List<Widget> items) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(height: 14),
+            // Buttons are as wide as their content on the laptop (spec 7.4).
+            if (items[i] is PPrimaryButton || items[i] is PSecondaryButton)
+              Align(alignment: Alignment.centerLeft, child: items[i])
+            else
+              items[i],
           ],
-          PField(
-            fieldKey: const Key('code-field'),
-            label: t.startCodeLabel,
-            controller: codeController,
-            code: true,
-            maxLength: 9,
-            hint: 'XXX XXX',
-            error: codeEmpty,
-            errorText: codeEmpty ? t.startCodeEmpty : null,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => onConnect(),
+        ],
+      );
+      return PPage(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 100,
+                child: column([...brand, ...code, ...actions]),
+              ),
+              const SizedBox(width: 32),
+              Expanded(flex: 105, child: NearbyCard(child: nearby!)),
+            ],
           ),
         ],
+      );
+    }
+    return PPage(
+      actions: actions,
+      children: [
+        ...brand,
+        if (withNearby) ...[nearby!, const PDividerOr()],
+        ...code,
       ],
     );
   }
@@ -836,10 +886,16 @@ class RelayConfirmPage extends StatelessWidget {
     required this.host,
     required this.onCancel,
     required this.onUse,
+    this.nearbyName,
   });
   final String host;
   final VoidCallback onCancel;
   final VoidCallback onUse;
+
+  /// A screen found nearby announced this relay (spec 14.4): the screen's name, already quoted
+  /// (`common.quoted`) or `common.noName`. The body is `relay.confirm.bodyNearby` and Cancel is
+  /// `common.cancel` (there is no default relay to fall back to here).
+  final String? nearbyName;
 
   @override
   Widget build(BuildContext context) {
@@ -851,7 +907,7 @@ class RelayConfirmPage extends StatelessWidget {
       actions: [
         PSecondaryButton(
           key: const Key('relay-cancel'),
-          label: t.relayConfirmCancel,
+          label: nearbyName == null ? t.relayConfirmCancel : t.commonCancel,
           autofocus: true,
           onPressed: onCancel,
         ),
@@ -867,7 +923,12 @@ class RelayConfirmPage extends StatelessWidget {
           child: PIconDisc(icon: CcIconName.info, tone: PTone.warn),
         ),
         Text(t.relayConfirmTitle, style: s.type.heading),
-        Text(t.relayConfirmBodyApp(host), style: s.type.body),
+        Text(
+          nearbyName == null
+              ? t.relayConfirmBodyApp(host)
+              : t.relayConfirmBodyNearby(nearbyName!, host),
+          style: s.type.body,
+        ),
         Text(host, key: const Key('relay-host'), style: s.type.host),
         Text(t.relayConfirmRisk, style: s.type.small),
       ],

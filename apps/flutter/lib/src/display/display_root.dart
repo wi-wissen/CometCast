@@ -120,6 +120,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   final FocusNode _endNode = RowNode(row: 0, col: 0, debugLabel: 'end');
 
   bool _ready = false;
+  String? _instanceId;
+  bool? _announcing;
   DisplaySetup? _setup;
   Appearance _appearance = Appearance.dark;
   SetupController? _wizard;
@@ -224,8 +226,10 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   Future<void> _load() async {
     final setup = await widget.store.loadSetup();
     final look = await widget.store.loadAppearance();
+    final id = await widget.store.instanceId();
     await _codec?.init();
     if (!mounted) return;
+    _instanceId = id;
     setState(() {
       _setup = setup;
       _appearance = look;
@@ -236,6 +240,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _startRoom(setup);
     }
     _syncDim();
+    _syncAnnounce();
   }
 
   @override
@@ -248,6 +253,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _reveal.dispose();
     widget.settings.removeListener(_onSettings);
     widget.settings.cancelDiscovery();
+    _syncAnnounce(force: false);
     _c.removeListener(_onController);
     _c.dispose();
     _codec?.removeListener(_onController);
@@ -323,8 +329,31 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     }
     _syncDim();
     unawaited(_wake.set(_presenting && _life == AppLifecycleState.resumed));
+    _syncAnnounce();
     setState(() {});
     _refocusRoot();
+  }
+
+  /// The display announces itself in the local network only while it shows Idle or Presenting
+  /// (a room with a code) and is not in the background; never in setup or offline (spec 14.8,
+  /// point 1). What is announced comes from the running room in the core, so the code is the one
+  /// on the screen; the core also checks the administrator's policy.
+  void _syncAnnounce({bool? force}) {
+    final id = _instanceId;
+    if (id == null) return;
+    final active =
+        force ??
+        (_ready &&
+            _setup != null &&
+            _view == ConnectionView.online &&
+            _life != AppLifecycleState.paused);
+    if (active == _announcing) return;
+    _announcing = active;
+    unawaited(
+      widget.core
+          .setDisplayAnnouncing(active: active, instanceId: id)
+          .then<void>((_) {}, onError: (Object _) {}),
+    );
   }
 
   void _scheduleRetry() {
@@ -584,6 +613,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       if (!_c.endRoom()) _silentEnd = false;
     }
     unawaited(_wake.set(_presenting && state == AppLifecycleState.resumed));
+    _syncAnnounce();
   }
 
   void _pointer(PointerEvent e, {required bool press}) {

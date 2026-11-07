@@ -5,6 +5,7 @@ import android.content.Intent
 import de.cometcast.cometcast.capture.CaptureBridge
 import de.cometcast.cometcast.capture.ScreenCaptureService
 import de.cometcast.cometcast.links.LinkBridge
+import de.cometcast.cometcast.nearby.NearbyBridge
 import de.cometcast.cometcast.platform.PlatformBridge
 import de.cometcast.cometcast.scanner.QrBridge
 import de.cometcast.cometcast.video.VideoBridge
@@ -15,6 +16,7 @@ class MainActivity : FlutterActivity() {
     private var captureBridge: CaptureBridge? = null
     private var videoBridge: VideoBridge? = null
     private var linkBridge: LinkBridge? = null
+    private var nearbyBridge: NearbyBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -25,6 +27,8 @@ class MainActivity : FlutterActivity() {
         // App Links, the install referrer and the system QR scanner (native-apps.md 20.4).
         linkBridge = LinkBridge(this, flutterEngine)
         QrBridge(this, flutterEngine)
+        // Screens on the same network (spec 14): NsdManager browse, results go to the Rust core.
+        nearbyBridge = NearbyBridge(this, flutterEngine)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -34,6 +38,7 @@ class MainActivity : FlutterActivity() {
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         videoBridge?.release()
+        nearbyBridge?.release()
         super.cleanUpFlutterEngine(flutterEngine)
     }
 

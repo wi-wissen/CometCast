@@ -129,24 +129,78 @@ the search.
 
 ## 3. Announcement by the display device
 
-A receiver registers a DNS-SD service `_cometcast._tcp` on `local.` (`advertise_receiver`).
-**UNCERTAIN:** the TXT layout is a proposal of this crate. Nothing else speaks it.
+A display registers a DNS-SD service `_cometcast._tcp` on `local.`. Two things use it: the
+**server ladder** (the `srv` field of an announcement is a server suggestion of the lowest
+rank, see "Trust policy") and the **list of screens on this network** in the presenter apps
+(`docs/design/first-run-and-display.md`, section 14). The code is `crates/cc-discovery`:
+`display.rs` (what a display announces), `nearby.rs` (what a presenter app lists),
+`announce.rs` (the older `advertise_receiver` / `ReceiverBrowser` pair that server discovery uses).
 
-| TXT key | Meaning |
-| --- | --- |
-| `v` | layout version, `1` (a different version: the announcement is ignored) |
-| `srv` | preferred server, `host:port` |
-| `tls` | `1`: the server speaks TLS, the sender uses `wss://` |
-| `name` | friendly name (at most 48 characters, control characters removed) |
+**UNCERTAIN:** the TXT layout is a proposal of this crate. Nothing else speaks it. The web
+pages cannot browse mDNS and the Apple TV app (Swift) reads no mDNS, so they must only
+**tolerate** extra fields in a record: they do not read it.
 
-The room code is **not** announced. The service port is only there because DNS-SD needs one;
-receivers do not listen for senders yet.
+| TXT key | Meaning | In `display.rs` / `nearby.rs` |
+| --- | --- | --- |
+| `v` | layout version, `1`. A different version: the record is ignored | always written; required |
+| `id` | stable random instance id of the installation, 8 to 32 lower-case hex digits (the apps create 16). Not the host name, not a hardware id; new after a data reset. Rows are merged by it | required |
+| `srv` | the server the display uses, `host:port` | required; checked like any announced server |
+| `tls` | `1`: the server speaks TLS (`wss://`) | written only when set |
+| `mode` | who may join: `open`, `approval` or `locked` | required |
+| `code` | the current 6-character room code (alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`) | written for `open` and `approval` only; required there |
+| `name` | the room name as set in setup, cleaned like `room_name` (control, bidi, zero-width, invisible and private-use characters removed, white space collapsed), at most 32 characters. **No fallback** to the host or device name: none set means the key is absent | optional |
+
+The older `advertise_receiver` record (`v`, `srv`, `tls`, `name` of at most 48 characters, name
+falling back to the instance name) is read by server discovery as before; a display record is a
+superset of it, so the new fields do no harm there.
+
+The DNS-SD **instance name** of a display is `CometCast-` plus the first 8 characters of the id,
+never a host or room name. The service port is `9`; DNS-SD only needs one, displays do not listen
+for senders.
+
+**Why the code is announced now (it was not before).** The announced code is the same string the
+display shows large on its screen, to everybody in the room. Announcing it gives a device on the
+same network nothing that a person in the room does not see. What it enables (a list the person
+taps instead of typing) is the point of the feature. What it must never do is leak a code that
+the display does **not** show or that has been withdrawn on purpose:
+
+* **Locked never announces a code** (and there is no token). A locked display keeps announcing
+  name, server and `mode=locked`, so the person knows the screen is there. The code is taken out
+  of the record when the UI asks for Locked, without waiting for the server's confirmation.
+* The record is built **from the running receiver** (`cc-ffi`, `nearby.rs`), not from what the UI
+  last said, so the announced code cannot differ from the shown one. A new code (End, restart,
+  reconnect) means a new receiver and a new record.
+* A display announces only while it shows **Idle or Presenting with a code** and the app is in the
+  foreground: not during setup, not offline or connecting (no valid code), not when the
+  administrator's policy forbids announcements (`forbid_announcement` or `forbid_user_override`,
+  checked again in the core on every start), and it says goodbye when the app goes to the
+  background, loses the server or ends the room.
+* Anybody on the network can announce a record with any code; therefore the presenter app lists
+  rows, never connects by itself, never fills the code field, and never saves an announced server
+  (see below).
+
+**Timing.** A change (code, mode, name) is published at once (the spec's limit is 1 s). The record
+is published again every 10 s (`REFRESH_EVERY`) and the presenter side drops a row after 30 s
+without a refresh (`SCREEN_TTL`); a goodbye removes it at once. **UNCERTAIN, found while building:**
+`mdns-sd` 0.21 has no public setter for the TTL of the records of a service; they go out with the
+library's 4500 s (TXT, PTR) and 120 s (SRV, address). So "record lifetime at most 30 s" is met by
+the receiving side (expiry plus a browse that is started again every 10 s,
+`announce::start_raw_mdns_browse`) and not by the TTL on the wire. Checked on one machine over real
+multicast (`tests/nearby_loopback.rs`, including a 45 s run in which an unchanged record stays);
+**not** checked: a display that dies without any goodbye on a real network (the loopback test
+cannot make a machine vanish), Android's `NsdManager` and Apple's `NWBrowser` caches.
+
+**Size.** The record has at most 400 bytes (`MAX_TXT_BYTES`, DNS-SD lengths included); a server name
+so long that it would not fit is not announced. A normal record is about 100 bytes. Nothing else is
+in it: no presenter name, no presenter data, no busy flag.
 
 **Trust policy.** Anybody on the local network can send such a record, and the server a
 sender is pointed to sees room codes and the addresses of the devices. Therefore:
 
 * An announced server has the **lowest rank** after MDM and DNS-SRV, and above only the
-  default list. Receivers with the same DNS-SD instance name: the **first one seen is kept**;
+  default list. In the list of screens (section "Nearby screens" below) it is **never trusted
+  because it was announced**: only the default relay, a policy server, a DNS-SRV server and a
+  server the person confirmed on this device are joined at once. Receivers with the same DNS-SD instance name: the **first one seen is kept**;
   a later announcement replaces it only if it comes from the same addresses and port (the
   same device updating its record). Otherwise a second device could take over the entry.
   Browses keep at most 64 receivers; the command line tool also drops an entry on `Lost`.
@@ -171,14 +225,49 @@ sender is pointed to sees room codes and the addresses of the devices. Therefore
 * The announcement only feeds a *list*. The app shows which server is used and where it
   came from (`ServerSource`) and does not switch silently once the person has chosen.
 
-The Flutter receiver view calls `advertise_receiver` while it is open (through `cc-ffi`
-`start_advertising`); `cometcast-cli receive` does not. `cometcast-cli discover --announce
-HOST:PORT` advertises for the length of the command.
+`cometcast-cli receive` does not announce. `cometcast-cli discover --announce HOST:PORT` advertises
+for the length of the command (the older record).
 
-Backends: this is the `mdns-sd` backend (desktop). NWBrowser (Apple) and NsdManager (Android)
-are not implemented ([architecture.md](architecture.md)). Multicast can be blocked by
-switches, access points or VLANs; then receivers do not show up and the room code or QR code
-is the way ([measurement-points.md](measurement-points.md), A8).
+Backends: the display announcement and the browse of the desktop apps use `mdns-sd`
+(`DisplayAnnouncement::start_mdns`, `NearbySearch::with_mdns`). Android browses with `NsdManager`
+and iOS / iPadOS with `NWBrowser` in Kotlin and Swift (`NearbyBridge`), which only hand the raw
+TXT records to the Rust core (`nearby_native_seen` ...); the core checks and keeps the list on every
+platform. **Not built:** the announcement of a display with `NsdManager.registerService` (Android
+TV and tablets) or `NWListener` (iPad, Apple TV), which `native-apps.md` 4.1 lists: displays on all
+platforms that run the Flutter app announce through the core's `mdns-sd`, which on iOS needs the
+multicast entitlement ([ios.md](ios.md)) and probably fails without it (the status
+`AnnounceStatus` is then still `Announcing`; the failure is silent). Multicast can be blocked by
+switches, access points or VLANs; then screens do not show up and the room code or QR code is the
+way ([measurement-points.md](measurement-points.md), A8).
+
+## Nearby screens (the list in the presenter apps)
+
+`crates/cc-discovery/src/nearby.rs`; the API for Flutter is `watch_nearby_screens` and the
+`nearby_native_*` calls of `cc-ffi` ([flutter-bridge.md](flutter-bridge.md)). Rules (spec 14.3, 14.8):
+
+* Every record is untrusted. Layout version `1`; id 8 to 32 hex digits; `srv` passes
+  `network_server` (private IP literals or a name, TLS rule); `mode` is one of the three; for `open`
+  and `approval` the code must be exactly 6 characters of the code alphabet, otherwise the **whole
+  record is dropped**; a code in a `locked` record is ignored; the name is cleaned and cut; at most
+  32 TXT entries are read, values over 255 bytes are ignored, the first occurrence of a key wins.
+* **Rows are keyed by the instance id** and kept in the order they were first found (new ones at the
+  end, never re-sorted). Two screens with the same name are two rows. The same id under two
+  instance names (two interfaces) is one row. A later record with the id of an existing row changes
+  the row only when it comes from the same instance, or from an address the row already knew (a
+  second device cannot take over a row); the same instance announcing a new id replaces its row.
+* A row leaves on goodbye, after 30 s without a refresh, or when the same instance announces
+  something unusable. At most 32 rows; beyond that the **first found is dropped** (spec 14.8 point 10;
+  spec 14.3 says "further screens are not shown": see question G3).
+* Nothing is picked, remembered or saved here. In the Flutter app a row is tapped by the person; the
+  announced server is used for that one join and is **not** saved as "last used" (a server the
+  person confirmed is saved in the list of confirmed servers only).
+* **Policy.** With `forbid_announcement` or `forbid_user_override` (or an unusable policy file) the
+  section is not shown, no search runs (`watch_nearby_screens` answers `Forbidden`) and a display
+  does not announce (`set_display_announcing` answers `ForbiddenByPolicy`).
+* **Permission and network.** `NearbyPermission` (`notAsked`, `granted`, `denied`) comes from the
+  native bridge (Apple: `kDNSServiceErr_PolicyDenied` means `denied`). `local_network_available()`
+  (a private, non-loopback interface) is used on computers; phones and tablets ask
+  `ConnectivityManager` / `NWPathMonitor`.
 
 ## Network servers: TLS and the local network
 
@@ -273,32 +362,14 @@ Both screens (receive, send) show the server field with these rules
   `DiscoverOptions::default()`; Dart has no timer of its own. A Rust future cannot be
   cancelled from Dart: closing the screen makes the answer harmless (`cancelDiscovery`); the
   search ends by itself within its Rust time limits.
-* **Receiver view.** While open it announces itself with `start_advertising(name,
-  preferred_server)`: the name is the host name of the device (UNCERTAIN: visible to everybody
-  in the network; a chosen or random name might be better) and the server in the field (left
-  out if `cc-discovery` refuses it, for example `127.0.0.1`). Starting to receive announces the
-  server really used. Closing the view stops it. Nothing is announced when the policy
-  forbids announcements or locks the server (and a ban learned late stops a running
-  announcement). Starting and stopping the announcement, and the listening, are queued in
-  Dart (first in, first out), so a stop never overtakes a start that is still running and a
-  closed view never starts the fallback announcement. UNCERTAIN: the Rust core keeps one global announcement and one global watch; if a
-  second screen starts before the first one is disposed, the late stop of the first still ends
-  the second's. A failure (no multicast) shows nothing.
-* **Send view.** "Nearby receivers" lists what `watch_receivers()` finds (name and announced
-  server, each marked "Announced by a display on this network, not verified"). A tap takes
-  over the announced server (the field then names the source) and moves the focus to the room
-  code field;
-  the person types the code, because **an announcement never contains the room code**. The
-  list is not shown, and mDNS is not even started, when the policy locks the server or
-  forbids announcements, also when that is only learned from the late network answer (the
-  listening then stops). At most 32 receivers are kept; when more are announced the oldest
-  entry makes room for the newest and the list says "and more ...". UNCERTAIN: the list is only as
-  trustworthy as the local network; the person sees the server before sending anything.
-* **Not done:** the receiver does not listen for senders (the mDNS port is a placeholder),
-  nothing is picked automatically from announcements (only a tap selects an announced
-  server; the pre-fill comes from the policy, DNS-SRV, the saved server or the built-in
-  list), no QR code, no Android or Apple discovery
-  backends (the Dart side would work unchanged once Rust has them).
+* **Receiver and send views (old).** `start_advertising`, `stop_advertising`, `watch_receivers` and
+  the `NearbyReceivers` class (a "Nearby receivers" list that took over an announced server and
+  moved the focus to the code field) are **no longer called by the UI** since the designed pages
+  (docs/design/native-apps.md); they remain in `cc-ffi` and in `lib/discovery.dart`. The designed
+  replacement is the list of "screens on this network" (section "Nearby screens" above):
+  the display announces through `set_display_announcing`, the presenter start page lists
+  through `watch_nearby_screens`. A tap on a row **does connect** (with the announced code and the
+  name from the field), where the old list only took over a server.
 
 `address` carries the scheme for network servers (`ws://` or `wss://`); the `tls` flag of
 `DiscoveredServer` is not passed through `cc-ffi` yet.
@@ -320,4 +391,12 @@ with exactly 1.92.
   on the same machine. It passed in the development sandbox. It skips itself with a note
   when multicast is unavailable, so a green run in such an environment proves nothing about
   mDNS. It does not prove behaviour on a network with several devices.
+* `display.rs` and `nearby.rs` unit tests with a fake announce backend and a fake clock: TXT building
+  (Locked never carries a code, bounds, hostile server and id), changes published at once, refresh
+  every 10 s, goodbye, retry after a failed publish, hostile TXT of every field, merging by id, a
+  second device that claims an id, expiry after 30 s, the 32-row limit, goodbye and reset through
+  the sink.
+* `tests/nearby_loopback.rs`: a display announces with `mdns-sd`, the list sees the row, a new code
+  and mode, Locked without a code, and the goodbye (real multicast, skips itself where there is
+  none); `refreshed_row_does_not_expire` (45 s, run with `-- --ignored`).
 * Not tested: a real DNS server with SRV records, a real MDM, Windows, macOS, Android, iOS.

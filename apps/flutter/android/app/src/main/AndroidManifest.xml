@@ -24,6 +24,9 @@
          when the app is in the background (ScreenCaptureService). Both are normal permissions. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <!-- Screens on the same network (spec 14): a multicast lock is held while the app browses
+         with NsdManager (NearbyBridge). Normal permission, no dialog. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
 
     <!-- Android TV / Google TV: the app must be installable on devices that have no touch screen,
          and must not require the leanback feature (it is also a phone and tablet app). -->

@@ -129,3 +129,46 @@ Questions found while implementing part A of `fix-list-flutter.md` and the wirin
   - **Found:** the old page used a Material dropdown for the pairing method; the presenter kit has no dropdown.
   - **Done meanwhile:** three selectable option rows (selected: 2 px `p-primary` border and a tick). The text and the flow are unchanged. A screenshot of both states is in the set.
 - **F11 Strings deleted as unused.** Twenty-six keys that no screen uses any more were deleted from all three files: the web-only texts `bye.body`, `error.outdated.title` and `.now` (the page variants), `error.action.reload`, `error.action.getApp`, `error.action.openDom`, `error.noScreen.nowNoApp`, `file.title`, `file.body`, `receive.link.hint`, `receive.link.address`, `relay.confirm.body`, `relay.errors.mixed`, `setup.address.sourcePage`, `what.screenPhoneBrowser` and `.screenPhoneBrowserNoApp`, `common.or`, `common.cancel`, `idle.offline.bodyOutdated`, and the six `receive.transferError.document*` texts the display never uses (it maps the content errors to the shorter ones). The five `receive.document.pageError.*` texts of the spec were kept (F5). If any other should stay for a later round, restore it from git history.
+
+## G. Questions from the nearby round
+
+Questions found while building "screens on the same network" (spec 14, native-apps.md 4.1; branch `nearby-screens`). Each has what was found, the options, and what was done meanwhile (the minimal neutral behaviour). None blocks the code that is in.
+
+- **G1 14.8 point 5: a record lifetime of at most 30 s cannot be set with the mDNS library in use.**
+  - **Found:** `mdns-sd` 0.21.7 has no public setter for the TTL of a service's records (they go out with 4500 s for TXT and PTR, 120 s for SRV and addresses). A browser that trusts the TTL would keep a display that died without a goodbye for a long time, and `mdns-sd` itself reports a record only when it is new or changed, so an unchanged refresh is invisible to the browser.
+  - **Options:** (a) patch or vendor `mdns-sd` to set a 30 s TTL; (b) add a heartbeat field to the TXT record (a protocol change, the record then changes on every refresh and every browser sees it); (c) another library; (d) keep the long TTL and do the expiry on the receiving side (as built).
+  - **Done meanwhile:** (d). The display publishes its record again every 10 s; the list drops a row after 30 s without a refresh; the desktop browse is started again every 10 s so that unchanged records are reported again (checked on one machine over real multicast, including 45 s without a change); the Android and Apple bridges report their known services again every 10 s. Not checked: a display that vanishes without any goodbye on a real network; what `NsdManager` and `NWBrowser` do with a service whose records are still cached.
+- **G2 native-apps.md 4.1: the announcement of displays through `NsdManager.registerService` and `NWListener` is not built.**
+  - **Found:** the table lists them for Android TV and tablets, iPad and Apple TV. The announcement is made once, in the Rust core (`mdns-sd`), for every display that runs the Flutter app. On iOS `mdns-sd` needs the multicast entitlement (docs/ios.md) and probably fails silently without it; on Android it may need a multicast lock that the display path does not hold. The Apple TV (Swift) app is not part of this round and keeps its own announcement.
+  - **Options:** (a) native announcers per platform fed from the core's record (core to Dart to channel); (b) request the multicast entitlement and keep `mdns-sd`; (c) accept.
+  - **Done meanwhile:** (c) as built; browse (the presenter side) is native on Android and iOS as the table says.
+- **G3 14.3 and 14.8 point 10 disagree about the 33rd screen.**
+  - **Found:** 14.3 says "At most 32 rows; further screens are not shown", 14.8 point 10 says "drop the oldest-seen beyond that". "Oldest-seen" can mean first found or longest without a refresh.
+  - **Done meanwhile:** the core keeps 32 rows and drops the **first found** when a 33rd arrives (the row leaves, the new one is added at the end). One of the two sentences should be changed.
+- **G4 14.2: no state for "the search cannot run at all" (no multicast, no interface).**
+  - **Found:** the table has no row for it. The core reports `Unavailable`.
+  - **Done meanwhile:** it is shown as "Nothing found" (`nearby.none` and `nearby.noneWhy`) at once, without waiting for 8 s. A separate text would need copy.
+- **G5 14.4: after a stale code the other rows are not kept.**
+  - **Found:** the spec says the row is removed and the search starts again. A new search has an empty list in the core (rows of an earlier search are never kept, 14.8 point 9), so rows that stay on the page would never expire.
+  - **Done meanwhile:** the other rows are cleared too; under the line `nearby.gone` the list fills again within about a second (the searching placeholder shows meanwhile).
+- **G6 14.2 and native-apps.md 4.1: macOS 15 "Local Network" cannot be detected.**
+  - **Found:** the desktop apps browse with `mdns-sd` and raw sockets; a refusal by macOS shows as silence, not as `PolicyDenied`. The state "Not allowed" can therefore never appear on macOS, and `nearby.allow` (which would open the Privacy and Security pane) is only reachable if a state is reported.
+  - **Done meanwhile:** macOS shows "Nothing found" in that case. The Dart side opens the pane `Privacy_LocalNetwork` when asked.
+- **G7 14.10 "reused without change": `start.or` and `common.cancel` did not exist as Flutter keys.**
+  - **Found:** the web has them, the Flutter ARB sets did not (`startOr`, `commonCancel`).
+  - **Done meanwhile:** added with the values of the spec (`or`/`oder`, `Cancel`/`Abbrechen`) in the three sets.
+- **G8 `ios.localNetworkUsage`: the German `InfoPlist.strings` used "Sie".**
+  - **Found:** `ios/Runner/de.lproj/InfoPlist.strings` was written in the formal form while the loaded German set is "du".
+  - **Done meanwhile:** replaced with the "DE du (shipped)" text of 14.10; the Sie text is in `lib/l10n/sie/app_de.arb` as `iosLocalNetworkUsage`. The English text and `Info.plist` use the new text. The Apple TV prompt text is untouched.
+- **G9 14.4 and 14.8 point 11: is a confirmed relay also "last used"?**
+  - **Found:** "never save an announced server as last used unless the person confirmed it" can be read as "after the confirmation it may be saved as last used". 14.4 says only "the host is remembered as confirmed on this device".
+  - **Done meanwhile:** the confirmed host goes into the list of confirmed servers only (it is joined at once next time); it is never put in the server field, so it is never saved as last used. A server that is announced and trusted already (default relay, policy, DNS-SRV) is not saved either: what is saved is the server of the settings.
+- **G10 14.3: the accessible name of a locked row.**
+  - **Found:** `nearby.aria` has a code, a locked row has none.
+  - **Done meanwhile:** "{name}, {mode}" (for example "„Clubhouse“, Locked right now"), the row is not focusable.
+- **G11 14.2: what the section shows while the platform is asked.**
+  - **Found:** between showing the page and the first answer (a few milliseconds, longer on iOS) no state applies.
+  - **Done meanwhile:** the section label alone, no placeholder.
+- **G12 mockup against 5.3: Connect.**
+  - **Found:** the mockup draws Connect disabled until there is a code; 5.3 (N22) says Connect is always enabled and validates on submit.
+  - **Done meanwhile:** as 5.3 (enabled).

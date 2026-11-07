@@ -1667,5 +1667,109 @@
   "codecLater": "Not now",
   "@codecLater": {
     "description": "Spec key codec.later"
+  },
+  "nearbyTitle": "Screens on this network",
+  "@nearbyTitle": {
+    "description": "Spec key nearby.title"
+  },
+  "nearbySearching": "Searching …",
+  "@nearbySearching": {
+    "description": "Spec key nearby.searching"
+  },
+  "nearbyOpen": "Connects at once",
+  "@nearbyOpen": {
+    "description": "Spec key nearby.open"
+  },
+  "nearbyApproval": "Approval on",
+  "@nearbyApproval": {
+    "description": "Spec key nearby.approval"
+  },
+  "nearbyLocked": "Locked right now",
+  "@nearbyLocked": {
+    "description": "Spec key nearby.locked"
+  },
+  "nearbyVia": "via {host}",
+  "@nearbyVia": {
+    "description": "Spec key nearby.via",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "nearbyConnecting": "Connecting …",
+  "@nearbyConnecting": {
+    "description": "Spec key nearby.connecting"
+  },
+  "nearbyNone": "No screen found here.",
+  "@nearbyNone": {
+    "description": "Spec key nearby.none"
+  },
+  "nearbyNoneWhy": "Many Wi-Fi networks hide devices from each other. The code on the screen always works.",
+  "@nearbyNoneWhy": {
+    "description": "Spec key nearby.noneWhy"
+  },
+  "nearbyPaused": "Search stopped to save battery.",
+  "@nearbyPaused": {
+    "description": "Spec key nearby.paused"
+  },
+  "nearbySearch": "Search this network",
+  "@nearbySearch": {
+    "description": "Spec key nearby.search"
+  },
+  "nearbyDenied": "Comet Cast may not search this network.",
+  "@nearbyDenied": {
+    "description": "Spec key nearby.denied"
+  },
+  "nearbyAllow": "Allow in Settings",
+  "@nearbyAllow": {
+    "description": "Spec key nearby.allow"
+  },
+  "nearbyNoWifi": "Join the room’s Wi-Fi to find screens here.",
+  "@nearbyNoWifi": {
+    "description": "Spec key nearby.noWifi"
+  },
+  "nearbyGone": "This screen is no longer available.",
+  "@nearbyGone": {
+    "description": "Spec key nearby.gone"
+  },
+  "nearbyAria": "{name}, code {code}, {mode}",
+  "@nearbyAria": {
+    "description": "Spec key nearby.aria",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "code": {
+        "type": "String"
+      },
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "relayConfirmBodyNearby": "The screen {name} uses the relay {host}. Only continue if you know and trust its operator.",
+  "@relayConfirmBodyNearby": {
+    "description": "Spec key relay.confirm.bodyNearby",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "iosLocalNetworkUsage": "Comet Cast looks for screens on the same Wi-Fi so you do not have to type a code.",
+  "@iosLocalNetworkUsage": {
+    "description": "Spec key ios.localNetworkUsage"
+  },
+  "startOr": "or",
+  "@startOr": {
+    "description": "Spec key start.or"
+  },
+  "commonCancel": "Cancel",
+  "@commonCancel": {
+    "description": "Spec key common.cancel"
   }
 }

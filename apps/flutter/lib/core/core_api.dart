@@ -10,13 +10,16 @@ import 'package:cometcast/src/rust/api.dart' as rust;
 import 'package:cometcast/src/rust/api.dart'
     show
         AdvertiseOutcome,
+        AnnounceStatus,
         CaptureInfo,
         ContentFrame,
         ContentSenderUiEvent,
         ContentSource,
         EncodedVideoUnit,
         LinkCheck,
+        NearbyPermission,
         NearbyReceiverEvent,
+        NearbyUiEvent,
         PushResult,
         PresenterUiEvent,
         ReceiverUiEvent,
@@ -78,6 +81,14 @@ export 'package:cometcast/src/rust/api.dart'
         stopAdvertising,
         watchReceivers,
         stopWatchingReceivers,
+        setDisplayAnnouncing,
+        watchNearbyScreens,
+        stopNearbyScreens,
+        nearbyNativeSeen,
+        nearbyNativeGone,
+        nearbyNativeReset,
+        nearbyNativePermission,
+        localNetworkAvailable,
         codecState,
         codecInfo,
         ensureCodec,
@@ -275,6 +286,38 @@ abstract class CoreApi {
 
   Future<void> stopWatchingReceivers();
 
+  /// Whether the display may announce itself in the local network (spec 14.8): [active] is true
+  /// while it shows Idle or Presenting in the foreground; [instanceId] is the stable random id
+  /// of this installation. What is announced (server, room name, mode, the current code, none
+  /// while Locked) comes from the running receiver; a policy that forbids it wins.
+  Future<AnnounceStatus> setDisplayAnnouncing({
+    required bool active,
+    required String instanceId,
+  });
+
+  /// One search for screens on the local network (spec 14): the stream starts with
+  /// `searchStarted` and ends after [stopNearbyScreens]. With [native] the platform's own browse
+  /// API feeds it through the `nearbyNative...` calls.
+  Stream<NearbyUiEvent> watchNearbyScreens({required bool native});
+
+  Future<void> stopNearbyScreens();
+
+  /// The platform bridge saw a service (all fields are checked in the core).
+  void nearbyNativeSeen({
+    required String instance,
+    required List<String> addresses,
+    required List<(String, String)> txt,
+  });
+
+  void nearbyNativeGone(String instance);
+
+  void nearbyNativeReset();
+
+  void nearbyNativePermission(NearbyPermission state);
+
+  /// Does this computer have a local network (a private, non-loopback interface)?
+  bool localNetworkAvailable();
+
   Future<void> stopSender();
 
   /// State of the H.264 codec (Cisco OpenH264, downloaded on first use in release builds).
@@ -453,6 +496,41 @@ class RustCoreApi implements CoreApi {
 
   @override
   Future<void> stopWatchingReceivers() => rust.stopWatchingReceivers();
+
+  @override
+  Future<AnnounceStatus> setDisplayAnnouncing({
+    required bool active,
+    required String instanceId,
+  }) => rust.setDisplayAnnouncing(active: active, instanceId: instanceId);
+
+  @override
+  Stream<NearbyUiEvent> watchNearbyScreens({required bool native}) =>
+      rust.watchNearbyScreens(native: native);
+
+  @override
+  Future<void> stopNearbyScreens() => rust.stopNearbyScreens();
+
+  @override
+  void nearbyNativeSeen({
+    required String instance,
+    required List<String> addresses,
+    required List<(String, String)> txt,
+  }) =>
+      rust.nearbyNativeSeen(instance: instance, addresses: addresses, txt: txt);
+
+  @override
+  void nearbyNativeGone(String instance) =>
+      rust.nearbyNativeGone(instance: instance);
+
+  @override
+  void nearbyNativeReset() => rust.nearbyNativeReset();
+
+  @override
+  void nearbyNativePermission(NearbyPermission state) =>
+      rust.nearbyNativePermission(state: state);
+
+  @override
+  bool localNetworkAvailable() => rust.localNetworkAvailable();
 
   @override
   Stream<SenderUiEvent> startSender({

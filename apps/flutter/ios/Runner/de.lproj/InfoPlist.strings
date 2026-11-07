@@ -1,4 +1,4 @@
 /* Wird von iOS in den Berechtigungsdialogen und unter dem Symbol angezeigt. Wie en.lproj halten. */
 "CFBundleDisplayName" = "Comet Cast";
-"NSLocalNetworkUsageDescription" = "Comet Cast sucht Empfänger und den Comet-Cast-Server in Ihrem lokalen Netzwerk, damit Sie Ihren Bildschirm mit ihnen teilen können.";
+"NSLocalNetworkUsageDescription" = "Comet Cast sucht Bildschirme im selben WLAN, damit du keinen Code tippen musst.";
 "NSCameraUsageDescription" = "Comet Cast nutzt die Kamera nur, um den QR-Code auf dem Bildschirm zu scannen.";
