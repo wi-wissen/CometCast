@@ -300,3 +300,42 @@ No answer is needed for the fix list to be complete; each answer changes one pla
 - **Options:** (a) leave it; (b) tell a closed connection right after `banned` as busy for a while.
 - **Meanwhile:** (a).
 - **Answered:** (b): for **60 s** after a `rate_limited`, `banned` or `server_full` refusal, a closed connection (`connection_lost`) is treated as the same refusal: presenter `error.busy`, display offline box with `bodyBusy` and the 30 s retry. No copy change. Spec 4.2, 6, decision 13.44.
+
+## F. Questions from fix round 2
+
+Written while the web app was changed according to [fix-list-web-2.md](fix-list-web-2.md). The implementer made no design
+decisions; each item says what was found, the options, and what the code does **meanwhile** (the smallest neutral behaviour).
+
+### F1. "Screen hidden" (`toolbar.blackHint`) in the Light theme
+- **Found:** spec 4.5: the black screen shows `toolbar.blackHint` as 15, `--mut` on `#000000`. In Light, `--mut` is `#343C51`, which is almost invisible on black (see `display-*-light-black`). The same holds for `receive.document.loading` (the "Opening ..." line while a PDF is opened), which has no spec value and uses `--mut` 15 on black as well.
+- **Options:** (a) keep as specified; (b) a fixed light grey for this line on black in every theme; (c) `--fg` in Light.
+- **Meanwhile:** (a).
+
+### F2. Name and shape of the display-to-presenter message (`page`, `pages`)
+- **Found:** decision 13.31 names the fields `page` and `pages` but not the message. The control channel messages have a `kind`.
+- **Options:** (a) `{"kind":"page","page":n,"pages":m}`; (b) another kind name; (c) a `cmd`-like object.
+- **Meanwhile:** (a), sent by the web receiver only once the page count is known (not while the document is being opened) and on every change of either value; the presenter ignores malformed or out-of-range values (`page` > `pages`). Documented in `docs/web-m2.md`. The Rust and Swift cores do not send or read it yet; there is no `docs/protocol.md` content section (the content messages live in `docs/web-m2.md`).
+
+### F3. Does the first failure of a display that never had a code start the reconnect schedule?
+- **Found:** spec 4.2 says "after a loss"; a display that cannot connect at page load has had no code to lose.
+- **Options:** (a) the first failed attempt counts as the loss (retries at 1 s, 2 s, 3 s after it, box after the attempt at 3 s); (b) a different schedule at start (8 s of "connecting" as before).
+- **Meanwhile:** (a). Without any failure and without a code, the box still comes after 8 s of silence (unchanged).
+
+### F4. Outdated page (`proto_mismatch`, `bad_hello`): when does the box appear?
+- **Found:** spec 4.2 says "box at once" only for the busy refusals. An outdated page has no retry, so "after the attempt at 3 s fails" would never come.
+- **Options:** (a) at once, like the busy refusals; (b) after 3 s.
+- **Meanwhile:** (a).
+
+### F5. A refused STUN/TURN list and the 60 s busy memory
+- **Found:** decision 13.45 maps a failed connection after a refused list to `error.busy`; decision 13.44 remembers `rate_limited`, `banned`, `server_full` refusals for 60 s. Nothing says whether the refused list also starts the 60 s memory.
+- **Options:** (a) no; (b) yes.
+- **Meanwhile:** (a). Only the three server refusals are remembered.
+
+### F6. Relay confirmation: initial focus on the display after "Use this relay" is shown by an arrow key
+- **Found:** nothing to decide; noted because in `display-*-relay-confirm` (taken after one arrow key press, as the new rule asks) the focus ring has moved from Cancel to "Use this relay". Cancel has the initial focus; a shot without a key press shows it on Cancel.
+- **Meanwhile:** unchanged.
+
+### F7. Transfer pill and the name tag / End on a narrow canvas
+- **Found:** the transfer pill (bottom 12, centred, up to 880 wide) can overlap the name tag or End when the file name is long. The spec gives no maximum width or truncation.
+- **Options:** (a) cut the name with an ellipsis; (b) leave it (the pill wraps); (c) a maximum width that clears both neighbours.
+- **Meanwhile:** (b), with a maximum width of 880 reference px.

@@ -2,15 +2,20 @@
 //
 // Writes a PNG of every state of the display and of the presenter pages, for Dark / Light / OLED black
 // (display) and light / dark (presenter), at 1280 x 720 and at a phone viewport (390 x 844). It checks
-// nothing; it exists so that a designer can compare the pages with the mockup.
-// Run: npm run build && E2E_CHROME=/usr/bin/google-chrome E2E_SHOTS=/tmp/shots npm run e2e:shots
+// (almost) nothing; it exists so that a designer can compare the pages with the spec. Every display shot is taken
+// after one arrow key press, so that the focus ring shows where a control has focus (a click hides it by design);
+// the exceptions are the states that exist only while nothing was touched (presenting at rest, dimmed idle).
+// Needs the PDF renderer: npm run build:wasm && npm run build
+// Run: E2E_CHROME=/usr/bin/google-chrome E2E_SHOTS=/tmp/shots3 npm run e2e:shots
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
-import { launch, newContext, presenterJoin, presenterScreen, presenterStart, runWizard, startServer, status, waitHealthy, webRoot } from './helpers.mjs'
+import { makePdf } from './pdfFixture.mjs'
+import { launch, newContext, presenterJoin, presenterScreen, presenterStart, runWizard, startServer, status, waitHealthy, webDist, webRoot } from './helpers.mjs'
 
+assert.ok(existsSync(join(webDist, 'pdf/cc_docs_wasm_bg.wasm')), 'dist/pdf/cc_docs_wasm_bg.wasm is missing: run `npm run build:wasm && npm run build` first')
 const out = process.env.E2E_SHOTS || '/tmp/shots'
 mkdirSync(out, { recursive: true })
 const tmp = mkdtempSync(join(tmpdir(), 'cometcast-shots-'))
@@ -21,7 +26,7 @@ const VIEWS = [
   ['1280', { width: 1280, height: 720 }, {}],
   ['phone', { width: 390, height: 844 }, { isMobile: true, hasTouch: true }],
 ]
-const THEMES = ['dark', 'light', 'oled']
+const THEMES = (process.env.E2E_SHOTS_THEMES || 'dark,light,oled').split(',')
 const servers = []
 const server = async (opts) => {
   const s = startServer(opts)
@@ -30,7 +35,50 @@ const server = async (opts) => {
   return s
 }
 const shot = (page, name) => page.screenshot({ path: join(out, `${name}.png`) })
+// A display shot: after one arrow key press (the first key press shows the focus ring again).
+const dshot = async (page, name) => {
+  await page.keyboard.press('ArrowRight')
+  await page.waitForTimeout(250)
+  await shot(page, name)
+}
+/** Contexts are closed with a limit: a page that cannot be closed must not hold the whole run. */
+const closeAll = (...ctxs) => Promise.all(ctxs.map((c) => Promise.race([c.close().catch(() => undefined), new Promise((r) => setTimeout(r, 8000))])))
 const armed = (page) => page.waitForTimeout(1200)
+const FAKE_PDF = { name: 'broken.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 0x20)]) }
+const SETUP = JSON.stringify({ room: 'Meeting room Elbe', mode: 'open', server: null })
+
+/** A relay that is not there: `onMsg(message, send, ws)` answers instead of the server (hello is answered by default). */
+const fakeRelay = (page, onMsg) =>
+  page.routeWebSocket(/\/ws$/, (ws) => {
+    const send = (o) => ws.send(JSON.stringify(o))
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw))
+      if (m.type === 'hello') return send({ type: 'hello', proto_version: onMsg.protoVersion ?? 2 })
+      onMsg(m, send, ws)
+    })
+  })
+
+// Test seams in the display page: the PDF worker can be told to fail a page, and the control channel is reachable (a transfer
+// that stands still, a failed transfer) without a second device.
+const DISPLAY_SEAMS = () => {
+  const W = window.Worker
+  window.Worker = class extends W {
+    postMessage(m, t) {
+      if (window.__failRender && m && m.type === 'render') {
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: { type: 'error', id: m.id, code: 'bad_size' } })))
+        return
+      }
+      super.postMessage(m, t)
+    }
+  }
+  const PC = window.RTCPeerConnection
+  window.RTCPeerConnection = class extends PC {
+    constructor(...a) {
+      super(...a)
+      this.addEventListener('datachannel', (e) => (window.__ch = e.channel))
+    }
+  }
+}
 
 let browser
 try {
@@ -40,14 +88,22 @@ try {
 
   // ---------------- display: every theme and viewport ----------------
   // E2E_SHOTS_ONLY=presenter skips the display part (to redo only the presenter pages)
-  for (const [vname, viewport, extra] of process.env.E2E_SHOTS_ONLY === 'presenter' ? [] : VIEWS) {
+  // E2E_SHOTS_VIEWS=1280 or =phone, E2E_SHOTS_THEMES=dark,light,oled: only these (to run parts of the set side by side)
+  const viewsWanted = (process.env.E2E_SHOTS_VIEWS || '1280,phone').split(',')
+  const only = process.env.E2E_SHOTS_ONLY
+  for (const [vname, viewport, extra] of only === 'presenter' ? [] : VIEWS.filter(([n]) => viewsWanted.includes(n))) {
     for (const theme of THEMES) {
       const tag = `display-${vname}-${theme}`
-      const mkctx = (colorScheme = 'light') =>
+      const mkctx = (colorScheme = 'light', { setup = false } = {}) =>
         newContext(browser, { viewport, ...extra, colorScheme }).then(async (c) => {
-          await c.addInitScript((t) => {
-            if (!localStorage.getItem('cometcast.display.appearance')) localStorage.setItem('cometcast.display.appearance', t)
-          }, theme)
+          await c.addInitScript(
+            ([t, su]) => {
+              if (!localStorage.getItem('cometcast.display.appearance')) localStorage.setItem('cometcast.display.appearance', t)
+              if (su && !localStorage.getItem('cometcast.display.setup')) localStorage.setItem('cometcast.display.setup', su)
+            },
+            [theme, setup ? SETUP : ''],
+          )
+          await c.addInitScript(DISPLAY_SEAMS)
           return c
         })
       // wizard
@@ -56,19 +112,29 @@ try {
         const d = await c.newPage()
         await d.goto(`${s.base}/display`)
         await d.getByTestId('wz-start').waitFor()
-        await shot(d, `${tag}-setup-0-welcome`)
+        await dshot(d, `${tag}-setup-0-welcome`)
         await d.getByTestId('wz-start').click()
-        await shot(d, `${tag}-setup-1-name`)
+        await dshot(d, `${tag}-setup-1-name`)
+        await d.keyboard.press('ArrowUp') // from Next to the text field: the field's focus ring
+        await d.waitForTimeout(150)
+        await shot(d, `${tag}-focus-setup-name-field`)
+        await d.getByTestId('wz-room').fill('X')
+        await d.getByTestId('wz-room').fill('')
+        await dshot(d, `${tag}-setup-1-name-emptied`)
         await d.getByTestId('wz-next').click()
-        await shot(d, `${tag}-setup-2-mode`)
+        await dshot(d, `${tag}-setup-2-mode`)
         await d.getByTestId('wz-next').click()
-        await shot(d, `${tag}-setup-3-address`)
+        await dshot(d, `${tag}-setup-3-address`)
         await d.getByTestId('wz-change').click()
         await d.waitForTimeout(150)
-        await shot(d, `${tag}-setup-3-address-field`)
+        await dshot(d, `${tag}-setup-3-address-field`)
+        await d.getByTestId('wz-addr').fill('ws://public.example.org')
+        await d.keyboard.press('Enter')
+        await d.getByTestId('wz-addr-error').waitFor()
+        await dshot(d, `${tag}-setup-3-address-error`)
         await d.keyboard.press('Escape')
         await d.getByTestId('wz-ok').click()
-        await shot(d, `${tag}-setup-4-done`)
+        await dshot(d, `${tag}-setup-4-done`)
         await c.close()
       }
       // idle and everything over it
@@ -79,15 +145,15 @@ try {
       await status(d, 'waiting_sender')
       await d.getByTestId('room-code').waitFor()
       await d.waitForTimeout(300)
-      await shot(d, `${tag}-idle`)
+      await dshot(d, `${tag}-idle`)
       await d.getByTestId('settings-open').click()
       await d.getByTestId('settings-modal').waitFor()
       await d.waitForTimeout(250)
-      await shot(d, `${tag}-settings`)
+      await dshot(d, `${tag}-settings`)
       await d.getByTestId('settings-mode-locked').click()
       await d.getByTestId('settings-close').click()
       await d.waitForTimeout(250)
-      await shot(d, `${tag}-idle-locked`)
+      await dshot(d, `${tag}-idle-locked`)
       await d.getByTestId('settings-open').click()
       await d.getByTestId('settings-mode-confirm').click()
       await d.getByTestId('settings-close').click()
@@ -101,55 +167,91 @@ try {
       await presenterStart(p2, s.base, code, { name: 'Ben' })
       await d.getByTestId('request-queue').waitFor()
       await d.waitForTimeout(300)
-      await shot(d, `${tag}-request-queue`)
+      await dshot(d, `${tag}-request-queue`)
       await armed(d)
       await d.getByTestId('request-no').click()
       await d.waitForTimeout(300)
-      await shot(d, `${tag}-request`)
+      await dshot(d, `${tag}-request`)
       await d.getByTestId('request-yes').click().catch(() => undefined)
       await armed(d)
       await d.getByTestId('request-yes').click()
       await p2.getByTestId('what-page').waitFor({ timeout: 20000 })
       await d.getByTestId('toast').waitFor()
       await d.waitForTimeout(200)
-      await shot(d, `${tag}-toast`)
+      await dshot(d, `${tag}-toast`)
       await p2.getByTestId('what-screen').click()
       await p2.getByTestId('presenting-page').waitFor({ timeout: 20000 })
       await d.waitForFunction(() => document.querySelector('[data-testid=remote-video]')?.videoWidth > 0)
       await d.waitForTimeout(1200)
-      await shot(d, `${tag}-presenting-rest`)
-      await d.mouse.move(200, 200)
-      await d.mouse.move(210, 205)
+      await shot(d, `${tag}-presenting-rest`) // nothing touched: the controls are not there
+      await d.keyboard.press('ArrowRight') // the first key only reveals the controls and puts the focus on End
       await d.waitForTimeout(700)
       await shot(d, `${tag}-presenting-controls`)
-      // a link: the display asks before it opens the page (a display dialog)
+      // a transfer that stands still (a partial message sequence on the control channel), then one that fails: pill and toast
+      await d.evaluate(() => {
+        window.__ch.onmessage({ data: JSON.stringify({ kind: 'image', name: 'holiday-photos.png', mime: 'image/png', size: 4000000 }) })
+        window.__ch.onmessage({ data: new ArrayBuffer(16384) })
+      })
+      await d.getByTestId('transfer').waitFor()
+      await dshot(d, `${tag}-transfer`)
+      await d.evaluate(() => window.__ch.onmessage({ data: JSON.stringify({ kind: 'image_end' }) }))
+      await d.getByTestId('toast').waitFor()
+      await d.keyboard.press('ArrowRight')
+      await d.waitForTimeout(250)
+      await shot(d, `${tag}-toast-with-toolbar`)
+      // freeze and black screen
+      await d.getByTestId('tb-freeze').click()
+      await dshot(d, `${tag}-frozen`)
+      await d.getByTestId('tb-freeze').click()
+      await d.getByTestId('tb-black').click()
+      await dshot(d, `${tag}-black`)
+      await d.getByTestId('tb-black').click()
+      // a PDF: pages on black, a page that cannot be drawn
       await p2.getByTestId('presenting-stop').click()
-      await p2.getByTestId('what-link').click()
-      await p2.getByTestId('link-url').fill('https://example.org/a/path?with=query')
-      await p2.getByTestId('link-go').click()
-      await d.getByTestId('link-card').waitFor()
-      await armed(d)
-      await shot(d, `${tag}-linkcard`)
+      await p2.getByTestId('what-file').click()
+      await p2.getByTestId('file-input').setInputFiles({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: makePdf() })
+      await d.getByTestId('document-canvas').waitFor({ timeout: 20000 })
+      await d.waitForFunction(() => document.querySelector('[data-testid=document-canvas]')?.dataset.busy === 'false')
+      await dshot(d, `${tag}-presenting-pdf`)
+      await d.evaluate(() => (window.__failRender = true))
+      await p2.getByTestId('send-next-page').click()
+      await d.getByTestId('document-page-error').waitFor()
+      await dshot(d, `${tag}-pdf-page-error`)
+      await d.evaluate(() => (window.__failRender = false))
+      // links: the display asks before it opens the page (a display dialog); a media link; a media link to a local address
+      await p2.getByTestId('presenting-stop').click()
+      const sendLink = async (url) => {
+        await p2.getByTestId('what-link').click()
+        await p2.getByTestId('link-url').fill(url)
+        await p2.getByTestId('link-go').click()
+        await d.getByTestId('link-card').waitFor()
+        await armed(d)
+      }
+      await sendLink('https://example.org/a/path?with=query')
+      await dshot(d, `${tag}-linkcard`)
+      const addrColors = await d.getByTestId('link-url').evaluate((e) => [getComputedStyle(e).color, getComputedStyle(e.closest('.cd')).getPropertyValue('--mut').trim()])
+      console.log(`${tag}: link address colour ${addrColors[0]}, --mut ${addrColors[1]}`)
       await d.getByTestId('link-dismiss').click()
-      await d.getByTestId('end').click({ force: true }).catch(() => undefined)
-      await c.close()
-      await pc1.close()
-      await pc2.close()
-      // the relay of a link has to be confirmed first (display dialog card)
+      await p2.getByTestId('presenting-stop').click()
+      await sendLink('https://media.example.org/clip.mp4')
+      await dshot(d, `${tag}-linkcard-media`)
+      await d.getByTestId('link-dismiss').click()
+      await p2.getByTestId('presenting-stop').click()
+      await sendLink('http://192.168.1.20/clip.mp4')
+      await dshot(d, `${tag}-linkcard-media-local`)
+      await d.getByTestId('link-dismiss').click()
+      await closeAll(c, pc1, pc2)
+      // the relay of a link has to be confirmed first (a dialog card on the canvas, nothing else)
       {
-        const c4 = await newContext(browser, { viewport, ...extra, colorScheme: 'light' })
-        await c4.addInitScript((t) => {
-          localStorage.setItem('cometcast.display.appearance', t)
-          localStorage.setItem('cometcast.display.setup', JSON.stringify({ room: 'Meeting room Elbe', mode: 'open', server: null }))
-        }, theme)
+        const c4 = await mkctx('light', { setup: true })
         const dr = await c4.newPage()
         await dr.goto(`${s.base}/display?server=${encodeURIComponent('wss://crafted.example.org')}`)
         await dr.getByTestId('relay-confirm').waitFor()
         await dr.waitForTimeout(200)
-        await shot(dr, `${tag}-relay-confirm`)
+        await dshot(dr, `${tag}-relay-confirm`)
         await c4.close()
       }
-      // dimmed
+      // dimmed (no key: a key press only restores the brightness)
       {
         const c2 = await mkctx()
         const dd = await c2.newPage()
@@ -160,6 +262,21 @@ try {
         await shot(dd, `${tag}-idle-dimmed`)
         await c2.close()
       }
+      // a refusal of the server and a page that is out of date: the box at once, with its own body
+      for (const [name, opts] of [
+        ['offline-busy', { handler: (m, send) => m.type === 'create_room' && send({ type: 'error', code: 'rate_limited', message: '' }) }],
+        ['offline-outdated', { protoVersion: 99, handler: () => undefined }],
+      ]) {
+        const c5 = await mkctx('light', { setup: true })
+        const dx = await c5.newPage()
+        opts.handler.protoVersion = opts.protoVersion
+        await fakeRelay(dx, opts.handler)
+        await dx.goto(`${s.base}/display`)
+        await dx.getByTestId('offline').waitFor({ timeout: 10000 })
+        await dx.waitForTimeout(300)
+        await dshot(dx, `${tag}-idle-${name}`)
+        await c5.close()
+      }
       // offline: a server that goes away
       {
         const sx = await server()
@@ -169,34 +286,44 @@ try {
         await runWizard(dx, { mode: 'open' })
         await dx.getByTestId('room-code').waitFor()
         sx.proc.kill('SIGTERM')
-        // right after the drop: "connecting" (empty code line and QR box), the box only after 3 s
+        // right after the drop: "connecting" (empty code line and QR box); the box when the retry at 3 s has failed
         await dx.locator('[data-testid=qr][data-empty=true]').waitFor({ timeout: 5000 })
-        await shot(dx, `${tag}-idle-connecting`)
+        await dshot(dx, `${tag}-idle-connecting`)
         await dx.getByTestId('offline').waitFor({ timeout: 20000 })
         await dx.waitForTimeout(300)
-        await shot(dx, `${tag}-idle-offline`)
+        await dshot(dx, `${tag}-idle-offline`)
         await c3.close()
       }
     }
   }
 
   // ---------------- presenter: light and dark, two viewports ----------------
+  if (only === 'display') {
+    console.log(`screenshots written to ${out}`)
+    await browser.close()
+    for (const sv of servers) sv.proc.kill('SIGTERM')
+    rmSync(tmp, { recursive: true, force: true })
+    process.exit(0)
+  }
   const d0c = await newContext(browser)
   const d0 = await d0c.newPage()
   await d0.goto(`${s.base}/display`)
   await runWizard(d0, { mode: 'open' })
   await d0.getByTestId('room-code').waitFor()
   const open = (await d0.getByTestId('room-code').innerText()).replace(/\s+/g, '')
+  const PH_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36'
   for (const [vname, viewport, extra] of VIEWS) {
     for (const scheme of ['light', 'dark']) {
       const tag = `presenter-${vname}-${scheme}`
-      const ua = vname === 'phone' ? { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36' } : {}
+      const ua = vname === 'phone' ? { userAgent: PH_UA } : {}
       const mk = () => newContext(browser, { viewport, ...extra, ...ua, colorScheme: scheme })
       let c = await mk()
       let p = await c.newPage()
       await p.goto(`${s.base}/`)
       await p.getByTestId('start-page').waitFor()
       await shot(p, `${tag}-start-typed`)
+      await p.keyboard.press('Tab')
+      await shot(p, `${tag}-focus-start`)
       await p.getByTestId('start-browser').click()
       await shot(p, `${tag}-start-empty-error`)
       await p.goto(`${s.base}/${open}`)
@@ -207,10 +334,10 @@ try {
       await p.getByTestId('what-file').click()
       await shot(p, `${tag}-file`)
       await p.getByTestId('file-back').click()
-      // a shown PDF: Previous / Next side by side above Stop
+      // a shown PDF: "Page n of m" from the display, Previous disabled on page 1, the row right above Stop
       await p.getByTestId('what-file').click()
-      await p.getByTestId('file-input').setInputFiles({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(2000, 0x20)]) })
-      await p.getByTestId('presenting-page').waitFor({ timeout: 20000 })
+      await p.getByTestId('file-input').setInputFiles({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: makePdf() })
+      await p.getByTestId('presenting-pageof').waitFor({ timeout: 20000 })
       await shot(p, `${tag}-presenting-pdf`)
       await p.getByTestId('presenting-stop').click()
       await p.getByTestId('what-link').click()
@@ -253,48 +380,83 @@ try {
       // a page that does not match the server: "This page is out of date" (the server's hello is faked)
       c = await mk()
       p = await c.newPage()
-      await p.routeWebSocket(/\/ws$/, (ws) => ws.onMessage(() => ws.send(JSON.stringify({ type: 'hello', proto_version: 99 }))))
+      const old = (m, send) => undefined
+      old.protoVersion = 99
+      await fakeRelay(p, old)
       await presenterStart(p, s.base, open, { name: 'x' })
       await p.getByTestId('error-page').waitFor()
       await shot(p, `${tag}-error-outdated`)
       await c.close()
-      // the relay of a link has to be confirmed first (presenter card)
+      // failures that a relay that is not there can tell: expired, timeout, ended, no internet, locked while waiting, other
+      const joinFake = (name, onJoin) => async () => {
+        const cx = await mk()
+        const px = await cx.newPage()
+        await fakeRelay(px, (m, send, ws) => m.type === 'join_room' && onJoin(send, ws))
+        await presenterStart(px, s.base, 'ABC234', { name: 'x' })
+        await px.getByTestId('error-page').waitFor({ timeout: 15000 })
+        await shot(px, `${tag}-error-${name}`)
+        await cx.close()
+      }
+      const pending = (send) => send({ type: 'join_pending', check: 47, timeout_secs: 60, room_name: 'Meeting room Elbe' })
+      await joinFake('expired', (send) => (pending(send), setTimeout(() => send({ type: 'error', code: 'room_not_found', message: '' }), 400)))()
+      await joinFake('timeout', (send) => (pending(send), setTimeout(() => send({ type: 'error', code: 'approval_timeout', message: '' }), 400)))()
+      await joinFake('locked-waiting', (send) => (pending(send), setTimeout(() => send({ type: 'error', code: 'room_locked', message: '' }), 400)))()
+      await joinFake('ended', (send) => (send({ type: 'joined', room_name: 'Meeting room Elbe' }), setTimeout(() => send({ type: 'peer_left' }), 600)))()
+      await joinFake('other', (send) => send({ type: 'error', code: 'forbidden', message: '' }))()
+      await joinFake('noInternet', (send, ws) => ws.close({ code: 1006 }))()
+      // the display does not answer: the answer is garbage, so the connection fails; the list of STUN/TURN servers decides the "why"
+      for (const [name, status_] of [['displayOff', 404], ['displayOff-relay', 500], ['busy-ice', 429]]) {
+        const cx = await mk()
+        const px = await cx.newPage()
+        await px.route('**/ice-servers', (r) => r.fulfill({ status: status_, body: '' }))
+        await fakeRelay(px, (m, send) => {
+          if (m.type === 'join_room') send({ type: 'joined', room_name: 'Meeting room Elbe' })
+          else if (m.type === 'offer') send({ type: 'answer', sdp: 'garbage' })
+        })
+        await presenterStart(px, s.base, 'ABC234', { name: 'x' })
+        await px.getByTestId('error-page').waitFor({ timeout: 15000 })
+        await shot(px, `${tag}-error-${name}`)
+        await cx.close()
+      }
+      // the relay of a link has to be confirmed first: its own page, then the start page with the code chip
       c = await mk()
       p = await c.newPage()
-      await p.goto(`${s.base}/?server=${encodeURIComponent('wss://crafted.example.org')}`)
-      await p.getByTestId('start-code').fill(open)
-      await p.getByTestId('start-browser').click()
+      await p.goto(`${s.base}/7UZFHX?server=${encodeURIComponent('wss://crafted.example.org')}`)
       await p.getByTestId('relay-confirm').waitFor()
       await shot(p, `${tag}-relay-confirm`)
+      await p.getByTestId('relay-confirm-cancel').click()
+      await p.getByTestId('start-code-chip').waitFor()
+      await shot(p, `${tag}-relay-cancelled-start`)
       await c.close()
     }
   }
-  // a server that is too busy ends in "The server is busy" (a ban is told like a rate limit)
-  {
-    const sb = await server({ args: ['--mode', 'open', '--set', 'limits.ban_after_failed_joins=2', '--set', 'limits.join_attempts_per_min=1000'] })
-    for (const [vname, viewport, extra] of VIEWS) {
-      for (const scheme of ['light', 'dark']) {
-        const c = await newContext(browser, { viewport, ...extra, colorScheme: scheme })
-        const p = await c.newPage()
-        await presenterStart(p, sb.base, 'ZZZZZZ', { name: 'x' })
-        for (let i = 0; i < 6; i++) {
-          await p.getByTestId('error-page').waitFor({ timeout: 20000 })
-          const title = await p.getByTestId('error-title').innerText()
-          if (/busy/i.test(title) || (await p.getByTestId('error-retype').count()) === 0) {
-            console.log('busy loop ended on:', title)
-            break
-          }
-          await p.getByTestId('error-retype').click()
-          await p.getByTestId('start-code').fill('ZZZZZZ')
-          await p.getByTestId('start-browser').click()
-          await p.waitForTimeout(200)
-        }
-        await shot(p, `presenter-${vname}-${scheme}-error-busy`)
-        await c.close() // the ban stays: the other viewports get the same page at once
+  // a server that is too busy ends in "The server is busy" (a ban is told like a rate limit); the next attempt, after the
+  // server closed the connection, must still say busy, not "No internet" (60 s memory). A fresh server per variant.
+  for (const [vname, viewport, extra] of VIEWS) {
+    for (const scheme of ['light', 'dark']) {
+      const sb = await server({ args: ['--mode', 'open', '--set', 'limits.ban_after_failed_joins=2', '--set', 'limits.join_attempts_per_min=1000'] })
+      const c = await newContext(browser, { viewport, ...extra, colorScheme: scheme })
+      const p = await c.newPage()
+      await presenterStart(p, sb.base, 'ZZZZZZ', { name: 'x' })
+      for (let i = 0; i < 6; i++) {
+        await p.getByTestId('error-page').waitFor({ timeout: 20000 })
+        const title = await p.getByTestId('error-title').innerText()
+        if (/busy/i.test(title)) break
+        await p.getByTestId('error-retype').click()
+        await p.getByTestId('start-code').fill('ZZZZZZ')
+        await p.getByTestId('start-browser').click()
+        await p.waitForTimeout(200)
       }
+      assert.match(await p.getByTestId('error-title').innerText(), /busy/i, 'the ban is told as busy')
+      await p.getByTestId('error-retry').click() // the second attempt: the server closes the connection
+      await p.waitForTimeout(800)
+      await p.getByTestId('error-page').waitFor()
+      assert.match(await p.getByTestId('error-title').innerText(), /busy/i, 'the second attempt still says busy')
+      await shot(p, `presenter-${vname}-${scheme}-error-busy`)
+      await c.close()
     }
   }
-  // approval flow pages: waiting, denied, locked, ended
+  // approval flow pages: waiting, denied, locked
   {
     const sa = await server({ args: ['--set', 'join_approval_secs=20'] })
     const dc = await newContext(browser)

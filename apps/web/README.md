@@ -38,7 +38,7 @@ cd apps/web && npm ci && npm run dev
 - `npm run e2e:static` - app on its own static origin, relay on another (builds by itself, see "Static hosting")
 - `npm run e2e:display` - the display and presenter pages, see "Display and presenter tests" (needs `npm run build` first; builds a second copy by itself for the dimming test)
 - `npm run e2e:join` - join approval with the request dialog, see "Join approval test"
-- `npm run e2e:shots` - writes a PNG of every state (display: Dark / Light / OLED black, presenter: light / dark; 1280 x 720 and a phone viewport) to `$E2E_SHOTS` (default `/tmp/shots`); checks nothing
+- `npm run e2e:shots` - writes a PNG of every state (display: Dark / Light / OLED black, presenter: light / dark; 1280 x 720 and a phone viewport) to `$E2E_SHOTS` (default `/tmp/shots`); every display shot is taken after one arrow key press (focus ring); needs `npm run build:wasm` first; checks almost nothing (the ban test asserts that the second attempt still says busy)
 
 ## Trying it
 
@@ -68,9 +68,9 @@ then "Share screen". For development with `npm run dev`, add
 - `src/views/PresenterView.vue`, `components/presenter/*` - the presenter pages
 - `src/core/appearance.ts`, `displaySetup.ts` - appearance (Dark default, OLED black, Light, Automatic; kept in `localStorage` of the display device) and the first-run setup (room name, default join mode, server)
 - `src/core/idleDim.ts`, `controlsReveal.ts`, `wakeLock.ts`, `dpad.ts` - idle dimming, controls on input while presenting, Screen Wake Lock, focus moving in rows
-- `src/core/qr.ts`, `platform.ts`, `presenterErrors.ts`, `codeFormat.ts` - QR code, "Detected: ...", which error page, code grouping
+- `src/core/busyMemory.ts` - 60 s memory of a busy refusal; `src/core/qr.ts`, `platform.ts`, `presenterErrors.ts`, `codeFormat.ts` - QR code, "Detected: ...", which error page, code grouping
 - `src/config/stores.ts` - the store and download addresses: **placeholders** (empty) until the apps are published. An empty address means no offer at all (no button, small print, "or" divider or download note on the start page, no "Get the app" on the error page; the idle footer says only "No download needed.")
-- `src/core/connectionView.ts` - what the idle screen shows about the connection: the code, "connecting" (empty code line and QR box) or, after 3 s without a connection (8 s at start), the offline box; the retry rules (4 s, 30 s for a busy server, none for a page that is out of date)
+- `src/core/connectionView.ts` - what the idle screen shows about the connection: the code, "connecting" (empty code line and QR box) or, once the retry at 3 s has failed (8 s at start), the offline box; the retry schedule (1 s, 2 s, 3 s after the loss, then every 4 s; 30 s for a busy server, none for a page that is out of date)
 - `src/core/focusRing.ts`, `composables/useFocusRing.ts` - the display's focus ring rule (shown on load, hidden by the first mouse or touch input, shown again by a key)
 - `src/core/textSlot.ts` - cuts a translated sentence where a styled value (security code, link) belongs
 
@@ -129,8 +129,8 @@ from the same rules; a link (`?server=`) is the only way to point a presenter so
 the same relay. The earlier relay field (tag "default" or "custom", a warning for a non-default relay) is gone: the spec has no
 such element.
 
-**A relay chosen only by a link (`?server=`) is never used silently.** Before any connection (the display when it starts, the
-presenter's "Continue in the browser") a blocking dialog names the host and says that the operator of that
+**A relay chosen only by a link (`?server=`) is never used silently.** Before anything else is shown (the display, the presenter's
+start page) a confirmation (on `/display` a dialog card on the canvas, on presenter pages its own page) names the host and says that the operator of that
 relay can see who connects, the room codes and network addresses, and can redirect the connection. "Use this relay"
 remembers the confirmation for this tab (`sessionStorage`) and for exactly that relay; "Cancel (use the default relay)"
 drops the `?server=` for this page view and starts nothing. `config.json` relays, the build default, the page's own

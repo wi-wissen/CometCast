@@ -168,6 +168,9 @@ try {
     }
     const receiver = await newPage()
     await receiver.goto(`${S.app}display${query}`)
+    // The confirmation comes before everything else (spec 7.2): nothing of the wizard is drawn behind it.
+    if (expectConfirm) assert.equal(await receiver.getByTestId('setup').count(), 0, 'no wizard behind the confirmation')
+    await confirmRelay(receiver)
     // Setup: the address step names the host only
     await receiver.getByTestId('wz-start').click()
     await receiver.getByTestId('wz-next').click()
@@ -175,7 +178,6 @@ try {
     assert.equal((await receiver.getByTestId('wz-domain').innerText()).trim(), relayHost)
     await receiver.getByTestId('wz-ok').click()
     await receiver.getByTestId('wz-finish').click()
-    await confirmRelay(receiver)
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     const code = (await receiver.getByTestId('room-code').innerText()).replace(/\s+/g, '')
     assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/)
@@ -186,9 +188,11 @@ try {
 
     const sender = await newPage()
     await sender.goto(S.app + (query ? `${query}&testVideo=1` : '?testVideo=1'))
+    // The presenter page shows the confirmation page instead of the start page; the host appears on it only.
+    if (expectConfirm) assert.equal(await sender.getByTestId('start-page').count(), 0, 'no start page behind the confirmation')
+    await confirmRelay(sender)
     await sender.getByTestId('start-code').fill(code)
     await sender.getByTestId('start-browser').click()
-    await confirmRelay(sender)
     await sender.getByTestId('what-page').waitFor({ timeout: 20000 })
     await sender.getByTestId('what-screen').click()
     await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
@@ -230,8 +234,8 @@ try {
     // Cancel: the default relay (here the static host, which has no relay) is used and nothing connects.
     const p = await newPage()
     await p.goto(`${S.app}display?server=${R.host}`)
-    await runWizard(p)
     await p.getByTestId('relay-confirm-cancel').click()
+    await runWizard(p)
     await p.getByTestId('idle').waitFor()
     assert.equal((await p.getByTestId('address').innerText()).trim(), S.origin.replace('http://', ''))
     await new Promise((r) => setTimeout(r, 500))
@@ -258,8 +262,8 @@ try {
   {
     const receiver = await newPage()
     await receiver.goto(`${S.app}display?server=${O.host}`)
-    await runWizard(receiver)
     await receiver.getByTestId('relay-confirm-use').click()
+    await runWizard(receiver)
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     assert.ok(receiver.log.requests.includes(`http://${O.host}/altcha/challenge`), 'challenge fetched from the relay')
     await receiver.context().close()

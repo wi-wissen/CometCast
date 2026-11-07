@@ -25,8 +25,9 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
   keeps playing the live stream underneath, so unfreezing continues at the live position.
 - **Show a photo or file** and **Show a link** on the presenter's pages: image and PDF (the system file dialog) and
   http(s) link, all over a WebRTC DataChannel; while a PDF is shown, two buttons (previous and next page, side by side
-  above "Stop showing") send the page commands. The presenter's page cannot say "Page n of m" yet: the control channel
-  has no message from the display back to the presenter, so the count is unknown there (the page is ready for it). A new item replaces the old one only after "Stop showing". The signalling server only mediates the connection setup (SDP and ICE); it never
+  above "Stop showing") send the page commands. The display reports the shown page and the page count back with the
+  `page` message (below), so the presenter's page says "Page n of m" and disables Previous on page 1 and Next on the last
+  page; until the first `page` message arrives the line is hidden and both buttons are enabled. A new item replaces the old one only after "Stop showing". The signalling server only mediates the connection setup (SDP and ICE); it never
   sees the payloads.
 - **PDF documents** (receiver and sender) are implemented, see "Receiver behaviour and safety" and
   [documents.md](documents.md#in-the-web-client). The receiver renders pages with hayro compiled to WebAssembly,
@@ -53,6 +54,7 @@ protocol types) once it has been exercised, and it may change.
 | `kind` | Fields | Meaning |
 |--------|--------|---------|
 | `cmd` | `cmd`: a `ControlCmd` from cc-proto in serde's default form: `"next_page"`, `"prev_page"`, `"stop"`, `{"go_to_page":{"page":3}}` | Remote-control command. The web receiver acts on `stop` (closes the shown image, link or document) and, while a document is shown, on the page commands (N counts from 1 and is clamped to the page count). Page commands are ignored while no document is shown. The web sender sends `next_page`, `prev_page` and `stop`; it has no control for `go_to_page`. |
+| `page` | `page` (integer from 1), `pages` (integer from 1, at least `page`) | **Display to presenter** (decision 13.31). The receiver sends it whenever the shown PDF page or the page count changes, once the page count is known (not while the document is still being opened). The presenter keeps the last one for the current document and forgets it with the next document. A receiver ignores a `page` message it receives. UNCERTAIN: the name `page` and the field names follow the spec's wording (`page`, `pages`); the native cores do not send or read it yet. |
 | `image` | `name` (string, 1..255 characters), `mime` (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `size` (integer bytes, 1..10 MiB) | Starts an image transfer. Binary chunks follow. |
 | `image_end` | none | Ends the transfer; the receiver checks that the received byte count equals `size`. |
 | `link` | `url` (string, at most 2048 characters, **and the normalised URL at most 2048 characters too**) | Asks the receiver to open a link. See below. |
@@ -259,3 +261,23 @@ speed and memory on weak devices, and real fullscreen (the button is not exercis
 Every binary chunk of an image or a PDF must be exactly 16 KiB, except the last one. The receiver rejects
 smaller chunks (`bad_chunk`) to bound the number of messages it must hold in memory. Other senders
 must follow this rule. UNCERTAIN: the value is unmeasured; see the other limits above.
+
+## Fix round 2 (docs/design/fix-list-web-2.md)
+
+- **Relay from a link** is confirmed before anything else is drawn (`App.vue` holds the page back): on `/display` a 600 reference-px
+  card on the scaled canvas with only the logo; on presenter pages its own page in the error-page layout. Cancel is first and focused.
+- **Reconnect** (display): retries 1 s, 2 s and 3 s after the loss, then every 4 s; the offline box appears when the retry at 3 s has
+  failed. Busy refusals (`rate_limited`, `banned`, `server_full`, `forbidden`) show the box at once and retry after 30 s.
+- **Busy memory**: for 60 s after `rate_limited`, `banned` or `server_full`, `connection_lost` is reported as that refusal
+  (`core/busyMemory.ts`, both sessions): presenter `error.busy`, display box with the busy body.
+- **STUN/TURN list**: the sessions expose the last `IceFetchState` (`iceState` dep, `state.iceState` with `peer_failed`):
+  refused -> `error.busy`; failed -> `error.displayOff` with `error.displayOff.whyRelay`; nothing is shown before a failure.
+- **Errors**: `generic` is now `other` (`error.other`); `capture_denied` shows no page. Without an app to get, the texts
+  `error.noScreen.nowNoApp` and `what.screenPhoneBrowserNoApp` are used.
+- **Display**: all control layers (`.cd-hud`) are on the centred 960 x 540 canvas; PDF pages on black; transfer progress is a
+  name-tag-look pill, content errors are toasts, a page error is a name-tag-look box; black screen, frozen picture and strokes end
+  with the presentation. QR box edge in Light and the empty-box look; text fields get the focus ring without scale; the wizard
+  card is fixed at 64 from step 1 on and an emptied name field reselects the earlier chip.
+- Tests: `tests/fixRound2.test.ts` and the changes in `displayRunning`, `displayComponents`, `displaySetup`, `fixRound`,
+  `presenter`, `relayConfirm`, `locales` tests; `tools/check-i18n.mjs` requires a `de-du.json` entry for every `de.json` text that
+  addresses the reader. `npm run e2e:shots` needs `npm run build:wasm` first (PDF shots) and writes the full state set.
