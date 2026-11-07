@@ -491,7 +491,7 @@ void main() {
       await settle(t);
       expect(find.byKey(const Key('miracastStartButton')), findsOneWidget);
       await t.tap(find.byKey(const Key('miracastBack')));
-      await settle(t);
+      await t.pumpAndSettle();
       expect(find.byKey(const Key('miracastStartButton')), findsNothing);
       expect(find.byKey(const Key('miracast-link')), findsOneWidget);
     });
