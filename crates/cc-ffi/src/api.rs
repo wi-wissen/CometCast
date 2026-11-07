@@ -1501,8 +1501,12 @@ pub fn set_docs_worker(path: Option<String>) {
     content::set_worker_override(path.map(std::path::PathBuf::from));
 }
 
-/// Use this program to convert Office files (an absolute path) instead of looking for one;
-/// `None` goes back to the default search. For tests and for hosts whose layout differs.
+/// Use this program to convert Office files instead of looking for one; it must be an
+/// **absolute** path (a bare or relative name is not looked up: there is then no worker) and
+/// pass the ownership and permission check of `cc-docs` (owned by this user or root, not
+/// writable by group or others, in a directory not writable by others). `None` goes back to
+/// the default search, whose result is checked the same way. For tests and for hosts whose
+/// layout differs.
 #[frb(sync)]
 pub fn set_office_worker(path: Option<String>) {
     office::set_worker_override(path.map(std::path::PathBuf::from));
@@ -1709,8 +1713,23 @@ pub async fn start_content_sender(
             return;
         }
     }
+    // One Office conversion at a time; a request that was superseded while it waited is
+    // dropped without converting.
+    let permit = match &source {
+        ContentSource::File { path } if office::is_office_name(path) => {
+            let p = office::GATE.acquire().await;
+            if !SENDER.is_current(generation) {
+                return;
+            }
+            Some(p)
+        }
+        _ => None,
+    };
     let office_options = office::options();
     let prepared = match tokio::task::spawn_blocking(move || {
+        // Held until the conversion (the child process) has ended, even if this task is
+        // dropped meanwhile.
+        let _permit = permit;
         content_sender::prepare(&source, &worker, &office_options)
     })
     .await

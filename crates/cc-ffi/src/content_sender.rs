@@ -649,6 +649,7 @@ mod tests {
         let none = cc_office::Options {
             engine: cc_office::Engine::Rust,
             worker: Some(cc_office::WorkerSpec::new(d.path().join("no-such-worker"))),
+            rust_engine_in_worker: true,
             ..cc_office::Options::default()
         };
         // Legacy binary Office files and OpenDocument files are not accepted here.
@@ -668,6 +669,9 @@ mod tests {
         );
         // An empty one is a failed conversion too (cc-office decides), never a panic.
         let empty = file(d.path(), "c.pptx", b"");
-        assert!(prepare(&ContentSource::File { path: empty }, &no_worker(), &none).is_err());
+        assert_eq!(
+            prepare(&ContentSource::File { path: empty }, &no_worker(), &none).err(),
+            Some(UiSendRejection::OfficeFailed)
+        );
     }
 }

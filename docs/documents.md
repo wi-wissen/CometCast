@@ -511,8 +511,8 @@ Where the worker comes from, which platforms have it, and the limits of this sec
 
 Status: implemented for `cometcast-cli` (`send-file`, `office convert`), tested on **tiny
 generated files only** (Linux, one machine). **Fidelity on real classroom files has not been
-measured** (measurement point 7 still needs its five Office files). Not in `cc-ffi`, the Flutter
-app or the web client.
+measured** (measurement point 7 still needs its five Office files). The Linux Flutter app uses it too (see
+[Office files in the Flutter app](#office-files-in-the-flutter-app)); the web client does not.
 
 ### Idea and security model
 
@@ -679,8 +679,16 @@ a PDF named `<file name without extension>.pdf` and nothing in the protocol chan
   PDF. OpenDocument (`.odt .odp .ods`) and legacy files are not offered and are refused as
   `UnsupportedType`: the app never starts LibreOffice, because of the linked-file risk above.
 - **Engine.** Always the pure-Rust engine (`Engine::Rust`). A build without it, or without the worker program,
-  refuses Office files with `OfficeUnavailable`. `cc-ffi` depends on `cc-office` with its default features
-  (the parent process must know that the engine exists, the conversion itself runs in `cc-office-worker`).
+  refuses Office files with `OfficeUnavailable`. `cc-ffi` depends on `cc-office` with `default-features = false`:
+  only the worker spec, the container checks and the types are needed in the app process, so the engine (the
+  Typst tree) is **not linked into `libcc_ffi.so`**; it lives in `cc-office-worker`. The parent is told that
+  the worker has the engine (`Options::rust_engine_in_worker`), otherwise it would refuse `Engine::Rust` as not
+  compiled in. The CMake step therefore builds the worker with its own `cargo build -p cc-office`: one command
+  for `-p cc-ffi -p cc-office` would unify the features and put the engine back.
+- **One at a time.** A global gate (`office::GATE`, a semaphore of one) lets a single conversion run: a further
+  request waits for its turn without holding a thread, and is dropped without converting if the person started
+  something else meanwhile (the sender slot is no longer its own). The permit is held until the child process
+  has ended, even when the starting task is gone.
 - **Where the work runs.** Blocking, on `spawn_blocking`, together with the other checks of `prepare`. The
   worker is a resource-limited child process, **not a sandbox** (see the section above); the protections that
   were in effect are not shown in the app (the CLI prints them). UNCERTAIN: the app shows no warning when a
@@ -699,7 +707,11 @@ a PDF named `<file name without extension>.pdf` and nothing in the protocol chan
   a PDF that no receiver could show is `DocumentUnusable`).
 - **Worker lookup.** `set_office_worker(path)` (tests), else a file `cc-office-worker` next to the running
   executable (or one directory up from a Cargo `deps` directory); no environment variable, no `PATH`.
-  `office_worker_path()` tells which. The Linux CMake step builds it with `-p cc-office` and installs it next
+  `office_worker_path()` tells which. The path must be **absolute** (a bare or relative name is never looked up)
+  and, for both ways, pass the check of `COMETCAST_DOCS_WORKER` in `cc-docs` (`check_worker_file`: regular
+  file, owned by this user or root, not writable by group or others, directory not writable by others unless
+  sticky; Unix only, UNCERTAIN: no ownership check on Windows). A worker that fails it is as good as missing
+  (`OfficeUnavailable`). The PDF worker lookup of `content.rs` is unchanged. The Linux CMake step builds it with `-p cc-office` and installs it next
   to the executable like `cc-docs-worker`. Other platforms: not done (see flutter-bridge.md).
 
 ### Tests (what was run)

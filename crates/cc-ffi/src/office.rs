@@ -7,12 +7,19 @@
 //! process (it is **not** a sandbox, see docs/documents.md). Where the worker is, in this
 //! order: the explicit path of [`set_worker_override`]; a file `cc-office-worker` next to the
 //! running executable (where `flutter build linux` puts it); the Cargo test layout (one
-//! directory up from `deps`). There is no environment variable and no `PATH` search.
+//! directory up from `deps`). There is no environment variable and no `PATH` search. Whichever
+//! way the path was found it must be absolute and pass the same trust check as
+//! `COMETCAST_DOCS_WORKER` in cc-docs (a regular file, owned by this user or root, not writable
+//! by group or others, in a directory not writable by others; Unix only, UNCERTAIN: no
+//! ownership check on Windows); otherwise there is no worker.
 //!
 //! The app always asks for the pure-Rust engine ([`Engine::Rust`]): it never starts LibreOffice
 //! behind the person's back, because LibreOffice can read any file the user can read when a
-//! document links it (docs/documents.md). A build without the pure-Rust engine therefore
-//! reports [`UiSendRejection::OfficeUnavailable`].
+//! document links it (docs/documents.md). `cc-ffi` links `cc-office` *without* its engine (so
+//! Typst is not in `libcc_ffi.so`) and says through `rust_engine_in_worker` that the worker has
+//! it; a missing worker reports [`UiSendRejection::OfficeUnavailable`].
+//!
+//! At most one conversion runs at a time ([`Gate`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -33,13 +40,41 @@ pub(crate) fn set_worker_override(path: Option<PathBuf>) {
     *lock(&WORKER_OVERRIDE) = path;
 }
 
-/// The worker that would be used now, if there is one.
+/// The worker that would be used now, if there is one and it is trusted.
 fn spec() -> Option<WorkerSpec> {
-    if let Some(p) = lock(&WORKER_OVERRIDE).clone() {
-        return p.is_file().then(|| WorkerSpec::new(p));
-    }
-    WorkerSpec::discover()
+    let path = match lock(&WORKER_OVERRIDE).clone() {
+        Some(p) => p,
+        None => WorkerSpec::discover()?.program().to_path_buf(),
+    };
+    cc_docs::check_worker_file(&path).ok()?;
+    Some(WorkerSpec::new(path))
 }
+
+/// Serializes the conversions: each one starts a child process with up to 1 GiB of memory
+/// and a deadline of 120 s, so a person who picks file after file must not get N of them in
+/// parallel. A later request waits for its turn (without holding a thread) and the caller
+/// skips it if it was superseded meanwhile.
+pub(crate) struct Gate(tokio::sync::Semaphore);
+
+impl Gate {
+    pub(crate) const fn new() -> Self {
+        Self(tokio::sync::Semaphore::const_new(1))
+    }
+
+    /// Wait until no other conversion runs.
+    pub(crate) async fn acquire(&'static self) -> tokio::sync::SemaphorePermit<'static> {
+        // The semaphore is never closed.
+        self.0.acquire().await.expect("gate is never closed")
+    }
+
+    #[cfg(test)]
+    fn try_acquire(&self) -> bool {
+        self.0.try_acquire().map(std::mem::forget).is_ok()
+    }
+}
+
+/// The gate of the app's conversions.
+pub(crate) static GATE: Gate = Gate::new();
 
 /// The worker program that would be used now, for display and diagnostics.
 pub(crate) fn worker_path() -> Option<String> {
@@ -52,6 +87,7 @@ pub(crate) fn options() -> Options {
     Options {
         engine: Engine::Rust,
         worker: Some(spec().unwrap_or_else(|| WorkerSpec::new(NO_WORKER_PROGRAM))),
+        rust_engine_in_worker: true,
         ..Options::default()
     }
 }
@@ -176,6 +212,7 @@ mod tests {
         Options {
             engine: Engine::Rust,
             worker: Some(WorkerSpec::new(worker)),
+            rust_engine_in_worker: true,
             ..Options::default()
         }
     }
@@ -261,5 +298,43 @@ mod tests {
         set_worker_override(Some(d.path().join("missing")));
         assert_eq!(worker_path(), None);
         set_worker_override(None);
+    }
+
+    #[test]
+    fn a_relative_or_untrusted_worker_path_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let w = write(d.path(), "w", b"#!/bin/sh\n");
+        // A bare name or a relative path is never looked up, even if the file exists there.
+        let name = w.file_name().unwrap().to_owned();
+        set_worker_override(Some(PathBuf::from(&name)));
+        assert_eq!(worker_path(), None);
+        set_worker_override(Some(PathBuf::from(".").join(&name)));
+        assert_eq!(worker_path(), None);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            // Writable by others: refused.
+            std::fs::set_permissions(&w, std::fs::Permissions::from_mode(0o757)).unwrap();
+            set_worker_override(Some(w.clone()));
+            assert_eq!(worker_path(), None);
+            std::fs::set_permissions(&w, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(worker_path().is_some());
+            // In a directory that others can write (no sticky bit): refused.
+            std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o777)).unwrap();
+            assert_eq!(worker_path(), None);
+            std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        set_worker_override(None);
+    }
+
+    #[test]
+    fn only_one_conversion_runs_at_a_time() {
+        static G: Gate = Gate::new();
+        assert!(G.try_acquire());
+        // A second one must wait: no permit while the first one is held.
+        assert!(!G.try_acquire());
+        G.0.add_permits(1);
+        assert!(G.try_acquire());
+        assert!(!G.try_acquire());
     }
 }

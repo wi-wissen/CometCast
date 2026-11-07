@@ -57,7 +57,7 @@ mod worker;
 mod worker_main;
 
 pub use document::{Document, Limits, PageSize, RenderOptions, RenderedPage, abandoned_renders};
-pub use isolation::{Isolation, WORKER_ENV, WORKER_FILE_NAME, WorkerSpec};
+pub use isolation::{Isolation, WORKER_ENV, WORKER_FILE_NAME, WorkerSpec, check_worker_file};
 #[cfg(all(
     not(target_arch = "wasm32"),
     not(target_os = "ios"),

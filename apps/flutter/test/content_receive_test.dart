@@ -301,6 +301,111 @@ void main() {
       expect(ann2.tool, AnnotationTool.pen);
     });
 
+    testWidgets('the same page drawn again (a resize) keeps the marks; another '
+        'document with the same name and page does not', (tester) async {
+      final h = await startReceiving(tester);
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.contentDocumentOpened(name: 'talk.pdf', pages: 3),
+      );
+      await flush(tester);
+      await showPage(tester, h.core, 1, [255, 0, 0]);
+      final ann = tester
+          .widget<AnnotationLayer>(find.byType(AnnotationLayer))
+          .controller;
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.pump();
+      final g = await tester.startGesture(
+        tester.getRect(find.byKey(const Key('pageView'))).center,
+      );
+      await g.moveBy(const Offset(30, 10));
+      await g.up();
+      await tester.pump();
+      expect(ann.strokes, hasLength(1));
+
+      // Page 1 again, in a new picture of another size (what a resize produces): a new
+      // ReceivedDocument object for the same page. The marks stay.
+      final before = tester.widget<RawImage>(find.byType(RawImage).first).image;
+      h.core.contentFrames.add(
+        ContentFrame.page(
+          page: 1,
+          width: 16,
+          height: 12,
+          rgba: solidRgba(16, 12, [0, 255, 0]),
+        ),
+      );
+      h.core.receiverEvents.add(const ReceiverUiEvent.contentFrameReady());
+      expect(
+        await pumpUntil(
+          tester,
+          () => !identical(
+            tester.widget<RawImage>(find.byType(RawImage).first).image,
+            before,
+          ),
+        ),
+        isTrue,
+        reason: 'the page was drawn again',
+      );
+      expect(find.text('Page 1 of 3'), findsOneWidget);
+      expect(
+        tester.widget<AnnotationLayer>(find.byType(AnnotationLayer)).controller,
+        same(ann),
+      );
+      expect(ann.strokes, hasLength(1));
+
+      // A different document with the same name, again at page 1: not the same page.
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.contentDocumentOpened(name: 'talk.pdf', pages: 3),
+      );
+      await flush(tester);
+      await showPage(tester, h.core, 1, [0, 0, 255]);
+      expect(ann.strokes, isEmpty);
+    });
+
+    testWidgets('a second finger does not draw while the first one is down', (
+      tester,
+    ) async {
+      final h = await startReceiving(tester);
+      h.core.contentFrames.add(
+        ContentFrame.image(
+          name: 'photo.png',
+          mime: 'image/png',
+          bytes: makePng(20, 10, [255, 0, 0]),
+        ),
+      );
+      h.core.receiverEvents.add(const ReceiverUiEvent.contentFrameReady());
+      expect(
+        await pumpUntilFound(tester, find.byKey(const Key('contentImage'))),
+        isTrue,
+      );
+      final ann = tester
+          .widget<AnnotationLayer>(find.byType(AnnotationLayer))
+          .controller;
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.pump();
+      final r = tester.getRect(find.byType(AnnotationLayer));
+      final first = await tester.startGesture(r.center, pointer: 1);
+      final second = await tester.startGesture(
+        r.center + const Offset(40, 0),
+        pointer: 2,
+      );
+      await second.moveBy(const Offset(0, 30));
+      await first.moveBy(const Offset(20, 20));
+      await second.up();
+      await tester.pump();
+      // One stroke, drawn by the first finger only (start and one move).
+      expect(ann.strokes, hasLength(1));
+      expect(ann.strokes.single.points, hasLength(2));
+      await first.up();
+      await tester.pump();
+      expect(ann.currentStroke, isNull);
+      // After both are up a new stroke can start.
+      final again = await tester.startGesture(r.center, pointer: 3);
+      await again.moveBy(const Offset(10, 10));
+      await again.up();
+      await tester.pump();
+      expect(ann.strokes, hasLength(2));
+    });
+
     testWidgets('an image can be marked; a link card has no toolbar', (
       tester,
     ) async {

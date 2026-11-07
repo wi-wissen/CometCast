@@ -86,7 +86,7 @@ impl WorkerSpec {
     pub fn discover_checked() -> Result<Self, String> {
         if let Some(p) = std::env::var_os(WORKER_ENV).filter(|p| !p.is_empty()) {
             let p = PathBuf::from(p);
-            check_env_worker(&p).map_err(|why| format!("{WORKER_ENV} is not used: {why}"))?;
+            check_worker_file(&p).map_err(|why| format!("{WORKER_ENV} is not used: {why}"))?;
             return Ok(Self::new(p));
         }
         let none = || {
@@ -150,8 +150,10 @@ fn is_executable_file(p: &Path) -> bool {
     p.is_file()
 }
 
-/// The trust check for `COMETCAST_DOCS_WORKER`.
-fn check_env_worker(p: &Path) -> Result<(), &'static str> {
+/// The trust check for a worker program given by path (`COMETCAST_DOCS_WORKER`, and the worker
+/// paths `cc-ffi` accepts): absolute, a regular file, and on Unix owned by this user or root,
+/// not writable by group or others, in a directory not writable by others (sticky bit excepted).
+pub fn check_worker_file(p: &Path) -> Result<(), &'static str> {
     if !p.is_absolute() {
         return Err("the path is not absolute");
     }

@@ -119,11 +119,14 @@ class _ReceivePageState extends State<ReceivePage> {
 
   /// Drop the annotations when what they were drawn on is gone: the live picture ended, or
   /// another image or page (a page turn included) is shown. Called while building, so the
-  /// reset does not notify.
+  /// reset does not notify. The key is the content (its epoch, which changes whenever other
+  /// content is shown) and, for a document, the page number: a new picture of the same page
+  /// (a resize renders it again) keeps the marks, a page turn or another document drops them.
   void _syncAnnotations(ReceiverController c) {
     final shown = c.shown;
     final Object? key = switch (shown) {
-      ReceivedImage() || ReceivedDocument() => shown,
+      ReceivedImage() => ('image', c.contentEpoch),
+      ReceivedDocument() => ('document', c.contentEpoch, shown.page),
       ReceivedLink() => null,
       null => c.image != null ? 'video' : null,
     };

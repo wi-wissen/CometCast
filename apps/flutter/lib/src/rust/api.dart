@@ -210,8 +210,12 @@ LinkCheck validateLink({required String input}) =>
 void setDocsWorker({String? path}) =>
     RustLib.instance.api.crateApiSetDocsWorker(path: path);
 
-/// Use this program to convert Office files (an absolute path) instead of looking for one;
-/// `None` goes back to the default search. For tests and for hosts whose layout differs.
+/// Use this program to convert Office files instead of looking for one; it must be an
+/// **absolute** path (a bare or relative name is not looked up: there is then no worker) and
+/// pass the ownership and permission check of `cc-docs` (owned by this user or root, not
+/// writable by group or others, in a directory not writable by others). `None` goes back to
+/// the default search, whose result is checked the same way. For tests and for hosts whose
+/// layout differs.
 void setOfficeWorker({String? path}) =>
     RustLib.instance.api.crateApiSetOfficeWorker(path: path);
 

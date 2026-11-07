@@ -96,10 +96,15 @@ set(CC_DOCS_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-docs-worker")
 # .pptx and .xlsx to PDF on the sender (docs/documents.md). `-p cc-office` builds its binary
 # (feature `worker-bin`, on by default) with the pure-Rust engine (feature `engine-rust`, also
 # default). Installed next to the executable like the PDF worker; `cc-ffi` finds it there
-# (crates/cc-ffi/src/office.rs).
+# (crates/cc-ffi/src/office.rs). It is built by its own cargo command: `cc-ffi` depends on
+# `cc-office` without the engine, and building both in one command would unify the features
+# and link the engine (Typst) into libcc_ffi.so again.
 set(CC_OFFICE_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-office-worker")
 add_custom_target(cc_ffi_build ALL
-  COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi -p cc-docs -p cc-office ${CC_FFI_CARGO_FLAGS}
+  COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi -p cc-docs ${CC_FFI_CARGO_FLAGS}
+          --manifest-path "${CC_REPO_ROOT}/Cargo.toml"
+          --target-dir "${CC_FFI_TARGET_DIR}"
+  COMMAND ${CARGO_EXECUTABLE} build -p cc-office ${CC_FFI_CARGO_FLAGS}
           --manifest-path "${CC_REPO_ROOT}/Cargo.toml"
           --target-dir "${CC_FFI_TARGET_DIR}"
   BYPRODUCTS "${CC_FFI_LIB}" "${CC_DOCS_WORKER}" "${CC_OFFICE_WORKER}"

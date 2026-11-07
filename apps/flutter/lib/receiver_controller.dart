@@ -206,6 +206,10 @@ class ReceiverController extends ChangeNotifier {
   /// Bumped when the shown content is replaced or removed; a picture fetch that began earlier
   /// drops its result.
   int _contentEpoch = 0;
+
+  /// Identifies the shown content: it changes when other content is shown (or none), not when
+  /// the same page is drawn again (a resize renders the same page into a new picture).
+  int get contentEpoch => _contentEpoch;
   bool _contentFetching = false;
   bool _contentRefetch = false;
 

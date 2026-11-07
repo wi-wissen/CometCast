@@ -84,6 +84,11 @@ pub struct Options {
     pub worker: Option<WorkerSpec>,
     /// LibreOffice program; `None` = [`find_soffice`] with no explicit path.
     pub soffice: Option<PathBuf>,
+    /// The worker program has the pure-Rust engine even though this build does not (a
+    /// parent that is built with `default-features = false` so that the engine's large
+    /// dependency tree is not linked into it, and runs a worker that has it). Without this
+    /// the parent refuses [`Engine::Rust`] with `NoEngine` before it starts the worker.
+    pub rust_engine_in_worker: bool,
 }
 
 /// A converted document.
@@ -234,9 +239,11 @@ pub fn convert_bytes(
     } else {
         find_soffice(opts.soffice.as_deref())
     };
-    let order = opts
-        .engine
-        .order(format, soffice.is_some(), rust_engine_compiled());
+    let order = opts.engine.order(
+        format,
+        soffice.is_some(),
+        rust_engine_compiled() || opts.rust_engine_in_worker,
+    );
     let Some(engine) = order.first().copied() else {
         return Err(OfficeError::NoEngine(no_engine_reason(
             opts.engine,

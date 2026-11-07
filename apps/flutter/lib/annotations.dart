@@ -42,6 +42,17 @@ const markerOpacity = 0.35;
 /// Undo steps that are kept.
 const maxHistory = 100;
 
+/// Points of one stroke (a longer stroke stops following the pointer; the next stroke starts
+/// afresh) and strokes on the picture (a new stroke is refused until undo, the eraser or clear
+/// makes room). Both bound the memory and the work of a repaint when someone scribbles for a
+/// long time.
+const maxPointsPerStroke = 2000;
+const maxStrokes = 500;
+
+/// A move that is closer than this to the last point (normalised, about one pixel on a
+/// 1000 pixel picture) adds nothing visible and is dropped.
+const minPointDistance = 0.001;
+
 /// One stroke. [points] are normalised (0..1) to the picture.
 class Stroke {
   Stroke({
@@ -82,6 +93,8 @@ class AnnotationController extends ChangeNotifier {
   List<Stroke> _strokes = const [];
   final List<List<Stroke>> _history = [];
   Stroke? _current;
+  int? _activePointer;
+  int _finishedRevision = 0;
   bool _erasePushed = false;
   bool _disposed = false;
 
@@ -92,6 +105,40 @@ class AnnotationController extends ChangeNotifier {
   ui.Image? frozenImage;
 
   List<Stroke> get strokes => _strokes;
+
+  /// The stroke that is being drawn now (also the last one of [strokes]), or null.
+  Stroke? get currentStroke => _current;
+
+  /// Changes whenever the strokes that are *not* being drawn change (a stroke ended, erased,
+  /// undone, cleared): the painter caches those and redraws only [currentStroke] per move.
+  int get finishedRevision => _finishedRevision;
+
+  /// The strokes without the one being drawn.
+  List<Stroke> get finishedStrokes {
+    final c = _current;
+    return c == null
+        ? _strokes
+        : _strokes.where((s) => !identical(s, c)).toList(growable: false);
+  }
+
+  /// The pointer (finger, pen, mouse button) that owns the gesture now, or null.
+  int? get activePointer => _activePointer;
+
+  /// A pointer goes down: it owns the gesture unless another one does (a second finger, a
+  /// palm, is ignored until the first one is up).
+  bool acquirePointer(int id) {
+    if (_activePointer != null) return false;
+    _activePointer = id;
+    return true;
+  }
+
+  /// The pointer is up or cancelled. Ends the stroke it was drawing.
+  void releasePointer(int id) {
+    if (_activePointer != id) return;
+    _activePointer = null;
+    endStroke();
+  }
+
   bool get canUndo => _history.isNotEmpty;
   bool get isEmpty => _strokes.isEmpty;
   bool get frozen => frozenImage != null;
@@ -102,6 +149,7 @@ class AnnotationController extends ChangeNotifier {
   void toggleTool(AnnotationTool t) {
     tool = tool == t ? null : t;
     if (tool != AnnotationTool.laser) laser = null;
+    _abandonGesture();
     notifyListeners();
   }
 
@@ -110,6 +158,7 @@ class AnnotationController extends ChangeNotifier {
     color = c;
     if (!drawing) tool = AnnotationTool.pen;
     laser = null;
+    _abandonGesture();
     notifyListeners();
   }
 
@@ -134,7 +183,7 @@ class AnnotationController extends ChangeNotifier {
 
   /// Start a stroke with the current tool at [p] (normalised). Only for pen and marker.
   void beginStroke(Offset p) {
-    if (!drawing) return;
+    if (!drawing || _strokes.length >= maxStrokes) return;
     _push();
     final s = Stroke(
       marker: tool == AnnotationTool.marker,
@@ -149,12 +198,27 @@ class AnnotationController extends ChangeNotifier {
 
   void extend(Offset p) {
     final s = _current;
-    if (s == null) return;
+    if (s == null || s.points.length >= maxPointsPerStroke) return;
+    if ((p - s.points.last).distance < minPointDistance) return;
     s.points.add(p);
     notifyListeners();
   }
 
-  void endStroke() => _current = null;
+  /// End the stroke that is being drawn (the pointer went up).
+  void endStroke() {
+    if (_current == null) return;
+    _current = null;
+    _finishedRevision++;
+    notifyListeners();
+  }
+
+  /// A tool change, clear, undo or reset ends the stroke and the gesture that drew it: the
+  /// pointer that is still down is ignored until it is up and down again.
+  void _abandonGesture() {
+    _current = null;
+    _activePointer = null;
+    _finishedRevision++;
+  }
 
   void beginErase() => _erasePushed = false;
 
@@ -178,13 +242,14 @@ class AnnotationController extends ChangeNotifier {
       _erasePushed = true;
     }
     _strokes = keep;
+    _finishedRevision++;
     notifyListeners();
     return true;
   }
 
   bool undo() {
     if (_history.isEmpty) return false;
-    _current = null;
+    _abandonGesture();
     _strokes = _history.removeLast();
     notifyListeners();
     return true;
@@ -192,6 +257,7 @@ class AnnotationController extends ChangeNotifier {
 
   void clear() {
     if (_strokes.isEmpty) return;
+    _abandonGesture();
     _push();
     _strokes = const [];
     notifyListeners();
@@ -229,7 +295,7 @@ class AnnotationController extends ChangeNotifier {
   void reset({bool notify = true}) {
     _strokes = const [];
     _history.clear();
-    _current = null;
+    _abandonGesture();
     laser = null;
     _dropFrozen();
     if (notify) notifyListeners();
@@ -251,37 +317,112 @@ class AnnotationController extends ChangeNotifier {
 }
 
 /// Draws the strokes (normalised points) over a box of the given size.
+///
+/// The strokes that are finished are recorded once into a [ui.Picture] and replayed; only the
+/// stroke that is being drawn is added per frame, and its path grows by the new points only.
+/// The picture is recorded again when [AnnotationController.finishedRevision] or the size
+/// changes. Keep one painter per layer (see [AnnotationLayer]) and [dispose] it.
 class StrokePainter extends CustomPainter {
   StrokePainter(this.controller) : super(repaint: controller);
 
   final AnnotationController controller;
 
+  ui.Picture? _picture;
+  int _pictureRevision = -1;
+  Size? _pictureSize;
+  Stroke? _liveStroke;
+  Path? _livePath;
+  int _livePoints = 0;
+  Size? _liveSize;
+
+  /// How often the finished strokes were recorded (tests).
+  @visibleForTesting
+  int pictureBuilds = 0;
+
+  /// How often the path of the live stroke was built from its first point (tests).
+  @visibleForTesting
+  int livePathRebuilds = 0;
+
+  static Paint _paintFor(Stroke s) => Paint()
+    ..color = s.marker ? s.color.withValues(alpha: markerOpacity) : s.color
+    ..strokeWidth = s.width
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round
+    ..style = PaintingStyle.stroke;
+
+  static Offset _abs(Offset o, Size size) =>
+      Offset(o.dx * size.width, o.dy * size.height);
+
+  static void _drawStroke(Canvas canvas, Stroke s, Size size) {
+    final paint = _paintFor(s);
+    final first = _abs(s.points.first, size);
+    if (s.points.length == 1) {
+      canvas.drawCircle(first, s.width / 2, paint..style = PaintingStyle.fill);
+      return;
+    }
+    final path = Path()..moveTo(first.dx, first.dy);
+    for (final p in s.points.skip(1)) {
+      final a = _abs(p, size);
+      path.lineTo(a.dx, a.dy);
+    }
+    canvas.drawPath(path, paint);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    for (final s in controller.strokes) {
-      final paint = Paint()
-        ..color = s.marker ? s.color.withValues(alpha: markerOpacity) : s.color
-        ..strokeWidth = s.width
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke;
-      Offset abs(Offset o) => Offset(o.dx * size.width, o.dy * size.height);
-      final first = abs(s.points.first);
-      if (s.points.length == 1) {
-        canvas.drawCircle(
-          first,
-          s.width / 2,
-          paint..style = PaintingStyle.fill,
-        );
-        continue;
+    if (_picture == null ||
+        _pictureRevision != controller.finishedRevision ||
+        _pictureSize != size) {
+      _picture?.dispose();
+      final recorder = ui.PictureRecorder();
+      final rec = Canvas(recorder);
+      for (final s in controller.finishedStrokes) {
+        _drawStroke(rec, s, size);
       }
-      final path = Path()..moveTo(first.dx, first.dy);
-      for (final p in s.points.skip(1)) {
-        final a = abs(p);
-        path.lineTo(a.dx, a.dy);
-      }
-      canvas.drawPath(path, paint);
+      _picture = recorder.endRecording();
+      _pictureRevision = controller.finishedRevision;
+      _pictureSize = size;
+      pictureBuilds++;
     }
+    canvas.drawPicture(_picture!);
+
+    final live = controller.currentStroke;
+    if (live == null) {
+      _liveStroke = null;
+      _livePath = null;
+      return;
+    }
+    if (live.points.length == 1) {
+      _drawStroke(canvas, live, size);
+      _liveStroke = null;
+      _livePath = null;
+      return;
+    }
+    var path = _livePath;
+    if (path == null ||
+        !identical(live, _liveStroke) ||
+        _liveSize != size ||
+        live.points.length < _livePoints) {
+      final first = _abs(live.points.first, size);
+      path = Path()..moveTo(first.dx, first.dy);
+      _livePoints = 1;
+      _liveStroke = live;
+      _liveSize = size;
+      _livePath = path;
+      livePathRebuilds++;
+    }
+    for (var i = _livePoints; i < live.points.length; i++) {
+      final a = _abs(live.points[i], size);
+      path.lineTo(a.dx, a.dy);
+    }
+    _livePoints = live.points.length;
+    canvas.drawPath(path, _paintFor(live));
+  }
+
+  /// Release the recorded picture.
+  void dispose() {
+    _picture?.dispose();
+    _picture = null;
   }
 
   @override
@@ -290,13 +431,36 @@ class StrokePainter extends CustomPainter {
 
 /// The drawing layer. Put it exactly over the picture (same box): points are normalised to
 /// it. Without a tool it lets pointer events through.
-class AnnotationLayer extends StatelessWidget {
+class AnnotationLayer extends StatefulWidget {
   const AnnotationLayer({super.key, required this.controller});
 
   final AnnotationController controller;
 
   @override
+  State<AnnotationLayer> createState() => _AnnotationLayerState();
+}
+
+class _AnnotationLayerState extends State<AnnotationLayer> {
+  late StrokePainter _painter = StrokePainter(widget.controller);
+
+  @override
+  void didUpdateWidget(AnnotationLayer old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      _painter.dispose();
+      _painter = StrokePainter(widget.controller);
+    }
+  }
+
+  @override
+  void dispose() {
+    _painter.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     final t = AppLocalizations.of(context);
     return LayoutBuilder(
       builder: (context, box) {
@@ -320,7 +484,7 @@ class AnnotationLayer extends StatelessWidget {
                   IgnorePointer(
                     child: CustomPaint(
                       key: const Key('annotationCanvas'),
-                      painter: StrokePainter(controller),
+                      painter: _painter,
                     ),
                   ),
                   IgnorePointer(
@@ -344,7 +508,10 @@ class AnnotationLayer extends StatelessWidget {
                       child: Listener(
                         key: const Key('annotationSurface'),
                         behavior: HitTestBehavior.opaque,
+                        // One pointer at a time: a second finger or a palm is ignored
+                        // until the first one is up.
                         onPointerDown: (e) {
+                          if (!controller.acquirePointer(e.pointer)) return;
                           final p = norm(e.localPosition);
                           switch (tool) {
                             case AnnotationTool.pen || AnnotationTool.marker:
@@ -359,6 +526,7 @@ class AnnotationLayer extends StatelessWidget {
                           }
                         },
                         onPointerMove: (e) {
+                          if (e.pointer != controller.activePointer) return;
                           final p = norm(e.localPosition);
                           switch (tool) {
                             case AnnotationTool.pen || AnnotationTool.marker:
@@ -372,14 +540,16 @@ class AnnotationLayer extends StatelessWidget {
                           }
                         },
                         onPointerUp: (e) {
-                          controller.endStroke();
+                          if (e.pointer != controller.activePointer) return;
+                          controller.releasePointer(e.pointer);
                           if (tool == AnnotationTool.laser &&
                               e.kind != PointerDeviceKind.mouse) {
                             controller.setLaser(null);
                           }
                         },
-                        onPointerCancel: (_) {
-                          controller.endStroke();
+                        onPointerCancel: (e) {
+                          if (e.pointer != controller.activePointer) return;
+                          controller.releasePointer(e.pointer);
                           if (tool == AnnotationTool.laser) {
                             controller.setLaser(null);
                           }
