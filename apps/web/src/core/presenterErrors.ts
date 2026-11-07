@@ -2,6 +2,7 @@
 //
 // Which error page of the presenter (docs/design/first-run-and-display.md, section 6) belongs to a
 // failure of the sender session. Pure, so that it can be tested without a page.
+import type { IceFetchState } from './altchaClient'
 
 export type ErrorKind =
   | 'code'
@@ -20,16 +21,32 @@ export type ErrorKind =
   | 'busy'
   /** `proto_mismatch`, `bad_hello`, `bad_message`: page and server do not match. */
   | 'outdated'
-  /** A failure the spec has no page for (rate limits, protocol errors ...): same layout, the existing wording. */
-  | 'generic'
+  /** Every other failure (`forbidden`, `altcha_*`, `wrong_role`, `not_in_room`, `unknown`, anything unlisted): spec 6, decision 13.32. */
+  | 'other'
 
 export interface ErrorContext {
   /** True when the presenter had already been accepted as a valid code before (waiting for approval). */
   wasWaiting?: boolean
+  /** How the last `GET /ice-servers` of this connection ended (decision 13.45); only read for `peer_failed`. */
+  ice?: IceFetchState | null
 }
 
-/** `code` = SenderState.errorCode, or 'peer_left' for a sender whose room ended. */
-export function errorKindFor(code: string | null, ctx: ErrorContext = {}): ErrorKind {
+/** The ICE list was refused (429 / 403): the server is busy for this address. */
+const iceRefused = (ice: IceFetchState | null | undefined): boolean => ice?.kind === 'rate_limited' || ice?.kind === 'refused'
+/** The ICE list failed for another reason (HTTP error, broken answer, not reachable). */
+const iceFailed = (ice: IceFetchState | null | undefined): boolean =>
+  ice?.kind === 'http_error' || ice?.kind === 'bad_answer' || ice?.kind === 'unreachable'
+
+/** Which "why" text the `displayOff` page shows: the relay could not help (decision 13.45) or the plain one. */
+export function displayOffWhy(ice: IceFetchState | null | undefined): 'relay' | 'plain' {
+  return iceFailed(ice) ? 'relay' : 'plain'
+}
+
+/**
+ * `code` = SenderState.errorCode, or 'peer_left' for a sender whose room ended. `null` means "no error page":
+ * `capture_denied` (the person closed the system dialog) goes back to "What to show".
+ */
+export function errorKindFor(code: string | null, ctx: ErrorContext = {}): ErrorKind | null {
   switch (code) {
     case 'room_not_found':
       // The code was valid a moment ago (the display ended its session or restarted): "no longer valid".
@@ -47,7 +64,10 @@ export function errorKindFor(code: string | null, ctx: ErrorContext = {}): Error
     case 'connection_lost':
       return 'noInternet'
     case 'peer_failed':
-      return 'displayOff'
+      // The list of STUN/TURN servers was refused for this connection: the same page as any other refusal.
+      return iceRefused(ctx.ice) ? 'busy' : 'displayOff'
+    case 'capture_denied':
+      return null
     case 'capture_failed':
       return 'noScreen'
     case 'room_full':
@@ -61,7 +81,7 @@ export function errorKindFor(code: string | null, ctx: ErrorContext = {}): Error
     case 'bad_message':
       return 'outdated'
     default:
-      return 'generic'
+      return 'other'
   }
 }
 

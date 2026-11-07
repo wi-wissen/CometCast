@@ -88,6 +88,11 @@ function untrusted(): boolean {
   return needsRelayConfirmation(current, choices) && current.wsUrl !== confirmedWs
 }
 
+/** True while the relay in use came from a link only and has not been confirmed (App.vue holds the page back then). */
+export function relayNeedsConfirmation(): boolean {
+  return untrusted()
+}
+
 /**
  * Call before any connection or screen capture. Resolves true when the relay may be used: it is
  * trusted, or the person confirmed it in the dialog (remembered for this tab and this exact relay).

@@ -64,12 +64,14 @@ export interface WizardState {
   room: string
   /** What is typed into the custom field (as typed). It starts empty (spec 4.1). */
   custom: string
+  /** The suggestion that was selected before anything was typed: it is selected again when the field is emptied (decision 13.39). */
+  chip: string
   mode: DefaultMode
 }
 export type WizardAction =
   | { type: 'next' }
   | { type: 'back' }
-  /** A suggestion chip was chosen: it clears the custom field. */
+  /** A suggestion chip was chosen: it clears the custom field and becomes the one to return to. */
   | { type: 'room'; value: string }
   /** The custom field changed: a non-empty text deselects all chips. */
   | { type: 'custom'; value: string }
@@ -77,12 +79,12 @@ export type WizardAction =
 
 export function initialWizard(room: string): WizardState {
   // The first suggestion is preselected, the custom field starts empty; Open is preselected (D1).
-  return { step: 0, room: cleanRoomName(room), custom: '', mode: 'open' }
+  return { step: 0, room: cleanRoomName(room), custom: '', chip: cleanRoomName(room), mode: 'open' }
 }
 
-/** Is this suggestion the selected one? Never together with a non-empty custom name. */
+/** Is this suggestion the selected one? Never together with a non-empty custom name (a name of only spaces counts as empty). */
 export function chipSelected(s: WizardState, suggestion: string): boolean {
-  return s.custom === '' && s.room === cleanRoomName(suggestion)
+  return cleanRoomName(s.custom) === '' && s.room === cleanRoomName(suggestion)
 }
 
 export function wizardReduce(s: WizardState, a: WizardAction): WizardState {
@@ -92,11 +94,16 @@ export function wizardReduce(s: WizardState, a: WizardAction): WizardState {
     case 'back':
       // Back on the first screen does nothing.
       return s.step <= 0 ? s : { ...s, step: (s.step - 1) as SetupStep }
-    case 'room':
-      return { ...s, room: cleanRoomName(a.value), custom: '' }
+    case 'room': {
+      const room = cleanRoomName(a.value)
+      return { ...s, room, custom: '', chip: room }
+    }
     case 'custom': {
       const custom = Array.from(a.value).slice(0, ROOM_NAME_MAX).join('')
-      return { ...s, custom, room: cleanRoomName(custom) }
+      const name = cleanRoomName(custom)
+      // Emptied again (or only spaces): the chip that was selected before typing is selected again, so exactly one name
+      // is always visible as chosen (spec 4.1, decision 13.39).
+      return { ...s, custom, room: name === '' ? s.chip : name }
     }
     case 'mode':
       return { ...s, mode: a.value }

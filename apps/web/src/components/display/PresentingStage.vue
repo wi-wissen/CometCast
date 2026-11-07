@@ -31,7 +31,7 @@ const props = defineProps<{
   controlsShown: boolean
 }>()
 const emit = defineEmits<{ close: []; playing: [on: boolean]; input: [] }>()
-const { t, te } = useI18n()
+const { t } = useI18n()
 
 const video = ref<HTMLVideoElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
@@ -136,6 +136,15 @@ watch(
   },
 )
 
+// The black screen, the frozen picture and all strokes end with the presentation (stop, disconnect, End): the next
+// presentation starts live and visible, without strokes (spec 4.5, decision 13.41).
+const active = computed(() => props.state.content !== null || props.state.stream !== null)
+watch(active, (on) => {
+  if (on) return
+  if (toolbar.value.black || toolbar.value.frozen) toolbar.value = { ...toolbar.value, black: false, frozen: false }
+  model.reset()
+})
+
 const isFullscreen = ref(false)
 const fullscreenAvailable = typeof document !== 'undefined' && document.fullscreenEnabled === true
 function onFullscreenChange() {
@@ -151,10 +160,6 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
 const transferPercent = computed(() => {
   const tr = props.state.transfer
   return tr ? Math.floor((tr.received / tr.size) * 100) : 0
-})
-const contentErrorText = computed(() => {
-  const c = props.state.contentError
-  return c ? (te(`receive.transferError.${c}`) ? t(`receive.transferError.${c}`) : t('receive.transferError.bad_message')) : ''
 })
 defineExpose({ stage })
 </script>
@@ -204,25 +209,13 @@ defineExpose({ stage })
       <p class="cd-blackhint">{{ t('toolbar.blackHint') }}</p>
     </div>
 
-    <p
-      v-if="state.transfer"
-      data-testid="transfer"
-      role="status"
-      class="absolute bottom-3 left-1/2 z-[27] -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-sm text-white"
-    >
-      {{ t('receive.transfer', { name: state.transfer.name, percent: transferPercent }) }}
-    </p>
-    <p
-      v-else-if="state.contentError"
-      data-testid="content-error"
-      role="alert"
-      class="absolute bottom-3 left-1/2 z-[27] max-w-[90%] -translate-x-1/2 rounded-full bg-err px-3 py-1 text-sm text-white"
-    >
-      {{ contentErrorText }}
-    </p>
-
     <!-- Reference-px layer: the frozen badge (a state, drawn at rest) and the annotation toolbar (with the controls). -->
     <div class="cd-hud cd-stagehud">
+      <!-- A running transfer (at rest too, it is a state): the name-tag-look pill, bottom 12, centred (spec 3.5, 4.5).
+           A failed transfer is a toast (DisplayRunning), never a pill over the picture. -->
+      <p v-if="state.transfer" data-testid="transfer" role="status" class="cd-tag cd-transfer">
+        {{ t('receive.transfer', { name: state.transfer.name, percent: transferPercent }) }}
+      </p>
       <p v-if="toolbar.frozen" data-testid="frozen-badge" class="cd-badge">{{ t('toolbar.frozenHint') }}</p>
       <ReceiverToolbar
         :shown="controlsShown && state.content?.kind !== 'link'"

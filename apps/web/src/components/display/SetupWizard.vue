@@ -74,7 +74,8 @@ function applyField() {
 function cancelField() {
   showField.value = false
   fieldError.value = ''
-  void focusInitial()
+  // Back closes the field and the focus goes to "Other address" (spec 4.1).
+  void nextTick(() => root.value?.querySelector<HTMLElement>('[data-testid="wz-change"]')?.focus())
 }
 function onAddressNext() {
   if (showField.value) applyField()
@@ -111,7 +112,8 @@ defineExpose({ back: () => (showField.value ? cancelField() : act({ type: 'back'
 </script>
 
 <template>
-  <div ref="root" class="cd-setup" data-testid="setup">
+  <!-- Steps 1 to 4: the card's top edge is fixed (64) so that logo and step dots do not jump; the welcome card is centred. -->
+  <div ref="root" class="cd-setup" :class="{ top: w.step > 0 }" data-testid="setup">
     <div class="cd-wz">
       <div class="cd-wztop">
         <img :src="logoFor(props.theme)" alt="" />
@@ -155,14 +157,15 @@ defineExpose({ back: () => (showField.value ? cancelField() : act({ type: 'back'
             autocomplete="off"
             :maxlength="ROOM_NAME_MAX"
             :value="w.custom"
+            data-row="1"
             data-testid="wz-room"
             @input="act({ type: 'custom', value: ($event.target as HTMLInputElement).value })"
             @blur="w.custom !== '' && act({ type: 'custom', value: cleanRoomName(w.custom) })"
           />
         </div>
         <div class="cd-acts">
-          <button type="button" class="cd-tbtn" data-row="1" data-testid="wz-back" @click="act({ type: 'back' })">{{ t('common.back') }}</button>
-          <button type="button" class="cd-tbtn p" data-row="1" data-testid="wz-next" @click="act({ type: 'next' })">{{ t('common.next') }}</button>
+          <button type="button" class="cd-tbtn" data-row="2" data-testid="wz-back" @click="act({ type: 'back' })">{{ t('common.back') }}</button>
+          <button type="button" class="cd-tbtn p" data-row="2" data-testid="wz-next" @click="act({ type: 'next' })">{{ t('common.next') }}</button>
         </div>
       </template>
 
@@ -209,8 +212,9 @@ defineExpose({ back: () => (showField.value ? cancelField() : act({ type: 'back'
         <h2>{{ t('setup.address.title') }}</h2>
         <div v-if="showField" class="cd-namefield">
           <label for="wz-addr">{{ t('setup.address.fieldLabel') }}</label>
-          <input id="wz-addr" v-model="fieldText" type="text" autocomplete="off" spellcheck="false" data-testid="wz-addr" @keydown.enter.prevent="applyField" />
-          <p v-if="fieldError" data-testid="wz-addr-error">{{ fieldError }}</p>
+          <input id="wz-addr" v-model="fieldText" type="text" autocomplete="off" spellcheck="false" data-row="0" data-testid="wz-addr" @keydown.enter.prevent="applyField" />
+          <!-- An invalid address: the existing text, 16 --fg, led by the info icon in --acc (no red). -->
+          <p v-if="fieldError" class="cd-warn" role="alert" data-testid="wz-addr-error"><Icon name="info" /><span>{{ fieldError }}</span></p>
         </div>
         <div v-else class="cd-srvcard">
           <Icon name="globe" />
@@ -221,9 +225,9 @@ defineExpose({ back: () => (showField.value ? cancelField() : act({ type: 'back'
         </div>
         <p>{{ t('setup.address.body') }}</p>
         <div class="cd-acts">
-          <button type="button" class="cd-tbtn" data-row="0" data-testid="wz-back" @click="onAddressBack">{{ t('common.back') }}</button>
+          <button type="button" class="cd-tbtn" :data-row="showField ? 1 : 0" data-testid="wz-back" @click="onAddressBack">{{ t('common.back') }}</button>
           <button v-if="!showField" type="button" class="cd-tbtn" data-row="0" data-testid="wz-change" @click="otherAddress">{{ t('setup.address.change') }}</button>
-          <button type="button" class="cd-tbtn p" data-row="0" data-testid="wz-ok" @click="onAddressNext">{{ t('setup.address.ok') }}</button>
+          <button type="button" class="cd-tbtn p" :data-row="showField ? 1 : 0" data-testid="wz-ok" @click="onAddressNext">{{ t('setup.address.ok') }}</button>
         </div>
       </template>
 

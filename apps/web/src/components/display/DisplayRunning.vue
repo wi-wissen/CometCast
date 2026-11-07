@@ -91,11 +91,12 @@ const sasParts = computed(() => splitSlot((m) => t('present.sas', { sas: m })))
 useWakeLock(presenting)
 
 // --- connection: starts at once; comes back by itself when the network returns --------------------
-// What the idle screen shows (core/connectionView.ts): the code, "connecting" (empty code and QR box) or, after
-// 3 s without a connection (8 s without any code at start), the offline box. Short drops never flash the box.
+// What the idle screen shows (core/connectionView.ts): the code, "connecting" (empty code and QR box) or, once the
+// retry at 3 s has failed (8 s without any code at start), the offline box. Short drops never flash the box.
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 const lostAt = ref(Date.now()) // since when the display has no code
 const failed = ref(false) // an error happened since it last had a code
+const failedAttempts = ref(0) // attempts that ended in an error since it last had a code
 const lastError = ref<string | null>(null)
 const clock = ref(Date.now())
 const hasCode = (code: string | null, phase: string) => code !== null && phase !== 'error'
@@ -104,16 +105,19 @@ watch(
   ([code, phase], [prevCode, prevPhase]) => {
     if (hasCode(code, phase)) {
       failed.value = false
+      failedAttempts.value = 0
       lastError.value = null
     } else if (prevCode !== undefined && hasCode(prevCode, prevPhase as string)) lostAt.value = Date.now()
-    if (phase === 'error') {
+    if (phase === 'error' && prevPhase !== 'error') {
       failed.value = true
+      failedAttempts.value += 1
       lastError.value = state.value.errorCode
     }
     if (retryTimer) clearTimeout(retryTimer)
     retryTimer = null
     if (phase === 'error') {
-      const delay = retryDelayMs(state.value.errorCode)
+      // 1 s, 2 s, 3 s after the loss, then every 4 s; busy refusals after 30 s; an outdated page never (spec 4.2).
+      const delay = retryDelayMs(state.value.errorCode, failedAttempts.value, Date.now() - lostAt.value)
       if (delay !== null) retryTimer = setTimeout(() => void start(), delay)
     }
   },
@@ -121,7 +125,14 @@ watch(
 const clockTimer = setInterval(() => (clock.value = Date.now()), 500)
 onBeforeUnmount(() => clearInterval(clockTimer))
 const view = computed(() =>
-  connectionView({ code: state.value.code, phase: state.value.phase, failed: failed.value, withoutCodeMs: clock.value - lostAt.value }),
+  connectionView({
+    code: state.value.code,
+    phase: state.value.phase,
+    failed: failed.value,
+    failedAttempts: failedAttempts.value,
+    cause: offlineCause(lastError.value),
+    withoutCodeMs: clock.value - lostAt.value,
+  }),
 )
 const cause = computed(() => offlineCause(lastError.value))
 function onOnline() {

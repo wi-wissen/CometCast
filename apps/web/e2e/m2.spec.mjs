@@ -123,8 +123,11 @@ try {
   // top 12 reference px, centred, tokens only: panel fill, 2 px --line border (dark theme: #2e3c68)
   const tbBox = await tb.boundingBox()
   const vpW = await receiver.evaluate(() => innerWidth)
-  const scale = Math.min(vpW / 960, (await receiver.evaluate(() => innerHeight)) / 540)
-  assert.ok(Math.abs(tbBox.y - 12 * scale) < 2, `toolbar top ${tbBox.y} ~ ${12 * scale}`)
+  const vpH = await receiver.evaluate(() => innerHeight)
+  const scale = Math.min(vpW / 960, vpH / 540)
+  // everything is placed on the centred 16:9 canvas, not on the viewport (spec 3.5): top 12 reference px of the canvas
+  const canvasTop = (vpH - 540 * scale) / 2
+  assert.ok(Math.abs(tbBox.y - (canvasTop + 12 * scale)) < 2, `toolbar top ${tbBox.y} ~ ${canvasTop + 12 * scale}`)
   assert.ok(Math.abs(tbBox.x + tbBox.width / 2 - vpW / 2) < 2, 'toolbar centred')
   assert.ok(Math.abs(tbBox.height - 46 * scale) < 2, 'toolbar 46 reference px high')
   const tbStyle = await tb.evaluate((e) => {
@@ -232,7 +235,7 @@ try {
   await waitFor(async () => (await hidden()), 'controls hidden while frozen', 9000)
   await receiver.getByTestId('frozen-badge').waitFor({ state: 'visible' })
   const badge = await receiver.getByTestId('frozen-badge').boundingBox()
-  assert.ok(Math.abs(badge.x - 12 * scale) < 2 && Math.abs(badge.y - 12 * scale) < 2, 'frozen badge top left')
+  assert.ok(Math.abs(badge.x - (vpW - 960 * scale) / 2 - 12 * scale) < 2 && Math.abs(badge.y - canvasTop - 12 * scale) < 2, 'frozen badge top left of the canvas')
   await reveal()
   await receiver.getByTestId('tb-freeze').click()
   assert.equal(await stage.getAttribute('data-frozen'), 'false')

@@ -63,10 +63,11 @@ describe('error pages of the presenter (6)', () => {
     expect(errorKindFor('peer_left')).toBe('ended')
     expect(errorKindFor('connection_lost')).toBe('noInternet')
     expect(errorKindFor('peer_failed')).toBe('displayOff')
-    // other failures keep the layout with the existing wording
-    expect(errorKindFor('forbidden')).toBe('generic')
-    expect(errorKindFor('altcha_failed')).toBe('generic')
-    expect(errorKindFor(null)).toBe('generic')
+    // every other failure has the page `error.other` (Why = the existing text of the code)
+    for (const c of ['forbidden', 'altcha_failed', 'altcha_required', 'altcha_invalid', 'altcha_too_hard', 'altcha_expired', 'wrong_role', 'not_in_room', 'unknown', 'something_new', null])
+      expect(errorKindFor(c), String(c)).toBe('other')
+    // closing the share dialog is no failure: no page
+    expect(errorKindFor('capture_denied')).toBeNull()
   })
   it('maps every code of the new pages (spec 6)', () => {
     expect(errorKindFor('room_full')).toBe('occupied')

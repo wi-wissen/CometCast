@@ -24,7 +24,7 @@ const run = (s: WizardState, ...acts: Parameters<typeof wizardReduce>[1][]) => a
 
 describe('setup wizard state machine', () => {
   it('starts on the welcome screen with the first name and Open preselected (D1)', () => {
-    expect(initialWizard('Meeting room Elbe')).toEqual({ step: 0, room: 'Meeting room Elbe', custom: '', mode: 'open' })
+    expect(initialWizard('Meeting room Elbe')).toEqual({ step: 0, room: 'Meeting room Elbe', custom: '', chip: 'Meeting room Elbe', mode: 'open' })
   })
   it('goes through the four steps and stops at the last; Back on the welcome screen does nothing', () => {
     let s = initialWizard('A')
@@ -46,7 +46,7 @@ describe('setup wizard state machine', () => {
       { type: 'back' },
       { type: 'back' },
     )
-    expect(s).toEqual({ step: 0, room: 'Workshop', custom: '', mode: 'confirm' })
+    expect(s).toEqual({ step: 0, room: 'Workshop', custom: '', chip: 'Workshop', mode: 'confirm' })
   })
   it('the custom field starts empty; typing deselects the chips, choosing a chip clears the field (spec 4.1)', () => {
     const chip = 'Meeting room Elbe'
@@ -62,8 +62,23 @@ describe('setup wizard state machine', () => {
     expect(chipSelected(s, 'Workshop')).toBe(true)
     // the field cuts at 32 characters
     expect(Array.from(wizardReduce(s, { type: 'custom', value: 'y'.repeat(50) }).custom).length).toBe(ROOM_NAME_MAX)
-    // emptying the field leaves no chip selected and no custom name (Finish falls back to the first suggestion)
-    expect(wizardReduce(wizardReduce(s, { type: 'custom', value: 'x' }), { type: 'custom', value: '' })).toMatchObject({ custom: '', room: '' })
+  })
+  it('an emptied field (or only spaces) selects the chip that was selected before typing again (decision 13.39)', () => {
+    const first = 'Meeting room Elbe'
+    let s = initialWizard(first)
+    s = wizardReduce(s, { type: 'custom', value: 'X' })
+    expect(s).toMatchObject({ custom: 'X', room: 'X' })
+    expect(chipSelected(s, first)).toBe(false)
+    s = wizardReduce(s, { type: 'custom', value: '' })
+    expect(s).toMatchObject({ custom: '', room: first })
+    expect(chipSelected(s, first)).toBe(true)
+    // the chip chosen last is the one that comes back
+    s = wizardReduce(s, { type: 'room', value: 'Workshop' })
+    s = wizardReduce(s, { type: 'custom', value: 'Raum' })
+    s = wizardReduce(s, { type: 'custom', value: '   ' })
+    expect(s.room).toBe('Workshop')
+    expect(chipSelected(s, 'Workshop')).toBe(true)
+    expect(chipSelected(s, first)).toBe(false)
   })
   it('the address step: the source line and "Other address" (web)', () => {
     const k = (typed: boolean, source: 'user' | 'query' | 'config' | 'build' | 'origin', inChoices = true) => addressSourceKey({ typed, source, inChoices })

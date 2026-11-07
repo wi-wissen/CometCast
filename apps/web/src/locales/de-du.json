@@ -172,7 +172,8 @@
     "link": "Link zeigen",
     "linkSub": "Der Bildschirm fragt, bevor er die Seite öffnet",
     "disconnect": "Trennen",
-    "connected": "Verbunden"
+    "connected": "Verbunden",
+    "screenPhoneBrowserNoApp": "Geht im Handy-Browser nicht"
   },
   "file": {
     "title": "Was möchtest du zeigen?",
@@ -228,12 +229,14 @@
     "noScreen": {
       "title": "Bildschirm teilen geht in diesem Browser nicht",
       "why": "Handy-Browser dürfen deinen Bildschirm nicht weitergeben. Das liegt am Browser, nicht an dir.",
-      "now": "Zeig stattdessen ein Foto, eine Datei oder einen Link. Oder hol dir die App, dann geht auch der Bildschirm."
+      "now": "Zeig stattdessen ein Foto, eine Datei oder einen Link. Oder hol dir die App, dann geht auch der Bildschirm.",
+      "nowNoApp": "Zeig stattdessen ein Foto, eine Datei oder einen Link."
     },
     "displayOff": {
       "title": "Der Bildschirm antwortet nicht",
       "why": "Das Anzeigegerät ist aus, schläft oder Comet Cast ist dort geschlossen. Deine Anfrage ist nicht angekommen.",
-      "now": "Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen."
+      "now": "Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen.",
+      "whyRelay": "Die beiden Geräte haben sich nicht erreicht, und der Server konnte diesmal nicht helfen."
     },
     "denied": {
       "title": "Nicht zugelassen",
@@ -282,6 +285,85 @@
       "title": "Diese Seite ist veraltet",
       "why": "Der Server wurde inzwischen aktualisiert.",
       "now": "Die Seite neu laden."
+    },
+    "other": {
+      "title": "Etwas hat nicht geklappt",
+      "now": "Versuch es noch einmal. Wenn es wieder passiert, sag dem Gastgeber Bescheid."
+    }
+  },
+  "relay": {
+    "errors": {
+      "empty": "Bitte gib eine Adresse ein.",
+      "insecure": "Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwende wss://.",
+      "mixed": "Eine über https geöffnete Seite kann kein unverschlüsseltes ws://-Relay verwenden (der Browser blockiert das). Bitte verwende wss://."
+    },
+    "confirm": {
+      "body": "Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Mach nur weiter, wenn du den Betreiber kennst und ihm vertraust.",
+      "risk": "Der Betreiber dieses Relays kann sehen, wer sich verbindet, deine Raumcodes und Netzwerkadressen, und kann die Verbindung umleiten. Es wird nichts verbunden und kein Bildschirm erfasst, bevor du entschieden hast."
+    }
+  },
+  "receive": {
+    "status": {
+      "checking": "Dein Browser wird geprüft …",
+      "peer_left": "Der Absender hat die Verbindung verlassen. Du kannst diesen Code behalten und auf einen neuen Absender warten."
+    },
+    "link": {
+      "hint": "Der Absender bittet dich, diesen Link zu öffnen. Öffne ihn nur, wenn du ihn erwartest. Er öffnet sich in einem neuen Tab, und nur wenn du auf „Öffnen“ klickst.",
+      "hintTv": "Dieser Bildschirm kann keine Webseiten öffnen. Öffne die Adresse bei Bedarf auf deinem eigenen Gerät."
+    },
+    "media": {
+      "hint": "Dieser Link verweist auf eine Mediendatei. Sie wird von {host} nur geladen, wenn du auf „Abspielen“ klickst.",
+      "hlsUnsupported": "Dies sieht nach einem HLS-Stream aus, den dieser Browser nicht abspielen kann. Du kannst den Link trotzdem öffnen.",
+      "error": {
+        "unsupported": "Diese Datei kann hier nicht abgespielt werden: Das Format wird nicht unterstützt, die Datei fehlt oder der Medienserver erlaubt die Wiedergabe von anderen Websites nicht. Mit „Öffnen“ siehst du sie in einem neuen Tab. ({host})",
+        "blocked": "Der Browser hat die automatische Wiedergabe blockiert. Klick auf „Erneut versuchen“, um sie zu starten."
+      },
+      "mixed": "Diese Adresse verwendet http://, diese Seite aber https://, daher würde der Browser die Wiedergabe hier blockieren. Du kannst den Link trotzdem öffnen.",
+      "localWarning": "Achtung: Diese Adresse zeigt auf ein Gerät oder einen Namen innerhalb eines Netzwerks (eine IP-Adresse oder ein lokaler Name). Spiel sie nur ab, wenn du das erwartest."
+    }
+  },
+  "send": {
+    "status": {
+      "capturing": "Wähle im Browser-Dialog aus, was geteilt werden soll …",
+      "sharing": "Dein Bildschirm wird geteilt.",
+      "idle": "Gib den Code des Empfängers ein, um zu beginnen."
+    }
+  },
+  "errors": {
+    "bad_hello": "Der Server hat den Verbindungsaufbau nicht akzeptiert. Bitte lade die Seite neu.",
+    "proto_mismatch": "Diese Seite und der Server verwenden unterschiedliche Protokollversionen. Bitte lade die Seite neu.",
+    "room_not_found": "Es gibt keinen Raum mit diesem Code. Prüf den Code auf dem Empfänger.",
+    "bad_message": "Der Server konnte eine Nachricht nicht verstehen. Bitte lade die Seite neu.",
+    "altcha_required": "Der Server verlangt eine kurze Browserprüfung, bevor er einen Raum anlegt. Bitte versuch es erneut.",
+    "altcha_invalid": "Die Browserprüfung wurde nicht akzeptiert (möglicherweise ist sie abgelaufen). Bitte versuch es erneut.",
+    "altcha_failed": "Die Browserprüfung konnte nicht abgeschlossen werden. Bitte versuch es erneut.",
+    "altcha_too_hard": "Der Server verlangt eine Browserprüfung, die für dieses Gerät zu aufwendig ist, und sie wurde nicht gestartet. Bitte versuch es später erneut oder wende dich an den Betreiber des Servers.",
+    "altcha_expired": "Die Browserprüfung des Servers war bereits abgelaufen. Bitte versuch es erneut; falls das wiederholt passiert, prüf Datum und Uhrzeit dieses Geräts.",
+    "rate_limited": "Zu viele Anfragen aus diesem Netzwerk. Bitte warte einen Moment und versuch es erneut.",
+    "banned": "Dieses Netzwerk ist wegen zu vieler fehlgeschlagener Versuche für kurze Zeit gesperrt. Bitte versuch es später erneut.",
+    "server_full": "Der Server ist gerade ausgelastet. Bitte versuch es später erneut.",
+    "join_pending": "Bitte warte, bis der Gastgeber deinen Beitritt erlaubt hat.",
+    "join_denied": "Der Gastgeber hat deinen Beitritt nicht erlaubt.",
+    "room_locked": "Der Raumcode ist richtig, aber der Raum ist gerade gesperrt. Bitte den Gastgeber, ihn zu entsperren.",
+    "room_locked_waiting": "Der Raum wurde gesperrt, während du gewartet hast. Der Code war richtig; bitte den Gastgeber, den Raum zu entsperren.",
+    "approval_timeout": "Niemand hat deine Anfrage rechtzeitig beantwortet. Du kannst erneut anfragen.",
+    "removed_by_host": "Der Gastgeber hat dich aus dem Raum entfernt.",
+    "block_list_full": "Die Blockliste ist voll. Gib zuerst jemanden frei."
+  },
+  "sendContent": {
+    "intro": "Gib den Raumcode des Empfängers ein und sende dann ein Bild, ein PDF oder einen Link. Die Inhalte gehen direkt zum Empfänger; der Server hilft nur beim Verbinden.",
+    "status": {
+      "sharing": "Verbunden. Du kannst jetzt senden.",
+      "idle": "Gib den Code des Empfängers ein, um zu beginnen."
+    },
+    "image": {
+      "drop": "Zieh ein Bild hierher, oder"
+    },
+    "link": {
+      "invalid": "Bitte gib eine vollständige Webadresse ein, die mit http:// oder https:// beginnt."
+    },
+    "document": {
+      "drop": "Zieh ein PDF hierher, oder"
     }
   }
 }

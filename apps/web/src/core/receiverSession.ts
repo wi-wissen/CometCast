@@ -5,6 +5,8 @@ import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
 import { CONTROL_CHANNEL_LABEL, ControlReceiver, type ControlChannel, type ControlCmd, type TransferErrorCode } from './control'
 import { createWorkerRenderer, PdfError, type PageBitmap, type PdfRenderer, type PdfRendererFactory } from './pdfRenderer'
 import { SignalingClient, type JoinMode, type ServerMessage, type SocketFactory } from './signaling'
+import { BusyMemory } from './busyMemory'
+import type { IceFetchState } from './altchaClient'
 
 export type ReceiverPhase =
   | 'idle'
@@ -88,6 +90,8 @@ export interface ReceiverState {
   contentError: TransferErrorCode | 'bad_message' | null
   /** Connection check code once connected (compare with the sender), else absent. */
   sas?: string
+  /** With `peer_failed`: how the last `GET /ice-servers` ended (decision 13.45). The display shows nothing of it; the presenter's page tells the person. */
+  iceState?: IceFetchState
 }
 
 export interface ReceiverDeps {
@@ -103,6 +107,8 @@ export interface ReceiverDeps {
   altcha?: (signal: AbortSignal) => Promise<string>
   /** STUN/TURN list (GET /ice-servers). Must not reject; an empty list means none. */
   iceServers?: () => Promise<RTCIceServer[]>
+  /** How the last fetch of `iceServers` ended (read when the peer connection fails). */
+  iceState?: () => IceFetchState | undefined
   /** Creates the renderer for one received PDF (default: a Web Worker with the WASM build of cc-docs). */
   pdfRenderer?: PdfRendererFactory
   /** Join mode of the room that is created (default "open"). Changed later with setJoinMode. */
@@ -177,6 +183,10 @@ export class ReceiverSession {
   private peer: Peer | null = null
   private readonly peerFactory: PeerFactory
   private run = 0 // invalidates async work of an earlier start()/stop()
+  private readonly busy = new BusyMemory()
+  /** The control channel (for the `page` messages to the presenter). */
+  private channel: ControlChannel | null = null
+  private lastPageSent = ''
   private iceServers: RTCIceServer[] = []
   private iceReady = true
   private held: ServerMessage[] = [] // messages that arrived before the ICE server list
@@ -206,6 +216,7 @@ export class ReceiverSession {
   private set(patch: Partial<ReceiverState>): void {
     this.state = { ...this.state, ...patch }
     this.deps.onChange(this.state)
+    if (patch.content !== undefined) this.reportPage()
   }
 
   private renderer: PdfRenderer | null = null
@@ -418,6 +429,7 @@ export class ReceiverSession {
     this.held = []
     this.clearContent()
     this.control.reset()
+    this.channel = null
     this.peer?.close()
     this.peer = null
     this.client?.close()
@@ -426,12 +438,16 @@ export class ReceiverSession {
 
   private fail(code: string): void {
     if (this.state.phase === 'error' || this.state.phase === 'idle') return
+    // For 60 s after a refusal a closed connection is the same refusal (the server closes it after a ban).
+    const reported = this.busy.apply(code, (this.deps.now ?? Date.now)())
+    const iceState = code === 'peer_failed' ? this.deps.iceState?.() : undefined
     this.teardown()
-    this.set({ phase: 'error', errorCode: code, stream: null, sas: undefined })
+    this.set({ phase: 'error', errorCode: reported, stream: null, sas: undefined, iceState })
   }
 
   private newPeer(): Peer {
     this.peer?.close()
+    this.channel = null
     const peer = this.peerFactory(
       {
         onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
@@ -460,6 +476,24 @@ export class ReceiverSession {
     if (ch.label !== CONTROL_CHANNEL_LABEL) return // other labels are not defined; ignore them
     ch.binaryType = 'arraybuffer'
     ch.onmessage = (ev) => this.control.handle(ev.data)
+    this.channel = ch
+    this.lastPageSent = ''
+  }
+
+  /** Tells the presenter which page is shown and how many there are (decision 13.31), whenever either changes. */
+  private reportPage(): void {
+    const c = this.state.content
+    if (c?.kind !== 'document' || c.pages < 1) return
+    const key = `${c.id}:${c.page}/${c.pages}`
+    if (key === this.lastPageSent) return
+    const ch = this.channel
+    if (!ch || ch.readyState !== 'open') return
+    this.lastPageSent = key
+    try {
+      ch.send(JSON.stringify({ kind: 'page', page: c.page, pages: c.pages }))
+    } catch {
+      /* the channel is closing; the presenter learns that from the connection */
+    }
   }
 
   private onMessage(m: ServerMessage): void {
@@ -512,6 +546,7 @@ export class ReceiverSession {
         // The room and its code are gone; the connection stays, so ask for a new room at once.
         this.peer?.close()
         this.peer = null
+        this.channel = null
         this.clearContent()
         this.control.reset()
         this.altchaPayload = undefined
@@ -547,6 +582,7 @@ export class ReceiverSession {
         if (this.state.peerName !== null) this.emit({ kind: 'left', name: this.state.peerName })
         this.peer?.close()
         this.peer = null
+        this.channel = null
         this.clearContent()
         this.control.reset()
         this.set({ phase: 'peer_left', stream: null, sas: undefined, peerName: null })

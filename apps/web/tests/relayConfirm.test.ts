@@ -102,3 +102,58 @@ describe('config.json problems', () => {
     resetRelayState()
   })
 })
+
+describe('App: the confirmation comes before anything else (spec 7.2, decision 13.37)', () => {
+  const cfg2 = (async () => new Response('{"relays":["wss://relay.cometcast.de/ws"]}')) as unknown as typeof fetch
+  afterEach(() => {
+    history.replaceState(null, '', '/')
+    resetRelayState()
+    document.body.innerHTML = ''
+  })
+  async function boot(path: string) {
+    resetRelayState()
+    history.replaceState(null, '', path)
+    await initRelay({ fetchImpl: cfg2 })
+    const { default: App } = await import('../src/App.vue')
+    const w = mount(App, { attachTo: document.body, global: { plugins: [createAppI18n('en')] } })
+    await w.vm.$nextTick()
+    return w
+  }
+
+  it('presenter pages: only the confirmation page is drawn, the host appears nowhere else; after Cancel the start page shows the code chip', async () => {
+    const w = await boot(`/7UZFHX?server=${encodeURIComponent('wss://crafted.example.org')}`)
+    expect(w.find('[data-testid=relay-confirm]').exists()).toBe(true)
+    expect(w.find('[data-testid=start-page]').exists()).toBe(false)
+    expect(w.text().match(/crafted\.example\.org/g)).toHaveLength(2) // the body text and the host line, both on this page
+    expect(w.find('[data-testid=be-display-link]').exists()).toBe(false)
+    expect(document.activeElement).toBe(w.get('[data-testid=relay-confirm-cancel]').element) // Enter on load cancels
+    await w.get('[data-testid=relay-confirm-cancel]').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.find('[data-testid=relay-confirm]').exists()).toBe(false)
+    expect(w.find('[data-testid=start-page]').exists()).toBe(true)
+    expect(w.get('[data-testid=start-code-chip]').text()).toBe('7UZ FHX')
+    expect(w.text()).not.toContain('crafted.example.org')
+    w.unmount()
+  })
+
+  it('display: only the logo and the dialog card; no idle screen or setup behind it; Use continues with the relay', async () => {
+    const w = await boot(`/display?server=${encodeURIComponent('wss://crafted.example.org')}`)
+    expect(w.find('[data-testid=relay-confirm]').exists()).toBe(true)
+    expect(w.find('[data-testid=display]').exists()).toBe(false)
+    expect(w.find('[data-testid=idle]').exists()).toBe(false)
+    expect(w.find('[data-testid=qr]').exists()).toBe(false)
+    expect(w.find('[data-testid=setup]').exists()).toBe(false)
+    await w.get('[data-testid=relay-confirm-use]').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.find('[data-testid=relay-confirm]').exists()).toBe(false)
+    expect(w.find('[data-testid=display]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('a relay that needs no confirmation draws the page at once', async () => {
+    const w = await boot('/')
+    expect(w.find('[data-testid=relay-confirm]').exists()).toBe(false)
+    expect(w.find('[data-testid=start-page]').exists()).toBe(true)
+    w.unmount()
+  })
+})

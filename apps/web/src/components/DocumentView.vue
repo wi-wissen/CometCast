@@ -75,7 +75,7 @@ const label = computed(() => t('receive.document.pageOf', { page: props.content.
 </script>
 
 <template>
-  <div ref="box" class="absolute inset-0 z-10 bg-neutral-700" data-testid="document-box">
+  <div ref="box" class="absolute inset-0 z-10 bg-black" data-testid="document-box">
     <canvas
       v-show="content.pages > 0"
       ref="canvas"
@@ -86,17 +86,11 @@ const label = computed(() => t('receive.document.pageOf', { page: props.content.
       :data-busy="busy"
       class="h-full w-full object-contain"
     />
-    <p v-if="content.pages === 0" data-testid="document-loading" class="absolute inset-0 grid place-items-center text-white/80">
-      {{ t('receive.document.loading', { name: content.name }) }}
-    </p>
+    <div v-if="content.pages === 0" class="cd-hud"><p data-testid="document-loading" class="cd-centerline">{{ t('receive.document.loading', { name: content.name }) }}</p></div>
     <p data-testid="document-page" role="status" aria-live="polite" class="sr-only">{{ label }}</p>
-    <p
-      v-if="pageError"
-      data-testid="document-page-error"
-      role="alert"
-      class="absolute left-1/2 top-1/2 z-[26] max-w-[90%] -translate-x-1/2 -translate-y-1/2 rounded-cc bg-err px-3 py-2 text-sm text-white"
-    >
-      {{ pageError }}
-    </p>
+    <!-- A page that cannot be drawn: its text centred in a name-tag-look box on the canvas (spec 4.5). No red. -->
+    <div v-if="pageError" class="cd-hud" style="z-index: 26">
+      <p data-testid="document-page-error" role="alert" class="cd-tag cd-centertag">{{ pageError }}</p>
+    </div>
   </div>
 </template>

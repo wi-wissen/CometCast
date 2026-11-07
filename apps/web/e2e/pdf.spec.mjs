@@ -19,6 +19,7 @@ import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import assert from 'node:assert/strict'
 import { contentSender, openDisplay, presenterJoin } from './helpers.mjs'
+import { makePdf } from './pdfFixture.mjs'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -73,40 +74,6 @@ async function waitFor(fn, what, ms = 20000) {
     await new Promise((r) => setTimeout(r, 150))
   }
   throw new Error(`timeout waiting for: ${what}`)
-}
-
-/**
- * A small PDF with a correct cross-reference table. Page 1: a black box (top left) on a 300 x 200 pt page;
- * page 2: a red box (bottom right) on a 200 x 300 pt page; page 3: empty (white). Page 1 also carries a link
- * annotation (URI action) over the black box, which a viewer must not follow without a click, and which this
- * viewer does not expose at all.
- */
-function makePdf() {
-  const streams = [
-    '0 0 0 rg 20 100 80 80 re f',
-    '1 0 0 rg 100 20 80 80 re f',
-    '1 1 1 rg 0 0 1 1 re f',
-  ]
-  const objs = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 6 0 R /Annots [9 0 R] >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Contents 7 0 R >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 8 0 R >>',
-    ...streams.map((s) => `<< /Length ${s.length} >>\nstream\n${s}\nendstream`),
-    '<< /Type /Annot /Subtype /Link /Rect [20 100 100 180] /Border [0 0 0] /A << /S /URI /URI (https://example.org/from-pdf) >> >>',
-  ]
-  let out = '%PDF-1.4\n'
-  const offsets = []
-  objs.forEach((o, i) => {
-    offsets.push(out.length)
-    out += `${i + 1} 0 obj\n${o}\nendobj\n`
-  })
-  const xref = out.length
-  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
-  for (const o of offsets) out += `${String(o).padStart(10, '0')} 00000 n \n`
-  out += `trailer\n<< /Root 1 0 R /Size ${objs.length + 1} >>\nstartxref\n${xref}\n%%EOF\n`
-  return Buffer.from(out, 'latin1')
 }
 
 /** Reads the page canvas: size, number of non-white pixels, and the colour at two relative points. */
@@ -226,19 +193,23 @@ try {
   }, 'page 3 canvas is blank and landscape')
   console.log('page 3 canvas:', JSON.stringify(p3))
 
-  // Clamping without sleeps: commands on the sender's channel arrive in order, so "next" (clamped at 3)
-  // followed by "prev" must end on exactly page 2; without the clamp it would be page 3 (4 - 1).
-  await sender.getByTestId('send-next-page').click()
+  // The display reports the page to the presenter (decision 13.31): "Page 3 of 3" and Next is off on the last page.
+  // (The receiver's own clamping of commands is covered by tests/documentSession.test.ts.)
+  await sender.getByTestId('presenting-pageof').filter({ hasText: 'Page 3 of 3' }).waitFor({ timeout: 10000 })
+  assert.equal(await sender.getByTestId('send-next-page').isDisabled(), true, 'Next is disabled on the last page')
+  assert.equal(await sender.getByTestId('send-prev-page').isDisabled(), false)
   await sender.getByTestId('send-prev-page').click()
   await pageIs(receiver, 2)
+  await sender.getByTestId('presenting-pageof').filter({ hasText: 'Page 2 of 3' }).waitFor({ timeout: 10000 })
   // The display has no page buttons any more (pages are turned on the presenter's page).
   assert.equal(await receiver.getByTestId('doc-prev').count(), 0)
   assert.equal(await receiver.getByTestId('content-close').count(), 0)
   assert.equal(await receiver.locator('[data-testid=stage] button:not([data-tb])').count(), 0)
   await sender.getByTestId('send-prev-page').click()
   await pageIs(receiver, 1)
-  // The same at the first page: "prev" (clamped at 1) then "next" must end on exactly page 2.
-  await sender.getByTestId('send-prev-page').click()
+  // The same at the first page: Previous is disabled there.
+  await sender.getByTestId('presenting-pageof').filter({ hasText: 'Page 1 of 3' }).waitFor({ timeout: 10000 })
+  assert.equal(await sender.getByTestId('send-prev-page').isDisabled(), true, 'Previous is disabled on page 1')
   await sender.getByTestId('send-next-page').click()
   await pageIs(receiver, 2)
   await sender.getByTestId('send-prev-page').click()

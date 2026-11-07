@@ -40,6 +40,11 @@ export type ControlMessage =
   | { kind: 'document'; name: string; mime: 'application/pdf'; size: number }
   | { kind: 'document_end' }
   | { kind: 'link'; url: string }
+  /**
+   * Display to presenter (decision 13.31): the shown PDF page (from 1) and the page count, sent whenever either changes,
+   * so that the presenter's page can say "Page n of m" and disable Previous / Next at the ends.
+   */
+  | { kind: 'page'; page: number; pages: number }
 
 /** The part of RTCDataChannel that is used here (so tests can provide a fake). */
 export interface ControlChannel {
@@ -107,6 +112,9 @@ function isValidNameLength(s: string): boolean {
   return s.length > 0 && s.length <= MAX_NAME_LENGTH * 2 && nameLength(s) <= MAX_NAME_LENGTH
 }
 
+/** Largest page number or page count a `page` message may carry. */
+const MAX_PAGES = 1_000_000
+
 function isPositiveInt(n: unknown, max: number): n is number {
   return typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= max
 }
@@ -160,6 +168,10 @@ export function parseControlMessage(text: string): ControlMessage | null {
       if (typeof o.url !== 'string') return null
       const url = validateLinkUrl(o.url)
       return url ? { kind: 'link', url } : null
+    }
+    case 'page': {
+      if (!isPositiveInt(o.pages, MAX_PAGES) || !isPositiveInt(o.page, MAX_PAGES) || o.page > o.pages) return null
+      return { kind: 'page', page: o.page, pages: o.pages }
     }
     default:
       return null
@@ -391,6 +403,8 @@ export class ControlReceiver {
       case 'link':
         this.h.onLink(m.url)
         break
+      case 'page':
+        break // display to presenter only: a receiver has nothing to do with it
     }
   }
 }
@@ -412,8 +426,17 @@ export class SendError extends Error {
 
 /** Sender side of the control channel. */
 export class ControlSender {
-  constructor(private readonly ch: ControlChannel) {
+  /** `onPage` gets the display's `page` messages (the shown PDF page and the page count). */
+  constructor(
+    private readonly ch: ControlChannel,
+    onPage?: (state: { page: number; pages: number }) => void,
+  ) {
     ch.bufferedAmountLowThreshold = LOW_WATER
+    ch.onmessage = (ev) => {
+      if (typeof ev?.data !== 'string') return
+      const m = parseControlMessage(ev.data)
+      if (m?.kind === 'page') onPage?.({ page: m.page, pages: m.pages })
+    }
   }
 
   get isOpen(): boolean {

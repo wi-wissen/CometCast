@@ -15,8 +15,10 @@ const props = defineProps<{
   cooldown: number
   /** Server error code of a failure without a page of its own. */
   code?: string | null
-  /** The app can be offered (its store link exists, src/config/stores.ts); "Get the app" is drawn only then. */
+  /** The app can be offered (its store link exists, src/config/stores.ts); "Get the app" is drawn only then, and the texts promise an app only then. */
   appOffer?: boolean
+  /** `displayOff` only: the relay's list of STUN/TURN servers failed, so the "why" says the server could not help (decision 13.45). */
+  whyRelay?: boolean
 }>()
 const emit = defineEmits<{ retype: []; retry: []; showFile: []; showLink: []; getApp: []; ask: []; reload: [] }>()
 const { t, te } = useI18n()
@@ -36,19 +38,24 @@ const look: Record<ErrorKind, { icon: IconName; tone: 'err' | 'warn' | 'acc' | '
   occupied: { icon: 'info', tone: 'mut' },
   busy: { icon: 'clock', tone: 'warn' },
   outdated: { icon: 'info', tone: 'mut' },
-  generic: { icon: 'x', tone: 'err' },
+  other: { icon: 'info', tone: 'mut' },
 }
 const genericText = computed(() => {
   const c = props.code
   return c && te(`errors.${c}`) ? t(`errors.${c}`) : t('errors.unknown')
 })
-const title = computed(() => (props.kind === 'generic' ? genericText.value : t(`error.${props.kind}.title`)))
+const title = computed(() => t(`error.${props.kind}.title`))
 const why = computed(() => {
-  if (props.kind === 'generic') return null
+  if (props.kind === 'other') return genericText.value // the existing text of the failure (`errors.<code>`)
   if (props.kind === 'locked' && props.lockedWhile) return t('error.locked.whyWhile')
+  if (props.kind === 'displayOff' && props.whyRelay) return t('error.displayOff.whyRelay')
   return t(`error.${props.kind}.why`)
 })
-const now = computed(() => (props.kind === 'generic' ? null : t(`error.${props.kind}.now`)))
+const now = computed(() => {
+  // Without an app to get, the page does not promise one (spec 5.5, decision 13.42).
+  if (props.kind === 'noScreen' && !props.appOffer) return t('error.noScreen.nowNoApp')
+  return t(`error.${props.kind}.now`)
+})
 const A = (id: Action['event'], key: string, primary = false, disabled = false): Action => ({ id, label: t(key), primary, disabled, event: id })
 const actions = computed<Action[]>(() => {
   switch (props.kind) {
@@ -62,7 +69,7 @@ const actions = computed<Action[]>(() => {
     case 'locked':
     case 'occupied':
     case 'busy':
-    case 'generic':
+    case 'other':
       return [A('retry', 'error.action.retry', true)]
     case 'outdated':
       return [A('reload', 'error.action.reload', true)]
@@ -92,7 +99,7 @@ const actions = computed<Action[]>(() => {
   <main class="cp-page" :data-kind="kind" data-testid="error-page">
     <div class="cp-ico" :class="look[kind].tone"><Icon :name="look[kind].icon" /></div>
     <h1 class="cp-h" data-testid="error-title">{{ title }}</h1>
-    <div v-if="why" class="cp-exp">
+    <div class="cp-exp">
       <dl>
         <div><dt>{{ t('error.why') }}</dt><dd data-testid="error-why">{{ why }}</dd></div>
         <div><dt>{{ t('error.now') }}</dt><dd data-testid="error-now">{{ now }}</dd></div>

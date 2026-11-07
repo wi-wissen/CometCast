@@ -101,7 +101,8 @@
 }
 @media (min-width: 720px) {
   .cp-page {
-    padding: 20px 40px;
+    /* The room above the content (spec 3.5, decision 13.43): top max(40px, 10vh), sides 40, bottom 40. */
+    padding: max(40px, 10vh) 40px 40px;
   }
   .cp-page.keepbar {
     padding-bottom: 96px;
@@ -235,7 +236,9 @@
 }
 .cp-sbtn:disabled {
   cursor: default;
-  color: var(--p-fg3);
+  background: var(--p-disabled);
+  border-color: transparent;
+  color: var(--p-ondisabled);
 }
 .cp-pbtn svg,
 .cp-sbtn svg {
@@ -471,10 +474,16 @@
     flex-direction: row;
   }
 }
+/* The bottom action area of "Presenting": [Page n of m], the page row and Stop, 8 apart (spec 5.6). */
+.cp-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .cp-pdf {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .cp-pages {
   display: flex;
@@ -495,6 +504,7 @@
   .cp-page > .cp-pbtn,
   .cp-page > .cp-sbtn,
   .cp-field > .cp-pbtn,
+  .cp-bottom .cp-pbtn,
   .cp-acts .cp-pbtn,
   .cp-acts .cp-sbtn,
   .cp-pages > .cp-sbtn {
@@ -513,6 +523,9 @@
   .cp-acts {
     align-items: flex-start;
   }
+  .cp-bottom {
+    align-items: flex-start;
+  }
 }
 .cp-files {
   display: grid;
@@ -525,29 +538,7 @@
   gap: 6px;
 }
 
-/* Relay confirmation on the presenter pages (spec 7.2): a presenter card over a scrim. */
-.cp.cp-over {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  min-height: 0;
-  background: rgba(0, 0, 0, 0.55);
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  overflow: auto;
-}
-.cp-card {
-  width: 100%;
-  max-width: 520px;
-  background: var(--p-surface);
-  border: 1px solid var(--p-cardborder);
-  border-radius: 14px;
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+/* Relay confirmation on the presenter pages (spec 7.2): its own page in the error-page layout. */
 .cp-host {
   font-size: 17px;
   font-weight: 700;

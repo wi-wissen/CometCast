@@ -168,6 +168,9 @@ try {
     }
     const receiver = await newPage()
     await receiver.goto(`${S.app}display${query}`)
+    // The confirmation comes before everything else (spec 7.2): nothing of the wizard is drawn behind it.
+    if (expectConfirm) assert.equal(await receiver.getByTestId('setup').count(), 0, 'no wizard behind the confirmation')
+    await confirmRelay(receiver)
     // Setup: the address step names the host only
     await receiver.getByTestId('wz-start').click()
     await receiver.getByTestId('wz-next').click()
@@ -175,7 +178,6 @@ try {
     assert.equal((await receiver.getByTestId('wz-domain').innerText()).trim(), relayHost)
     await receiver.getByTestId('wz-ok').click()
     await receiver.getByTestId('wz-finish').click()
-    await confirmRelay(receiver)
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     const code = (await receiver.getByTestId('room-code').innerText()).replace(/\s+/g, '')
     assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/)
@@ -186,9 +188,11 @@ try {
 
     const sender = await newPage()
     await sender.goto(S.app + (query ? `${query}&testVideo=1` : '?testVideo=1'))
+    // The presenter page shows the confirmation page instead of the start page; the host appears on it only.
+    if (expectConfirm) assert.equal(await sender.getByTestId('start-page').count(), 0, 'no start page behind the confirmation')
+    await confirmRelay(sender)
     await sender.getByTestId('start-code').fill(code)
     await sender.getByTestId('start-browser').click()
-    await confirmRelay(sender)
     await sender.getByTestId('what-page').waitFor({ timeout: 20000 })
     await sender.getByTestId('what-screen').click()
     await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
@@ -216,6 +220,9 @@ try {
   async function wizardAddress(url) {
     const p = await newPage()
     await p.goto(url)
+    // A relay from a link is confirmed before the wizard shows (spec 7.2)
+    await p.locator('[data-testid=wz-start], [data-testid=relay-confirm-use]').first().waitFor()
+    if (await p.getByTestId('relay-confirm-use').count()) await p.getByTestId('relay-confirm-use').click()
     await p.getByTestId('wz-start').click()
     await p.getByTestId('wz-next').click()
     await p.getByTestId('wz-next').click()
@@ -227,15 +234,16 @@ try {
   console.log('1) ?server= : static origin S -> relay R (cross-origin, allow-listed)')
   await connectPair(`?server=${R.host}`, R.host, { expectConfirm: true })
   {
-    // Cancel: the default relay (here the static host, which has no relay) is used and nothing connects.
+    // Cancel: the display continues with the default relay (here the static host, which has no relay); the declined one is never contacted.
     const p = await newPage()
     await p.goto(`${S.app}display?server=${R.host}`)
-    await runWizard(p)
     await p.getByTestId('relay-confirm-cancel').click()
+    await runWizard(p)
     await p.getByTestId('idle').waitFor()
     assert.equal((await p.getByTestId('address').innerText()).trim(), S.origin.replace('http://', ''))
     await new Promise((r) => setTimeout(r, 500))
-    assert.deepEqual(p.log.sockets, [], 'no WebSocket after Cancel')
+    // Cancel continues with the default relay (spec 7.2): the page's own host, never the declined relay.
+    assert.ok(p.log.sockets.every((u) => u === `ws://${S.origin.replace('http://', '')}/ws`), `only the default relay after Cancel: ${p.log.sockets}`)
     assert.ok(!p.log.requests.some((u) => u.startsWith(`http://${R.host}`)), 'no request to the declined relay')
     await p.context().close()
   }
@@ -258,8 +266,8 @@ try {
   {
     const receiver = await newPage()
     await receiver.goto(`${S.app}display?server=${O.host}`)
-    await runWizard(receiver)
     await receiver.getByTestId('relay-confirm-use').click()
+    await runWizard(receiver)
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     assert.ok(receiver.log.requests.includes(`http://${O.host}/altcha/challenge`), 'challenge fetched from the relay')
     await receiver.context().close()

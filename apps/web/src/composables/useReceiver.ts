@@ -2,7 +2,7 @@
 import { onBeforeUnmount, shallowRef } from 'vue'
 import { ReceiverSession, type ReceiverEvent, type ReceiverState } from '../core/receiverSession'
 import { useRelay } from './useRelay'
-import { fetchIceServers, obtainAltchaPayload } from '../core/altchaClient'
+import { fetchIceServers, obtainAltchaPayload, type IceFetchState } from '../core/altchaClient'
 import { saveDefaultMode } from '../core/displaySetup'
 import type { JoinMode } from '../core/signaling'
 
@@ -33,13 +33,15 @@ export function useReceiver(opts: UseReceiverOptions = {}) {
   // The relay is fixed while a session exists; it is changed on the start page.
   // The url is read when the session starts, after the relay was confirmed (see start below).
   const { current, ensureTrusted } = useRelay()
+  let iceState: IceFetchState | undefined
   const session = new ReceiverSession({
     get url() {
       return current.value.wsUrl
     },
     onChange: (s) => (state.value = s),
     altcha: (signal) => obtainAltchaPayload(current.value.httpBase, { signal }),
-    iceServers: () => fetchIceServers(current.value.httpBase),
+    iceServers: () => fetchIceServers(current.value.httpBase, { onState: (s) => (iceState = s) }),
+    iceState: () => iceState,
     joinMode: opts.joinMode ?? 'open',
     roomName: opts.roomName,
     onEvent: opts.onEvent,
