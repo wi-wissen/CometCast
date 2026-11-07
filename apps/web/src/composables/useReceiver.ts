@@ -9,6 +9,8 @@ import type { JoinMode } from '../core/signaling'
 export interface UseReceiverOptions {
   /** The room's starting mode (the default chosen in the setup wizard; first run: open). */
   joinMode?: JoinMode
+  /** The room's name from the setup; sent to the server so that presenters can show it. */
+  roomName?: string
   onEvent?: (e: ReceiverEvent) => void
 }
 
@@ -39,6 +41,7 @@ export function useReceiver(opts: UseReceiverOptions = {}) {
     altcha: (signal) => obtainAltchaPayload(current.value.httpBase, { signal }),
     iceServers: () => fetchIceServers(current.value.httpBase),
     joinMode: opts.joinMode ?? 'open',
+    roomName: opts.roomName,
     onEvent: opts.onEvent,
   })
   onBeforeUnmount(() => session.stop())

@@ -6,8 +6,11 @@ import Icon from '../Icon.vue'
 import { logoFor } from './logos'
 import type { Theme } from '../../core/appearance'
 import {
+  addressSourceKey,
+  chipSelected,
   cleanRoomName,
   initialWizard,
+  nextAddressStep,
   NAME_SUGGESTION_KEYS,
   ROOM_NAME_MAX,
   wizardReduce,
@@ -28,27 +31,53 @@ function act(a: WizardAction) {
 }
 const root = ref<HTMLElement | null>(null)
 
-// Address (step 3): detected, not typed. "Other address" cycles through the found options; with one
-// option it opens a text field.
+// Address (step 3): the relay the page uses. "Other address" goes through the relays of config.json, then opens a
+// text field that replaces the card in place; OK / Enter confirms it (the card then says "Entered by hand."),
+// Back cancels it.
 const choices = computed(() => relay.choices.value)
 const showField = ref(false)
 const fieldText = ref('')
 const fieldError = ref('')
+const typed = ref(false) // the address in use was entered in the field
 const isDefault = computed(() => relay.current.value.wsUrl === relay.default.value.wsUrl)
+const sourceKey = computed(() => addressSourceKey({ typed: typed.value, isDefault: isDefault.value }))
 function otherAddress() {
-  if (choices.value.length > 1) {
-    const i = choices.value.findIndex((c) => c.wsUrl === relay.current.value.wsUrl)
-    const next = choices.value[(i + 1) % choices.value.length]
-    relay.set(next.wsUrl)
+  const step = nextAddressStep(
+    choices.value.map((c) => c.wsUrl),
+    relay.current.value.wsUrl,
+    typed.value,
+  )
+  if (step.kind === 'choice') {
+    relay.set(step.ws)
+    typed.value = false
   } else {
-    showField.value = !showField.value
+    showField.value = true
     fieldError.value = ''
+    void nextTick(() => root.value?.querySelector<HTMLElement>('[data-testid="wz-addr"]')?.focus())
   }
 }
 function applyField() {
   const err = relay.set(fieldText.value)
   fieldError.value = err ? t(`relay.errors.${err}`) : ''
-  if (!err) showField.value = false
+  if (!err) {
+    typed.value = true
+    showField.value = false
+    fieldText.value = ''
+    void focusInitial()
+  }
+}
+function cancelField() {
+  showField.value = false
+  fieldError.value = ''
+  void focusInitial()
+}
+function onAddressNext() {
+  if (showField.value) applyField()
+  else act({ type: 'next' })
+}
+function onAddressBack() {
+  if (showField.value) cancelField()
+  else act({ type: 'back' })
 }
 
 function finish() {
@@ -72,8 +101,8 @@ async function focusInitial() {
 onMounted(focusInitial)
 watch(() => w.step, focusInitial)
 
-/** Back (Escape / remote Back) goes one step back; on the first screen it does nothing. */
-defineExpose({ back: () => act({ type: 'back' }) })
+/** Back (Escape / remote Back) goes one step back; on the first screen it does nothing; an open address field closes first. */
+defineExpose({ back: () => (showField.value ? cancelField() : act({ type: 'back' })) })
 </script>
 
 <template>
@@ -105,9 +134,9 @@ defineExpose({ back: () => act({ type: 'back' }) })
             :key="k"
             type="button"
             class="cd-chip"
-            :class="{ on: w.room === t(k) }"
+            :class="{ on: chipSelected(w, t(k)) }"
             data-row="0"
-            :aria-pressed="w.room === t(k)"
+            :aria-pressed="chipSelected(w, t(k))"
             @click="act({ type: 'room', value: t(k) })"
           >
             {{ t(k) }}
@@ -120,10 +149,10 @@ defineExpose({ back: () => act({ type: 'back' }) })
             type="text"
             autocomplete="off"
             :maxlength="ROOM_NAME_MAX"
-            :value="w.room"
+            :value="w.custom"
             data-testid="wz-room"
-            @input="act({ type: 'room', value: ($event.target as HTMLInputElement).value })"
-            @blur="w.room = cleanRoomName(w.room)"
+            @input="act({ type: 'custom', value: ($event.target as HTMLInputElement).value })"
+            @blur="w.custom !== '' && act({ type: 'custom', value: cleanRoomName(w.custom) })"
           />
         </div>
         <div class="cd-acts">
@@ -173,23 +202,23 @@ defineExpose({ back: () => act({ type: 'back' }) })
 
       <template v-else-if="w.step === 3">
         <h2>{{ t('setup.address.title') }}</h2>
-        <div class="cd-srvcard">
-          <Icon name="globe" />
-          <div>
-            <p class="d" data-testid="wz-domain">{{ relay.current.value.host }}</p>
-            <p class="s">{{ t(isDefault ? 'setup.address.sourceDefault' : 'setup.address.sourceOwn') }}</p>
-          </div>
-        </div>
         <div v-if="showField" class="cd-namefield">
-          <label for="wz-addr">{{ t('setup.address.change') }}</label>
+          <label for="wz-addr">{{ t('setup.address.fieldLabel') }}</label>
           <input id="wz-addr" v-model="fieldText" type="text" autocomplete="off" spellcheck="false" data-testid="wz-addr" @keydown.enter.prevent="applyField" />
           <p v-if="fieldError" data-testid="wz-addr-error">{{ fieldError }}</p>
         </div>
+        <div v-else class="cd-srvcard">
+          <Icon name="globe" />
+          <div>
+            <p class="d" data-testid="wz-domain">{{ relay.current.value.host }}</p>
+            <p class="s" data-testid="wz-source">{{ t(sourceKey) }}</p>
+          </div>
+        </div>
         <p>{{ t('setup.address.body') }}</p>
         <div class="cd-acts">
-          <button type="button" class="cd-tbtn" data-row="0" data-testid="wz-back" @click="act({ type: 'back' })">{{ t('common.back') }}</button>
-          <button type="button" class="cd-tbtn" data-row="0" data-testid="wz-change" @click="otherAddress">{{ t('setup.address.change') }}</button>
-          <button type="button" class="cd-tbtn p" data-row="0" data-testid="wz-ok" @click="act({ type: 'next' })">{{ t('setup.address.ok') }}</button>
+          <button type="button" class="cd-tbtn" data-row="0" data-testid="wz-back" @click="onAddressBack">{{ t('common.back') }}</button>
+          <button v-if="!showField" type="button" class="cd-tbtn" data-row="0" data-testid="wz-change" @click="otherAddress">{{ t('setup.address.change') }}</button>
+          <button type="button" class="cd-tbtn p" data-row="0" data-testid="wz-ok" @click="onAddressNext">{{ t('setup.address.ok') }}</button>
         </div>
       </template>
 

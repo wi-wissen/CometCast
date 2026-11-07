@@ -14,6 +14,12 @@ export type ErrorKind =
   | 'locked'
   | 'timeout'
   | 'ended'
+  /** `room_full`: someone else is already connected (one presenter per room). */
+  | 'occupied'
+  /** `rate_limited`, `banned`, `server_full`. */
+  | 'busy'
+  /** `proto_mismatch`, `bad_hello`, `bad_message`: page and server do not match. */
+  | 'outdated'
   /** A failure the spec has no page for (rate limits, protocol errors ...): same layout, the existing wording. */
   | 'generic'
 
@@ -44,6 +50,16 @@ export function errorKindFor(code: string | null, ctx: ErrorContext = {}): Error
       return 'displayOff'
     case 'capture_failed':
       return 'noScreen'
+    case 'room_full':
+      return 'occupied'
+    case 'rate_limited':
+    case 'banned':
+    case 'server_full':
+      return 'busy'
+    case 'proto_mismatch':
+    case 'bad_hello':
+    case 'bad_message':
+      return 'outdated'
     default:
       return 'generic'
   }

@@ -5,7 +5,8 @@ import { useI18n } from 'vue-i18n'
 
 // Waiting for approval (spec 5.4): room label, heading, check number, a 6 px progress bar that counts
 // down (default 60 s) and the way out.
-const props = defineProps<{ room: string; check: number | undefined; timeoutSecs: number | undefined }>()
+// `room` is the display's room name from join_pending; without one the row shows the spinner only (never the code).
+const props = defineProps<{ room?: string; check: number | undefined; timeoutSecs: number | undefined }>()
 const emit = defineEmits<{ withdraw: [] }>()
 const { t } = useI18n()
 const total = computed(() => props.timeoutSecs ?? 60)
@@ -19,7 +20,7 @@ const pct = computed(() => Math.max(0, Math.min(100, (left.value / total.value) 
 
 <template>
   <main class="cp-page" data-testid="waiting-page">
-    <div class="cp-row"><div class="cp-spin" aria-hidden="true"></div><span class="cp-lbl" data-testid="waiting-room">{{ room }}</span></div>
+    <div class="cp-row"><div class="cp-spin" aria-hidden="true"></div><span v-if="room" class="cp-lbl" data-testid="waiting-room">{{ room }}</span></div>
     <h1 class="cp-h">{{ t('wait.title') }}</h1>
     <div class="cp-waitcard">
       <span class="cp-lbl">{{ t('wait.checkLabel') }}</span>

@@ -1,20 +1,26 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
-// Content sent by the sender: an image (fit contain, with a close button) or a link confirmation card.
-// A link is opened only by a click on "Open" here, never automatically.
-import { computed, nextTick, ref, watch } from 'vue'
+// Content sent by the presenter: an image or a PDF page (the picture only, nothing drawn over it: no close
+// button, no page buttons; it goes away when the presenter stops or leaves) or a link. The display never opens a
+// page by itself: the link card is a dialog in the style of the join request (spec 4.5). Open (primary, initial
+// focus) and Dismiss (secondary), input ignored for 1 s, Back / Escape = Dismiss, focus row [Open, Dismiss].
+// A media link shows its player inside the same card.
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReceivedContent } from '../core/receiverSession'
 import type { PageBitmap } from '../core/pdfRenderer'
+import { arrowDir, moveFocus } from '../core/dpad'
+import { isArmed } from '../core/joinGuard'
 import DocumentView from './DocumentView.vue'
 import MediaPlayer from './MediaPlayer.vue'
 import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, isMixedContent, playerReduce, shortHost, urlHostIsLocalOrIp, type MediaErrorCode, type PlayerEvent } from '../core/media'
 
 const props = defineProps<{ content: ReceivedContent | null; renderPage: (page: number, width: number) => Promise<PageBitmap> }>()
-const emit = defineEmits<{ close: []; prev: []; next: [] }>()
+const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
-const dismissBtn = ref<HTMLButtonElement | null>(null)
-const closeBtn = ref<HTMLButtonElement | null>(null)
+const openBtn = ref<HTMLAnchorElement | null>(null)
+const card = ref<HTMLElement | null>(null)
+const playBtn = ref<HTMLButtonElement | null>(null)
 
 // Media links: a link whose path ends in a media extension gets a "Play" button. One player at a time;
 // new content or a close always returns to the card, which removes (and releases) the element.
@@ -38,7 +44,13 @@ function onMediaStop() {
   dispatch({ type: 'stop' })
   emit('close')
 }
-const playBtn = ref<HTMLButtonElement | null>(null)
+
+// --- the 1 s guard (the same rule as the join request, core/joinGuard.ts) --------------------------------
+const shownAt = ref(Date.now())
+const now = ref(Date.now())
+const armed = computed(() => isArmed(shownAt.value, now.value))
+const tick = setInterval(() => (now.value = Date.now()), 100)
+onBeforeUnmount(() => clearInterval(tick))
 
 watch(
   () => props.content,
@@ -46,22 +58,59 @@ watch(
 )
 watch(
   () => props.content,
-  async (c) => {
-    if (!c || c.kind === 'document') return // the document view focuses its own close button
+  async (c, old) => {
+    if (c?.kind !== 'link') return
+    // A new link starts the guard again; the focus goes to Open (the guard protects against a stray press).
+    if (old?.kind !== 'link' || old.url !== c.url) {
+      shownAt.value = Date.now()
+      now.value = shownAt.value
+    }
     await nextTick()
-    // Focus the safe choice, so an accidental Enter does not open a link.
-    ;(c.kind === 'link' ? dismissBtn.value : closeBtn.value)?.focus()
+    openBtn.value?.focus()
   },
+  { immediate: true },
 )
-/** Remove the card only after the browser has started the navigation of the clicked anchor. */
-function afterOpen() {
+
+function guarded(fn: () => void) {
+  return () => {
+    if (armed.value) fn()
+  }
+}
+function onOpen(e: MouseEvent) {
+  if (!armed.value) {
+    e.preventDefault()
+    return
+  }
+  // Remove the card only after the browser has started the navigation of the clicked anchor.
   setTimeout(() => emit('close'), 0)
 }
-/** Keeps Tab inside the link card (Open <-> Dismiss) while it is shown. */
+
+/** Back / Escape = Dismiss; arrows move between Open and Dismiss; Tab stays inside the card. */
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && props.content?.kind === 'link') {
+    e.preventDefault()
+    e.stopPropagation()
+    guardedDismiss()
+    return
+  }
+  const dir = arrowDir(e.key)
+  if (dir && card.value) {
+    e.preventDefault()
+    moveFocus(card.value, dir)
+    return
+  }
+  if (e.key === ' ' && e.target instanceof HTMLAnchorElement) {
+    e.preventDefault()
+    e.target.click()
+  } else if (e.key === 'Tab') trapTab(e)
+}
+function guardedDismiss() {
+  if (armed.value) emit('close')
+}
 function trapTab(e: KeyboardEvent) {
-  const card = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('a[href], button')
-  const first = card[0]
-  const last = card[card.length - 1]
+  const els = card.value?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)')
+  const first = els?.[0]
+  const last = els?.[els.length - 1]
   if (!first || !last) return
   if (e.shiftKey && document.activeElement === first) {
     last.focus()
@@ -71,25 +120,12 @@ function trapTab(e: KeyboardEvent) {
     e.preventDefault()
   }
 }
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.content) {
-    emit('close')
-    e.stopPropagation()
-  }
-}
 </script>
 
 <template>
-  <!-- Image below the annotation layer (z-10 < layer < z-[26]); its close button and the link card above it. -->
+  <!-- Image and PDF page sit below the annotation layer (z-10 < layer z-20); the link card is a reference-px dialog above it. -->
   <template v-if="content">
-    <DocumentView
-      v-if="content.kind === 'document'"
-      :content="content"
-      :render="renderPage"
-      @close="emit('close')"
-      @prev="emit('prev')"
-      @next="emit('next')"
-    />
+    <DocumentView v-if="content.kind === 'document'" :content="content" :render="renderPage" />
     <div v-else-if="content.kind === 'image'" class="absolute inset-0 z-10 bg-black">
       <img
         :src="content.url"
@@ -98,81 +134,70 @@ function onKey(e: KeyboardEvent) {
         class="h-full w-full object-contain"
       />
     </div>
-    <button
-      v-if="content.kind === 'image'"
-      ref="closeBtn"
-      type="button"
-      data-testid="content-close"
-      class="absolute top-3 right-3 z-[26] rounded-cc bg-black/70 px-3 py-1.5 text-sm font-medium text-white hover:bg-black/85"
-      @click="emit('close')"
-      @keydown="onKey"
-    >
-      {{ t('receive.content.close') }}
-    </button>
-
-    <MediaPlayer
-      v-else-if="content.kind === 'link' && showPlayer && mediaKind"
-      :url="content.url"
-      :kind="mediaKind"
-      :host="content.host"
-      @playing="dispatch({ type: 'playing' })"
-      @error="onMediaError"
-      @stop="onMediaStop"
-    />
-    <div v-else-if="content.kind === 'link'" class="absolute inset-0 z-[26] grid place-items-center bg-black/55 p-4" @keydown="onKey">
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        @keydown.tab="trapTab"
-        aria-labelledby="link-card-title"
-        aria-describedby="link-card-desc"
-        data-testid="link-card"
-        class="w-full max-w-md rounded-cc border border-line bg-surface p-5 text-fg shadow-xl"
-      >
-        <h2 id="link-card-title" class="text-lg font-semibold">
-          {{ t('receive.link.title', { host: content.host }) }}
-        </h2>
-        <p id="link-card-desc" class="mt-1 text-sm text-muted">{{ t('receive.link.hint') }}</p>
-        <div class="mt-3 text-xs font-semibold uppercase tracking-wider text-muted">{{ t('receive.link.address') }}</div>
-        <p data-testid="link-url" class="mt-1 break-all rounded-cc border border-line bg-sunk px-2 py-1.5 font-mono text-sm">{{ content.url }}</p>
-        <p v-if="canPlay" data-testid="media-hint" class="mt-3 text-sm text-muted">{{ t('receive.media.hint', { host: content.host }) }}</p>
-        <p v-else-if="mixed" data-testid="media-mixed" class="mt-3 text-sm text-muted">{{ t('receive.media.mixed') }}</p>
-        <p v-else-if="mediaKind === 'hls'" data-testid="media-hls-unsupported" class="mt-3 text-sm text-muted">{{ t('receive.media.hlsUnsupported') }}</p>
-        <p v-if="hostWarn" data-testid="media-host-warning" class="mt-2 text-sm font-medium text-err">{{ t('receive.media.localWarning') }}</p>
-        <p v-if="mediaError" data-testid="media-error" role="alert" class="mt-3 break-words text-sm text-err">
-          {{ t(`receive.media.error.${mediaError}`, { host: content.host }) }}
-        </p>
-        <div class="mt-4 flex flex-wrap gap-3">
-          <button
-            v-if="canPlay"
-            ref="playBtn"
-            type="button"
-            data-testid="media-play"
-            :title="content.host"
-            class="max-w-full break-all rounded-cc bg-accent px-4 py-2 text-left font-medium text-accent-fg"
-            @click="dispatch({ type: 'play' })"
-          >
-            {{ mediaError ? t('receive.media.retry') : t('receive.media.play', { host: shortHost(content.host) }) }}
-          </button>
-          <a
-            :href="content.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="link-open"
-            class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg"
-            @click="afterOpen"
-          >
-            {{ t('receive.link.open') }}
-          </a>
-          <button
-            ref="dismissBtn"
-            type="button"
-            data-testid="link-dismiss"
-            class="rounded-cc border border-line2 bg-surface px-4 py-2 font-medium"
-            @click="emit('close')"
-          >
-            {{ t('receive.link.dismiss') }}
-          </button>
+    <div v-else-if="content.kind === 'link'" class="cd-hud" style="z-index: 26">
+      <div class="cd-modal" data-testid="link-modal" @keydown="onKey">
+        <div
+          ref="card"
+          class="cd-wz cd-link"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="link-card-title"
+          aria-describedby="link-card-desc"
+          :data-armed="armed"
+          data-testid="link-card"
+        >
+          <div class="cd-rh">
+            <h2 id="link-card-title">{{ t('receive.link.title', { host: content.host }) }}</h2>
+          </div>
+          <p data-testid="link-url" class="cd-addr mono">{{ content.url }}</p>
+          <MediaPlayer
+            v-if="showPlayer && mediaKind"
+            :url="content.url"
+            :kind="mediaKind"
+            :host="content.host"
+            @playing="dispatch({ type: 'playing' })"
+            @error="onMediaError"
+            @stop="onMediaStop"
+          />
+          <template v-else>
+            <p id="link-card-desc" class="cd-body">{{ t('receive.link.hint') }}</p>
+            <p v-if="canPlay" data-testid="media-hint" class="cd-body">{{ t('receive.media.hint', { host: content.host }) }}</p>
+            <p v-else-if="mixed" data-testid="media-mixed" class="cd-body">{{ t('receive.media.mixed') }}</p>
+            <p v-else-if="mediaKind === 'hls'" data-testid="media-hls-unsupported" class="cd-body">{{ t('receive.media.hlsUnsupported') }}</p>
+            <p v-if="hostWarn" data-testid="media-host-warning" class="cd-body cd-strong">{{ t('receive.media.localWarning') }}</p>
+            <p v-if="mediaError" data-testid="media-error" role="alert" class="cd-body cd-strong">
+              {{ t(`receive.media.error.${mediaError}`, { host: content.host }) }}
+            </p>
+            <div class="cd-acts cd-actsl">
+              <button
+                v-if="canPlay"
+                ref="playBtn"
+                type="button"
+                class="cd-tbtn"
+                data-row="0"
+                data-testid="media-play"
+                :title="content.host"
+                @click="guarded(() => dispatch({ type: 'play' }))()"
+              >
+                {{ mediaError ? t('receive.media.retry') : t('receive.media.play', { host: shortHost(content.host) }) }}
+              </button>
+              <a
+                ref="openBtn"
+                :href="content.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="cd-tbtn p cd-anchor"
+                data-row="0"
+                data-testid="link-open"
+                @click="onOpen"
+              >
+                {{ t('receive.link.open') }}
+              </a>
+              <button type="button" class="cd-tbtn" data-row="0" data-testid="link-dismiss" @click="guardedDismiss">
+                {{ t('receive.link.dismiss') }}
+              </button>
+            </div>
+          </template>
         </div>
       </div>
     </div>

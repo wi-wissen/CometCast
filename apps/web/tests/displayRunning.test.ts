@@ -20,7 +20,7 @@ const base: ReceiverState = {
   transfer: null,
   contentError: null,
 }
-const hoisted = vi.hoisted(() => ({ onEvent: undefined as undefined | ((e: unknown) => void) }))
+const hoisted = vi.hoisted(() => ({ onEvent: undefined as undefined | ((e: unknown) => void), opts: undefined as undefined | Record<string, unknown> }))
 const state = shallowRef<ReceiverState>({ ...base })
 const api = {
   start: vi.fn(async () => {}),
@@ -35,6 +35,7 @@ const api = {
 vi.mock('../src/composables/useReceiver', () => ({
   useReceiver: (opts: { onEvent?: (e: unknown) => void }) => {
     hoisted.onEvent = opts.onEvent
+    hoisted.opts = opts
     return { state, ...api }
   },
 }))
@@ -138,16 +139,28 @@ describe('display: idle', () => {
     await nextTick()
     expect(w.get('[data-testid=toast]').text()).toBe('“Ana” denied')
     expect(w.get('[data-testid=toast]').attributes('role')).toBe('status')
-    hoisted.onEvent?.({ kind: 'lockedRejected', n: 3 })
+    hoisted.onEvent?.({ kind: 'openDisabled' })
     await nextTick()
     expect(w.findAll('[data-testid=toast]')).toHaveLength(1)
-    expect(w.get('[data-testid=toast]').text()).toBe('Locked · 3 open requests denied')
+    expect(w.get('[data-testid=toast]').text()).toBe('This server only allows Approval on')
     vi.advanceTimersByTime(3199)
     await nextTick()
     expect(w.find('[data-testid=toast]').exists()).toBe(true)
     vi.advanceTimersByTime(2)
     await nextTick()
     expect(w.find('[data-testid=toast]').exists()).toBe(false)
+  })
+
+  it('there is no toast for locked-while-requests-wait any more (a request closes Settings instead)', async () => {
+    const w = mk()
+    hoisted.onEvent?.({ kind: 'lockedRejected', n: 3 })
+    await nextTick()
+    expect(w.find('[data-testid=toast]').exists()).toBe(false)
+  })
+
+  it('sends the room name of the setup to the server (it reaches the presenter pages)', () => {
+    mk()
+    expect(hoisted.opts).toMatchObject({ roomName: 'Workshop', joinMode: 'confirm' })
   })
 
   it('a long name in a toast is cut to 18 characters, an empty one is "No name"', async () => {
@@ -160,13 +173,71 @@ describe('display: idle', () => {
     expect(w.get('[data-testid=toast]').text()).toBe('No name connected')
   })
 
-  it('offline: the box is shown, and the connection is tried again by itself', async () => {
+  it('a lost connection: the code and QR code go at once, the box comes only after 3 s, and the connection is tried again by itself', async () => {
     const w = mk()
+    await flushPromises()
     await set({ phase: 'error', errorCode: 'connection_lost', code: null })
+    // "connecting" look: empty code line and empty QR box, no box yet (no flicker on short drops)
+    expect(w.find('[data-testid=offline]').exists()).toBe(false)
+    expect(w.get('[data-testid=room-code]').text()).toBe('')
+    expect(w.get('[data-testid=qr]').attributes('data-empty')).toBe('true')
+    vi.advanceTimersByTime(2900)
+    await nextTick()
+    expect(w.find('[data-testid=offline]').exists()).toBe(false)
+    vi.advanceTimersByTime(700)
+    await nextTick()
     expect(w.find('[data-testid=offline]').exists()).toBe(true)
+    expect(w.get('[data-testid=offline-body]').text()).toContain('This screen is offline right now')
+    expect(w.get('[data-testid=qr]').attributes('data-empty')).toBe('true')
     api.start.mockClear()
-    vi.advanceTimersByTime(4100)
+    vi.advanceTimersByTime(500)
+    expect(api.start).toHaveBeenCalledTimes(1) // 4 s after the error
+  })
+
+  it('a drop that is over before 3 s never shows the box', async () => {
+    const w = mk()
+    await flushPromises()
+    await set({ phase: 'error', errorCode: 'connection_lost', code: null })
+    vi.advanceTimersByTime(2000)
+    await set({ phase: 'connecting', errorCode: null })
+    await set({ phase: 'waiting_sender', code: 'AB2CD3' })
+    vi.advanceTimersByTime(5000)
+    await nextTick()
+    expect(w.find('[data-testid=offline]').exists()).toBe(false)
+    expect(w.get('[data-testid=room-code]').text()).toBe('AB2 CD3')
+  })
+
+  it('no code for 8 s after the start also ends in the box', async () => {
+    const w = mk()
+    await set({ phase: 'connecting', code: null })
+    vi.advanceTimersByTime(7000)
+    await nextTick()
+    expect(w.find('[data-testid=offline]').exists()).toBe(false)
+    expect(w.get('[data-testid=room-code]').text()).toBe('')
+    vi.advanceTimersByTime(1100)
+    await nextTick()
+    expect(w.find('[data-testid=offline]').exists()).toBe(true)
+  })
+
+  it('the box body follows the cause; a busy server is tried again after 30 s, an outdated page never', async () => {
+    const w = mk()
+    await flushPromises()
+    await set({ phase: 'error', errorCode: 'rate_limited', code: null })
+    vi.advanceTimersByTime(3100)
+    await nextTick()
+    expect(w.get('[data-testid=offline-body]').text()).toBe('The server is busy right now. This screen tries again by itself.')
+    api.start.mockClear()
+    vi.advanceTimersByTime(20_000)
+    expect(api.start).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(7000)
     expect(api.start).toHaveBeenCalledTimes(1)
+    await set({ phase: 'connecting', errorCode: null })
+    await set({ phase: 'error', errorCode: 'proto_mismatch', code: null })
+    await nextTick()
+    expect(w.get('[data-testid=offline-body]').text()).toBe('This page is out of date. Reload it to get a code.')
+    api.start.mockClear()
+    vi.advanceTimersByTime(120_000)
+    expect(api.start).not.toHaveBeenCalled()
   })
 
   it('dims after 7 minutes; the first key press only restores; activity restarts the count', async () => {
@@ -204,6 +275,11 @@ describe('display: presenting', () => {
     expect(w.get('[data-testid=stage]').isVisible()).toBe(true)
     expect(w.get('.cd-canvas').attributes('style')).toContain('display: none')
     expect(w.get('[data-testid=byline]').classes()).toContain('hid')
+    // the annotation toolbar is hidden at rest too; nothing else is drawn over the picture
+    expect(w.get('[data-testid=toolbar-root]').classes()).toContain('hid')
+    expect(w.get('[data-testid=toolbar-root]').attributes('inert')).toBeDefined()
+    expect(w.find('[data-testid=content-close]').exists()).toBe(false)
+    expect(w.find('[data-testid=frozen-badge]').exists()).toBe(false)
     await set({ content: null, phase: 'waiting_sender', peerName: null })
     await flushPromises()
     expect(wakeLog).toEqual(['acquire', 'release'])
@@ -219,9 +295,13 @@ describe('display: presenting', () => {
     expect(w.get('[data-testid=byline]').classes()).not.toContain('hid')
     expect(w.get('[data-testid=byline]').text()).toContain('“Lena” is showing')
     expect(w.get('[data-testid=end]').text()).toBe('End')
+    // the toolbar comes with them and goes with them
+    expect(w.get('[data-testid=toolbar-root]').classes()).not.toContain('hid')
+    expect(w.get('[data-testid=toolbar-root]').attributes('inert')).toBeUndefined()
     vi.advanceTimersByTime(5001)
     await nextTick()
     expect(w.get('[data-testid=byline]').classes()).toContain('hid')
+    expect(w.get('[data-testid=toolbar-root]').classes()).toContain('hid')
     // a key while hidden only reveals and moves the focus to End; it activates nothing
     key('Enter')
     await flushPromises()
@@ -238,6 +318,31 @@ describe('display: presenting', () => {
     expect(api.endRoom).toHaveBeenCalledTimes(1)
   })
 
+  it('the name tag has the security code as its second line, without a device type', async () => {
+    const w = mk()
+    await set({ ...presentingState(), sas: '171 852' })
+    await flushPromises()
+    expect(w.get('[data-testid=byline-name]').text()).toBe('“Lena” is showing')
+    expect(w.get('[data-testid=sas-line]').text()).toBe('Security code 171 852')
+    expect(w.get('[data-testid=sas-code]').classes()).toContain('mono')
+  })
+
+  it('the toast sits below the toolbar while the controls are shown', async () => {
+    const w = mk()
+    await set(presentingState())
+    await flushPromises()
+    hoisted.onEvent?.({ kind: 'left', name: 'Ana' })
+    await nextTick()
+    expect(w.get('[data-testid=toast]').classes()).not.toContain('low')
+    window.dispatchEvent(new MouseEvent('pointermove'))
+    await nextTick()
+    expect(w.get('[data-testid=toast]').classes()).toContain('low')
+    vi.advanceTimersByTime(5001) // the controls (and the toolbar) fade out; the toast is gone by then, a new one sits at the top
+    hoisted.onEvent?.({ kind: 'left', name: 'Ben' })
+    await nextTick()
+    expect(w.get('[data-testid=toast]').classes()).not.toContain('low')
+  })
+
   it('a join request appears over the running presentation (Settings does not)', async () => {
     const w = mk()
     await set(presentingState())
@@ -248,6 +353,28 @@ describe('display: presenting', () => {
     key('m')
     await nextTick()
     expect(w.find('[data-testid=settings-modal]').exists()).toBe(false)
+  })
+
+  it('a join request closes Settings (one dialog at a time), focuses Yes, and gives the focus back to the Settings button', async () => {
+    const w = mk()
+    await flushPromises()
+    await w.get('[data-testid=settings-open]').trigger('click')
+    await w.get('[data-testid=settings-mode-locked]').trigger('click') // changes already made stay
+    expect(w.find('[data-testid=settings-modal]').exists()).toBe(true)
+    await set({ requests: [{ id: 5, name: 'Lena', check: 33, receivedAt: Date.now() }] })
+    await flushPromises()
+    expect(w.find('[data-testid=settings-modal]').exists()).toBe(false)
+    expect(w.find('[data-testid=request-modal]').exists()).toBe(true)
+    expect(document.activeElement).toBe(w.get('[data-testid=request-yes]').element)
+    expect(api.setJoinMode).toHaveBeenCalledWith('locked')
+    vi.advanceTimersByTime(REQUEST_GUARD_MS + 200)
+    await nextTick()
+    await w.get('[data-testid=request-no]').trigger('click')
+    await set({ requests: [] })
+    await flushPromises()
+    expect(w.find('[data-testid=request-modal]').exists()).toBe(false)
+    expect(w.find('[data-testid=settings-modal]').exists()).toBe(false) // it does not come back by itself
+    expect(document.activeElement).toBe(w.get('[data-testid=settings-open]').element)
   })
 
   it('Settings closes when a presentation starts', async () => {

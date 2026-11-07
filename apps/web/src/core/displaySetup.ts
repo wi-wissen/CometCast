@@ -60,18 +60,29 @@ export function saveDefaultMode(mode: DefaultMode): void {
 export type SetupStep = 0 | 1 | 2 | 3 | 4
 export interface WizardState {
   step: SetupStep
+  /** The room name: the chosen suggestion, or the cleaned custom text, whichever is set. */
   room: string
+  /** What is typed into the custom field (as typed). It starts empty (spec 4.1). */
+  custom: string
   mode: DefaultMode
 }
 export type WizardAction =
   | { type: 'next' }
   | { type: 'back' }
+  /** A suggestion chip was chosen: it clears the custom field. */
   | { type: 'room'; value: string }
+  /** The custom field changed: a non-empty text deselects all chips. */
+  | { type: 'custom'; value: string }
   | { type: 'mode'; value: DefaultMode }
 
 export function initialWizard(room: string): WizardState {
-  // The first suggestion is preselected; Open is preselected (D1).
-  return { step: 0, room: cleanRoomName(room), mode: 'open' }
+  // The first suggestion is preselected, the custom field starts empty; Open is preselected (D1).
+  return { step: 0, room: cleanRoomName(room), custom: '', mode: 'open' }
+}
+
+/** Is this suggestion the selected one? Never together with a non-empty custom name. */
+export function chipSelected(s: WizardState, suggestion: string): boolean {
+  return s.custom === '' && s.room === cleanRoomName(suggestion)
 }
 
 export function wizardReduce(s: WizardState, a: WizardAction): WizardState {
@@ -82,8 +93,29 @@ export function wizardReduce(s: WizardState, a: WizardAction): WizardState {
       // Back on the first screen does nothing.
       return s.step <= 0 ? s : { ...s, step: (s.step - 1) as SetupStep }
     case 'room':
-      return { ...s, room: cleanRoomName(a.value) }
+      return { ...s, room: cleanRoomName(a.value), custom: '' }
+    case 'custom': {
+      const custom = Array.from(a.value).slice(0, ROOM_NAME_MAX).join('')
+      return { ...s, custom, room: cleanRoomName(custom) }
+    }
     case 'mode':
       return { ...s, mode: a.value }
   }
+}
+
+// --- the address step (web) --------------------------------------------------------------------------------
+
+/** Which line explains where the address comes from (spec 4.1, web): default relay, the page's own server or config.json, or typed. */
+export function addressSourceKey(o: { typed: boolean; isDefault: boolean }): 'setup.address.sourceTyped' | 'setup.address.sourceDefault' | 'setup.address.sourcePage' {
+  if (o.typed) return 'setup.address.sourceTyped'
+  return o.isDefault ? 'setup.address.sourceDefault' : 'setup.address.sourcePage'
+}
+
+/**
+ * "Other address": it goes through the relays of config.json (`choices`, default first), then opens the text field.
+ * With a single relay (or when the current address is the last one, or typed) it opens the field at once.
+ */
+export function nextAddressStep(choices: string[], current: string, typed: boolean): { kind: 'choice'; ws: string } | { kind: 'field' } {
+  const i = typed ? -1 : choices.indexOf(current)
+  return i >= 0 && i < choices.length - 1 ? { kind: 'choice', ws: choices[i + 1] } : { kind: 'field' }
 }

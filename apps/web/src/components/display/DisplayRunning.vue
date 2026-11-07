@@ -9,6 +9,7 @@ import RequestDialog from './RequestDialog.vue'
 import PresentingStage from './PresentingStage.vue'
 import ToastLayer from './ToastLayer.vue'
 import type { Appearance, Theme } from '../../core/appearance'
+import { connectionView, offlineCause, retryDelayMs } from '../../core/connectionView'
 import { ControlsReveal } from '../../core/controlsReveal'
 import { arrowDir, moveFocus } from '../../core/dpad'
 import type { DisplaySetup } from '../../core/displaySetup'
@@ -16,6 +17,7 @@ import { IdleDim } from '../../core/idleDim'
 import { cleanName, shortName } from '../../core/joinPrefs'
 import type { ReceiverEvent } from '../../core/receiverSession'
 import { useReceiver } from '../../composables/useReceiver'
+import { splitSlot } from '../../core/textSlot'
 import { useRelay } from '../../composables/useRelay'
 import { useWakeLock } from '../../composables/useWakeLock'
 
@@ -41,17 +43,22 @@ function quoted(raw: string): string {
 function onEvent(e: ReceiverEvent) {
   switch (e.kind) {
     case 'lockedRejected':
-      return showToast(t('toast.lockedRejected', { n: e.n }))
+      // Cannot happen through the screen (a request closes Settings, spec 4.3); no toast for it.
+      return
     case 'sessionEnded':
       return showToast(t('toast.sessionEnded'))
+    case 'openDisabled':
+      return showToast(t('toast.openDisabled'))
     default:
       return showToast(t(`toast.${e.kind}`, { name: quoted(e.name) }))
   }
 }
 onBeforeUnmount(() => toastTimer && clearTimeout(toastTimer))
 
-const { state, start, setJoinMode, decide, endRoom, clearContent, nextPage, prevPage, renderPage } = useReceiver({
+const { state, start, setJoinMode, decide, endRoom, clearContent, renderPage } = useReceiver({
   joinMode: props.setup.mode,
+  // Presenters see this name on their waiting, "What to show" and "Presenting" pages (protocol `room_name`).
+  roomName: props.setup.room,
   onEvent,
 })
 
@@ -68,7 +75,6 @@ const settingsOpen = ref(false)
 const streamPlaying = ref(false)
 const presenting = computed(() => state.value.content !== null || (state.value.stream !== null && streamPlaying.value))
 const head = computed(() => state.value.requests[0] ?? null)
-const offline = computed(() => state.value.phase === 'error')
 const dom = computed(() => relay.current.value.host)
 const scheme = computed<'https' | 'http'>(() => (relay.current.value.insecure ? 'http' : 'https'))
 // Not drawn: a status line for screen readers (and for the automated tests). The spec's display shows
@@ -78,23 +84,49 @@ const statusText = computed(() => {
   const err = state.value.phase === 'error' && c ? ' ' + (te(`errors.${c}`) ? t(`errors.${c}`) : t('errors.unknown')) : ''
   return t(`receive.status.${state.value.phase}`) + err
 })
-const byline = computed(() => t('present.byline', { name: quoted(state.value.peerName ?? ''), device: '' }).replace(/[\s·]+$/, ''))
+// "“Lena” is showing": the protocol carries no device type, so the sentence has none (spec 4.5).
+const byline = computed(() => t('present.byline', { name: quoted(state.value.peerName ?? '') }))
+const sasParts = computed(() => splitSlot((m) => t('present.sas', { sas: m })))
 
 useWakeLock(presenting)
 
 // --- connection: starts at once; comes back by itself when the network returns --------------------
+// What the idle screen shows (core/connectionView.ts): the code, "connecting" (empty code and QR box) or, after
+// 3 s without a connection (8 s without any code at start), the offline box. Short drops never flash the box.
 let retryTimer: ReturnType<typeof setTimeout> | null = null
-const SLOW_RETRY = new Set(['banned', 'rate_limited', 'forbidden', 'server_full'])
+const lostAt = ref(Date.now()) // since when the display has no code
+const failed = ref(false) // an error happened since it last had a code
+const lastError = ref<string | null>(null)
+const clock = ref(Date.now())
+const hasCode = (code: string | null, phase: string) => code !== null && phase !== 'error'
 watch(
-  () => state.value.phase,
-  (p) => {
+  [() => state.value.code, () => state.value.phase],
+  ([code, phase], [prevCode, prevPhase]) => {
+    if (hasCode(code, phase)) {
+      failed.value = false
+      lastError.value = null
+    } else if (prevCode !== undefined && hasCode(prevCode, prevPhase as string)) lostAt.value = Date.now()
+    if (phase === 'error') {
+      failed.value = true
+      lastError.value = state.value.errorCode
+    }
     if (retryTimer) clearTimeout(retryTimer)
     retryTimer = null
-    if (p === 'error') retryTimer = setTimeout(() => void start(), SLOW_RETRY.has(state.value.errorCode ?? '') ? 30_000 : 4000)
+    if (phase === 'error') {
+      const delay = retryDelayMs(state.value.errorCode)
+      if (delay !== null) retryTimer = setTimeout(() => void start(), delay)
+    }
   },
 )
+const clockTimer = setInterval(() => (clock.value = Date.now()), 500)
+onBeforeUnmount(() => clearInterval(clockTimer))
+const view = computed(() =>
+  connectionView({ code: state.value.code, phase: state.value.phase, failed: failed.value, withoutCodeMs: clock.value - lostAt.value }),
+)
+const cause = computed(() => offlineCause(lastError.value))
 function onOnline() {
-  if (state.value.phase === 'error') void start()
+  // A page that is out of date needs a reload, not another attempt.
+  if (state.value.phase === 'error' && retryDelayMs(state.value.errorCode) !== null) void start()
 }
 
 // --- idle dimming (8.6) -----------------------------------------------------------------------------
@@ -140,6 +172,11 @@ watch([settingsOpen, head, presenting], focusBase)
 watch(presenting, (p) => {
   // Settings only exists over Idle.
   if (p) settingsOpen.value = false
+})
+// One dialog at a time: a join request closes Settings (changes already made stay). The request dialog puts
+// the focus on Yes; after the last request the Settings button gets it back (focusBase).
+watch(head, (h) => {
+  if (h) settingsOpen.value = false
 })
 
 function chooseMode(m: Parameters<typeof setJoinMode>[0]) {
@@ -257,7 +294,8 @@ onBeforeUnmount(() => {
       :mode="state.joinMode"
       :code="state.code"
       :dom="dom"
-      :offline="offline"
+      :view="view"
+      :cause="cause"
       :dimmed="dimmed"
       :scheme="scheme"
       @settings="settingsOpen = true"
@@ -268,9 +306,9 @@ onBeforeUnmount(() => {
     v-show="presenting"
     :state="state"
     :render-page="renderPage"
+    :controls-shown="controlsShown"
     @close="clearContent"
-    @prev="prevPage"
-    @next="nextPage"
+    @input="controls.poke()"
     @playing="streamPlaying = $event"
   />
 
@@ -279,8 +317,8 @@ onBeforeUnmount(() => {
   <div class="cd-hud" :style="{ zIndex: 30 }">
     <template v-if="presenting">
       <div class="cd-pv cd-byline" :class="{ hid: !controlsShown }" data-testid="byline" :aria-hidden="!controlsShown">
-        {{ byline }}
-        <small v-if="state.sas" data-testid="sas-line">{{ t('sas.label') }}: <span class="mono" data-testid="sas-code">{{ state.sas }}</span></small>
+        <span data-testid="byline-name">{{ byline }}</span>
+        <small v-if="state.sas" data-testid="sas-line">{{ sasParts.before }}<span class="mono" data-testid="sas-code">{{ state.sas }}</span>{{ sasParts.after }}</small>
       </div>
       <div class="cd-pv cd-endbtn" :class="{ hid: !controlsShown }">
         <button
@@ -312,6 +350,7 @@ onBeforeUnmount(() => {
       @deny="decide(head.id, false)"
       @block="decide(head.id, false, true)"
     />
-    <ToastLayer v-if="toast" :text="toast" />
+    <!-- While the annotation toolbar is visible the toast sits 8 below it, never on top of it (spec 3.5). -->
+    <ToastLayer v-if="toast" :text="toast" :low="presenting && controlsShown" />
   </div>
 </template>

@@ -15,11 +15,13 @@ const props = defineProps<{
   cooldown: number
   /** Server error code of a failure without a page of its own. */
   code?: string | null
+  /** The app can be offered (its store link exists, src/config/stores.ts); "Get the app" is drawn only then. */
+  appOffer?: boolean
 }>()
-const emit = defineEmits<{ retype: []; retry: []; showFile: []; showLink: []; getApp: []; ask: [] }>()
+const emit = defineEmits<{ retype: []; retry: []; showFile: []; showLink: []; getApp: []; ask: []; reload: [] }>()
 const { t, te } = useI18n()
 
-type Action = { id: string; label: string; primary: boolean; disabled?: boolean; event: 'retype' | 'retry' | 'showFile' | 'showLink' | 'getApp' | 'ask' }
+type Action = { id: string; label: string; primary: boolean; disabled?: boolean; event: 'retype' | 'retry' | 'showFile' | 'showLink' | 'getApp' | 'ask' | 'reload' }
 const look: Record<ErrorKind, { icon: IconName; tone: 'err' | 'warn' | 'acc' | 'mut' }> = {
   code: { icon: 'x', tone: 'err' },
   expired: { icon: 'clock', tone: 'warn' },
@@ -31,6 +33,9 @@ const look: Record<ErrorKind, { icon: IconName; tone: 'err' | 'warn' | 'acc' | '
   locked: { icon: 'locked', tone: 'mut' },
   timeout: { icon: 'clock', tone: 'warn' },
   ended: { icon: 'info', tone: 'mut' },
+  occupied: { icon: 'info', tone: 'mut' },
+  busy: { icon: 'clock', tone: 'warn' },
+  outdated: { icon: 'info', tone: 'mut' },
   generic: { icon: 'x', tone: 'err' },
 }
 const genericText = computed(() => {
@@ -55,10 +60,18 @@ const actions = computed<Action[]>(() => {
     case 'noInternet':
     case 'displayOff':
     case 'locked':
+    case 'occupied':
+    case 'busy':
     case 'generic':
       return [A('retry', 'error.action.retry', true)]
+    case 'outdated':
+      return [A('reload', 'error.action.reload', true)]
     case 'noScreen':
-      return [A('showFile', 'error.action.showFile', true), A('showLink', 'error.action.showLink'), A('getApp', 'error.action.getApp')]
+      return [
+        A('showFile', 'error.action.showFile', true),
+        A('showLink', 'error.action.showLink'),
+        ...(props.appOffer ? [A('getApp', 'error.action.getApp')] : []),
+      ]
     case 'denied':
       return [
         {

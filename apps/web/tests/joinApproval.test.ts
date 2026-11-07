@@ -16,7 +16,7 @@ class FakePeer implements Peer {
   close() {}
 }
 
-function receiver(joinMode?: 'open' | 'confirm' | 'locked') {
+function receiver(joinMode?: 'open' | 'confirm' | 'locked', roomName?: string) {
   const sock = new FakeSocket()
   let now = 1000
   const s = new ReceiverSession({
@@ -25,6 +25,7 @@ function receiver(joinMode?: 'open' | 'confirm' | 'locked') {
     socketFactory: () => sock,
     peerFactory: (h) => new FakePeer(h),
     joinMode,
+    roomName,
     now: () => now,
   })
   s.start()
@@ -218,5 +219,43 @@ describe('SenderSession join approval', () => {
     s.stop()
     expect(s.snapshot.phase).toBe('stopped')
     expect(sock.closed).toBe(true)
+  })
+})
+
+describe('room name through the protocol', () => {
+  it('the display sends its room name with every create_room (also the next room after End); without one the field is absent', () => {
+    const r = receiver('confirm', 'Meeting room Elbe')
+    expect(r.sock.sent[1]).toEqual({ type: 'create_room', join_mode: 'confirm', room_name: 'Meeting room Elbe' })
+    r.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'confirm' })
+    r.sock.recv({ type: 'room_ended' })
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'create_room', join_mode: 'confirm', room_name: 'Meeting room Elbe' })
+    expect(receiver('open').sock.sent[1]).toEqual({ type: 'create_room', join_mode: 'open' })
+    expect(receiver('open', '').sock.sent[1]).toEqual({ type: 'create_room', join_mode: 'open' })
+  })
+
+  it('the presenter keeps the name from join_pending and joined; an old server gives none; the code is never a name', async () => {
+    const { s, sock } = sender('Ana')
+    await s.start('ABC234')
+    sock.open()
+    sock.recv({ type: 'hello', proto_version: 2 })
+    sock.recv({ type: 'join_pending', timeout_secs: 60, check: 42, room_name: 'Wohnzimmer' })
+    expect(s.snapshot).toMatchObject({ phase: 'waiting_approval', roomName: 'Wohnzimmer' })
+    sock.recv({ type: 'joined' }) // joined without a name keeps the one from join_pending
+    expect(s.snapshot.roomName).toBe('Wohnzimmer')
+    const open = sender()
+    await open.s.start('ABC234')
+    open.sock.open()
+    open.sock.recv({ type: 'hello', proto_version: 2 })
+    open.sock.recv({ type: 'joined', room_name: 'Raum 204' })
+    expect(open.s.snapshot.roomName).toBe('Raum 204')
+    const old = sender()
+    await old.s.start('ABC234')
+    old.sock.open()
+    old.sock.recv({ type: 'hello', proto_version: 2 })
+    old.sock.recv({ type: 'join_pending', timeout_secs: 60, check: 11 })
+    expect(old.s.snapshot.roomName).toBeUndefined()
+    old.sock.recv({ type: 'joined' })
+    expect(old.s.snapshot.roomName).toBeUndefined()
+    expect(JSON.stringify(old.s.snapshot)).not.toContain('ABC234')
   })
 })

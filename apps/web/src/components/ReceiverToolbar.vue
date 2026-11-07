@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
-// Floating, draggable toolbar over the received screen; collapses to a dot.
-// Keyboard: Tab enters the toolbar, Left/Right/Home/End move between buttons, the grip moves with the
-// arrow keys, Escape collapses it. All pointer handling uses pointer events (mouse, touch, pen).
+// Annotation toolbar of the web display (spec 3.5, 4.5): top centre, drawn with the display tokens. It is hidden at
+// rest and fades in and out together with the name tag and End (`shown`). No grip, no collapse: it does not move
+// and hides by itself. It is not in the D-pad focus rows; Tab reaches it while it is shown.
+// Keyboard: Left/Right/Home/End move between buttons (roving tab stop). Pointer handling lives in AnnotationLayer.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { COLORS, type ColorId, type SizeIndex, type Tool, type ToolbarState } from '../core/toolbarState'
@@ -14,6 +15,8 @@ const props = defineProps<{
   canFreeze: boolean
   fullscreen: boolean
   fullscreenAvailable: boolean
+  /** Shown together with the name tag and End; hidden (faded, not focusable) at rest. */
+  shown: boolean
 }>()
 const emit = defineEmits<{
   tool: [tool: Tool]
@@ -24,14 +27,11 @@ const emit = defineEmits<{
   freeze: []
   black: []
   fullscreen: []
-  open: [open: boolean]
-  move: [x: number, y: number]
 }>()
 
 const { t } = useI18n()
 const root = ref<HTMLElement | null>(null)
 const rov = ref('pen') // item that last had focus (roving tabindex)
-const dot = ref<HTMLElement | null>(null)
 
 const ICONS: Record<string, string> = {
   pen: 'M4 20l1-4L16 5l3 3L8 19l-4 1z M14 7l3 3',
@@ -43,7 +43,6 @@ const ICONS: Record<string, string> = {
   freeze: 'M9 5v14 M15 5v14',
   black: 'M4 5h16v11H4z M9 20h6 M12 16v4',
   fullscreen: 'M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5',
-  collapse: 'M6 12h12',
 }
 
 interface Item {
@@ -130,12 +129,6 @@ function focusables(): HTMLElement[] {
   return Array.from(root.value?.querySelectorAll<HTMLElement>('[data-tb]:not(:disabled)') ?? [])
 }
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    if (props.state.open) refocus = true
-    emit('open', false)
-    e.stopPropagation()
-    return
-  }
   if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return
   const els = focusables()
   const cur = els.indexOf(document.activeElement as HTMLElement)
@@ -149,134 +142,21 @@ function onKey(e: KeyboardEvent) {
   e.preventDefault()
 }
 
-// The tab stop must never sit on a disabled item: fall back to the first enabled one (the grip).
+// The tab stop must never sit on a disabled item: fall back to the first enabled one (the pen).
 const effRov = computed(() => {
   const it = items.value.find((i) => i.id === rov.value)
-  if (it) return it.disabled ? 'grip' : it.id
-  return rov.value === 'grip' || rov.value === 'collapse' ? rov.value : 'grip'
+  return !it || it.disabled ? 'pen' : it.id
 })
-function focusFirst() {
-  root.value?.querySelector<HTMLElement>(`[data-tb][tabindex="0"]`)?.focus()
-}
 // A focused button that becomes disabled drops focus to <body>; move it to the tab stop instead.
 watch(effRov, async () => {
   await nextTick()
-  if (props.state.open && document.activeElement === document.body) focusFirst()
+  if (props.shown && document.activeElement === document.body) root.value?.querySelector<HTMLElement>('[data-tb][tabindex="0"]')?.focus()
 })
-// Keyboard users who collapse/expand should not lose their place.
-let refocus = false
-watch(
-  () => props.state.open,
-  async (open) => {
-    if (!refocus) return
-    refocus = false
-    await nextTick()
-    if (open) focusFirst()
-    else dot.value?.focus()
-  },
-)
-
-// --- dragging (grip and collapsed dot) --------------------------------------------------------
-let drag: { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean } | null = null
-const MOVE_THRESHOLD = 4
-
-function stageRect(): DOMRect | null {
-  return (root.value?.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? null
-}
-function onGripDown(e: PointerEvent) {
-  if (e.pointerType === 'mouse' && e.button !== 0) return
-  drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x0: props.state.x, y0: props.state.y, moved: false }
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-}
-function onGripMove(e: PointerEvent) {
-  if (!drag || e.pointerId !== drag.id) return
-  const dx = e.clientX - drag.sx
-  const dy = e.clientY - drag.sy
-  if (!drag.moved && Math.hypot(dx, dy) < MOVE_THRESHOLD) return
-  drag.moved = true
-  const sr = stageRect()
-  const er = root.value?.getBoundingClientRect()
-  if (!sr || !er) return
-  // left = x% of (stage - element), see the transform on the root element.
-  const rx = Math.max(1, sr.width - er.width)
-  const ry = Math.max(1, sr.height - er.height)
-  emit('move', drag.x0 + (dx / rx) * 100, drag.y0 + (dy / ry) * 100)
-}
-function onGripUp(e: PointerEvent) {
-  if (!drag || e.pointerId !== drag.id) return
-  const wasClick = !drag.moved
-  drag = null
-  // A tap on the collapsed dot expands the toolbar.
-  if (wasClick && !props.state.open) emit('open', true)
-}
-function onGripKey(e: KeyboardEvent) {
-  const step = e.shiftKey ? 10 : 2
-  const d: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
-  const v = d[e.key]
-  if (!v) return
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.stopPropagation() // do not move focus
-  emit('move', props.state.x + v[0], props.state.y + v[1])
-  e.preventDefault()
-}
-function onDotKey(e: KeyboardEvent) {
-  if (e.key === 'Enter' || e.key === ' ') {
-    refocus = true
-    emit('open', true)
-    e.preventDefault()
-  } else onGripKey(e)
-}
-const posStyle = computed(() => ({
-  left: props.state.x + '%',
-  top: props.state.y + '%',
-  transform: `translate(-${props.state.x}%, -${props.state.y}%)`,
-}))
 </script>
 
 <template>
-  <div ref="root" class="cc-tb-root" :style="posStyle" @keydown="onKey">
-    <button
-      v-if="!state.open"
-      type="button"
-      ref="dot"
-      data-testid="toolbar-dot"
-      class="cc-tbdot"
-      :aria-label="t('toolbar.expand')"
-      :title="t('toolbar.expand')"
-      @pointerdown="onGripDown"
-      @pointermove="onGripMove"
-      @pointerup="onGripUp"
-      @pointercancel="onGripUp"
-      @keydown="onDotKey"
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true" class="cc-i"><path :d="ICONS.pen" /></svg>
-    </button>
-
-    <div v-else role="toolbar" data-testid="toolbar" :aria-label="t('toolbar.label')" class="cc-tb">
-      <div class="cc-grp">
-        <button
-          type="button"
-          data-tb
-          data-testid="toolbar-grip"
-          class="cc-grip"
-          :tabindex="effRov === 'grip' ? 0 : -1"
-          :aria-label="t('toolbar.grip')"
-          :title="t('toolbar.grip')"
-          @focus="rov = 'grip'"
-          @pointerdown="onGripDown"
-          @pointermove="onGripMove"
-          @pointerup="onGripUp"
-          @pointercancel="onGripUp"
-          @keydown="onGripKey"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" class="cc-i">
-            <g fill="currentColor" stroke="none">
-              <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
-              <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
-              <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
-            </g>
-          </svg>
-        </button>
-      </div>
+  <div ref="root" class="cc-tb-root" :class="{ hid: !shown }" :inert="shown ? undefined : true" :aria-hidden="!shown" data-testid="toolbar-root" @keydown="onKey">
+    <div role="toolbar" data-testid="toolbar" :aria-label="t('toolbar.label')" class="cc-tb">
       <div v-for="(g, gi) in groups" :key="gi" class="cc-grp">
         <button
           v-for="it in g"
@@ -297,49 +177,42 @@ const posStyle = computed(() => ({
           <svg v-else viewBox="0 0 24 24" aria-hidden="true" class="cc-i"><circle cx="12" cy="12" :r="it.r" fill="currentColor" stroke="none" /></svg>
         </button>
       </div>
-      <div class="cc-grp">
-        <button
-          type="button"
-          data-tb
-          data-testid="tb-collapse"
-          :aria-label="t('toolbar.collapse')"
-          :title="t('toolbar.collapse')"
-          :tabindex="effRov === 'collapse' ? 0 : -1"
-          @focus="rov = 'collapse'"
-          @click="((refocus = true), emit('open', false))"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" class="cc-i"><path :d="ICONS.collapse" /></svg>
-        </button>
-      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* The toolbar sits over a video, so it keeps the dark mockup look in light and dark themes. */
+/* Reference px (the parent is a scaled `.cd-hud` layer). Colours are the display tokens; the ink swatches keep
+   the colours they draw with. Same fill, border and fade as the name tag (spec 3.5). */
 .cc-tb-root {
   position: absolute;
-  z-index: 30;
-  width: max-content;
-  max-width: calc(100% - 16px);
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  transition: opacity 0.4s ease;
+}
+.cc-tb-root.hid {
+  opacity: 0;
+  pointer-events: none;
 }
 .cc-tb {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
-  padding: 4px;
+  height: 46px;
+  padding: 0 4px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(26, 29, 36, 0.96);
-  color: #eef0f4;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--fg);
 }
 .cc-grp {
   display: flex;
   gap: 2px;
   padding: 0 4px;
-  border-left: 1px solid rgba(127, 127, 127, 0.3);
+  border-left: 1px solid var(--line);
 }
 .cc-grp:first-child {
   border-left: 0;
@@ -347,35 +220,25 @@ const posStyle = computed(() => ({
 .cc-tb button {
   width: 36px;
   height: 36px;
-  border: 0;
+  border: 2px solid transparent;
   border-radius: 8px;
   background: none;
   display: grid;
   place-items: center;
-  color: inherit;
+  color: var(--fg);
   padding: 0;
   cursor: pointer;
 }
-.cc-tb button:hover:not(:disabled) {
-  background: rgba(127, 127, 127, 0.22);
-}
 .cc-tb button[aria-pressed='true'] {
-  background: #e9b04a;
-  color: #2a1f00;
+  border-color: var(--acc);
 }
 .cc-tb button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
-.cc-tb button:focus-visible,
-.cc-tbdot:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: -3px;
-  box-shadow: 0 0 0 2px #2d4a8a;
-}
-.cc-grip {
-  cursor: grab !important;
-  touch-action: none;
+.cc-tb button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 .cc-i {
   width: 20px;
@@ -390,25 +253,11 @@ const posStyle = computed(() => ({
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 1px var(--line);
 }
-button[aria-pressed='true'] .cc-sw {
-  outline: 2px solid #2a1f00;
-  outline-offset: 1px;
-}
-.cc-tbdot {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 0;
-  background: #e9b04a;
-  color: #2a1f00;
-  display: grid;
-  place-items: center;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  cursor: grab;
-  touch-action: none;
-  padding: 0;
+@media (prefers-reduced-motion: reduce) {
+  .cc-tb-root {
+    transition: none;
+  }
 }
 </style>

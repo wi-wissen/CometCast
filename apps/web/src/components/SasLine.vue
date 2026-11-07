@@ -1,15 +1,18 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { splitSlot } from '../core/textSlot'
 
-// Connection check code (see core/sas.ts): shown in the connected state, one line.
-defineProps<{ code?: string }>()
+// Security code (core/sas.ts): one line of small print on the "Presenting" page only (spec 5.6):
+// "Security code 171 852. The screen shows the same code under your name." The digits are mono 700.
+const props = defineProps<{ code?: string }>()
 const { t } = useI18n()
+const parts = computed(() => splitSlot((m) => t('presenting.sas', { sas: m })))
 </script>
 
 <template>
   <p v-if="code" class="cp-small" data-testid="sas-line">
-    {{ t('sas.label') }}: <span class="mono" style="font-weight: 700; color: var(--p-fg)" data-testid="sas-code">{{ code }}</span>
-    <span style="margin-left: 4px">{{ t('sas.explain') }}</span>
+    {{ parts.before }}<span class="mono cp-sas" data-testid="sas-code">{{ props.code }}</span>{{ parts.after }}
   </p>
 </template>

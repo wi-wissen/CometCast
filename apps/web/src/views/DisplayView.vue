@@ -6,6 +6,7 @@ import DisplayRunning from '../components/display/DisplayRunning.vue'
 import { arrowDir, moveFocus } from '../core/dpad'
 import { loadSetup, saveSetup, type DisplaySetup } from '../core/displaySetup'
 import { useDisplayScale } from '../composables/useDisplayScale'
+import { useFocusRing } from '../composables/useFocusRing'
 import { useRelay } from '../composables/useRelay'
 import { useTheme } from '../composables/useTheme'
 
@@ -13,6 +14,8 @@ import { useTheme } from '../composables/useTheme'
 // the setup wizard on first run, then the idle screen, presenting and the dialogs.
 const root = ref<HTMLElement | null>(null)
 useDisplayScale(root)
+// The focus ring shows on load, the first mouse or touch input hides it, the next key press shows it again (7.2).
+const { hidden: ringHidden } = useFocusRing()
 const { appearance, theme, setAppearance } = useTheme()
 const relay = useRelay()
 const setup = ref<DisplaySetup | null>(loadSetup())
@@ -49,7 +52,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="cd" :data-theme="theme" data-testid="display">
+  <div ref="root" class="cd" :class="{ 'cd-pointer': ringHidden }" :data-theme="theme" data-testid="display">
     <div v-if="!setup" class="cd-canvas">
       <SetupWizard ref="wizard" :theme="theme" @finish="finish" />
     </div>

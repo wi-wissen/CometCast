@@ -18,8 +18,8 @@
   --p-primary: #2d4a8a;
   --p-onprimary: #ffffff;
   --p-soft: #e7ecf6;
-  --p-disabled: #b9c0cd;
-  --p-ondisabled: #ffffff;
+  --p-disabled: #dde1e8;
+  --p-ondisabled: #4a5160;
   --p-error: #b5483c;
   --p-error-bg: #f6e1de;
   --p-ok: #2c7a51;
@@ -53,14 +53,14 @@
     --p-primary: #93aae6;
     --p-onprimary: #0f1420;
     --p-soft: #222a3d;
-    --p-disabled: #3b404b;
+    --p-disabled: #2a2f38;
     --p-ondisabled: #9ea6b3;
     --p-error: #f08c80;
-    --p-error-bg: #f08c8026;
+    --p-error-bg: #342a2c;
     --p-ok: #6cc597;
-    --p-ok-bg: #6cc59726;
+    --p-ok-bg: #21312f;
     --p-warn: #e3b45a;
-    --p-warn-bg: #e3b45a26;
+    --p-warn-bg: #332f26;
     --p-mut-bg: #2b2f38;
     --p-mut-fg: #c9ced8;
   }
@@ -298,11 +298,16 @@
   flex: none;
 }
 .cp-dl {
-  background: var(--p-ok-bg);
-  color: var(--p-ok);
-  border-radius: 10px;
-  padding: 8px 12px;
-  font-size: 13px;
+  color: var(--p-fg2);
+}
+.cp-link {
+  color: var(--p-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cp-sas {
+  font-weight: 700;
+  color: var(--p-fg);
 }
 .cp-ico {
   width: 56px;
@@ -466,6 +471,49 @@
     flex-direction: row;
   }
 }
+.cp-pdf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cp-pages {
+  display: flex;
+  gap: 8px;
+}
+.cp-pages > .cp-sbtn {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+}
+/* Laptop pages (>= 720 px): the action row follows the content, 24 px below it (14 gap + 10), with buttons of
+   content width, primary first, left-aligned. On the phone the actions stay pinned to the bottom (the spacer grows). */
+@media (min-width: 720px) {
+  .cp-spacer {
+    flex: none;
+    height: 10px;
+  }
+  .cp-page > .cp-pbtn,
+  .cp-page > .cp-sbtn,
+  .cp-field > .cp-pbtn,
+  .cp-acts .cp-pbtn,
+  .cp-acts .cp-sbtn,
+  .cp-pages > .cp-sbtn {
+    width: auto;
+    min-width: 160px;
+    padding: 0 24px;
+  }
+  .cp-page > .cp-pbtn,
+  .cp-page > .cp-sbtn,
+  .cp-field > .cp-pbtn {
+    align-self: flex-start;
+  }
+  .cp-pages > .cp-sbtn {
+    flex: none;
+  }
+  .cp-acts {
+    align-items: flex-start;
+  }
+}
 .cp-files {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -475,4 +523,34 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Relay confirmation on the presenter pages (spec 7.2): a presenter card over a scrim. */
+.cp.cp-over {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  min-height: 0;
+  background: rgba(0, 0, 0, 0.55);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+}
+.cp-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--p-surface);
+  border: 1px solid var(--p-cardborder);
+  border-radius: 14px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cp-host {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--p-fg);
+  overflow-wrap: anywhere;
 }

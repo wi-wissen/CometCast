@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  addressSourceKey,
+  chipSelected,
   cleanRoomName,
   initialWizard,
   loadSetup,
+  nextAddressStep,
   ROOM_NAME_MAX,
   saveDefaultMode,
   saveSetup,
@@ -21,7 +24,7 @@ const run = (s: WizardState, ...acts: Parameters<typeof wizardReduce>[1][]) => a
 
 describe('setup wizard state machine', () => {
   it('starts on the welcome screen with the first name and Open preselected (D1)', () => {
-    expect(initialWizard('Meeting room Elbe')).toEqual({ step: 0, room: 'Meeting room Elbe', mode: 'open' })
+    expect(initialWizard('Meeting room Elbe')).toEqual({ step: 0, room: 'Meeting room Elbe', custom: '', mode: 'open' })
   })
   it('goes through the four steps and stops at the last; Back on the welcome screen does nothing', () => {
     let s = initialWizard('A')
@@ -43,7 +46,39 @@ describe('setup wizard state machine', () => {
       { type: 'back' },
       { type: 'back' },
     )
-    expect(s).toEqual({ step: 0, room: 'Workshop', mode: 'confirm' })
+    expect(s).toEqual({ step: 0, room: 'Workshop', custom: '', mode: 'confirm' })
+  })
+  it('the custom field starts empty; typing deselects the chips, choosing a chip clears the field (spec 4.1)', () => {
+    const chip = 'Meeting room Elbe'
+    let s = initialWizard(chip)
+    expect(s.custom).toBe('')
+    expect(chipSelected(s, chip)).toBe(true)
+    s = wizardReduce(s, { type: 'custom', value: 'Raum 204 ' })
+    expect(s).toMatchObject({ custom: 'Raum 204 ', room: 'Raum 204' }) // what is typed stays as typed (a trailing space can be followed by more text)
+    expect(chipSelected(s, chip)).toBe(false)
+    expect(chipSelected(s, 'Raum 204')).toBe(false) // even a chip with the same text is not "selected" while the field has text
+    s = wizardReduce(s, { type: 'room', value: 'Workshop' })
+    expect(s).toMatchObject({ custom: '', room: 'Workshop' })
+    expect(chipSelected(s, 'Workshop')).toBe(true)
+    // the field cuts at 32 characters
+    expect(Array.from(wizardReduce(s, { type: 'custom', value: 'y'.repeat(50) }).custom).length).toBe(ROOM_NAME_MAX)
+    // emptying the field leaves no chip selected and no custom name (Finish falls back to the first suggestion)
+    expect(wizardReduce(wizardReduce(s, { type: 'custom', value: 'x' }), { type: 'custom', value: '' })).toMatchObject({ custom: '', room: '' })
+  })
+  it('the address step: the source line and "Other address" (web)', () => {
+    expect(addressSourceKey({ typed: false, isDefault: true })).toBe('setup.address.sourceDefault')
+    expect(addressSourceKey({ typed: false, isDefault: false })).toBe('setup.address.sourcePage')
+    expect(addressSourceKey({ typed: true, isDefault: false })).toBe('setup.address.sourceTyped')
+    expect(addressSourceKey({ typed: true, isDefault: true })).toBe('setup.address.sourceTyped')
+    const ws = ['wss://a/ws', 'wss://b/ws', 'wss://c/ws']
+    // through the relays of config.json, then the field
+    expect(nextAddressStep(ws, 'wss://a/ws', false)).toEqual({ kind: 'choice', ws: 'wss://b/ws' })
+    expect(nextAddressStep(ws, 'wss://b/ws', false)).toEqual({ kind: 'choice', ws: 'wss://c/ws' })
+    expect(nextAddressStep(ws, 'wss://c/ws', false)).toEqual({ kind: 'field' })
+    // one relay, or a typed address: the field at once
+    expect(nextAddressStep(['wss://a/ws'], 'wss://a/ws', false)).toEqual({ kind: 'field' })
+    expect(nextAddressStep(ws, 'wss://a/ws', true)).toEqual({ kind: 'field' })
+    expect(nextAddressStep(ws, 'wss://typed/ws', false)).toEqual({ kind: 'field' })
   })
   it('cuts the room name at 32 characters and strips control characters', () => {
     expect(Array.from(cleanRoomName('x'.repeat(50))).length).toBe(ROOM_NAME_MAX)

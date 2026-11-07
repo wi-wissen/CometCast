@@ -14,7 +14,8 @@ export type Role = 'sender' | 'receiver'
 export type ClientMessage =
   | { type: 'hello'; proto_version: number; role: Role }
   // altcha: base64 of {challenge, solution}; only needed when the server answers altcha_required (docs/server.md)
-  | { type: 'create_room'; altcha?: string; join_mode?: JoinMode }
+  // room_name: the display's name for its room (the server cleans it, cuts it at 32 characters and relays it to senders)
+  | { type: 'create_room'; altcha?: string; join_mode?: JoinMode; room_name?: string }
   | { type: 'join_room'; code: string; name?: string }
   | { type: 'set_join_mode'; join_mode: JoinMode }
   // id absent + allow false = deny all waiting requests
@@ -33,9 +34,10 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'hello'; proto_version: number }
   | { type: 'room_created'; code: string; join_mode: JoinMode }
-  | { type: 'joined' }
+  // room_name: optional, absent when the display set none (or the server is older)
+  | { type: 'joined'; room_name?: string }
   | { type: 'peer_joined'; name: string }
-  | { type: 'join_pending'; timeout_secs: number; check: number }
+  | { type: 'join_pending'; timeout_secs: number; check: number; room_name?: string }
   | { type: 'join_request'; id: number; name: string; check: number }
   | { type: 'join_request_cancelled'; id: number; reason: string }
   | { type: 'join_mode_changed'; join_mode: JoinMode }
@@ -88,6 +90,14 @@ export function encodeClientMessage(m: ClientMessage): string {
 const isStr = (v: unknown): v is string => typeof v === 'string'
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
+/**
+ * `room_name` is optional (protocol: additive). Absent, null, not a string or only white space all mean
+ * "no room name"; the rest of the message stays valid. The server cleaned the text; it is shown as plain text.
+ */
+function roomNameField(o: Record<string, unknown>): { room_name?: string } {
+  return isStr(o.room_name) && o.room_name.trim() !== '' ? { room_name: o.room_name } : {}
+}
+
 /** Parses one server text frame. Returns null for anything that is not a valid server message. */
 export function decodeServerMessage(text: unknown): ServerMessage | null {
   if (!isStr(text)) return null
@@ -105,6 +115,7 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'room_created':
       return isStr(o.code) && isJoinMode(o.join_mode) ? { type: 'room_created', code: o.code, join_mode: o.join_mode } : null
     case 'joined':
+      return { type: 'joined', ...roomNameField(o) }
     case 'peer_left':
     case 'room_ended':
       return { type: o.type }
@@ -115,7 +126,9 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'peer_joined':
       return isStr(o.name) ? { type: 'peer_joined', name: o.name } : null
     case 'join_pending':
-      return isNum(o.timeout_secs) && isNum(o.check) ? { type: 'join_pending', timeout_secs: o.timeout_secs, check: o.check } : null
+      return isNum(o.timeout_secs) && isNum(o.check)
+        ? { type: 'join_pending', timeout_secs: o.timeout_secs, check: o.check, ...roomNameField(o) }
+        : null
     case 'join_request':
       return isNum(o.id) && isStr(o.name) && isNum(o.check) ? { type: 'join_request', id: o.id, name: o.name, check: o.check } : null
     case 'join_request_cancelled':

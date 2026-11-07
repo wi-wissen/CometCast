@@ -64,57 +64,43 @@ function onKey(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div
-    data-testid="media-player"
-    :data-kind="kind"
-    class="absolute inset-0 z-[26] flex flex-col bg-black text-white"
-    role="region"
-    :aria-label="t('receive.media.label', { host: shortHost(host) })"
-    @keydown="onKey"
-  >
-    <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-      <span data-testid="media-host" :title="host" class="min-w-0 truncate text-white/80">{{ t('receive.media.from', { host: shortHost(host) }) }}</span>
-      <button
-        ref="stopBtn"
-        type="button"
-        data-testid="media-stop"
-        class="rounded-cc bg-white/15 px-3 py-1.5 font-medium hover:bg-white/25"
-        @click="emit('stop')"
-      >
+  <!-- Inside the link card (display dialog). -->
+  <div data-testid="media-player" :data-kind="kind" class="cd-mp" role="region" :aria-label="t('receive.media.label', { host: shortHost(host) })" @keydown="onKey">
+    <div class="cd-mph">
+      <span data-testid="media-host" :title="host" class="cd-mphost">{{ t('receive.media.from', { host: shortHost(host) }) }}</span>
+      <button ref="stopBtn" type="button" class="cd-tbtn" data-row="0" data-testid="media-stop" @click="emit('stop')">
         {{ t('receive.media.stop') }}
       </button>
     </div>
-    <div class="grid min-h-0 flex-1 place-items-center">
-      <video
-        v-if="kind !== 'audio'"
-        ref="el"
-        data-testid="media-element"
-        :src="url"
-        crossorigin="anonymous"
-        controls
-        controlslist="nodownload noremoteplayback"
-        disablepictureinpicture
-        playsinline
-        preload="metadata"
-        class="h-full w-full bg-black object-contain"
-        @playing="onReady"
-        @loadeddata="clearTimer"
-        @error="onError"
-      />
-      <audio
-        v-else
-        ref="el"
-        data-testid="media-element"
-        :src="url"
-        crossorigin="anonymous"
-        controls
-        controlslist="nodownload noremoteplayback"
-        preload="metadata"
-        class="w-[min(32rem,90%)]"
-        @playing="onReady"
-        @loadeddata="clearTimer"
-        @error="onError"
-      />
-    </div>
+    <video
+      v-if="kind !== 'audio'"
+      ref="el"
+      data-testid="media-element"
+      :src="url"
+      crossorigin="anonymous"
+      controls
+      controlslist="nodownload noremoteplayback"
+      disablepictureinpicture
+      playsinline
+      preload="metadata"
+      class="cd-mpv"
+      @playing="onReady"
+      @loadeddata="clearTimer"
+      @error="onError"
+    />
+    <audio
+      v-else
+      ref="el"
+      data-testid="media-element"
+      :src="url"
+      crossorigin="anonymous"
+      controls
+      controlslist="nodownload noremoteplayback"
+      preload="metadata"
+      class="cd-mpa"
+      @playing="onReady"
+      @loadeddata="clearTimer"
+      @error="onError"
+    />
   </div>
 </template>

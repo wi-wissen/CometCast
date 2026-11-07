@@ -12,14 +12,13 @@ import ErrorPage from '../components/presenter/ErrorPage.vue'
 import ByePage from '../components/presenter/ByePage.vue'
 import { detectCapabilities } from '../core/capabilities'
 import { isTestVideo } from '../core/capture'
-import { formatCode } from '../core/codeFormat'
 import { currentPlatform } from '../core/platform'
 import { errorKindFor, lockedWhileWaiting, type ErrorKind } from '../core/presenterErrors'
 import { isValidRoomCode } from '../core/roomCode'
 import { useDeniedCooldown } from '../composables/useCooldown'
 import { useRelay } from '../composables/useRelay'
 import { useSender } from '../composables/useSender'
-import { DOWNLOAD_URL_DESKTOP, STORE_URL_APP_STORE, STORE_URL_GOOGLE_PLAY } from '../config/stores'
+import { appUrlFor } from '../config/stores'
 
 // The presenter (sender) side (docs/design/first-run-and-display.md, 5 and 6): start page, waiting
 // for approval, what to show, presenting, errors, disconnected.
@@ -41,9 +40,9 @@ const cooldown = useDeniedCooldown(state)
 
 const fromQr = ref(props.qrCode !== null)
 const activeCode = ref(props.qrCode ?? '')
-// The protocol does not carry the room's name to the presenter (see implementation-questions.md):
-// the code identifies the screen.
-const room = computed(() => formatCode(activeCode.value))
+// The display's room name comes with the protocol (join_pending / joined `room_name`). Without one the
+// pages show no room at all; the code is never shown in its place.
+const room = computed(() => state.value.roomName)
 const busy = computed(() => page.value === 'start' && ['capturing', 'connecting', 'joining', 'negotiating', 'sharing'].includes(state.value.phase))
 const screenOk = computed(() => (!platform.isPhone && caps.screenShare) || isTestVideo())
 const keepBar = computed(() => presKind.value === 'screen' && platform.isLaptop && ['Chrome', 'Edge'].includes(platform.browser))
@@ -135,8 +134,11 @@ function retype() {
   page.value = 'start'
 }
 function getApp() {
-  const url = platform.store === 'google-play' ? STORE_URL_GOOGLE_PLAY : platform.store === 'app-store' ? STORE_URL_APP_STORE : DOWNLOAD_URL_DESKTOP
+  const url = appUrlFor(platform.store)
   if (url) window.location.assign(url)
+}
+function reload() {
+  window.location.reload()
 }
 function retry() {
   connect(activeCode.value)
@@ -166,7 +168,6 @@ onBeforeUnmount(() => {
       v-else-if="page === 'what'"
       :room="room"
       :screen-ok="screenOk"
-      :sas="state.sas"
       @screen="onScreen"
       @file="page = 'file'"
       @link="page = 'link'"
@@ -195,12 +196,14 @@ onBeforeUnmount(() => {
       :locked-while="lockedWhileWaiting(errorCode)"
       :cooldown="cooldown"
       :code="errorCode"
+      :app-offer="Boolean(appUrlFor(platform.store))"
       @retype="retype"
       @retry="retry"
       @show-file="page = 'file'"
       @show-link="page = 'link'"
       @get-app="getApp"
       @ask="retry"
+      @reload="reload"
     />
     <ByePage v-else @again="retype" />
   </div>

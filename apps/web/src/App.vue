@@ -15,5 +15,5 @@ useLocale()
 <template>
   <DisplayView v-if="route.name === 'display'" />
   <PresenterView v-else :qr-code="route.code" />
-  <RelayConfirm />
+  <RelayConfirm :variant="route.name === 'display' ? 'display' : 'presenter'" />
 </template>

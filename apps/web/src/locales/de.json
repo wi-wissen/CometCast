@@ -160,9 +160,6 @@
   },
   "toolbar": {
     "label": "Bildschirm-Werkzeuge",
-    "grip": "Werkzeugleiste verschieben (mit den Pfeiltasten)",
-    "collapse": "Werkzeugleiste einklappen",
-    "expand": "Werkzeugleiste anzeigen",
     "pen": "Stift",
     "marker": "Textmarker",
     "eraser": "Radierer",
@@ -258,10 +255,6 @@
       }
     }
   },
-  "sas": {
-    "label": "Verbindungs-Prüfcode",
-    "explain": "Beide Geräte sollten denselben Code anzeigen. Weichen sie ab, brechen Sie ab: Die Verbindung könnte abgefangen werden. Der Vergleich liegt bei Ihnen, die App erzwingt ihn nicht."
-  },
   "common": {
     "back": "Zurück",
     "next": "Weiter",
@@ -321,7 +314,10 @@
       "sourceOwn": "Gefunden über das Firmennetz (DNS-Eintrag).",
       "sourceBox": "Box im Haus im selben Netz gefunden.",
       "ok": "Passt",
-      "change": "Andere Adresse"
+      "change": "Andere Adresse",
+      "sourcePage": "Vom Server dieser Seite vorgegeben.",
+      "sourceTyped": "Von Hand eingegeben.",
+      "fieldLabel": "Serveradresse"
     },
     "done": {
       "title": "Fertig.",
@@ -340,8 +336,11 @@
     "appLine": "Kein Download nötig. Lieber als App: App Store · Google Play · {dom}/app",
     "offline": {
       "title": "Keine Verbindung zu {dom}",
-      "body": "Dieser Bildschirm ist gerade offline. Sobald das Netz wieder da ist, erscheinen Code und QR-Code von selbst."
-    }
+      "body": "Dieser Bildschirm ist gerade offline. Sobald das Netz wieder da ist, erscheinen Code und QR-Code von selbst.",
+      "bodyBusy": "Der Server ist gerade ausgelastet. Dieser Bildschirm versucht es von selbst noch einmal.",
+      "bodyOutdated": "Diese Seite ist veraltet. Laden Sie sie neu, um einen Code zu bekommen."
+    },
+    "appLineWeb": "Kein Download nötig."
   },
   "settings": {
     "open": "Einstellungen",
@@ -359,7 +358,7 @@
   "request": {
     "title": "Anfrage",
     "queue": "+{n} warten",
-    "subtitle": "möchte sich verbinden · {device}",
+    "subtitle": "möchte sich verbinden",
     "check": "Prüfzahl",
     "yes": "Ja",
     "no": "Nein",
@@ -367,8 +366,9 @@
     "aria": "Anfrage: {name}"
   },
   "present": {
-    "byline": "{name} zeigt · {device}",
-    "end": "Beenden"
+    "byline": "{name} zeigt",
+    "end": "Beenden",
+    "sas": "Sicherheitscode {sas}"
   },
   "toast": {
     "joined": "{name} ist verbunden",
@@ -378,8 +378,8 @@
     "expired": "Anfrage von {name} verfallen",
     "withdrawn": "{name} hat die Anfrage zurückgezogen",
     "left": "{name} hat sich getrennt",
-    "lockedRejected": "Gesperrt · {n} offene Anfragen abgelehnt",
-    "sessionEnded": "Sitzung beendet · neuer Code"
+    "sessionEnded": "Sitzung beendet · neuer Code",
+    "openDisabled": "Dieser Server erlaubt nur „Mit Freigabe“"
   },
   "start": {
     "titleRoom": "Mit „{room}“ verbinden",
@@ -418,12 +418,15 @@
     "file": "Foto oder Datei zeigen",
     "fileSub": "PDF oder Bild. Sie blättern, der Rest bleibt bei Ihnen",
     "link": "Link zeigen",
-    "linkSub": "Der Bildschirm öffnet die Seite selbst",
-    "disconnect": "Trennen"
+    "linkSub": "Der Bildschirm fragt, bevor er die Seite öffnet",
+    "disconnect": "Trennen",
+    "connected": "Verbunden"
   },
   "file": {
     "title": "Was möchten Sie zeigen?",
-    "body": "Zuletzt auf diesem Gerät. Oder „Andere Datei“ im Systemdialog."
+    "body": "Zuletzt auf diesem Gerät. Oder „Andere Datei“ im Systemdialog.",
+    "bodyWeb": "Ein PDF oder ein Bild von diesem Gerät. Es erscheint auf dem Bildschirm, sobald Sie es auswählen.",
+    "pick": "Datei auswählen"
   },
   "link": {
     "label": "Adresse der Seite",
@@ -435,7 +438,11 @@
     "file": "Sie zeigen eine Datei",
     "link": "Der Bildschirm zeigt Ihren Link",
     "where": "Auf „{room}“.",
-    "stop": "Zeigen beenden"
+    "stop": "Zeigen beenden",
+    "sas": "Sicherheitscode {sas}. Der Bildschirm zeigt denselben Code unter Ihrem Namen.",
+    "prevPage": "Vorherige Seite",
+    "nextPage": "Nächste Seite",
+    "pageOf": "Seite {n} von {total}"
   },
   "bye": {
     "title": "Getrennt",
@@ -447,7 +454,7 @@
     "now": "Was jetzt",
     "code": {
       "title": "Diesen Code gibt es gerade nicht",
-      "why": "Meist ein Tippfehler. Ein O im Code liest Comet Cast als Null, ein I als Eins, das müssen Sie nicht unterscheiden.",
+      "why": "Meist ein Tippfehler. Ein Code hat 6 Zeichen und enthält nie O, 0, I oder 1.",
       "now": "Schauen Sie noch einmal auf den Bildschirm und tippen Sie den Code neu."
     },
     "expired": {
@@ -489,7 +496,7 @@
     },
     "timeout": {
       "title": "Keine Antwort",
-      "why": "Niemand hat Ihre Anfrage innerhalb von 60 Sekunden beantwortet.",
+      "why": "Niemand hat Ihre Anfrage rechtzeitig beantwortet.",
       "now": "Noch einmal anfragen und dem Gastgeber Bescheid sagen."
     },
     "ended": {
@@ -506,7 +513,23 @@
       "getApp": "App holen",
       "ask": "Erneut anfragen",
       "askIn": "Erneut anfragen in {n} s",
-      "openDom": "{dom} öffnen"
+      "openDom": "{dom} öffnen",
+      "reload": "Seite neu laden"
+    },
+    "occupied": {
+      "title": "Jemand anderes ist verbunden",
+      "why": "Dieser Bildschirm nimmt immer nur eine Person an.",
+      "now": "Die Person bitten, sich zu trennen, oder den Gastgeber, „Beenden“ zu drücken. Dann noch einmal versuchen."
+    },
+    "busy": {
+      "title": "Der Server ist ausgelastet",
+      "why": "Zu viele Versuche aus diesem Netz oder zu viele Leute gleichzeitig.",
+      "now": "Eine Minute warten, dann noch einmal versuchen."
+    },
+    "outdated": {
+      "title": "Diese Seite ist veraltet",
+      "why": "Der Server wurde inzwischen aktualisiert.",
+      "now": "Die Seite neu laden."
     }
   }
 }

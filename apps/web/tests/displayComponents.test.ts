@@ -141,9 +141,18 @@ describe('setup wizard (4.1)', () => {
     const chips = w.findAll('.cd-chip')
     expect(chips.map((c) => c.text())).toEqual(['Meeting room Elbe', 'Living room', 'Clubhouse', 'Workshop', 'Room 204'])
     expect(chips[0].classes()).toContain('on')
+    // the custom field starts empty while a chip is selected (spec 4.1)
+    expect((w.get('[data-testid=wz-room]').element as HTMLInputElement).value).toBe('')
     expect(document.activeElement).toBe(w.get('[data-testid=wz-next]').element)
     await chips[2].trigger('click')
-    expect((w.get('[data-testid=wz-room]').element as HTMLInputElement).value).toBe('Clubhouse')
+    expect(chips[2].classes()).toContain('on')
+    expect((w.get('[data-testid=wz-room]').element as HTMLInputElement).value).toBe('')
+    // typing deselects all chips; choosing a chip clears the field again
+    await w.get('[data-testid=wz-room]').setValue('Room 12')
+    expect(w.findAll('.cd-chip.on')).toHaveLength(0)
+    await chips[1].trigger('click')
+    expect((w.get('[data-testid=wz-room]').element as HTMLInputElement).value).toBe('')
+    expect(w.findAll('.cd-chip.on').map((c) => c.text())).toEqual(['Living room'])
     await w.get('[data-testid=wz-room]').setValue('Room 12')
     await w.get('[data-testid=wz-next]').trigger('click')
     await nextTick()
@@ -190,10 +199,16 @@ describe('setup wizard (4.1)', () => {
     await f.setValue('ws://public.example.org')
     await f.trigger('keydown', { key: 'Enter' })
     expect(w.get('[data-testid=wz-addr-error]').text()).toContain('wss://')
-    await f.setValue('cast.example.org')
-    await f.trigger('keydown', { key: 'Enter' })
+    expect(w.get('label[for=wz-addr]').text()).toBe('Server address')
+    // Back cancels the field (the card with the default address is back)
+    await w.get('[data-testid=wz-back]').trigger('click')
+    expect(w.find('[data-testid=wz-addr]').exists()).toBe(false)
+    expect(w.get('[data-testid=wz-source]').text()).toBe('Default server. Nothing to set up.')
+    await w.get('[data-testid=wz-change]').trigger('click')
+    await w.get('[data-testid=wz-addr]').setValue('cast.example.org')
+    await w.get('[data-testid=wz-addr]').trigger('keydown', { key: 'Enter' })
     expect(w.get('[data-testid=wz-domain]').text()).toBe('cast.example.org')
-    expect(w.text()).toContain('Found via the company network')
+    expect(w.get('[data-testid=wz-source]').text()).toBe('Entered by hand.')
     // an address that the person chose is kept; one from a link is not
     await w.get('[data-testid=wz-ok]').trigger('click')
     await w.get('[data-testid=wz-finish]').trigger('click')
@@ -202,7 +217,7 @@ describe('setup wizard (4.1)', () => {
 })
 
 describe('idle screen (4.2)', () => {
-  const props = { theme: 'dark' as const, room: 'Meeting room Elbe', mode: 'open' as const, code: 'K7QM2W', dom: 'cometcast.de', offline: false, dimmed: false, scheme: 'https' as const }
+  const props = { theme: 'dark' as const, room: 'Meeting room Elbe', mode: 'open' as const, code: 'K7QM2W', dom: 'cometcast.de', view: 'online' as const, cause: 'network' as const, dimmed: false, scheme: 'https' as const }
   const mk = (p: Record<string, unknown> = {}) => mount(IdleScreen, { global, props: { ...props, ...p } })
 
   it('shows room, mode, the two steps, the QR code with its URL, the app line and Settings', () => {
@@ -215,7 +230,8 @@ describe('idle screen (4.2)', () => {
     expect(w.get('[data-testid=room-code]').text()).toBe('K7Q M2W')
     expect(w.get('svg[role=img]').attributes('aria-label')).toBe('QR: https://cometcast.de/K7QM2W')
     expect(w.get('[data-testid=qr-caption]').text()).toBe('Or scan')
-    expect(w.text()).toContain('No download needed. Prefer an app: App Store · Google Play · cometcast.de/app')
+    // no store or download link exists yet (src/config/stores.ts): the footer names no store
+    expect(w.get('[data-testid=idle-foot]').text()).toBe('No download needed.')
     expect(w.get('[data-testid=settings-open]').text()).toBe('Settings')
   })
   it('Approval on only changes the pill', () => {
@@ -230,11 +246,35 @@ describe('idle screen (4.2)', () => {
     expect(w.get('[data-testid=qr]').classes()).toContain('dim')
     expect(w.get('[data-testid=qr-caption]').text()).toBe('Locked')
   })
-  it('offline: the box replaces steps 1 and 2, the QR code is dimmed', () => {
-    const w = mk({ offline: true })
+  it('offline: the box replaces steps 1 and 2; the QR box is empty (no modules) at 25 % and has no caption', () => {
+    const w = mk({ view: 'offline', code: null })
     expect(w.get('[data-testid=offline]').text()).toContain('No connection to cometcast.de')
+    expect(w.get('[data-testid=offline-body]').text()).toBe('This screen is offline right now. Code and QR code come back by themselves once the network is back.')
     expect(w.find('[data-testid=room-code]').exists()).toBe(false)
     expect(w.get('[data-testid=qr]').classes()).toContain('dim')
+    expect(w.get('[data-testid=qr]').attributes('data-empty')).toBe('true')
+    expect(w.find('[data-testid=qr] svg').exists()).toBe(false)
+    expect(w.get('[data-testid=qr-caption]').attributes('style')).toContain('visibility: hidden')
+  })
+  it('offline with a stale code never draws the old code', () => {
+    const w = mk({ view: 'offline' })
+    expect(w.find('[data-testid=qr] svg').exists()).toBe(false)
+  })
+  it('the box body follows the cause: busy server, page out of date', () => {
+    const body = (cause: string) => mk({ view: 'offline', code: null, cause }).get('[data-testid=offline-body]').text()
+    expect(body('busy')).toBe('The server is busy right now. This screen tries again by itself.')
+    expect(body('outdated')).toBe('This page is out of date. Reload it to get a code.')
+  })
+  it('connecting: steps and pill as usual, the code line is empty but keeps its height, QR box empty at 25 %, no caption, no box', () => {
+    const w = mk({ view: 'connecting', code: null })
+    expect(w.find('[data-testid=offline]').exists()).toBe(false)
+    expect(w.get('[data-testid=address]').text()).toBe('cometcast.de')
+    expect(w.get('[data-testid=room-code]').text()).toBe('')
+    expect(w.get('[data-testid=room-code]').element.className).toContain('cd-icode')
+    expect(w.get('[data-testid=qr]').classes()).toEqual(expect.arrayContaining(['dim', 'empty']))
+    expect(w.find('[data-testid=qr] svg').exists()).toBe(false)
+    expect(w.get('[data-testid=qr-caption]').attributes('style')).toContain('visibility: hidden')
+    expect(w.get('[data-testid=mode-pill]').text()).toBe('Open')
   })
   it('dimming is an overlay that is switched by the prop', async () => {
     const w = mk()

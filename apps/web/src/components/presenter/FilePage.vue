@@ -41,11 +41,11 @@ async function onPick(e: Event) {
 
 <template>
   <main class="cp-page" data-testid="file-page">
-    <h1 class="cp-h">{{ t('file.title') }}</h1>
-    <p class="cp-p">{{ t('file.body') }}</p>
+    <h1 class="cp-h">{{ t('what.file') }}</h1>
+    <p class="cp-p">{{ t('file.bodyWeb') }}</p>
     <input ref="input" type="file" :accept="accept" class="sr-only" tabindex="-1" data-testid="file-input" @change="onPick" />
-    <button type="button" class="cp-sbtn" :disabled="progress !== null" data-testid="file-choose" @click="input?.click()">
-      {{ t('what.file') }}
+    <button type="button" class="cp-pbtn cp-pick" :disabled="progress !== null" data-testid="file-choose" @click="input?.click()">
+      {{ t('file.pick') }}
     </button>
     <div v-if="progress" class="cp-progress" data-testid="file-progress">
       <p class="cp-small">{{ progress.name }} · {{ percent }} %</p>

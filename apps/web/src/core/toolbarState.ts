@@ -21,20 +21,20 @@ export const PEN_WIDTHS = [2, 4, 8] as const
 export const MARKER_WIDTHS = [12, 20, 32] as const
 export const ERASER_RADIUS = 16
 
+/**
+ * The toolbar has no position and no collapsed state any more: it sits at the top centre and shows and hides
+ * together with the name tag and End (spec 4.5).
+ */
 export interface ToolbarState {
-  open: boolean
   tool: Tool | null
   color: ColorId
   size: SizeIndex
   frozen: boolean
   black: boolean
-  /** Position of the toolbar's top-left corner, in percent of the stage. */
-  x: number
-  y: number
 }
 
 export function initialToolbar(): ToolbarState {
-  return { open: true, tool: null, color: 'red', size: 1, frozen: false, black: false, x: 50, y: 3 }
+  return { tool: null, color: 'red', size: 1, frozen: false, black: false }
 }
 
 /** Selecting the active tool again deselects it (back to plain viewing). */
@@ -58,15 +58,6 @@ export function toggleFreeze(s: ToolbarState): ToolbarState {
 
 export function toggleBlack(s: ToolbarState): ToolbarState {
   return { ...s, black: !s.black }
-}
-
-export function setOpen(s: ToolbarState, open: boolean): ToolbarState {
-  return { ...s, open }
-}
-
-export function moveTo(s: ToolbarState, x: number, y: number): ToolbarState {
-  const c = (v: number) => Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0))
-  return { ...s, x: c(x), y: c(y) }
 }
 
 export function penStyle(s: ToolbarState): { kind: PenKind; color: string; width: number } | null {

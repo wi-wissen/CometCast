@@ -5,10 +5,8 @@ import {
   MARKER_WIDTHS,
   PEN_WIDTHS,
   initialToolbar,
-  moveTo,
   penStyle,
   setColor,
-  setOpen,
   setSize,
   toggleBlack,
   toggleFreeze,
@@ -16,9 +14,9 @@ import {
 } from '../src/core/toolbarState'
 
 describe('toolbar state', () => {
-  it('starts open with no tool', () => {
+  it('starts with no tool and has no position or collapsed state (it shows with the name tag and End)', () => {
     const s = initialToolbar()
-    expect(s.open).toBe(true)
+    expect(s).toEqual({ tool: null, color: 'red', size: 1, frozen: false, black: false })
     expect(s.tool).toBeNull()
     expect(penStyle(s)).toBeNull()
   })
@@ -46,16 +44,12 @@ describe('toolbar state', () => {
     s = setSize(toggleTool(initialToolbar(), 'marker'), 2)
     expect(penStyle(s)).toMatchObject({ kind: 'marker', width: MARKER_WIDTHS[2] })
   })
-  it('freeze, black screen and open are independent toggles', () => {
+  it('freeze and black screen are independent toggles', () => {
     let s = toggleTool(initialToolbar(), 'laser')
-    s = toggleFreeze(toggleBlack(setOpen(s, false)))
-    expect(s).toMatchObject({ tool: 'laser', frozen: true, black: true, open: false })
+    s = toggleFreeze(toggleBlack(s))
+    expect(s).toMatchObject({ tool: 'laser', frozen: true, black: true })
     s = toggleFreeze(s)
     expect(s.frozen).toBe(false)
-  })
-  it('clamps the position to 0..100', () => {
-    expect(moveTo(initialToolbar(), -5, 140)).toMatchObject({ x: 0, y: 100 })
-    expect(moveTo(initialToolbar(), NaN, 20)).toMatchObject({ x: 0, y: 20 })
   })
 })
 

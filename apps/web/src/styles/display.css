@@ -105,7 +105,7 @@
 }
 
 /* D-pad focus ring (3.5): outline 4 --focus, offset 3, glow 9, scale 1.03, 120 ms. Only on the
-   display's own controls; the picture's own controls (annotation toolbar, link card) keep theirs. */
+   display's own controls; the annotation toolbar has its own focus outline. */
 .cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob) {
   position: relative;
   transition: transform 0.12s ease;
@@ -113,7 +113,10 @@
 .cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus {
   outline: none;
 }
-.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus-visible {
+/* The ring rule of 7.2: shown on load and after a key press; the first mouse or touch input hides it
+   (class cd-pointer, set by useFocusRing). It follows :focus, not :focus-visible, so that it does not depend on
+   the browser's own heuristic. */
+.cd:not(.cd-pointer) :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus {
   outline: 4px solid var(--focus);
   outline-offset: 3px;
   box-shadow: 0 0 0 9px rgba(255, 201, 77, 0.18);
@@ -482,6 +485,10 @@
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+  align-items: center;
+}
+.cd-acts.cd-actsl {
+  justify-content: flex-start;
 }
 .cd-acts .gap {
   flex: 1;
@@ -506,9 +513,11 @@
   background: transparent;
   color: var(--fg);
   border-radius: 10px;
-  padding: 4px 10px;
+  padding: 0 10px;
   font-size: 14px;
-  min-height: 34px;
+  height: 34px;
+  min-height: 0;
+  align-self: center; /* 34 high, centred against Yes / No, never stretched to the row (spec 3.5) */
 }
 .cd-rh {
   display: flex;
@@ -556,6 +565,11 @@
   font-weight: 700;
   border-color: var(--acc);
   background: color-mix(in srgb, var(--acc) 14%, var(--panel2));
+}
+/* OLED black: no tinted fill for a selected tile (selection = amber border and bold text only, spec 3.2). */
+.cd[data-theme='oled'] .cd-mt.on,
+.cd[data-theme='oled'] .cd-looks .cd-mt.on {
+  background: #000000;
 }
 .cd-looks {
   display: grid;
@@ -639,6 +653,10 @@
   font-weight: 700;
   line-height: 1.1;
 }
+/* OLED black: the box that is told apart by a --bg fill elsewhere gets a 1 px --line border (spec 3.2). */
+.cd[data-theme='oled'] .cd-chk {
+  border: 1px solid var(--line);
+}
 .cd-queue {
   font-size: 15px;
   color: var(--mut);
@@ -673,15 +691,21 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 0 14px;
+  padding: 6px 14px;
   font-size: 15px;
   font-weight: 700;
   color: var(--fg);
 }
+/* Second line: the security code, 13/400 --mut, the digits mono 700 --fg (spec 4.5). */
 .cd-byline small {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--mut);
+  line-height: 1.3;
+}
+.cd-byline small .mono {
+  font-weight: 700;
+  color: var(--fg);
 }
 .cd-endbtn {
   right: 12px;
@@ -710,7 +734,7 @@
   .cd-dim.on {
     transition: none;
   }
-  .cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus-visible {
+  .cd:not(.cd-pointer) :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus {
     transform: none;
   }
 }
@@ -731,4 +755,103 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
   pointer-events: none;
+}
+/* While the annotation toolbar is visible: toolbar bottom (12 + 46) + 8 (spec 3.5). */
+.cd-toast.low {
+  top: 66px;
+}
+
+/* ---------- the picture's states and dialogs over it ---------- */
+/* A layer for dialogs that sit over another page: the tokens of .cd, but no background of its own. */
+.cd.cd-over {
+  background: transparent;
+}
+/* Reference-px layer inside the stage: frozen badge and annotation toolbar. */
+.cd-stagehud {
+  z-index: 27;
+}
+.cd-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.cd-black {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+  display: grid;
+  place-items: center;
+  background: #000000;
+}
+.cd-blackhint {
+  font-size: calc(15px * var(--s, 1));
+  color: var(--mut);
+}
+/* Link card and relay confirmation: texts of a dialog card (16 --mut), the address 18 mono --mut wrapping anywhere. */
+.cd-wz .cd-body {
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--mut);
+}
+.cd-wz .cd-strong {
+  color: var(--fg);
+  font-weight: 700;
+}
+.cd-wz .cd-addr {
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--mut);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.cd-anchor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+/* The media player inside the link card. */
+.cd-mp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cd-mph {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cd-mphost {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  color: var(--mut);
+}
+.cd-mpv {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  background: #000000;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.cd-mpa {
+  width: 100%;
+}
+/* The QR box while there is no code (connecting, offline): empty, kept in place. */
+.cd-qrbox.empty {
+  background: var(--qrbg);
 }

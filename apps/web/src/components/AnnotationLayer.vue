@@ -7,7 +7,8 @@ import { AnnotationModel, drawStrokes, type Point } from '../core/annotations'
 import { ERASER_RADIUS, penStyle, type ToolbarState } from '../core/toolbarState'
 
 const props = defineProps<{ model: AnnotationModel; toolbar: ToolbarState; label: string }>()
-const emit = defineEmits<{ changed: [] }>()
+// `input`: a pointer stroke (down or move while drawing) counts as input, so the controls stay while someone draws.
+const emit = defineEmits<{ changed: []; input: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 const laser = ref<{ x: number; y: number } | null>(null)
 let w = 0
@@ -71,6 +72,7 @@ function point(e: PointerEvent): Point {
 function onDown(e: PointerEvent) {
   const tool = props.toolbar.tool
   if (!tool || drawing || (e.pointerType === 'mouse' && e.button !== 0)) return
+  emit('input')
   activeId = e.pointerId
   canvas.value!.setPointerCapture(e.pointerId)
   const p = point(e)
@@ -97,6 +99,7 @@ function onMove(e: PointerEvent) {
     return
   }
   if (!drawing) return
+  emit('input')
   if (tool === 'eraser') props.model.eraseAt(p, ERASER_RADIUS, w, h)
   else props.model.extend(p)
 }

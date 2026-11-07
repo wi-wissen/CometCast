@@ -68,6 +68,15 @@ from [architecture.md](architecture.md); update both together.
   `config.json`, example: [deploy/config/web-app-config.example.json](../deploy/config/web-app-config.example.json)).
   Checked locally with the app on a second static origin (`npm run e2e:static`); **UNCERTAIN: real GitHub Pages
   (project path `/app/`, 404 handling for the optional `config.json`) and real DNS were not tried.**
+- **Static hosting needs three paths answered with `index.html`.** The pages of the web app are chosen by path, and the QR
+  code on the display leads to `https://{dom}/{CODE}`: so **`/display`**, **`/{CODE}`** (a 6-character join code, any code)
+  and **`/app`** must all serve the app's `index.html`, otherwise the QR code leads to a 404 (spec
+  [first-run-and-display.md](design/first-run-and-display.md), 7.2). `cometcast-server` does this itself. A static host has to
+  be told: on GitHub Pages put a copy of `index.html` named `404.html` next to it (Pages serves `404.html` for every unknown
+  path, and the app then picks the page from the address). Under a base path such as `/app/` the same three paths are
+  `/app/display`, `/app/{CODE}` and `/app`. **UNCERTAIN: `pages.yml` does not create such a `404.html` copy yet (the site has
+  its own `site/404.html`), so a QR code of a display opened from `https://cometcast.de/app/display` is not covered by the
+  current workflow.**
 - The **Docker image still bundles the web app**, so a self-hoster can run one container (same origin, no internet needed) and does not use Pages.
 
 Relay host operations: [deploy/README.md](../deploy/README.md) and the separate repository

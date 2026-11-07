@@ -64,9 +64,10 @@ describe('the copy tables of the spec', () => {
       continue
     }
     // `settings.join` and `settings.join.*Text` cannot both be a string and a group in nested JSON.
-    rows.push({ key: key === 'settings.join' ? 'settings.join.label' : key, en: c[1], du: c[2], sie })
+    // The EN column of two rows carries a note of the spec ("(not used, ...)", "(apps only)"), not copy.
+    rows.push({ key: key === 'settings.join' ? 'settings.join.label' : key, en: c[1].replace(/ \((not used, decision 13\.2|apps only)\)$/, ''), du: c[2], sie })
   }
-  it('has read all rows', () => expect(rows.length).toBe(181))
+  it('has read all rows', () => expect(rows.length).toBe(205))
   it('every row is in en.json, de.json (Sie) and de-du.json (du), word for word', () => {
     for (const r of rows) {
       expect(get(en, r.key), `en:${r.key}`).toBe(r.en)

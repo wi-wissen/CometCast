@@ -160,9 +160,6 @@
   },
   "toolbar": {
     "label": "Screen tools",
-    "grip": "Move toolbar (arrow keys move it)",
-    "collapse": "Collapse toolbar",
-    "expand": "Show toolbar",
     "pen": "Pen",
     "marker": "Highlighter",
     "eraser": "Eraser",
@@ -258,10 +255,6 @@
       }
     }
   },
-  "sas": {
-    "label": "Connection check code",
-    "explain": "Both devices should show the same code. If they differ, stop: the connection may be intercepted. Comparing is up to you, the app does not enforce it."
-  },
   "common": {
     "back": "Back",
     "next": "Next",
@@ -321,7 +314,10 @@
       "sourceOwn": "Found via the company network (DNS entry).",
       "sourceBox": "In-house box found on this network.",
       "ok": "Looks right",
-      "change": "Other address"
+      "change": "Other address",
+      "sourcePage": "Set by the server of this page.",
+      "sourceTyped": "Entered by hand.",
+      "fieldLabel": "Server address"
     },
     "done": {
       "title": "Done.",
@@ -340,8 +336,11 @@
     "appLine": "No download needed. Prefer an app: App Store · Google Play · {dom}/app",
     "offline": {
       "title": "No connection to {dom}",
-      "body": "This screen is offline right now. Code and QR code come back by themselves once the network is back."
-    }
+      "body": "This screen is offline right now. Code and QR code come back by themselves once the network is back.",
+      "bodyBusy": "The server is busy right now. This screen tries again by itself.",
+      "bodyOutdated": "This page is out of date. Reload it to get a code."
+    },
+    "appLineWeb": "No download needed."
   },
   "settings": {
     "open": "Settings",
@@ -359,7 +358,7 @@
   "request": {
     "title": "Request",
     "queue": "+{n} waiting",
-    "subtitle": "wants to connect · {device}",
+    "subtitle": "wants to connect",
     "check": "Check",
     "yes": "Yes",
     "no": "No",
@@ -367,8 +366,9 @@
     "aria": "Request: {name}"
   },
   "present": {
-    "byline": "{name} is showing · {device}",
-    "end": "End"
+    "byline": "{name} is showing",
+    "end": "End",
+    "sas": "Security code {sas}"
   },
   "toast": {
     "joined": "{name} connected",
@@ -378,8 +378,8 @@
     "expired": "Request from {name} expired",
     "withdrawn": "{name} withdrew the request",
     "left": "{name} disconnected",
-    "lockedRejected": "Locked · {n} open requests denied",
-    "sessionEnded": "Session ended · new code"
+    "sessionEnded": "Session ended · new code",
+    "openDisabled": "This server only allows Approval on"
   },
   "start": {
     "titleRoom": "Connect to “{room}”",
@@ -418,12 +418,15 @@
     "file": "Show a photo or file",
     "fileSub": "PDF or image. You turn pages, everything else stays with you",
     "link": "Show a link",
-    "linkSub": "The screen opens the page itself",
-    "disconnect": "Disconnect"
+    "linkSub": "The screen asks before it opens the page",
+    "disconnect": "Disconnect",
+    "connected": "Connected"
   },
   "file": {
     "title": "What would you like to show?",
-    "body": "Recent on this device. Or “Other file” in the system dialog."
+    "body": "Recent on this device. Or “Other file” in the system dialog.",
+    "bodyWeb": "A PDF or an image from this device. It appears on the screen as soon as you pick it.",
+    "pick": "Choose file"
   },
   "link": {
     "label": "Page address",
@@ -435,7 +438,11 @@
     "file": "You are showing a file",
     "link": "The screen shows your link",
     "where": "On “{room}”.",
-    "stop": "Stop showing"
+    "stop": "Stop showing",
+    "sas": "Security code {sas}. The screen shows the same code under your name.",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "pageOf": "Page {n} of {total}"
   },
   "bye": {
     "title": "Disconnected",
@@ -447,7 +454,7 @@
     "now": "What now",
     "code": {
       "title": "This code does not exist right now",
-      "why": "Usually a typo. Comet Cast reads an O in a code as zero and an I as one, so you need not tell them apart.",
+      "why": "Usually a typo. A code has 6 characters and never contains O, 0, I or 1.",
       "now": "Look at the screen again and retype the code."
     },
     "expired": {
@@ -489,7 +496,7 @@
     },
     "timeout": {
       "title": "No answer",
-      "why": "Nobody answered your request within 60 seconds.",
+      "why": "Nobody answered your request in time.",
       "now": "Ask again and let the host know."
     },
     "ended": {
@@ -506,7 +513,23 @@
       "getApp": "Get the app",
       "ask": "Ask again",
       "askIn": "Ask again in {n} s",
-      "openDom": "Open {dom}"
+      "openDom": "Open {dom}",
+      "reload": "Reload page"
+    },
+    "occupied": {
+      "title": "Someone else is connected",
+      "why": "This screen takes one person at a time.",
+      "now": "Ask that person to disconnect, or ask the host to press End. Then try again."
+    },
+    "busy": {
+      "title": "The server is busy",
+      "why": "Too many attempts from this network, or too many people at once.",
+      "now": "Wait a minute, then try again."
+    },
+    "outdated": {
+      "title": "This page is out of date",
+      "why": "The server was updated in the meantime.",
+      "now": "Reload the page."
     }
   }
 }

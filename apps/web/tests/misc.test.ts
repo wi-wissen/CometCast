@@ -63,7 +63,16 @@ describe('error pages of the presenter (6)', () => {
     expect(errorKindFor('peer_left')).toBe('ended')
     expect(errorKindFor('connection_lost')).toBe('noInternet')
     expect(errorKindFor('peer_failed')).toBe('displayOff')
-    expect(errorKindFor('rate_limited')).toBe('generic')
+    // other failures keep the layout with the existing wording
+    expect(errorKindFor('forbidden')).toBe('generic')
+    expect(errorKindFor('altcha_failed')).toBe('generic')
+    expect(errorKindFor(null)).toBe('generic')
+  })
+  it('maps every code of the new pages (spec 6)', () => {
+    expect(errorKindFor('room_full')).toBe('occupied')
+    for (const c of ['rate_limited', 'banned', 'server_full']) expect(errorKindFor(c), c).toBe('busy')
+    for (const c of ['proto_mismatch', 'bad_hello', 'bad_message']) expect(errorKindFor(c), c).toBe('outdated')
+    expect(errorKindFor('removed_by_host')).toBe('ended')
   })
 })
 

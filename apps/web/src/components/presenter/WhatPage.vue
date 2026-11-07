@@ -3,14 +3,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '../Icon.vue'
-import SasLine from '../SasLine.vue'
 
 // What do you want to show (spec 5.5): screen, file, link.
 const props = defineProps<{
-  room: string
+  /** The display's room name; absent when it set none (the header then says only "Connected", never the code). */
+  room?: string
   /** Screen sharing is possible in this browser (a laptop browser). */
   screenOk: boolean
-  sas?: string
 }>()
 const emit = defineEmits<{ screen: []; file: []; link: []; disconnect: [] }>()
 const { t } = useI18n()
@@ -21,7 +20,7 @@ const screenSub = computed(() => t(props.screenOk ? 'what.screenLaptop' : 'what.
   <main class="cp-page" data-testid="what-page">
     <div class="cp-row">
       <div class="cp-ico ok" style="width: 40px; height: 40px"><Icon name="check" /></div>
-      <span class="cp-lbl" data-testid="connected-to">{{ t('what.connectedTo', { room }) }}</span>
+      <span class="cp-lbl" data-testid="connected-to">{{ room ? t('what.connectedTo', { room }) : t('what.connected') }}</span>
     </div>
     <h1 class="cp-h">{{ t('what.title') }}</h1>
     <div class="cp-opts">
@@ -35,7 +34,6 @@ const screenSub = computed(() => t(props.screenOk ? 'what.screenLaptop' : 'what.
         <Icon name="link" /><span>{{ t('what.link') }}<small>{{ t('what.linkSub') }}</small></span>
       </button>
     </div>
-    <SasLine :code="sas" />
     <div class="cp-spacer"></div>
     <button type="button" class="cp-sbtn" data-testid="disconnect" @click="emit('disconnect')">{{ t('what.disconnect') }}</button>
   </main>

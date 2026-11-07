@@ -211,3 +211,14 @@ describe('presenter: screen on a connected session', () => {
     expect(await x.s.shareScreen()).toBe('failed')
   })
 })
+
+describe('a server that refuses Open', () => {
+  it('toasts once that the server only allows Approval on, and the room becomes Approval on', () => {
+    const r = receiver('open')
+    r.sock.recv({ type: 'error', code: 'open_rooms_disabled', message: '' })
+    expect(r.events).toEqual([{ kind: 'openDisabled' }])
+    expect(r.s.snapshot.joinMode).toBe('confirm')
+    r.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'confirm' })
+    expect(r.events).toEqual([{ kind: 'openDisabled' }]) // not again
+  })
+})

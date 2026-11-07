@@ -29,6 +29,8 @@ export interface SenderState {
   check?: number
   /** While `waiting_approval`: seconds until the server gives up. */
   timeoutSecs?: number
+  /** The display's name for its room (`join_pending.room_name` / `joined.room_name`); absent when it set none or the server is older. Never replaced by the code. */
+  roomName?: string
   /** Milliseconds since the epoch when an error happened (for "ask again in 15 s"). */
   errorAt?: number
   /** True while the screen is being shown (see {@link SenderSession.shareScreen}). */
@@ -56,6 +58,7 @@ export class SenderSession {
   private channelOpen = false
   private sas: string | undefined
   private check: { check: number; timeoutSecs: number } | undefined
+  private roomName: string | undefined
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private stream: MediaStream | null = null
@@ -80,6 +83,9 @@ export class SenderSession {
       this.state.timeoutSecs = this.check.timeoutSecs
     }
     if (phase === 'error') this.state.errorAt = (this.deps.now ?? Date.now)()
+    if (this.roomName && (phase === 'waiting_approval' || phase === 'negotiating' || phase === 'sharing' || phase === 'peer_left')) {
+      this.state.roomName = this.roomName
+    }
     if (this.screenOn) this.state.screen = true
     this.deps.onChange(this.state)
   }
@@ -233,6 +239,7 @@ export class SenderSession {
   private teardown(): void {
     this.sas = undefined
     this.check = undefined
+    this.roomName = undefined
     this.control = null
     this.channelOpen = false
     this.peer?.close()
@@ -255,10 +262,13 @@ export class SenderSession {
     switch (m.type) {
       case 'join_pending':
         this.check = { check: m.check, timeoutSecs: m.timeout_secs }
+        this.roomName = m.room_name
         this.set('waiting_approval')
         break
       case 'joined':
         this.check = undefined
+        // `joined` carries the same name as `join_pending`; take the newest, keep the earlier one if it is absent.
+        if (m.room_name) this.roomName = m.room_name
         this.set('negotiating')
         void this.sendOffer()
         break

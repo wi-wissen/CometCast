@@ -61,8 +61,10 @@ export type ReceiverEvent =
   | { kind: 'expired'; name: string }
   | { kind: 'withdrawn'; name: string }
   | { kind: 'left'; name: string }
-  | { kind: 'lockedRejected'; n: number }
+  | { kind: 'lockedRejected'; n: number } // not shown any more (a request closes Settings); the session still reports it
   | { kind: 'sessionEnded' }
+  /** The server refused mode Open (`open_rooms_disabled`): the room is Approval on; the display toasts it. */
+  | { kind: 'openDisabled' }
 
 export interface ReceiverState {
   phase: ReceiverPhase
@@ -105,6 +107,8 @@ export interface ReceiverDeps {
   pdfRenderer?: PdfRendererFactory
   /** Join mode of the room that is created (default "open"). Changed later with setJoinMode. */
   joinMode?: JoinMode
+  /** The display's room name (from the setup). Sent with `create_room`; senders see it on their pages. */
+  roomName?: string
   /** Called for the events of {@link ReceiverEvent} (the display shows them as toasts). */
   onEvent?: (e: ReceiverEvent) => void
   /** Test seam: the clock (default Date.now). */
@@ -321,6 +325,7 @@ export class ReceiverSession {
       type: 'create_room',
       ...(this.altchaPayload ? { altcha: this.altchaPayload } : {}),
       join_mode: this.mode,
+      ...(this.deps.roomName ? { room_name: this.deps.roomName } : {}),
     })
   }
 
@@ -554,6 +559,7 @@ export class ReceiverSession {
         }
         // The server forbids open rooms: ask for one that needs approval instead of failing.
         if (m.code === 'open_rooms_disabled') {
+          this.emit({ kind: 'openDisabled' })
           if (this.state.phase === 'connecting' && this.mode === 'open') {
             this.mode = 'confirm'
             this.set({ joinMode: 'confirm', notice: { kind: 'open_disabled' } })

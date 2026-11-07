@@ -10,9 +10,7 @@ import type { ReceiverState } from '../../core/receiverSession'
 import type { PageBitmap } from '../../core/pdfRenderer'
 import {
   initialToolbar,
-  moveTo,
   setColor,
-  setOpen,
   setSize,
   toggleBlack,
   toggleFreeze,
@@ -23,13 +21,16 @@ import {
 } from '../../core/toolbarState'
 
 // The picture: full bleed on black, letterboxed in its own aspect ratio (spec 4.5). The received
-// screen, images, links and PDF pages are shown here. `playing` tells the display that the first
-// frame of a presentation is on screen (the screen is then kept awake).
+// screen, images, links and PDF pages are shown here, and nothing else at rest. `playing` tells the display
+// that the first frame of a presentation is on screen (the screen is then kept awake). `controlsShown`
+// shows the annotation toolbar together with the name tag and End; a pointer stroke counts as input (`input`).
+// The only things drawn at rest are states: the frozen badge, the black screen hint and the link card.
 const props = defineProps<{
   state: ReceiverState
   renderPage: (page: number, width: number) => Promise<PageBitmap>
+  controlsShown: boolean
 }>()
-const emit = defineEmits<{ close: []; prev: []; next: []; playing: [on: boolean] }>()
+const emit = defineEmits<{ close: []; playing: [on: boolean]; input: [] }>()
 const { t, te } = useI18n()
 
 const video = ref<HTMLVideoElement | null>(null)
@@ -188,27 +189,21 @@ defineExpose({ stage })
       class="absolute inset-0 z-[1] h-full w-full bg-black object-contain"
     />
 
-    <ContentOverlay
-      :content="state.content"
-      :render-page="renderPage"
-      @close="emit('close')"
-      @prev="emit('prev')"
-      @next="emit('next')"
-    />
+    <ContentOverlay :content="state.content" :render-page="renderPage" @close="emit('close')" />
     <p class="sr-only" role="status" aria-live="polite" data-testid="announce">{{ announce }}</p>
-    <AnnotationLayer :inert="state.content?.kind === 'link'" :model="model" :toolbar="toolbar" :label="t('toolbar.canvasLabel')" @changed="onModelChanged" />
+    <AnnotationLayer
+      :inert="state.content?.kind === 'link' ? true : undefined"
+      :model="model"
+      :toolbar="toolbar"
+      :label="t('toolbar.canvasLabel')"
+      @changed="onModelChanged"
+      @input="emit('input')"
+    />
 
-    <div v-if="toolbar.black" data-testid="black-screen" class="absolute inset-0 z-[22] grid place-items-center bg-black">
-      <p class="text-sm text-white/40">{{ t('toolbar.blackHint') }}</p>
+    <div v-if="toolbar.black" data-testid="black-screen" class="cd-black">
+      <p class="cd-blackhint">{{ t('toolbar.blackHint') }}</p>
     </div>
 
-    <p
-      v-if="toolbar.frozen"
-      data-testid="frozen-badge"
-      class="absolute left-3 top-3 z-[27] rounded-full bg-black/75 px-3 py-1 text-sm text-white"
-    >
-      {{ t('toolbar.frozenHint') }}
-    </p>
     <p
       v-if="state.transfer"
       data-testid="transfer"
@@ -226,24 +221,26 @@ defineExpose({ stage })
       {{ contentErrorText }}
     </p>
 
-    <ReceiverToolbar
-      :inert="state.content?.kind === 'link'"
-      :state="toolbar"
-      :can-undo="canUndo"
-      :has-strokes="hasStrokes"
-      :can-freeze="canFreeze"
-      :fullscreen="isFullscreen"
-      :fullscreen-available="fullscreenAvailable"
-      @tool="(tool: Tool) => (toolbar = toggleTool(toolbar, tool))"
-      @color="(c: ColorId) => (toolbar = setColor(toolbar, c))"
-      @size="(s: SizeIndex) => (toolbar = setSize(toolbar, s))"
-      @undo="model.undo()"
-      @clear="model.clear()"
-      @freeze="onFreeze"
-      @black="toolbar = toggleBlack(toolbar)"
-      @fullscreen="onFullscreen"
-      @open="(o: boolean) => (toolbar = setOpen(toolbar, o))"
-      @move="(x: number, y: number) => (toolbar = moveTo(toolbar, x, y))"
-    />
+    <!-- Reference-px layer: the frozen badge (a state, drawn at rest) and the annotation toolbar (with the controls). -->
+    <div class="cd-hud cd-stagehud">
+      <p v-if="toolbar.frozen" data-testid="frozen-badge" class="cd-badge">{{ t('toolbar.frozenHint') }}</p>
+      <ReceiverToolbar
+        :shown="controlsShown && state.content?.kind !== 'link'"
+        :state="toolbar"
+        :can-undo="canUndo"
+        :has-strokes="hasStrokes"
+        :can-freeze="canFreeze"
+        :fullscreen="isFullscreen"
+        :fullscreen-available="fullscreenAvailable"
+        @tool="(tool: Tool) => (toolbar = toggleTool(toolbar, tool))"
+        @color="(c: ColorId) => (toolbar = setColor(toolbar, c))"
+        @size="(s: SizeIndex) => (toolbar = setSize(toolbar, s))"
+        @undo="model.undo()"
+        @clear="model.clear()"
+        @freeze="onFreeze"
+        @black="toolbar = toggleBlack(toolbar)"
+        @fullscreen="onFullscreen"
+      />
+    </div>
   </div>
 </template>
