@@ -34,6 +34,7 @@ import 'src/display/display_root.dart' show CanOpenLinks;
 import 'src/display/launch.dart' show launchInBrowser;
 import 'receiver_controller.dart' show UrlOpener;
 import 'settings.dart';
+import 'core/native_announce.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +52,8 @@ Future<void> main() async {
     captureDisplay: _env('COMETCAST_CAPTURE_DISPLAY'),
   );
   final android = await _androidSetup(core);
+  // iPadOS: the platform announces the screen (NWListener); the core only builds the record.
+  if (platformAnnounces) NativeAnnouncer(core).start();
   // Links, the install referrer and the QR scanner exist on phones and tablets only.
   final mobile = Platform.isAndroid || Platform.isIOS;
   final handler = LinkHandler(core: core, settings: settings);

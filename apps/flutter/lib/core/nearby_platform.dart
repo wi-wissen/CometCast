@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The platform part of "screens on this network" (spec 14, native-apps.md 4.1): which browse API
 // finds the screens, the state of the local-network permission, whether there is a local network,
-// and the page of the system settings. Android (NsdManager) and iOS (NWBrowser) browse in Kotlin
-// and Swift and hand the raw records to the Rust core, which checks and keeps the list;
-// computers browse in the core itself (mdns-sd). Plain interface so tests can plug in fakes.
+// and the page of the system settings. Android (NsdManager), iOS and macOS (NWBrowser) browse in Kotlin
+// and Swift and hand the raw records to the Rust core, which checks and keeps the list; macOS
+// browses with NWBrowser through the same bridge; Linux and Windows browse in the core itself
+// (mdns-sd). Plain interface so tests can plug in fakes.
 //
 // UNCERTAIN: the Android and iOS bridges were never run on a device (docs/android.md,
 // docs/ios.md); they are only syntax-checked.
@@ -116,8 +117,11 @@ class DesktopNearbyPlatform implements NearbyPlatform {
 /// `hasNetwork`, `openSettings`. Calls from the platform: `seen` (instance, addresses, txt),
 /// `gone` (instance), `reset`, `permission` (state), `network` (bool).
 class ChannelNearbyPlatform implements NearbyPlatform {
-  ChannelNearbyPlatform(this._core, {MethodChannel? channel})
-    : _channel = channel ?? const MethodChannel('de.cometcast/nearby') {
+  ChannelNearbyPlatform(
+    this._core, {
+    MethodChannel? channel,
+    this.limitedTime = true,
+  }) : _channel = channel ?? const MethodChannel('de.cometcast/nearby') {
     _channel.setMethodCallHandler(_onCall);
   }
 
@@ -128,8 +132,9 @@ class ChannelNearbyPlatform implements NearbyPlatform {
   @override
   bool get nativeBrowse => true;
 
+  /// Phones and tablets stop after 60 s; macOS browses as long as the page is visible.
   @override
-  bool get limitedTime => true;
+  final bool limitedTime;
 
   Future<dynamic> _onCall(MethodCall call) async {
     final a = call.arguments;
@@ -227,7 +232,24 @@ class ChannelNearbyPlatform implements NearbyPlatform {
 
 /// The platform part for this device: the bridge on Android and iOS, the core's own browse on
 /// computers. A television passes none to the presenter (a display shows no list).
-NearbyPlatform nearbyPlatformFor(CoreApi core) =>
-    (Platform.isAndroid || Platform.isIOS)
-    ? ChannelNearbyPlatform(core)
-    : DesktopNearbyPlatform(core);
+NearbyPlatform nearbyPlatformFor(CoreApi core) {
+  if (Platform.isAndroid || Platform.isIOS) return ChannelNearbyPlatform(core);
+  // macOS browses with NWBrowser, like iOS, so the Local Network permission of macOS 15 gives
+  // "Not asked yet" and "Not allowed" (decision N50); Linux and Windows browse in the core.
+  if (Platform.isMacOS) return ChannelNearbyPlatform(core, limitedTime: false);
+  return DesktopNearbyPlatform(core);
+}
+
+/// Android, display role (decision N50): hold or drop the `WifiManager.MulticastLock` that the
+/// core's own announcement (mdns-sd) needs. A no-op on every other platform.
+Future<void> setAnnounceLock(bool on) async {
+  if (!Platform.isAndroid) return;
+  try {
+    await const MethodChannel('de.cometcast/nearby')
+        .invokeMethod<void>('announceLock', on);
+  } on MissingPluginException {
+    // No bridge (tests, a build without it): announce without the lock.
+  } on PlatformException {
+    // The lock could not be taken: announce without it.
+  }
+}

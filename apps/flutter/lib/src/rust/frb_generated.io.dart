@@ -29,6 +29,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_content_sender_ui_event_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<NativeAnnounceEvent>
+  dco_decode_StreamSink_native_announce_event_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<NearbyReceiverEvent>
   dco_decode_StreamSink_nearby_receiver_event_Sse(dynamic raw);
 
@@ -152,6 +156,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw);
 
   @protected
+  NativeAnnounceEvent dco_decode_native_announce_event(dynamic raw);
+
+  @protected
   NearbyMode dco_decode_nearby_mode(dynamic raw);
 
   @protected
@@ -264,6 +271,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   sse_decode_StreamSink_content_sender_ui_event_Sse(
     SseDeserializer deserializer,
   );
+
+  @protected
+  RustStreamSink<NativeAnnounceEvent>
+  sse_decode_StreamSink_native_announce_event_Sse(SseDeserializer deserializer);
 
   @protected
   RustStreamSink<NearbyReceiverEvent>
@@ -413,6 +424,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  NativeAnnounceEvent sse_decode_native_announce_event(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   NearbyMode sse_decode_nearby_mode(SseDeserializer deserializer);
 
   @protected
@@ -540,6 +556,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_content_sender_ui_event_Sse(
     RustStreamSink<ContentSenderUiEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_native_announce_event_Sse(
+    RustStreamSink<NativeAnnounceEvent> self,
     SseSerializer serializer,
   );
 
@@ -729,6 +751,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_server_candidate(
     List<ServerCandidate> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_native_announce_event(
+    NativeAnnounceEvent self,
     SseSerializer serializer,
   );
 

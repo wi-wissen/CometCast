@@ -1906,6 +1906,50 @@ pub async fn set_display_announcing(active: bool, instance_id: String) -> Announ
     }
 }
 
+/// What a platform that announces the screen itself must do (iPadOS: `NWListener`; there the
+/// multicast entitlement is not counted on, so `mdns-sd` stays off). The core builds the record
+/// (docs/discovery.md, section 3), the platform only publishes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NativeAnnounceEvent {
+    /// Publish the service `instance` (`_cometcast._tcp`, port 9) with these TXT entries, or
+    /// replace the record published before. Sent at once on a change and every 10 s.
+    Publish {
+        /// The DNS-SD instance name.
+        instance: String,
+        /// The TXT entries.
+        txt: Vec<(String, String)>,
+    },
+    /// Withdraw the service (goodbye).
+    Withdraw,
+}
+
+/// Let the platform announce the screen instead of the core (iPadOS). Call it before
+/// [`set_display_announcing`]; the events arrive until [`stop_native_announcements`] is called.
+/// Where it is not called, the core announces with `mdns-sd` itself.
+pub async fn watch_native_announcements(events: StreamSink<NativeAnnounceEvent>) {
+    let (tx, rx) = oneshot::channel::<()>();
+    *NATIVE_ANNOUNCE_STOP
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = Some(tx);
+    nearby::set_native_announce(Some(events));
+    let _ = rx.await;
+    nearby::set_native_announce(None);
+}
+
+static NATIVE_ANNOUNCE_STOP: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
+
+/// End [`watch_native_announcements`]: the core announces with `mdns-sd` again.
+#[frb(sync)]
+pub fn stop_native_announcements() {
+    if let Some(tx) = NATIVE_ANNOUNCE_STOP
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+    {
+        let _ = tx.send(());
+    }
+}
+
 /// Who may join a screen found nearby.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NearbyMode {

@@ -86,7 +86,7 @@ function rust() {
       if (d.dep_kinds.some((k) => k.kind === null || k.kind === 'build')) stack.push(d.pkg);
     }
   }
-  const items = [...seen].map((id) => pkgs.get(id)).filter((p) => p.source)
+  const items = [...seen].map((id) => pkgs.get(id)).filter((p) => p.source || p.manifest_path.includes('/vendor/')) // vendor/: patched third-party crates (vendor/mdns-sd)
     .map((p) => ({ name: p.name, version: p.version, license: p.license ?? (p.license_file ? `see file ${p.license_file}` : 'UNKNOWN'), files: licenceFiles(dirname(p.manifest_path)) }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
   const missing = items.filter((i) => !existsSync(i.files[0] ?? '/nonexistent') && !i.files.length);

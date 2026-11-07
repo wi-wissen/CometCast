@@ -148,3 +148,8 @@ opt-level = 3
 # most of the time per frame in the Flutter debug build.
 [profile.dev.package.cc-ffi]
 opt-level = 3
+
+# mdns-sd 0.21.7 with two public setters for the record lifetime (vendor/mdns-sd/COMETCAST-PATCH.md).
+# Remove this when a released mdns-sd has them.
+[patch.crates-io]
+mdns-sd = { path = "vendor/mdns-sd" }

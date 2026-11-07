@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1703684;
+  int get rustContentHash => 1339283702;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -215,6 +215,8 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiStopAdvertising();
 
+  void crateApiStopNativeAnnouncements();
+
   Future<void> crateApiStopNearbyScreens();
 
   Future<void> crateApiStopPresenter();
@@ -236,6 +238,8 @@ abstract class RustLibApi extends BaseApi {
   bool crateApiUnblock({required BigInt id});
 
   LinkCheck crateApiValidateLink({required String input});
+
+  Stream<NativeAnnounceEvent> crateApiWatchNativeAnnouncements();
 
   Stream<NearbyUiEvent> crateApiWatchNearbyScreens({required bool native});
 
@@ -1476,6 +1480,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "stop_advertising", argNames: []);
 
   @override
+  void crateApiStopNativeAnnouncements() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStopNativeAnnouncementsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStopNativeAnnouncementsConstMeta =>
+      const TaskConstMeta(debugName: "stop_native_announcements", argNames: []);
+
+  @override
   Future<void> crateApiStopNearbyScreens() {
     return handler.executeNormal(
       NormalTask(
@@ -1484,7 +1510,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 46,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1511,7 +1537,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1535,7 +1561,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 48)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -1560,7 +1586,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 49,
+            funcId: 50,
             port: port_,
           );
         },
@@ -1587,7 +1613,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 50,
+            funcId: 51,
             port: port_,
           );
         },
@@ -1614,7 +1640,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 51,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1641,7 +1667,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 52,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1668,7 +1694,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 53,
+            funcId: 54,
             port: port_,
           );
         },
@@ -1695,7 +1721,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 54,
+            funcId: 55,
             port: port_,
           );
         },
@@ -1720,7 +1746,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_u_64(id, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 55)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 56)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -1743,7 +1769,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(input, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 56)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 57)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_link_check,
@@ -1760,6 +1786,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "validate_link", argNames: ["input"]);
 
   @override
+  Stream<NativeAnnounceEvent> crateApiWatchNativeAnnouncements() {
+    final events = RustStreamSink<NativeAnnounceEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_StreamSink_native_announce_event_Sse(events, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 58,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiWatchNativeAnnouncementsConstMeta,
+          argValues: [events],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return events.stream;
+  }
+
+  TaskConstMeta get kCrateApiWatchNativeAnnouncementsConstMeta =>
+      const TaskConstMeta(
+        debugName: "watch_native_announcements",
+        argNames: ["events"],
+      );
+
+  @override
   Stream<NearbyUiEvent> crateApiWatchNearbyScreens({required bool native}) {
     final events = RustStreamSink<NearbyUiEvent>();
     unawaited(
@@ -1772,7 +1833,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 57,
+              funcId: 59,
               port: port_,
             );
           },
@@ -1806,7 +1867,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 58,
+              funcId: 60,
               port: port_,
             );
           },
@@ -1835,6 +1896,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   RustStreamSink<ContentSenderUiEvent>
   dco_decode_StreamSink_content_sender_ui_event_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<NativeAnnounceEvent>
+  dco_decode_StreamSink_native_announce_event_Sse(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -2193,6 +2261,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_server_candidate).toList();
+  }
+
+  @protected
+  NativeAnnounceEvent dco_decode_native_announce_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return NativeAnnounceEvent_Publish(
+          instance: dco_decode_String(raw[1]),
+          txt: dco_decode_list_record_string_string(raw[2]),
+        );
+      case 1:
+        return NativeAnnounceEvent_Withdraw();
+      default:
+        throw Exception("unreachable");
+    }
   }
 
   @protected
@@ -2766,6 +2850,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<NativeAnnounceEvent>
+  sse_decode_StreamSink_native_announce_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<NearbyReceiverEvent>
   sse_decode_StreamSink_nearby_receiver_event_Sse(
     SseDeserializer deserializer,
@@ -3210,6 +3303,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_server_candidate(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  NativeAnnounceEvent sse_decode_native_announce_event(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_instance = sse_decode_String(deserializer);
+        var var_txt = sse_decode_list_record_string_string(deserializer);
+        return NativeAnnounceEvent_Publish(
+          instance: var_instance,
+          txt: var_txt,
+        );
+      case 1:
+        return NativeAnnounceEvent_Withdraw();
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -3934,6 +4049,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_StreamSink_native_announce_event_Sse(
+    RustStreamSink<NativeAnnounceEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_native_announce_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_StreamSink_nearby_receiver_event_Sse(
     RustStreamSink<NearbyReceiverEvent> self,
     SseSerializer serializer,
@@ -4406,6 +4538,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_server_candidate(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_native_announce_event(
+    NativeAnnounceEvent self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case NativeAnnounceEvent_Publish(
+        instance: final instance,
+        txt: final txt,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(instance, serializer);
+        sse_encode_list_record_string_string(txt, serializer);
+      case NativeAnnounceEvent_Withdraw():
+        sse_encode_i_32(1, serializer);
     }
   }
 

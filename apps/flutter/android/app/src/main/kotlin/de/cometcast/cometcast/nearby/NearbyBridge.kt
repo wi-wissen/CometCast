@@ -30,6 +30,9 @@ import io.flutter.plugin.common.MethodChannel
  * - `hasNetwork` -> Boolean: a Wi-Fi or Ethernet network exists (no `TRANSPORT_WIFI` or
  *   `TRANSPORT_ETHERNET` means mobile data only: "No local network").
  * - `openSettings` -> false (no permission page).
+ * - `announceLock` (Boolean): the display role holds a [WifiManager.MulticastLock] while the Rust
+ *   core announces the screen with `mdns-sd` (decision N50; the core opens its own multicast
+ *   sockets, which Android filters without the lock). Separate from the browse lock.
  * To Dart: `seen` {instance, addresses, txt}, `gone` instance, `reset`, `network` Boolean.
  *
  * Refresh: `NsdManager` reports a service when it appears or changes, but a display refreshes its
@@ -39,9 +42,12 @@ import io.flutter.plugin.common.MethodChannel
  * API 34 is one at a time (`resolveService` fails with FAILURE_ALREADY_ACTIVE otherwise), so a
  * queue is used; from API 34 `registerServiceInfoCallback` delivers updates.
  *
- * UNCERTAIN: never run on a device (docs/android.md). Whether `NsdManager` sees a service that
- * died without a goodbye within 30 s, and whether the multicast lock is needed at all, are not
- * known; the records announced by `mdns-sd` carry long TTLs (docs/discovery.md).
+ * Expiry (decision N50): the displays announce with records that live 30 s (`RECORD_TTL_SECS` in
+ * crates/cc-discovery), so a service that died without a goodbye is lost by the system within
+ * 30 s and a refresh answered from the cache cannot keep it alive longer.
+ *
+ * UNCERTAIN: never run on a device (docs/android.md); whether the multicast lock is needed at
+ * all for browsing is not known.
  */
 class NearbyBridge(
     private val activity: Activity,
@@ -91,6 +97,10 @@ class NearbyBridge(
             }
             "stop" -> {
                 stop()
+                result.success(null)
+            }
+            "announceLock" -> {
+                setAnnounceLock(call.arguments as? Boolean ?: false)
                 result.success(null)
             }
             "hasNetwork" -> result.success(hasLocalNetwork())
@@ -293,6 +303,31 @@ class NearbyBridge(
                     // The permission is missing: browse without the lock.
                 }
             }
+    }
+
+    private var announceLock: WifiManager.MulticastLock? = null
+
+    /** The display role announces (true) or stopped (false): hold or drop the announce lock. */
+    private fun setAnnounceLock(on: Boolean) {
+        if (on) {
+            if (announceLock?.isHeld == true) return
+            announceLock =
+                wifi?.createMulticastLock("cometcast-announce")?.also {
+                    it.setReferenceCounted(false)
+                    try {
+                        it.acquire()
+                    } catch (e: SecurityException) {
+                        // CHANGE_WIFI_MULTICAST_STATE is missing: announce without the lock.
+                    }
+                }
+        } else {
+            try {
+                if (announceLock?.isHeld == true) announceLock?.release()
+            } catch (e: Exception) {
+                // Nothing to release.
+            }
+            announceLock = null
+        }
     }
 
     private fun releaseLock() {

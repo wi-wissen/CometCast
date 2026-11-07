@@ -28,5 +28,13 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- Screens on the same network (spec 14, decision N50): NWBrowser, macOS 15 asks for the Local
+	     Network permission. The text is the du copy of ios.localNetworkUsage (N52). -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_cometcast._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Comet Cast looks for screens on the same Wi-Fi so you do not have to type a code.</string>
 </dict>
 </plist>

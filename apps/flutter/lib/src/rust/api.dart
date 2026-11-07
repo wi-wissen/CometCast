@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -270,6 +270,16 @@ Future<AnnounceStatus> setDisplayAnnouncing({
   active: active,
   instanceId: instanceId,
 );
+
+/// Let the platform announce the screen instead of the core (iPadOS). Call it before
+/// [`set_display_announcing`]; the events arrive until [`stop_native_announcements`] is called.
+/// Where it is not called, the core announces with `mdns-sd` itself.
+Stream<NativeAnnounceEvent> watchNativeAnnouncements() =>
+    RustLib.instance.api.crateApiWatchNativeAnnouncements();
+
+/// End [`watch_native_announcements`]: the core announces with `mdns-sd` again.
+void stopNativeAnnouncements() =>
+    RustLib.instance.api.crateApiStopNativeAnnouncements();
 
 /// Search for screens on the local network until [`stop_nearby_screens`] is called or Dart
 /// stops listening. A newer call replaces the running search.
@@ -847,6 +857,24 @@ sealed class LinkCheck with _$LinkCheck {
 
   /// Not acceptable.
   const factory LinkCheck.invalid() = LinkCheck_Invalid;
+}
+
+@freezed
+sealed class NativeAnnounceEvent with _$NativeAnnounceEvent {
+  const NativeAnnounceEvent._();
+
+  /// Publish the service `instance` (`_cometcast._tcp`, port 9) with these TXT entries, or
+  /// replace the record published before. Sent at once on a change and every 10 s.
+  const factory NativeAnnounceEvent.publish({
+    /// The DNS-SD instance name.
+    required String instance,
+
+    /// The TXT entries.
+    required List<(String, String)> txt,
+  }) = NativeAnnounceEvent_Publish;
+
+  /// Withdraw the service (goodbye).
+  const factory NativeAnnounceEvent.withdraw() = NativeAnnounceEvent_Withdraw;
 }
 
 /// Who may join a screen found nearby.

@@ -11,7 +11,7 @@ cache: run `flutter pub get` in `apps/flutter` first). `tools/release-guard.sh l
 when one of the lock files below changed after this file was generated.
 
 ```text
-Cargo.lock-sha256: de1b573a014aebc6c59874cf5bbe9afe769f83a59dbf034bcee1ba68202507d5
+Cargo.lock-sha256: 8a4368bb23fe6634f59e2c11bbebed52b6b47bdafceb8d28369e2d3e1c49818a
 package-lock.json-sha256: 6ad3910c8dda2fc821f1d6816de1bb9f66cb81880ac376837e1807a1f03d363a
 pubspec.lock-sha256: 14af36e015c2d330e4c0de78a9da1fc10953410c364e5d4379d3f923430fcc38
 ```

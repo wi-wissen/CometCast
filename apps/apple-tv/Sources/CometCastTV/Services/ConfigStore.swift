@@ -19,6 +19,15 @@ enum ConfigStore {
     private static let customKey = "cc.customRelay"
     private static let confirmedKey = "cc.confirmedRelays"
     private static let maxConfirmed = 16
+    private static let instanceKey = "cc.instanceId"
+
+    /// The stable random id of this installation (announced; spec 14.8 point 2). Created once.
+    static var instanceId: String {
+        if let id = UserDefaults.standard.string(forKey: instanceKey), isValidInstanceId(id) { return id }
+        let id = newInstanceId()
+        UserDefaults.standard.set(id, forKey: instanceKey)
+        return id
+    }
 
     static func policyState(_ defaults: UserDefaults = .standard) -> PolicyState {
         guard let dict = defaults.dictionary(forKey: managedKey), !dict.isEmpty else { return .absent }

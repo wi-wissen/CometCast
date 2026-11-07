@@ -5,10 +5,12 @@
 
 use std::sync::Mutex;
 
-use cc_discovery::{DisplayAnnouncement, DisplayState, RawRecord, RawSink, ScreenMode};
+use cc_discovery::{
+    AnnounceBackend, DisplayAnnouncement, DisplayState, MdnsError, RawRecord, RawSink, ScreenMode,
+};
 use cc_proto::JoinMode;
 
-use crate::api::NearbyUiEvent;
+use crate::api::{NativeAnnounceEvent, NearbyUiEvent};
 use crate::frb_generated::StreamSink;
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -104,7 +106,7 @@ impl AnnounceCtl {
         match self.state(policy_ok) {
             Some(s) => self
                 .announcement
-                .get_or_insert_with(DisplayAnnouncement::start_mdns)
+                .get_or_insert_with(start_announcement)
                 .set(Some(s)),
             None => {
                 // Drop it: the record is withdrawn (goodbye) and the sockets are freed.
@@ -113,6 +115,42 @@ impl AnnounceCtl {
         }
         w
     }
+}
+
+/// The platform that announces on its own (iPadOS, `NWListener`): where the core's announcement
+/// is sent instead of to `mdns-sd` (decision N50).
+static NATIVE_ANNOUNCE: Mutex<Option<StreamSink<NativeAnnounceEvent>>> = Mutex::new(None);
+
+/// Forwards what would go on the wire to the platform.
+struct NativeBackend(StreamSink<NativeAnnounceEvent>);
+
+impl AnnounceBackend for NativeBackend {
+    fn publish(&mut self, instance: &str, txt: &[(String, String)]) -> Result<(), MdnsError> {
+        self.0
+            .add(NativeAnnounceEvent::Publish {
+                instance: instance.to_owned(),
+                txt: txt.to_vec(),
+            })
+            .map_err(|_| MdnsError("the platform announcer is gone".into()))
+    }
+
+    fn withdraw(&mut self) {
+        let _ = self.0.add(NativeAnnounceEvent::Withdraw);
+    }
+}
+
+fn start_announcement() -> DisplayAnnouncement {
+    match lock(&NATIVE_ANNOUNCE).clone() {
+        Some(sink) => DisplayAnnouncement::start(NativeBackend(sink)),
+        None => DisplayAnnouncement::start_mdns(),
+    }
+}
+
+/// The platform takes over the announcement ([`crate::api::watch_native_announcements`]).
+pub(crate) fn set_native_announce(sink: Option<StreamSink<NativeAnnounceEvent>>) {
+    *lock(&NATIVE_ANNOUNCE) = sink;
+    // An announcement that already runs goes on the wire it was started with; the app calls this
+    // before the display announces.
 }
 
 fn with_ctl<R>(f: impl FnOnce(&mut AnnounceCtl) -> R) -> R {

@@ -55,6 +55,8 @@ final class AppModel: ObservableObject {
     /// Diagnostics for the device test plan: phase changes, error codes, statistics. Never the room code, SDP,
     /// ALTCHA payload or addresses of other devices.
     private let log = Logger(subsystem: "de.cometcast.tv", category: "receiver")
+    private let announcer = Announcer()
+    private var sceneActive = true
 
     init() {
         refreshRelays()
@@ -152,6 +154,8 @@ final class AppModel: ObservableObject {
     }
 
     func scenePhaseChanged(_ phase: ScenePhase) {
+        sceneActive = phase == .active
+        syncAnnouncement()
         if phase == .active {
             discovery.start(browseAnnouncements: !choice.locked)
             // tvOS suspends the app in the background and the socket dies: a kiosk comes back with a new room.
@@ -278,6 +282,21 @@ final class AppModel: ObservableObject {
         }
         UIApplication.shared.isIdleTimerDisabled = isRunning
         if !isRunning { discovery.start(browseAnnouncements: !choice.locked) }
+        syncAnnouncement()
+    }
+
+    /// Spec 14.8: announce only while the display shows Idle or Presenting with a code, in the foreground, and the
+    /// policy allows it; say goodbye in every other state (no code yet, error, background, `stop`).
+    private func syncAnnouncement() {
+        let showing: Bool
+        switch state.phase {
+        case .waitingSender, .negotiating, .receiving, .peerLeft: showing = true
+        default: showing = false
+        }
+        guard sceneActive, showing, announcementsAllowed(policy: policy), let relay = activeRelay,
+              let txt = displayAnnouncementTxt(id: ConfigStore.instanceId, wsUrl: relay.wsUrl, mode: state.joinMode, code: state.code)
+        else { announcer.withdraw(); return }
+        announcer.publish(instance: announcementInstanceName(id: ConfigStore.instanceId), txt: txt)
     }
 
     // MARK: statistics (toggled with Play/Pause on the receive screen)

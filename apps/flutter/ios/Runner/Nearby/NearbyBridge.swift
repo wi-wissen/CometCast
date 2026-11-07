@@ -24,10 +24,12 @@
 // browser is started again every `refreshSeconds` and answers again with what it sees; a service
 // that is not seen any more is not refreshed and leaves the core's list by expiry.
 //
-// UNCERTAIN: never compiled or run on a device (docs/ios.md). NWBrowser answers from the system's
-// cache; whether a service that died without a goodbye drops out within 30 s is not known (the
-// records announced by mdns-sd carry long TTLs, docs/discovery.md). The Local Network prompt and
-// the PolicyDenied mapping are as documented by Apple, not seen.
+// Expiry (decision N50): NWBrowser answers from the system's cache until a record's lifetime has
+// passed, so the displays announce with records that live 30 s (`RECORD_TTL_SECS` in
+// crates/cc-discovery): a service that died without a goodbye is removed by the system within 30 s.
+//
+// UNCERTAIN: never compiled or run on a device (docs/ios.md). The Local Network prompt and the
+// PolicyDenied mapping are as documented by Apple, not seen.
 
 import Flutter
 import Network

@@ -240,6 +240,12 @@ pub fn advertise_receiver(opts: &AdvertiseOptions) -> Result<Advertisement, Mdns
     )
     .map_err(|e| MdnsError(e.to_string()))?
     .enable_addr_auto();
+    let mut info = info;
+    // Decision N50: a platform cache (NsdManager, NWBrowser) keeps answering for the lifetime of
+    // the record, so a display that dies without a goodbye would stay in the lists for minutes.
+    // With 30 s the cache drops it within the 35 s of spec 14.8, point 5.
+    info.set_host_ttl(RECORD_TTL_SECS);
+    info.set_other_ttl(RECORD_TTL_SECS);
     let fullname = info.get_fullname().to_owned();
     let daemon = ServiceDaemon::new().map_err(|e| MdnsError(e.to_string()))?;
     if let Err(e) = daemon.register(info) {
@@ -248,6 +254,9 @@ pub fn advertise_receiver(opts: &AdvertiseOptions) -> Result<Advertisement, Mdns
     }
     Ok(Advertisement { daemon, fullname })
 }
+
+/// Lifetime in seconds of every record of an announcement (SRV, addresses, PTR, TXT).
+pub const RECORD_TTL_SECS: u32 = 30;
 
 /// A change in the set of receivers on the network.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -650,6 +659,26 @@ mod tests {
         let many: Vec<IpAddr> = (1..=50).map(|i| ip(&format!("10.0.0.{i}"))).collect();
         let r = receiver_from_parts(FULL, 1, many, []).unwrap();
         assert_eq!(r.addresses.len(), MAX_ADDRESSES);
+    }
+
+    #[test]
+    fn announcements_use_a_record_lifetime_of_at_most_30_seconds() {
+        // Decision N50: spec 14.8 point 5 wants a dead display gone within 35 s; a platform
+        // cache keeps answering for the lifetime of the record.
+        const { assert!(RECORD_TTL_SECS <= 30) };
+        let mut info = ServiceInfo::new(
+            MDNS_SERVICE_TYPE,
+            "x",
+            "h.local.",
+            "10.0.0.2",
+            1,
+            &[("a", "b")][..],
+        )
+        .unwrap();
+        info.set_host_ttl(RECORD_TTL_SECS);
+        info.set_other_ttl(RECORD_TTL_SECS);
+        assert_eq!(info.get_host_ttl(), 30);
+        assert_eq!(info.get_other_ttl(), 30);
     }
 
     #[test]

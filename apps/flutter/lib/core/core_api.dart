@@ -19,6 +19,7 @@ import 'package:cometcast/src/rust/api.dart'
         LinkCheck,
         NearbyPermission,
         NearbyReceiverEvent,
+        NativeAnnounceEvent,
         NearbyUiEvent,
         PushResult,
         PresenterUiEvent,
@@ -85,6 +86,8 @@ export 'package:cometcast/src/rust/api.dart'
         setDisplayAnnouncing,
         watchNearbyScreens,
         stopNearbyScreens,
+        watchNativeAnnouncements,
+        stopNativeAnnouncements,
         nearbyNativeSeen,
         nearbyNativeGone,
         nearbyNativeReset,
@@ -314,6 +317,12 @@ abstract class CoreApi {
 
   Future<void> stopNearbyScreens();
 
+  /// iPadOS: the platform announces the screen (`NWListener`) and the core only builds the
+  /// record; the events say what to publish (decision N50). Call before [setDisplayAnnouncing].
+  Stream<NativeAnnounceEvent> watchNativeAnnouncements();
+
+  void stopNativeAnnouncements();
+
   /// The platform bridge saw a service (all fields are checked in the core).
   void nearbyNativeSeen({
     required String instance,
@@ -526,6 +535,13 @@ class RustCoreApi implements CoreApi {
 
   @override
   Future<void> stopNearbyScreens() => rust.stopNearbyScreens();
+
+  @override
+  Stream<NativeAnnounceEvent> watchNativeAnnouncements() =>
+      rust.watchNativeAnnouncements();
+
+  @override
+  void stopNativeAnnouncements() => rust.stopNativeAnnouncements();
 
   @override
   void nearbyNativeSeen({

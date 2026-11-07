@@ -174,6 +174,11 @@ impl AnnounceBackend for MdnsBackend {
         let info = ServiceInfo::new(MDNS_SERVICE_TYPE, instance, &host, "", SERVICE_PORT, txt)
             .map_err(|e| MdnsError(e.to_string()))?
             .enable_addr_auto();
+        let mut info = info;
+        // Decision N50: records live 30 s, so a platform cache cannot keep a dead display in a
+        // list for longer than the 35 s of spec 14.8, point 5.
+        info.set_host_ttl(crate::announce::RECORD_TTL_SECS);
+        info.set_other_ttl(crate::announce::RECORD_TTL_SECS);
         let fullname = info.get_fullname().to_owned();
         if self.daemon.is_none() {
             self.daemon = Some(ServiceDaemon::new().map_err(|e| MdnsError(e.to_string()))?);

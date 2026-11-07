@@ -17,6 +17,7 @@ import 'package:cometcast/l10n/app_localizations.dart';
 import '../../codec_controller.dart';
 import '../../core/android_platform.dart';
 import '../../core/core_api.dart';
+import '../../core/nearby_platform.dart' show setAnnounceLock;
 import '../../discovery.dart';
 import '../../receiver_controller.dart';
 import '../../settings.dart';
@@ -72,6 +73,7 @@ class DisplayRoot extends StatefulWidget {
     this.setFullscreenOnSetupDone = false,
     this.onFullscreen,
     this.deviceName,
+    this.announceLock = setAnnounceLock,
   });
 
   final CoreApi core;
@@ -99,6 +101,9 @@ class DisplayRoot extends StatefulWidget {
 
   /// The name this device announces in the local network.
   final String Function()? deviceName;
+
+  /// Android: hold a multicast lock while the core announces (decision N50); a no-op elsewhere.
+  final Future<void> Function(bool on) announceLock;
 
   @override
   State<DisplayRoot> createState() => DisplayRootState();
@@ -353,10 +358,17 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
             _life != AppLifecycleState.paused);
     if (active == _announcing) return;
     _announcing = active;
+    // Android: the multicast lock goes first, so the core's sockets work from the first packet.
+    if (active) unawaited(widget.announceLock(true).catchError((Object _) {}));
     unawaited(
       widget.core
           .setDisplayAnnouncing(active: active, instanceId: id)
-          .then<void>((_) {}, onError: (Object _) {}),
+          .then<void>((_) {}, onError: (Object _) {})
+          .then<void>((_) {
+            if (!active) {
+              return widget.announceLock(false).catchError((Object _) {});
+            }
+          }),
     );
   }
 

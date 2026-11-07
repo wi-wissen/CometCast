@@ -500,6 +500,19 @@ class FakeCoreApi implements CoreApi {
   @override
   Future<void> stopNearbyScreens() async => nearbyStopCalls++;
 
+  final nativeAnnounce = <StreamController<NativeAnnounceEvent>>[];
+  int nativeAnnounceStops = 0;
+
+  @override
+  Stream<NativeAnnounceEvent> watchNativeAnnouncements() {
+    final c = StreamController<NativeAnnounceEvent>();
+    nativeAnnounce.add(c);
+    return c.stream;
+  }
+
+  @override
+  void stopNativeAnnouncements() => nativeAnnounceStops++;
+
   @override
   void nearbyNativeSeen({
     required String instance,
