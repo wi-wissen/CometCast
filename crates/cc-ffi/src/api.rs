@@ -1803,9 +1803,161 @@ pub fn send_content_cmd(cmd: UiContentCmd) -> bool {
     content_sender::send_cmd(cmd)
 }
 
+// ---------------------------------------------------------------------------
+// H.264 codec (Cisco OpenH264), downloaded on first use in release builds
+// ---------------------------------------------------------------------------
+
+/// Whether the H.264 codec can be used, for the UI. See `cc-codec` and docs/capture.md.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiCodecState {
+    /// Nothing to do: the codec is built in, or the library is on the disk.
+    Ready,
+    /// The library is missing. [`ensure_codec`] downloads it (after the user agreed).
+    Missing,
+    /// A download runs; `progress` is 0.0 to 1.0.
+    Downloading {
+        /// Fraction done.
+        progress: f64,
+    },
+    /// The last download or import failed; `reason` is technical and in English.
+    Failed {
+        /// What went wrong.
+        reason: String,
+    },
+    /// This build or platform has no H.264 codec to offer.
+    Unsupported {
+        /// Why.
+        reason: String,
+    },
+}
+
+/// What the UI shows before it asks to download the codec.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiCodecInfo {
+    /// Exact file name the library must have (for the administrator directory).
+    pub file_name: String,
+    /// OpenH264 version.
+    pub version: String,
+    /// Host the download comes from.
+    pub host: String,
+    /// Approximate download size in bytes.
+    pub download_bytes: u32,
+    /// The administrator allows the download without asking (`COMETCAST_CODEC_AUTO=1`).
+    pub auto_download: bool,
+    /// The administrator directory (`COMETCAST_CODEC_DIR`), if set.
+    pub admin_dir: Option<String>,
+}
+
+#[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+fn ui_codec_state(s: cc_codec::CodecStatus) -> UiCodecState {
+    use cc_codec::CodecStatus as S;
+    match s {
+        S::Ready { .. } => UiCodecState::Ready,
+        S::Missing => UiCodecState::Missing,
+        S::Downloading { progress } => UiCodecState::Downloading { progress },
+        S::Failed { reason } => UiCodecState::Failed { reason },
+        S::Unsupported { reason } => UiCodecState::Unsupported { reason },
+    }
+}
+
+/// Current state of the H.264 codec. Cheap; the UI polls it while a download runs.
+#[frb(sync)]
+pub fn codec_state() -> UiCodecState {
+    codec_state_impl()
+}
+
+#[cfg(feature = "h264-source")]
+fn codec_state_impl() -> UiCodecState {
+    UiCodecState::Ready
+}
+
+#[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+fn codec_state_impl() -> UiCodecState {
+    ui_codec_state(cc_codec::codec_status())
+}
+
+#[cfg(not(feature = "h264"))]
+fn codec_state_impl() -> UiCodecState {
+    UiCodecState::Unsupported {
+        reason: "this build has no H.264 support".into(),
+    }
+}
+
+/// Facts for the consent text; `None` if this build never downloads (codec built in, no H.264,
+/// or a platform without a library).
+#[frb(sync)]
+pub fn codec_info() -> Option<UiCodecInfo> {
+    codec_info_impl()
+}
+
+#[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+fn codec_info_impl() -> Option<UiCodecInfo> {
+    let i = cc_codec::codec_info()?;
+    Some(UiCodecInfo {
+        file_name: i.file_name,
+        version: i.version,
+        host: i.host,
+        download_bytes: u32::try_from(i.download_bytes).unwrap_or(u32::MAX),
+        auto_download: i.auto_download,
+        admin_dir: i.admin_dir,
+    })
+}
+
+#[cfg(not(all(feature = "h264-libloading", not(feature = "h264-source"))))]
+fn codec_info_impl() -> Option<UiCodecInfo> {
+    None
+}
+
+/// Make the codec available: import the administrator's file or download from Cisco. Call it
+/// only after the user agreed (or when [`UiCodecInfo::auto_download`] is true). Returns the
+/// state when done; while it runs, [`codec_state`] reports the progress.
+pub async fn ensure_codec() -> UiCodecState {
+    #[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+    {
+        tokio::task::spawn_blocking(|| ui_codec_state(cc_codec::ensure_codec()))
+            .await
+            .unwrap_or_else(|_| UiCodecState::Failed {
+                reason: "the download task stopped unexpectedly".into(),
+            })
+    }
+    #[cfg(not(all(feature = "h264-libloading", not(feature = "h264-source"))))]
+    {
+        codec_state_impl()
+    }
+}
+
+/// Where the codec is stored on Android: the app-private directory the app passes in
+/// (`getFilesDir()`). Other platforms use their per-user data directory and ignore this.
+#[frb(sync)]
+pub fn set_codec_dir(path: Option<String>) {
+    #[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+    cc_codec::set_data_dir(path.map(std::path::PathBuf::from));
+    #[cfg(not(all(feature = "h264-libloading", not(feature = "h264-source"))))]
+    let _ = path;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+    #[test]
+    fn codec_status_maps_to_the_ui_state() {
+        use cc_codec::CodecStatus as S;
+        assert_eq!(ui_codec_state(S::Missing), UiCodecState::Missing);
+        assert_eq!(
+            ui_codec_state(S::Ready { path: "/x".into() }),
+            UiCodecState::Ready
+        );
+        assert_eq!(
+            ui_codec_state(S::Downloading { progress: 0.5 }),
+            UiCodecState::Downloading { progress: 0.5 }
+        );
+        assert_eq!(
+            ui_codec_state(S::Failed { reason: "r".into() }),
+            UiCodecState::Failed { reason: "r".into() }
+        );
+    }
 
     #[test]
     fn stop_during_connect_invalidates_the_start() {

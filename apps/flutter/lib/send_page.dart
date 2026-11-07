@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
 
+import 'codec_controller.dart';
+import 'codec_notice.dart';
 import 'core/android_capture.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
@@ -43,6 +45,10 @@ class _SendPageState extends State<SendPage> {
     core: widget.core,
     udpBind: widget.settings.udpBind,
     capture: widget.androidCapture,
+  );
+  late final CodecController _codec = CodecController(
+    core: widget.core,
+    settings: widget.settings,
   );
   final _code = TextEditingController();
   final _seconds = TextEditingController(text: '$_defaultSeconds');
@@ -105,6 +111,7 @@ class _SendPageState extends State<SendPage> {
     widget.settings.removeListener(_syncNearby);
     widget.settings.cancelDiscovery();
     _nearby?.dispose();
+    _codec.dispose();
     _controller.dispose();
     _codeFocus.dispose();
     _secondsFocus.dispose();
@@ -148,6 +155,9 @@ class _SendPageState extends State<SendPage> {
         _serverEmpty) {
       return;
     }
+    // Desktop screen sharing encodes with OpenH264, which release builds download first (the
+    // card under the switch explains it). Android encodes with MediaCodec.
+    if (sharing && !_androidMode && !_codec.ready) return;
     widget.settings.rememberServer();
     if (sharing && _androidMode) {
       final t = AppLocalizations.of(context);
@@ -412,13 +422,18 @@ class _SendPageState extends State<SendPage> {
           ),
           value: _shareScreen && supported,
           onChanged: (supported && !active)
-              ? (v) => setState(() => _shareScreen = v)
+              ? (v) {
+                  setState(() => _shareScreen = v);
+                  if (v && !_androidMode) _codec.init();
+                }
               : null,
         ),
         if (info == null)
           Text(t.sendCaptureChecking, key: const Key('captureChecking'))
         else if (reason != null)
           NoticeBox(noticeKey: const Key('captureUnsupported'), text: reason),
+        if (_shareScreen && supported && !_androidMode)
+          CodecNotice(controller: _codec),
         if (_shareScreen &&
             supported &&
             monitors.isNotEmpty &&

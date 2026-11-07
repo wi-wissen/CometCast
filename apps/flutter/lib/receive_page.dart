@@ -15,6 +15,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'annotations.dart';
+import 'codec_controller.dart';
+import 'codec_notice.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
 import 'receiver_controller.dart';
@@ -71,6 +73,10 @@ class _ReceivePageState extends State<ReceivePage> {
     udpBind: widget.settings.udpBind,
     setFullscreen: widget.setFullscreen,
   );
+  late final CodecController _codec = CodecController(
+    core: widget.core,
+    settings: widget.settings,
+  );
   bool _serverEmpty = false;
 
   /// Pen, highlighter, eraser, laser, undo, clear and freeze over the picture or page. Local
@@ -101,6 +107,7 @@ class _ReceivePageState extends State<ReceivePage> {
     widget.settings.discover(widget.core);
     widget.settings.addListener(_onSettings);
     _advertise();
+    _codec.init();
   }
 
   @override
@@ -112,6 +119,7 @@ class _ReceivePageState extends State<ReceivePage> {
     _advertiseQueue
         .run(() => widget.core.stopAdvertising())
         .catchError((Object _) {});
+    _codec.dispose();
     _controller.dispose();
     _annotations.dispose();
     super.dispose();
@@ -434,6 +442,7 @@ class _ReceivePageState extends State<ReceivePage> {
             autofocus: true,
             onSubmitted: _controller.isActive ? null : _start,
           ),
+          CodecNotice(controller: _codec),
           if (_serverEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),

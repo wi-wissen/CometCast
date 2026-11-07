@@ -79,12 +79,25 @@ impl H264Backend {
     /// Name of the environment variable that selects [`H264Backend::Library`].
     pub const LIBRARY_ENV: &'static str = "COMETCAST_OPENH264_LIB";
 
-    /// `Library(path)` if [`Self::LIBRARY_ENV`] is set, else `Source`.
+    /// Pick the backend:
+    ///
+    /// 1. [`Self::LIBRARY_ENV`] set: `Library(path)`.
+    /// 2. Built with `h264-source`: `Source`.
+    /// 3. Built with `h264-libloading` (releases): the managed library, found by `cc-codec`
+    ///    in the administrator directory (`COMETCAST_CODEC_DIR`) or the per-user directory
+    ///    where the app stored the download: `Library(path)`.
+    /// 4. Otherwise `Source`, which fails with a message that says how to get the codec
+    ///    (the UI checks `cc_codec::codec_status()` before it gets here).
     pub fn from_env() -> Self {
         match std::env::var_os(Self::LIBRARY_ENV) {
-            Some(p) if !p.is_empty() => Self::Library(PathBuf::from(p)),
-            _ => Self::Source,
+            Some(p) if !p.is_empty() => return Self::Library(PathBuf::from(p)),
+            _ => {}
         }
+        #[cfg(all(feature = "h264-libloading", not(feature = "h264-source")))]
+        if let Some(found) = cc_codec::find_library() {
+            return Self::Library(found.path);
+        }
+        Self::Source
     }
 
     fn api(&self) -> Result<openh264::OpenH264API, MediaError> {
@@ -93,8 +106,10 @@ impl H264Backend {
             Self::Source => Ok(openh264::OpenH264API::from_source()),
             #[cfg(not(feature = "h264-source"))]
             Self::Source => Err(MediaError::BackendUnavailable(
-                "this program was built without the h264-source feature (no OpenH264 source build); \
-                 set COMETCAST_OPENH264_LIB to the path of Cisco's libopenh264 (h264-libloading)",
+                "this program was built without the h264-source feature, and the H.264 codec (Cisco \
+                 OpenH264) is not installed: download it in the app, or put Cisco's library \
+                 into the directory named by COMETCAST_CODEC_DIR, or set COMETCAST_OPENH264_LIB \
+                 to its path",
             )),
             #[cfg(feature = "h264-libloading")]
             Self::Library(path) => openh264::OpenH264API::from_blob_path(path)

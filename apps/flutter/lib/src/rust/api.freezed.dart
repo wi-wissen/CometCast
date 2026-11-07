@@ -4586,6 +4586,455 @@ as String,
 }
 
 /// @nodoc
+mixin _$UiCodecState {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCodecState);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'UiCodecState()';
+}
+
+
+}
+
+/// @nodoc
+class $UiCodecStateCopyWith<$Res>  {
+$UiCodecStateCopyWith(UiCodecState _, $Res Function(UiCodecState) __);
+}
+
+
+/// Adds pattern-matching-related methods to [UiCodecState].
+extension UiCodecStatePatterns on UiCodecState {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( UiCodecState_Ready value)?  ready,TResult Function( UiCodecState_Missing value)?  missing,TResult Function( UiCodecState_Downloading value)?  downloading,TResult Function( UiCodecState_Failed value)?  failed,TResult Function( UiCodecState_Unsupported value)?  unsupported,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case UiCodecState_Ready() when ready != null:
+return ready(_that);case UiCodecState_Missing() when missing != null:
+return missing(_that);case UiCodecState_Downloading() when downloading != null:
+return downloading(_that);case UiCodecState_Failed() when failed != null:
+return failed(_that);case UiCodecState_Unsupported() when unsupported != null:
+return unsupported(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( UiCodecState_Ready value)  ready,required TResult Function( UiCodecState_Missing value)  missing,required TResult Function( UiCodecState_Downloading value)  downloading,required TResult Function( UiCodecState_Failed value)  failed,required TResult Function( UiCodecState_Unsupported value)  unsupported,}){
+final _that = this;
+switch (_that) {
+case UiCodecState_Ready():
+return ready(_that);case UiCodecState_Missing():
+return missing(_that);case UiCodecState_Downloading():
+return downloading(_that);case UiCodecState_Failed():
+return failed(_that);case UiCodecState_Unsupported():
+return unsupported(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( UiCodecState_Ready value)?  ready,TResult? Function( UiCodecState_Missing value)?  missing,TResult? Function( UiCodecState_Downloading value)?  downloading,TResult? Function( UiCodecState_Failed value)?  failed,TResult? Function( UiCodecState_Unsupported value)?  unsupported,}){
+final _that = this;
+switch (_that) {
+case UiCodecState_Ready() when ready != null:
+return ready(_that);case UiCodecState_Missing() when missing != null:
+return missing(_that);case UiCodecState_Downloading() when downloading != null:
+return downloading(_that);case UiCodecState_Failed() when failed != null:
+return failed(_that);case UiCodecState_Unsupported() when unsupported != null:
+return unsupported(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  ready,TResult Function()?  missing,TResult Function( double progress)?  downloading,TResult Function( String reason)?  failed,TResult Function( String reason)?  unsupported,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case UiCodecState_Ready() when ready != null:
+return ready();case UiCodecState_Missing() when missing != null:
+return missing();case UiCodecState_Downloading() when downloading != null:
+return downloading(_that.progress);case UiCodecState_Failed() when failed != null:
+return failed(_that.reason);case UiCodecState_Unsupported() when unsupported != null:
+return unsupported(_that.reason);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  ready,required TResult Function()  missing,required TResult Function( double progress)  downloading,required TResult Function( String reason)  failed,required TResult Function( String reason)  unsupported,}) {final _that = this;
+switch (_that) {
+case UiCodecState_Ready():
+return ready();case UiCodecState_Missing():
+return missing();case UiCodecState_Downloading():
+return downloading(_that.progress);case UiCodecState_Failed():
+return failed(_that.reason);case UiCodecState_Unsupported():
+return unsupported(_that.reason);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  ready,TResult? Function()?  missing,TResult? Function( double progress)?  downloading,TResult? Function( String reason)?  failed,TResult? Function( String reason)?  unsupported,}) {final _that = this;
+switch (_that) {
+case UiCodecState_Ready() when ready != null:
+return ready();case UiCodecState_Missing() when missing != null:
+return missing();case UiCodecState_Downloading() when downloading != null:
+return downloading(_that.progress);case UiCodecState_Failed() when failed != null:
+return failed(_that.reason);case UiCodecState_Unsupported() when unsupported != null:
+return unsupported(_that.reason);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class UiCodecState_Ready extends UiCodecState {
+  const UiCodecState_Ready(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCodecState_Ready);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'UiCodecState.ready()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class UiCodecState_Missing extends UiCodecState {
+  const UiCodecState_Missing(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCodecState_Missing);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'UiCodecState.missing()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class UiCodecState_Downloading extends UiCodecState {
+  const UiCodecState_Downloading({required this.progress}): super._();
+  
+
+/// Fraction done.
+ final  double progress;
+
+/// Create a copy of UiCodecState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCodecState_DownloadingCopyWith<UiCodecState_Downloading> get copyWith => _$UiCodecState_DownloadingCopyWithImpl<UiCodecState_Downloading>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCodecState_Downloading&&(identical(other.progress, progress) || other.progress == progress));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,progress);
+}
+
+@override
+String toString() {
+    return 'UiCodecState.downloading(progress: $progress)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCodecState_DownloadingCopyWith<$Res> implements $UiCodecStateCopyWith<$Res> {
+  factory $UiCodecState_DownloadingCopyWith(UiCodecState_Downloading value, $Res Function(UiCodecState_Downloading) _then) = _$UiCodecState_DownloadingCopyWithImpl;
+@useResult
+$Res call({
+ double progress
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCodecState_DownloadingCopyWithImpl<$Res>
+    implements $UiCodecState_DownloadingCopyWith<$Res> {
+  _$UiCodecState_DownloadingCopyWithImpl(this._self, this._then);
+
+  final UiCodecState_Downloading _self;
+  final $Res Function(UiCodecState_Downloading) _then;
+
+/// Create a copy of UiCodecState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? progress = null,}) {
+  return _then(UiCodecState_Downloading(
+progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
+as double,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCodecState_Failed extends UiCodecState {
+  const UiCodecState_Failed({required this.reason}): super._();
+  
+
+/// What went wrong.
+ final  String reason;
+
+/// Create a copy of UiCodecState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCodecState_FailedCopyWith<UiCodecState_Failed> get copyWith => _$UiCodecState_FailedCopyWithImpl<UiCodecState_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCodecState_Failed&&(identical(other.reason, reason) || other.reason == reason));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,reason);
+}
+
+@override
+String toString() {
+    return 'UiCodecState.failed(reason: $reason)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCodecState_FailedCopyWith<$Res> implements $UiCodecStateCopyWith<$Res> {
+  factory $UiCodecState_FailedCopyWith(UiCodecState_Failed value, $Res Function(UiCodecState_Failed) _then) = _$UiCodecState_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String reason
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCodecState_FailedCopyWithImpl<$Res>
+    implements $UiCodecState_FailedCopyWith<$Res> {
+  _$UiCodecState_FailedCopyWithImpl(this._self, this._then);
+
+  final UiCodecState_Failed _self;
+  final $Res Function(UiCodecState_Failed) _then;
+
+/// Create a copy of UiCodecState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? reason = null,}) {
+  return _then(UiCodecState_Failed(
+reason: null == reason ? _self.reason : reason // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCodecState_Unsupported extends UiCodecState {
+  const UiCodecState_Unsupported({required this.reason}): super._();
+  
+
+/// Why.
+ final  String reason;
+
+/// Create a copy of UiCodecState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCodecState_UnsupportedCopyWith<UiCodecState_Unsupported> get copyWith => _$UiCodecState_UnsupportedCopyWithImpl<UiCodecState_Unsupported>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCodecState_Unsupported&&(identical(other.reason, reason) || other.reason == reason));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,reason);
+}
+
+@override
+String toString() {
+    return 'UiCodecState.unsupported(reason: $reason)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCodecState_UnsupportedCopyWith<$Res> implements $UiCodecStateCopyWith<$Res> {
+  factory $UiCodecState_UnsupportedCopyWith(UiCodecState_Unsupported value, $Res Function(UiCodecState_Unsupported) _then) = _$UiCodecState_UnsupportedCopyWithImpl;
+@useResult
+$Res call({
+ String reason
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCodecState_UnsupportedCopyWithImpl<$Res>
+    implements $UiCodecState_UnsupportedCopyWith<$Res> {
+  _$UiCodecState_UnsupportedCopyWithImpl(this._self, this._then);
+
+  final UiCodecState_Unsupported _self;
+  final $Res Function(UiCodecState_Unsupported) _then;
+
+/// Create a copy of UiCodecState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? reason = null,}) {
+  return _then(UiCodecState_Unsupported(
+reason: null == reason ? _self.reason : reason // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$UiContentCmd {
 
 

@@ -87,16 +87,14 @@ sources read:
   cargo build --release -p cometcast-cli --no-default-features --features h264-libloading
   ```
 
-  At run time `COMETCAST_OPENH264_LIB` must point to Cisco's `libopenh264` (SHA-256 on the crate's list). Checked
-  here for this command (debug profile, same features): the binary contains no OpenH264 code (`nm -C | grep
-  -c WelsEnc` gives 0, against 807 matches for `WelsEnc` and 466 for `WelsDec` in the default build);
-  `cargo tree -e features -i openh264` shows only `openh264 feature "libloading"`; and with the variable unset
-  `cometcast-cli receive --decode` exits with status 1 and the message "OpenH264 backend not available: this
-  program was built without the h264-source feature (no OpenH264 source build); set COMETCAST_OPENH264_LIB to
-  the path of Cisco's libopenh264 (h264-libloading)". `send --screen` creates the same encoder, so it should report the same error (not run).
-  **Not run here:** a round trip with Cisco's library in the new feature layout (downloading and loading a
-  prebuilt binary was not allowed in this session); the earlier run with `--features h264-libloading` is
-  described below.
+  At run time the program needs Cisco's library; see "Runtime codec (download on first use)" below for how
+  it finds or fetches it. Checked here for this command (debug profile, same features): the binary contains no
+  OpenH264 code (`nm -C | grep -c WelsEnc` gives 0, against 807 matches for `WelsEnc` and 466 for `WelsDec` in
+  the default build); `cargo tree -e features -i openh264` shows only `openh264 feature "libloading"`; and with
+  no library available `cometcast-cli receive --decode` exits with status 1 and a message that still begins
+  "OpenH264 backend not available: this program was built without the h264-source feature" (the CI step greps
+  that phrase; the rest of the sentence now names the download and the two environment variables).
+  `send --screen` creates the same encoder, so it should report the same error (not run).
 - **CI:** the job `release-variant` in `.github/workflows/rust.yml` builds that release variant, fails if the
   dependency graph contains an OpenH264 source feature, and fails if the binary does not refuse to start the
   codec when `COMETCAST_OPENH264_LIB` is unset. The other CI job still builds and tests with the development
@@ -104,6 +102,85 @@ sources read:
 - Tried in an earlier session (not repeated for this revision): Cisco's `libopenh264-2.6.0-linux64.8.so` was downloaded from `ciscobinary.openh264.org`,
   its SHA-256 matched the crate's list, and the encoder/decoder round trip and a full CLI send/receive run
   worked with it (at that time `cargo build -p cometcast-cli --features h264-libloading`, which still included the source build; `COMETCAST_OPENH264_LIB=...`).
+### Runtime codec (download on first use)
+
+Releases use `h264-libloading` (owner's decision: Cisco's prebuilt binary, never OpenH264 built from
+source in a release). A normal user cannot set environment variables, so the program follows the model of
+Firefox: it downloads Cisco's library once, after the user agreed, and checks it. The code is the crate
+`cc-codec` (`crates/cc-codec`); `H264Backend::from_env()` in `cc-media` uses it.
+
+**Where the library is looked for, in this order:**
+
+1. `COMETCAST_OPENH264_LIB`: path of a library (developers). Not checked by `cc-codec`; the `openh264` crate
+   checks the hash when it loads the file.
+2. `COMETCAST_CODEC_DIR`: a folder that an administrator fills (networks without Internet access, schools).
+   It must contain the file under its **exact name** from the table below, either decompressed or exactly as
+   Cisco serves it (name plus `.bz2`). A `.bz2` file is decompressed, checked and copied to the per-user folder
+   when the user (or `COMETCAST_CODEC_AUTO=1`) triggers the codec setup; a decompressed file is used in place.
+3. The per-user folder: `$XDG_DATA_HOME` or `~/.local/share` (Linux), `~/Library/Application Support` (macOS),
+   `%LOCALAPPDATA%` (Windows), each plus `CometCast/codecs/openh264-2.6.0/`. On Android the app passes its
+   private files directory (`set_codec_dir`, from `lib/codec_setup.dart`).
+4. Otherwise the download below.
+
+Files from 2 and 3 are only used if their SHA-256 matches the table (a symlink in the per-user folder is
+refused). **Version required: OpenH264 2.6.0**, because the pinned `openh264-sys2` 0.9.9 in Cargo.lock accepts
+exactly these builds:
+
+| Platform | File name (also the name inside `COMETCAST_CODEC_DIR`) | Compressed size |
+| --- | --- | --- |
+| Linux x86_64 | `libopenh264-2.6.0-linux64.8.so` | 634264 |
+| Linux aarch64 | `libopenh264-2.6.0-linux-arm64.8.so` | 619371 |
+| Windows x86_64 | `openh264-2.6.0-win64.dll` | 452053 |
+| Windows aarch64 | `openh264-2.6.0-win-arm64.dll` | 378234 |
+| macOS arm64 | `libopenh264-2.6.0-mac-arm64.dylib` | 482124 |
+| macOS x86_64 | `libopenh264-2.6.0-mac-x64.dylib` | 529614 |
+| Android arm64-v8a | `libopenh264-2.6.0-android-arm64.8.so` | 496662 |
+| Android armeabi-v7a | `libopenh264-2.6.0-android-arm.8.so` | 540728 |
+| Android x86_64 | `libopenh264-2.6.0-android-x64.8.so` | 562893 |
+
+Not offered: 32-bit x86 and Linux ARM32 (not a target), iOS and tvOS (the library cannot be loaded at run
+time there; the platform encoders would be used, not implemented here). The macOS file is chosen by the
+architecture the program was compiled for. The names and SHA-256 values are copied from `src/blobs/hashes.txt` of
+`openh264-sys2` 0.9.9 into `crates/cc-codec/src/table.rs`; **when `openh264` is updated in Cargo.lock, copy the
+new table by hand** (the compressed sizes are only shown to the user).
+
+**Download:** `https://ciscobinary.openh264.org/<name>.bz2`, HTTPS only (`ureq` 3 with rustls/ring and the
+webpki root store, no OpenSSL; proxy settings of the environment are honoured), **no redirects at all**, timeouts
+(15 s to connect, 120 s per attempt), 3 retries with backoff (2, 4, 8 s) for network errors and HTTP 5xx/408/429,
+compressed size at most 4 MiB, decompressed size at most 8 MiB (the real files are 0.4 to 0.7 MB and 0.8 to
+1.6 MB), progress reported to the UI. The file is recognised by its magic bytes (bzip2, or ELF/PE/Mach-O as
+is), decompressed with the pure-Rust `bzip2-rs` (MIT/Apache-2.0), and the SHA-256 of the **decompressed**
+library must equal the pinned value before anything is written. Writing is atomic: a temporary file in the same
+folder (created exclusively, so a planted file or symlink is not followed), `fsync`, rename, `fsync` of the
+folder; the folder is 0700 and the file 0755 (0555 on Android); a symlink as folder or target is refused.
+
+**Consent:** the Flutter app shows a card on the receive screen and, when "Share this screen" is on, on the
+send screen (not on Android, where MediaCodec encodes): what the codec is, that it is Cisco's, the host, the
+file name and the size, a "Download" button, a progress bar, a "Try again" button after a failure and a hint for
+offline networks (the administrator folder and the file name). The first press is remembered in the settings;
+later downloads start without asking. An administrator can set `COMETCAST_CODEC_AUTO=1` to skip the question
+(not remembered as consent). Nothing is ever downloaded before one of the two. The web app does not use any of
+this (browser codecs). Development and CI builds with `h264-source` contain the codec and never ask.
+
+**Android (UNCERTAIN, not tried):** the library is stored in the app-private directory and loaded with
+`dlopen`. Android 10 and later forbid *executing* files from the app's data directory, which concerns
+`exec`, not loading a shared library; whether `dlopen` of a downloaded `.so` from there works on every device
+and for target SDK 34+ (where dynamically loaded files must be read-only, hence mode 0555) was not tested. A
+bigger problem is **Google Play policy**, which does not allow an app distributed through Play to download
+executable code from elsewhere. For a Play release the codec would have to be bundled by Cisco's own channel
+or replaced by MediaCodec (the Android sender already uses MediaCodec; only receiving on Android needs the
+decoder). Decide before a Play release; sideloaded builds are not affected.
+
+**What was checked (2026-11-07, this machine):** all nine files were downloaded from Cisco with HTTP 200 and
+no redirect, are bzip2 (`BZh`), and their decompressed SHA-256 values equal the pinned table; the real path
+(`ensure_codec` into a temporary folder, then `find_library`) and `cargo test -p cc-media --no-default-features
+--features h264-libloading` with only `COMETCAST_CODEC_DIR` set (no `COMETCAST_OPENH264_LIB`) pass: the
+encoder and decoder work through the managed library. Not checked: Windows, macOS, Android, Linux aarch64
+(only downloaded and hashed, never loaded), a school network with a TLS-inspecting proxy (webpki roots do not
+trust the proxy's CA; the download then fails with a TLS error and the offline hint applies; adding the system
+roots is an open improvement).
+
+
 - Hardware encoders: only the trait `HardwareEncoderProbe` exists (run the test in a child process with a
   time limit, store the result together with a GPU/driver fingerprint, fall back to OpenH264 on failure).
   No hardware encoder is implemented. The 1280x720 test size and 30 s limit are placeholders.
@@ -115,7 +192,8 @@ sources read:
 | Change detection | `cargo test -p cc-capture` | A changed byte anywhere changes the hash; equal pictures are "unchanged"; the stubs return `Unsupported` |
 | X11 capture under Xvfb | same (starts a private Xvfb; skips with a note if `Xvfb` is missing) | A window of a known colour is read with the right colour at the right place; many `Unchanged` calls while nothing happens; a colour change gives a frame again; DAMAGE is in use; pacing about right |
 | Encoder / decoder | `cargo test -p cc-media` | Encode a solid frame, decode it, mean colour within 12 of the original; IDR on request only; SPS is Baseline; odd sizes cropped; RTP reassembly incl. FU-A and lost packets; static refresh timing |
-| Same through Cisco's binary | `COMETCAST_OPENH264_LIB=<file> cargo test -p cc-media --no-default-features --features h264-libloading` | The prebuilt library works through the same API; an unknown file is refused |
+| Same through Cisco's binary | `COMETCAST_OPENH264_LIB=<file> cargo test -p cc-media --no-default-features --features h264-libloading` (or `COMETCAST_CODEC_DIR=<folder with the exact file name>`) | The prebuilt library works through the same API; an unknown file is refused |
+| Codec manager | `cargo test -p cc-codec --features download` (`-- --ignored` adds two tests that download from Cisco) | Hash check (tamper), platform table, bzip2/raw sniffing, size caps and a decompression bomb, atomic write, symlink refusal, no redirects, https only, retries; local HTTP server with a fake library |
 | Screen pipeline with a scripted source | `cargo test -p cc-sender` | First frame is IDR; no capture while a frame is in flight; a static screen gives exactly one picture plus 3 refreshes and then silence; a key frame request is answered on a static screen. With a scripted encoder that skips pictures: 40 skipped encodes after the first frame still end with the 3 refreshes sent; a skipped new picture is retried until sent; a key frame request survives 5 skipped attempts and is cleared only when the key frame went out; 1000 requests within half a second give one accepted request and 999 counted as ignored; a panic in the capture thread is reported; `stop` returns within its time limit while the capture call is stuck |
 | RandR change of a monitor | `cargo test -p cc-capture` (`a_monitor_source_follows_a_randr_change`) | Under Xvfb a second client gives the CRT controller a 400x300 mode; the `monitor:0` source then delivers 400x300 frames (without listening to RandR events it stayed at the old rectangle and delivered nothing; checked by disabling the event handling once) |
 | End to end | `cargo test -p cc-receiver --test screen` | Real `cc-server`, Xvfb with a full-screen red window, `SenderCore` with the X11 source, `ReceiverCore` with the packet tap; the received H.264 is reassembled and decoded with OpenH264; the decoded picture is red, 640x480; after the window turns blue the decoded picture turns blue; then the sender produces no frames while the screen is static; a PLI from the receiver is answered with a key frame |
@@ -226,4 +304,4 @@ with a key frame of about 1 KB; why the browser asks that often was not investig
 - CPU on weak school PCs; the numbers above are from one shared VM.
 - Browsers other than the one Chromium named; Safari and Firefox H.264 behaviour; hardware decoders.
 - The licensing questions above.
-- Whether `h264-libloading` works on Windows/macOS (the crate lists the library names; not tried).
+- Whether `h264-libloading` works on Windows/macOS/Android (the crate lists the library names; the download path was only run on Linux x86_64).

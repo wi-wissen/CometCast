@@ -39,7 +39,7 @@ all = { level = "warn", priority = -1 }
 default = ["h264-source"]
 h264 = ["dep:cc-media"]
 h264-source = ["h264", "cc-media/h264-source", "cc-sender/h264-source"]
-h264-libloading = ["h264", "cc-media/h264-libloading", "cc-sender/h264-libloading"]
+h264-libloading = ["h264", "cc-media/h264-libloading", "cc-sender/h264-libloading", "dep:cc-codec"]
 
 [dependencies]
 cc-proto.workspace = true
@@ -57,6 +57,8 @@ cc-docs.workspace = true
 cc-office = { path = "../cc-office", default-features = false }
 cc-discovery = { path = "../cc-discovery" }
 cc-media = { workspace = true, optional = true }
+# Download and lookup of Cisco's OpenH264 library (release builds, feature `h264-libloading`).
+cc-codec = { workspace = true, optional = true, features = ["download"] }
 tokio.workspace = true
 # Host name of a received link (WHATWG parser, the same one cc-files uses for validation).
 url = "2"

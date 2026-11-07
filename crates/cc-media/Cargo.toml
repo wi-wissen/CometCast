@@ -20,8 +20,10 @@ workspace = true
 # themselves (the CLI decides for releases); this default only serves `cargo test -p cc-media`.
 default = ["h264-source"]
 h264-source = ["openh264/source"]
-h264-libloading = ["openh264/libloading"]
+h264-libloading = ["openh264/libloading", "dep:cc-codec"]
 
 [dependencies]
 openh264.workspace = true
+# Only the lookup of the downloaded library (no HTTP client); see H264Backend::from_env.
+cc-codec = { workspace = true, optional = true }
 thiserror.workspace = true

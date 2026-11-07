@@ -85,7 +85,7 @@ lines.push('');
 lines.push('### Notes');
 lines.push('');
 lines.push('- Verify downloads with `sha256sum -c SHA256SUMS`.');
-lines.push('- H.264: the native apps are built with the OpenH264 `h264-libloading` mode. No video until the codec manager lands: the apps do not download Cisco\'s `libopenh264` themselves yet, so it must be supplied by hand at run time (`COMETCAST_OPENH264_LIB`), see docs/capture.md.');
+lines.push('- H.264: the native apps are built with the OpenH264 `h264-libloading` mode and download Cisco\'s `libopenh264` on first use after the user agrees (checked against a pinned SHA-256). Only the Linux x86_64 download and load was tested; Windows, macOS and Android were not. `cometcast-cli` does not download it (set `COMETCAST_CODEC_DIR` or `COMETCAST_OPENH264_LIB`). See docs/capture.md.');
 lines.push('- Windows, macOS and iOS Flutter builds bundle a Rust core and workers only as far as this workflow does it (docs/releasing.md); the project README lists these platforms as not verified.');
 if (image) lines.push(`- Container image: \`${image}:${version}\` (linux/amd64, linux/arm64). \`latest\` was NOT moved: run the "Promote latest" workflow after publishing this release (full releases only). The image has no PDF viewer.`);
 lines.push('');

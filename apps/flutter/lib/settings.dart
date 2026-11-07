@@ -18,6 +18,12 @@ abstract class SettingsStore {
 
   /// Save the server. Failures are ignored: remembering is a convenience.
   Future<void> saveServer(String server);
+
+  /// Did the person agree to download the video codec? (Asked once, then remembered.)
+  Future<bool> loadCodecConsent() async => false;
+
+  /// Remember the agreement. Failures are ignored.
+  Future<void> saveCodecConsent(bool consent) async {}
 }
 
 /// Keeps the value in memory only (tests).
@@ -31,6 +37,14 @@ class MemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> saveServer(String server) async => this.server = server;
+
+  bool codecConsent = false;
+
+  @override
+  Future<bool> loadCodecConsent() async => codecConsent;
+
+  @override
+  Future<void> saveCodecConsent(bool consent) async => codecConsent = consent;
 }
 
 /// Saves the value with the `shared_preferences` package.
@@ -60,6 +74,28 @@ class PrefsSettingsStore implements SettingsStore {
       await prefs.setString(_key, server);
     } catch (_) {
       // Not saved; the app works without.
+    }
+  }
+
+  static const _consentKey = 'codecConsent';
+
+  @override
+  Future<bool> loadCodecConsent() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_consentKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> saveCodecConsent(bool consent) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_consentKey, consent);
+    } catch (_) {
+      // Not saved; the person is asked again next time.
     }
   }
 }
@@ -321,6 +357,22 @@ class AppSettings extends ChangeNotifier {
       _serverAddress = prefill;
       _valueSource = null;
     }
+  }
+
+  bool _codecConsent = false;
+
+  /// The person agreed to download the video codec (remembered between runs).
+  bool get codecConsent => _codecConsent;
+
+  /// Read the remembered consent from the store.
+  Future<void> loadCodecConsent() async {
+    _codecConsent = await store?.loadCodecConsent() ?? _codecConsent;
+  }
+
+  /// Remember that the person agreed to the download.
+  Future<void> rememberCodecConsent() async {
+    _codecConsent = true;
+    await store?.saveCodecConsent(true);
   }
 
   /// Remember the current server for the next start (call when it is used). Not under a lock,
