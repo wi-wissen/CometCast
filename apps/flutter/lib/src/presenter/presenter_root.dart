@@ -19,6 +19,7 @@ import '../../capture_feeder.dart';
 import '../../core/android_capture.dart';
 import '../../core/core_api.dart';
 import '../../core/ios_broadcast.dart';
+import '../../core/ios_share_settings.dart';
 import '../../core/launch_intake.dart';
 import '../../core/nearby_platform.dart';
 import '../../core/link_target.dart';
@@ -139,7 +140,12 @@ class PresenterRoot extends StatefulWidget {
     this.tvController,
     this.licenceLoader,
     this.leaveApp,
+    this.iosShareSettings,
   });
+
+  /// iOS: hands the name, the confirmed servers and the last server to the share extension
+  /// (App Group, spec 15.3); null elsewhere.
+  final IosShareSettings? iosShareSettings;
 
   /// The file dialog by kind (spec 15.6: Office types only while the switch is on; PDF only for
   /// "Pick my own PDF instead"; photos for a TV). Null: [pickFile] for every kind.
@@ -347,6 +353,7 @@ class PresenterRootState extends State<PresenterRoot>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncNearby();
       _takeShared();
+      unawaited(_syncShareSettings(readBack: true));
     });
   }
 
@@ -357,6 +364,7 @@ class PresenterRootState extends State<PresenterRoot>
 
   void _onSettings() {
     if (!mounted) return;
+    unawaited(_syncShareSettings());
     _syncNearby();
     setState(() {});
   }
@@ -503,6 +511,7 @@ class PresenterRootState extends State<PresenterRoot>
       return;
     }
     widget.settings.setDisplayName(_name.text);
+    unawaited(_syncShareSettings());
     _nearby?.stop();
     _nearbyConnectId = null;
     _sessionServer = null;
@@ -511,6 +520,38 @@ class PresenterRootState extends State<PresenterRoot>
       _codeEmpty = false;
     });
     _beginSession();
+  }
+
+  /// iOS: the settings the share extension reads (native-apps.md 21.3). [readBack]: first take
+  /// the name the extension may have changed.
+  bool _shareSettingsRead = false;
+
+  Future<void> _syncShareSettings({bool readBack = false}) async {
+    final s = widget.iosShareSettings;
+    if (s == null) return;
+    if (!readBack && !_shareSettingsRead) return; // the first read comes first
+    try {
+      if (readBack) {
+        final d = await s.read();
+        if (!mounted) return;
+        if (d != null &&
+            d.name.isNotEmpty &&
+            d.name != widget.settings.displayName) {
+          widget.settings.setDisplayName(d.name);
+          _name.text = widget.settings.displayName;
+        }
+      }
+      _shareSettingsRead = true;
+      await s.write(
+        ShareSettingsData(
+          name: widget.settings.displayName,
+          confirmedServers: widget.settings.confirmedServers.toList()..sort(),
+          lastServer: await widget.settings.store?.loadServer(),
+        ),
+      );
+    } catch (_) {
+      // No App Group (a build without signing): the extension then has the defaults.
+    }
   }
 
   /// Join once: the host is asked here, not again for what is shown next (native-apps.md 20.1).
@@ -756,7 +797,9 @@ class PresenterRootState extends State<PresenterRoot>
           _waitStart = DateTime.now();
           _go(PresenterPage.waiting);
         case PresenterSessionPhase.joined:
-          if (_tvRow == null) widget.settings.rememberServer();
+          if (_tvRow == null) {
+            widget.settings.rememberServer().then((_) => _syncShareSettings());
+          }
           _tvCtl?.endConnect();
           if (from == PresenterSessionPhase.presenting) _releaseCapture();
           if (_shareWanted && _shareItem != null) {

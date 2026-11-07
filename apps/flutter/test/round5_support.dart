@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
+import 'package:cometcast/core/ios_share_settings.dart';
 import 'package:cometcast/core/launch_intake.dart';
 import 'package:cometcast/core/share_intake.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
@@ -122,6 +123,7 @@ Future<R5> pumpR5(
   PresenterDevice? device,
   List<String>? pickResults,
   bool announcements = true,
+  IosShareSettings? iosShare,
 }) async {
   await t.runAsync(loadAppFonts);
   final core = fake ?? FakeCoreApi();
@@ -193,6 +195,7 @@ Future<R5> pumpR5(
         tvController: tv,
         licenceLoader: () async => fakeLicences(),
         leaveApp: () => log.add('leave'),
+        iosShareSettings: iosShare,
       ),
     ),
   );
@@ -228,4 +231,20 @@ Future<void> tapKey(WidgetTester t, String key) async {
 Future<void> tapText(WidgetTester t, String text) async {
   await t.tap(find.text(text));
   await settle(t);
+}
+
+/// The App Group of the share extension, in memory.
+class FakeIosShareSettings implements IosShareSettings {
+  ShareSettingsData? stored;
+  final writes = <ShareSettingsData>[];
+
+  @override
+  Future<ShareSettingsData?> read() async => stored;
+
+  @override
+  Future<bool> write(ShareSettingsData data) async {
+    stored = data;
+    writes.add(data);
+    return true;
+  }
 }

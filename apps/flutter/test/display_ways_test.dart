@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/core/miracast.dart';
-import 'package:cometcast/src/design/tokens.dart';
 
 import 'display_support.dart';
 import 'fake_core.dart';
@@ -16,58 +15,9 @@ import 'fake_miracast.dart';
 
 import 'package:cometcast/licences.dart';
 
-import 'round5_support.dart' show fakeLicences;
 import 'solid_frame.dart';
 
-Future<void> pump(WidgetTester t, [int ms = 50]) =>
-    t.pump(Duration(milliseconds: ms));
-
-Future<DisplayHarness> ways(
-  WidgetTester t, {
-  bool airplay = true,
-  FakeMiracastCore? miracast,
-  Appearance appearance = Appearance.dark,
-  Locale locale = const Locale('en'),
-  bool tv = false,
-  String server = 'cast.example.org',
-}) async {
-  final core = FakeCoreApi()..airplayAvailable = airplay;
-  final h = await pumpDisplay(
-    t,
-    tv: tv,
-    core: core,
-    miracast: miracast,
-    offerWays: true,
-    appearance: appearance,
-    locale: locale,
-    server: server,
-    licenceLoader: () async => fakeLicences(),
-  );
-  await pump(t, 100);
-  return h;
-}
-
-Future<void> openSettings(WidgetTester t) async {
-  await t.tap(find.byKey(const Key('settings-open')));
-  await pump(t);
-}
-
-Future<void> toggle(WidgetTester t, String way) async {
-  await t.tap(find.byKey(Key('settings-way-$way')));
-  await pump(t, 100);
-}
-
-String? focusLabel() => FocusManager.instance.primaryFocus?.debugLabel;
-
-Future<void> key(WidgetTester t, LogicalKeyboardKey k) async {
-  await t.sendKeyEvent(k);
-  await pump(t);
-}
-
-Future<void> rxEvent(WidgetTester t, DisplayHarness h, AirplayUiEvent e) async {
-  h.core.airplayControllers.last.add(e);
-  await pump(t);
-}
+import 'ways_support.dart';
 
 void main() {
   group('Settings: Without the app (15.4)', () {
@@ -468,6 +418,36 @@ void main() {
     );
   });
 
+  group('a dialog over an AirPlay mirror (21.4)', () {
+    testWidgets('the window is raised for the dialog and lowered after it', (
+      t,
+    ) async {
+      final raised = <bool>[];
+      final h = await ways(
+        t,
+        raise: (on) async {
+          raised.add(on);
+          return true;
+        },
+      );
+      await openSettings(t);
+      await toggle(t, 'airplay');
+      await t.tap(find.byKey(const Key('settings-close')));
+      await pump(t);
+      await rxEvent(t, h, const AirplayUiEvent.mirroring(active: true));
+      expect(raised, isEmpty);
+      h.core.receiverEvents.add(
+        ReceiverUiEvent.joinRequest(id: BigInt.one, name: 'Lena', check: 42),
+      );
+      await pump(t, 100);
+      expect(raised, [true]);
+      await pump(t, 1100);
+      await t.tap(find.byKey(const Key('request-no')));
+      await pump(t, 100);
+      expect(raised, [true, false]);
+    });
+  });
+
   group('Miracast (15.4)', () {
     Future<(DisplayHarness, FakeMiracastCore)> running(
       WidgetTester t, {
@@ -694,7 +674,7 @@ void main() {
           t,
           core: core,
           offerWays: false,
-          licenceLoader: () async => LicenceSetOf(long),
+          licenceLoader: () async => licenceSetOf(long),
         );
         await pump(t, 100);
         await openSettings(t);
@@ -722,7 +702,7 @@ void main() {
   });
 }
 
-LicenceSet LicenceSetOf(String text) => LicenceSet(
+LicenceSet licenceSetOf(String text) => LicenceSet(
   featured: [
     LicenceEntry(name: 'Long', licence: 'x', text: text, featured: true),
   ],

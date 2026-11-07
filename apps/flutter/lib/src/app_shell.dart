@@ -12,12 +12,14 @@ import '../core/android_capture.dart';
 import '../core/android_platform.dart';
 import '../core/core_api.dart';
 import '../core/ios_broadcast.dart';
+import '../core/ios_share_settings.dart';
 import '../core/launch_intake.dart';
 import '../core/link_target.dart';
 import '../core/miracast.dart';
 import '../core/nearby_platform.dart';
 import '../core/share_intake.dart';
 import '../licences.dart' show LicenceSet;
+import '../window_control.dart' show RaiseWindow;
 import '../miracast_page.dart';
 import '../receiver_controller.dart' show UrlOpener;
 import '../settings.dart';
@@ -54,7 +56,12 @@ class AppShell extends StatefulWidget {
     this.shareIntake,
     this.offerWays,
     this.licenceLoader,
+    this.iosShareSettings,
+    this.raise,
   });
+
+  final RaiseWindow? raise;
+  final IosShareSettings? iosShareSettings;
 
   final bool? offerWays;
   final Future<LicenceSet> Function()? licenceLoader;
@@ -146,6 +153,7 @@ class _AppShellState extends State<AppShell> {
           canOpenLinks: widget.canOpenLinks,
           miracast: widget.miracast,
           offerWays: widget.offerWays,
+          raise: widget.raise,
           licenceLoader: widget.licenceLoader,
           setFullscreenOnSetupDone: !(Platform.isAndroid || Platform.isIOS),
         );
@@ -159,6 +167,7 @@ class _AppShellState extends State<AppShell> {
           pickFileFor: widget.pickFileFor,
           openUrl: widget.openUrl,
           shareIntake: widget.shareIntake,
+          iosShareSettings: widget.iosShareSettings,
           androidCapture: widget.androidCapture,
           iosBroadcast: widget.iosBroadcast,
           scanQr: widget.scanQr,

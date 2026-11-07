@@ -413,3 +413,47 @@ Asked by the round 5 core implementer (Part B of [fix-list-round5.md](fix-list-r
 - **L9 App Links.** `apple-app-site-association` now lists only `/app/??????` and the iOS associated domain is only `cometcast.de` (a second path `/??????` on the same file would also match six-character pages of the website). The Android `relay.cometcast.de/......` filter stays, as the fix list allows.
 - **L10 Tests that could not be run or fail for the environment.** `cargo test -p cc-airplay-sender --test uxplay_interop` fails here with "Connection refused": it starts the real UxPlay and this container has no working Avahi (the same reason as the fixture `uxplay-1.68-real-no-dnssd.txt`); not related to the round. Kotlin and Swift were only checked for balanced brackets (no compiler here).
 - **L11 Miracast (C4).** Only the Dart side exists: `displayMiracastPairing` (`pin_required`, always) and `miracastStateLine` (adapter unsupported -> `noHw`, feature missing -> `noFeature`, policy -> `policy`, else `failed`) in `lib/core/miracast.dart`, tested. Consent per join mode, frames into the display stage and the stop on Locked/End reuse the existing `cc-miracast-ffi` calls and belong to the display controller of F8; the cases of native-apps.md 21.9 item 3 are in `docs/miracast-device-test-plan.md` section I, **not run** (no Windows 11 hardware).
+
+## M. Questions from round 5 (UI)
+
+Asked by the round 5 Flutter implementer (Part A of [fix-list-round5.md](fix-list-round5.md), items F1 to F8, F10 to F12; F9 is not done, see M1). Nothing here was decided by the implementer; "did meanwhile" is the minimal neutral behaviour.
+
+1. **F9 (retire the presenter Miracast page and `app.miracast`) is not done.**
+   - **Found:** the fix list says "only after F8 passed `docs/miracast-device-test-plan.md` on real Windows hardware". No Windows hardware here; the cases (section I of the plan) are not run.
+   - **Done meanwhile:** F8 is built (display Settings row, consent per join mode, frames in the display stage, stop on Locked/End); the link, `miracast_page.dart` and the `miracast*` keys stay. The display stage reuses `MiracastVideoView` from `miracast_page.dart`, so that widget has to move before the page is deleted.
+   - **Question:** none, only the order: run the device test, then F9.
+2. **`about.publisher` has no name in it.**
+   - **Found:** the copy is "Published by Schulverwalter GmbH" (a fixed text), but `branding.g.dart` has `publisherName` (any string); a fork with another publisher would get the wrong sentence.
+   - **Options:** (a) a `{name}` placeholder in the key; (b) show the line only for the official build's name.
+   - **Did:** the key as given, shown whenever `Branding.publisherName` is not empty (the default build shows nothing). Same in the presenter About and the display About dialog.
+3. **Hiding a TV by the address of a Comet Cast row (N84, 15.5) cannot use IP addresses yet.**
+   - **Found:** `NearbyScreenInfo` carries `server` (the relay address) but no addresses of the screen; the IP of an in-house screen that is also an AirPlay receiver is not available to Dart. The fix list names the rule "hidden when the IP belongs to a Comet Cast row".
+   - **Options:** an `addresses` field on `NearbyScreenInfo` (changes the bridge); or the core hides the TV itself.
+   - **Did:** `TvController.setHiddenAddresses` is fed with the host part of every Comet Cast row's `server`; it matches only where a screen announces its own IP as its server. Tested with that hook.
+4. **Filter label of the file dialog.**
+   - **Found:** `send.content.pickerTypes` says "Images, PDF and Office files"; the reduced sets (Office off, PDF only, photos for a TV) need no such text and no key exists for them.
+   - **Did:** the label is passed only for the full set; the reduced sets pass an empty label (on GTK the filter shows no name). 
+   - **Question:** do the reduced filters want names (new keys)?
+5. **Gaps the spec does not give.**
+   - 5 between the code field and the address line (`start.via`), tap area 44 for the link; the Use/Cancel row below the field on the phone and on the right when the column is at least 480 wide on the laptop; the TV section's gap is 14 above its label and 8 below it.
+   - The licence viewer rows: 40 high with 2 between them; the group labels have no fixed height (10 above, 4 below).
+   - **Question:** are these right?
+6. **Where "Flutter engine" sits in the list.**
+   - **Found:** spec 15.9 names the entry but not its place. **Did:** last in "All parts" (presenter and display). Its text is read from `LicenseRegistry` when the entry is opened.
+7. **Licence entries from the notices.**
+   - **Found:** the names of the featured notices are not in the files (`## OpenH264 notice`). **Did:** fixed names "Cisco OpenH264", "Atkinson Hyperlegible", "Open Screen Library", "PDFium Foxit font", "Adobe CMap"; the text of a notice is the section body without fences; of a `####` entry the fenced block (so the subtitle is the first licence line, not "Used by"). "Liberation, Carlito, Caladea" is the whole Office-fonts section (subtitle cut at 60 characters). Open Screen Library only on desktop builds, the fonts where the Office worker is found, UxPlay only when its licence asset exists (none yet: the name `UxPlay` is not wired to a file).
+8. **The Miracast PIN.**
+   - **Found:** with `pin_required` the PIN comes with the pending request (`MiracastRequest.pin`); the plan item I2 does not say whether Windows draws a PIN of its own as well.
+   - **Did:** the PIN dialog shows `pending.pin` (groups of 4); no dialog when the request has no PIN.
+9. **One queue for Comet Cast and AirPlay/Miracast requests.**
+   - **Found:** the Comet Cast queue (`ReceiverController`) and the receive requests are separate; no common arrival time.
+   - **Did:** a way request shows when no Comet Cast request waits; a way request that is showing is not replaced by a Comet Cast request that arrives later; both waiting at once: Comet Cast first.
+10. **Display Settings height.** With both rows the dialog is 510 ref high (EN and DE) at 1920 x 1080 against "about 480" in 15.4; it never scrolls. Nothing was shrunk.
+11. **Share page, Android.**
+    - Cancel (and system Back) on the share page also leaves the app's activity (`SystemNavigator.pop`), to return to the app that shared, also when the app held a join; the join then ends with the app. "Show on {room}" while waiting for the approval waits for the join and then presents.
+    - The not-connected variant shows no `app.beDisplay` link and no settings button (as 15.3 lists the parts).
+12. **Licence viewer focus.** On computers (with the search field) the first list row takes the initial focus too, so that Right reaches the pane at once; the spec gives the D-pad rules only.
+13. **`tv.aria` and the Beta table.** The key's text contains "Beta" literally; when `betaFeatures` loses `otherTvs` the row label falls back to "{name}, {way}" composed in code (no key).
+14. **`idle.appLine` and `/app`.** The key text is "…{dom}/app"; where the join address already ends in `/app` the code passes `{dom}` without it (the same words). No new key.
+15. **The About web line on the display** (`about.webTv`, `{url}`): the host of the privacy URL of the branding file; hidden when the build has no privacy or imprint URL.
+16. **The iOS share settings channel** (`ios_share_settings.dart`) was not used by anything. It is now: read once at the start (the name the extension changed wins), written on Connect, on a settings change and after a joined session. Not run on a device.

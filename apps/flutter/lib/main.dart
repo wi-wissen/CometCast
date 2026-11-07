@@ -16,6 +16,7 @@ import 'core/android_video.dart';
 import 'core/core_api.dart';
 import 'core/app_links.dart';
 import 'core/ios_broadcast.dart';
+import 'core/ios_share_settings.dart';
 import 'core/launch_intake.dart';
 import 'core/nearby_platform.dart';
 import 'core/link_target.dart' show LinkNothing;
@@ -37,6 +38,7 @@ import 'receiver_controller.dart' show UrlOpener;
 import 'settings.dart';
 import 'core/native_announce.dart';
 import 'licences.dart' show LicenceSet;
+import 'window_control.dart' show RaiseWindow;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -101,6 +103,7 @@ Future<void> main() async {
       // through the bridge, mdns-sd in the core on computers. TVs never show it (no presenter).
       nearbyPlatform: android.tv ? null : nearbyPlatformFor(core),
       pickFileFor: pickFileOfKind,
+      iosShareSettings: Platform.isIOS ? ChannelIosShareSettings() : null,
       // Android: the item of the system share sheet (spec 15.3); the TV launcher ignores it.
       shareIntake: Platform.isAndroid && !android.tv
           ? ChannelShareIntake()
@@ -193,6 +196,8 @@ class CometCastApp extends StatelessWidget {
     this.shareIntake,
     this.offerWays,
     this.licenceLoader,
+    this.iosShareSettings,
+    this.raise,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   /// The file dialog by kind (spec 15.6); null: [pickFile] for every kind (tests).
@@ -200,6 +205,12 @@ class CometCastApp extends StatelessWidget {
 
   /// The item of the Android share sheet; null elsewhere and in most tests.
   final ShareIntake? shareIntake;
+
+  /// Tests: raises the window for dialogs over an AirPlay mirror.
+  final RaiseWindow? raise;
+
+  /// iOS: the settings of the share extension (App Group); null elsewhere.
+  final IosShareSettings? iosShareSettings;
 
   /// Tests: offer AirPlay and Miracast on the display (null: by platform).
   final bool? offerWays;
@@ -335,6 +346,8 @@ class CometCastApp extends StatelessWidget {
         shareIntake: shareIntake,
         offerWays: offerWays,
         licenceLoader: licenceLoader,
+        iosShareSettings: iosShareSettings,
+        raise: raise,
       ),
     );
   }

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/core/miracast.dart' show MiracastCore;
 import 'package:cometcast/licences.dart' show LicenceSet;
+import 'package:cometcast/window_control.dart' show RaiseWindow;
 import 'package:cometcast/main.dart';
 import 'package:cometcast/receiver_controller.dart' show UrlOpener;
 import 'package:cometcast/settings.dart';
@@ -65,6 +66,7 @@ Future<DisplayHarness> pumpDisplay(
   MiracastCore? miracast,
   bool? offerWays,
   Future<LicenceSet> Function()? licenceLoader,
+  RaiseWindow? raise,
 }) async {
   await tester.runAsync(loadAppFonts);
   final c = core ?? FakeCoreApi();
@@ -94,6 +96,7 @@ Future<DisplayHarness> pumpDisplay(
       miracast: miracast,
       offerWays: offerWays,
       licenceLoader: licenceLoader,
+      raise: raise,
     ),
   );
   for (var i = 0; i < 40; i++) {

@@ -29,6 +29,7 @@ import 'fake_core.dart';
 import 'fake_miracast.dart';
 import 'nearby_support.dart';
 import 'shot.dart';
+import 'screenshots_round5.dart';
 import 'solid_frame.dart';
 
 final _on = Platform.environment['COMETCAST_SHOTS'] != null;
@@ -47,6 +48,8 @@ void main() {
     test('screenshots are off (set COMETCAST_SHOTS)', () {}, skip: true);
     return;
   }
+
+  registerRound5Shots();
 
   final looks = {
     'dark': Appearance.dark,

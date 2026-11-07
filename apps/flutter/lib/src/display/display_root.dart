@@ -84,7 +84,12 @@ class DisplayRoot extends StatefulWidget {
     this.receive,
     this.offerWays,
     this.licenceLoader,
+    this.raise,
   });
+
+  /// Raises the Comet Cast window above UxPlay's full-screen mirror while a dialog needs the
+  /// person (native-apps.md 21.4); null: the platform's. A fake in tests.
+  final RaiseWindow? raise;
 
   /// The Windows Miracast receiver (a fake in tests); null elsewhere: no Miracast row.
   final MiracastCore? miracast;
@@ -161,6 +166,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   final FocusNode _aboutNode = RowNode(row: 0, col: 0, debugLabel: 'about');
   ReceiveWays? _rx;
   bool _wayDialog = false;
+  bool _raised = false;
   bool _controlsShown = false;
   bool _dimmed = false;
   bool _canOpen = true;
@@ -400,6 +406,15 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _wayDialog = false;
     } else if (c.requests.isEmpty) {
       _wayDialog = true; // first come, first served
+    }
+    // A dialog over a running AirPlay mirror: the window comes to the front for it and goes
+    // back after it (native-apps.md 21.4).
+    final needRaise =
+        (rx?.airplayMirroring ?? false) &&
+        (c.requests.isNotEmpty || rx?.request != null || rx?.pin != null);
+    if (needRaise != _raised) {
+      _raised = needRaise;
+      unawaited((widget.raise ?? raiseWindow)(needRaise));
     }
     // A join request closes Settings: one dialog at a time (spec 4.3).
     if ((c.requests.isNotEmpty || rx?.request != null || rx?.pin != null) &&

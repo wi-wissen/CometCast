@@ -158,12 +158,10 @@ class PScrollPage extends StatelessWidget {
                   pad.bottom,
                 ),
                 sliver: SliverToBoxAdapter(
-                  child: Align(
-                    alignment: s.laptop
-                        ? Alignment.centerLeft
-                        : Alignment.center,
-                    child: footer,
-                  ),
+                  // Phone: the full-width action as on every page; laptop: at the left.
+                  child: s.laptop
+                      ? Align(alignment: Alignment.centerLeft, child: footer)
+                      : footer,
                 ),
               ),
             ],
