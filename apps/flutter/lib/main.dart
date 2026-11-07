@@ -10,6 +10,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'core/android_capture.dart';
+import 'core/android_platform.dart';
+import 'core/android_video.dart';
 import 'core/core_api.dart';
 import 'core/rust_loader.dart';
 import 'home_page.dart';
@@ -36,13 +38,65 @@ Future<void> main() async {
     // Development only: share another X11 display, e.g. COMETCAST_CAPTURE_DISPLAY=:99.
     captureDisplay: _env('COMETCAST_CAPTURE_DISPLAY'),
   );
+  final android = await _androidSetup(core);
   runApp(
     CometCastApp(
       core: core,
       settings: settings,
       // Used only when the Rust core lists the Android projection (Android builds).
       androidCapture: Platform.isAndroid ? const ChannelAndroidCapture() : null,
+      tv: android.tv,
+      androidPlatform: android.platform,
+      videoDecoder: android.videoDecoder,
+      deviceName: android.deviceName,
     ),
+  );
+}
+
+/// What this device is (Android only): television or not, the model name, the workers, and
+/// whether received video goes through the hardware decoder.
+///
+/// `--dart-define=COMETCAST_VIDEO=auto|hardware|software` (default `auto`): `auto` uses the
+/// device's own decoder (MediaCodec into a texture) on a television and the software decoder of
+/// the core elsewhere; the other two force one path, for measuring both on the same device
+/// (docs/android-device-test-plan.md). UNCERTAIN: neither path was run on a device.
+Future<
+  ({
+    bool tv,
+    AndroidPlatform? platform,
+    AndroidVideoDecoder? videoDecoder,
+    String? deviceName,
+  })
+>
+_androidSetup(CoreApi core) async {
+  if (!Platform.isAndroid) {
+    return (tv: false, platform: null, videoDecoder: null, deviceName: null);
+  }
+  const platform = ChannelAndroidPlatform();
+  var tv = false;
+  String? name;
+  try {
+    tv = await platform.isTelevision();
+    final info = await platform.deviceInfo();
+    // One line for `adb logcat -s flutter`: what a device test ran on.
+    debugPrint('cometcast: device $info');
+    final model = info['model'];
+    if (model is String && model.trim().isNotEmpty) name = model.trim();
+    await configureAndroidWorkers(core, platform);
+    debugPrint(
+      'cometcast: docs worker ${core.docsWorkerPath()}, '
+      'office worker ${core.officeWorkerPath()}',
+    );
+  } catch (e) {
+    debugPrint('cometcast: Android setup failed: $e');
+  }
+  const mode = String.fromEnvironment('COMETCAST_VIDEO', defaultValue: 'auto');
+  final hardware = mode == 'hardware' || (mode == 'auto' && tv);
+  return (
+    tv: tv,
+    platform: platform,
+    videoDecoder: hardware ? const ChannelAndroidVideoDecoder() : null,
+    deviceName: name,
   );
 }
 
@@ -79,9 +133,25 @@ class CometCastApp extends StatelessWidget {
     this.androidCapture,
     this.pickFile = pickImageOrPdf,
     this.openUrl = launchInBrowser,
+    this.tv = false,
+    this.androidPlatform,
+    this.videoDecoder,
+    this.deviceName,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   final Locale? locale;
+
+  /// A television (Android TV / Google TV): receiver only, big room code, remote control.
+  final bool tv;
+
+  /// Android hooks such as keep-screen-on (a fake in tests); null elsewhere.
+  final AndroidPlatform? androidPlatform;
+
+  /// The device's own video decoder, or null for the software decoder.
+  final AndroidVideoDecoder? videoDecoder;
+
+  /// The name this device announces itself with, or null for the host name.
+  final String? deviceName;
 
   /// The Android screen capture (a fake in tests); null on other platforms.
   final AndroidCapture? androidCapture;
@@ -100,6 +170,16 @@ class CometCastApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return DeviceProfile(
+      tv: tv,
+      platform: androidPlatform,
+      videoDecoder: videoDecoder,
+      deviceName: deviceName,
+      child: _app(),
+    );
+  }
+
+  Widget _app() {
     return MaterialApp(
       // onGenerateTitle is used because the title needs translations.
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,

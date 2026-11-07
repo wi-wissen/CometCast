@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'core/android_capture.dart';
+import 'core/android_platform.dart';
 import 'core/core_api.dart';
 import 'receive_page.dart';
 import 'receiver_controller.dart' show UrlOpener;
@@ -43,6 +44,10 @@ class HomePage extends StatelessWidget {
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
     }
 
+    final tv = DeviceProfile.of(context).tv;
+    void openReceive() =>
+        open(ReceivePage(core: core, settings: settings, openUrl: openUrl));
+
     // One traversal group + visible focus frames: the screen works with the arrow keys and
     // select of a TV remote (Android TV / Google TV), see docs/android.md.
     return FocusTraversalGroup(
@@ -62,49 +67,82 @@ class HomePage extends StatelessWidget {
               Expanded(
                 child: ListView(
                   children: [
-                    FocusRing(
-                      child: ListTile(
-                        autofocus: true,
-                        leading: const Icon(Icons.screen_share_outlined),
-                        title: Text(t.homeSendScreen),
-                        subtitle: Text(t.homeSendScreenHint),
-                        onTap: () => open(
-                          SendPage(
-                            core: core,
-                            settings: settings,
-                            androidCapture: androidCapture,
+                    // A television only receives (no touch screen, usually no screen capture
+                    // and no file picker): one big entry, focused at start.
+                    if (tv) ...[
+                      FocusRing(
+                        child: ListTile(
+                          key: const Key('tvReceiveTile'),
+                          autofocus: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 48,
+                            vertical: 24,
+                          ),
+                          leading: const Icon(
+                            Icons.download_outlined,
+                            size: 56,
+                          ),
+                          title: Text(
+                            t.homeReceive,
+                            style: Theme.of(context).textTheme.headlineMedium,
+                          ),
+                          subtitle: Text(
+                            t.homeReceiveTvHint,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          onTap: openReceive,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 48,
+                          vertical: 16,
+                        ),
+                        child: Text(
+                          t.homeReceiverOnlyTv,
+                          key: const Key('tvReceiverOnlyNotice'),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ] else ...[
+                      FocusRing(
+                        child: ListTile(
+                          autofocus: true,
+                          leading: const Icon(Icons.screen_share_outlined),
+                          title: Text(t.homeSendScreen),
+                          subtitle: Text(t.homeSendScreenHint),
+                          onTap: () => open(
+                            SendPage(
+                              core: core,
+                              settings: settings,
+                              androidCapture: androidCapture,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    FocusRing(
-                      child: ListTile(
-                        leading: const Icon(Icons.attach_file),
-                        title: Text(t.homeSendFileOrLink),
-                        subtitle: Text(t.homeSendFileOrLinkHint),
-                        onTap: () => open(
-                          SendContentPage(
-                            core: core,
-                            settings: settings,
-                            pickFile: pickFile,
+                      FocusRing(
+                        child: ListTile(
+                          leading: const Icon(Icons.attach_file),
+                          title: Text(t.homeSendFileOrLink),
+                          subtitle: Text(t.homeSendFileOrLinkHint),
+                          onTap: () => open(
+                            SendContentPage(
+                              core: core,
+                              settings: settings,
+                              pickFile: pickFile,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    FocusRing(
-                      child: ListTile(
-                        leading: const Icon(Icons.download_outlined),
-                        title: Text(t.homeReceive),
-                        subtitle: Text(t.homeReceiveHint),
-                        onTap: () => open(
-                          ReceivePage(
-                            core: core,
-                            settings: settings,
-                            openUrl: openUrl,
-                          ),
+                      FocusRing(
+                        child: ListTile(
+                          leading: const Icon(Icons.download_outlined),
+                          title: Text(t.homeReceive),
+                          subtitle: Text(t.homeReceiveHint),
+                          onTap: openReceive,
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

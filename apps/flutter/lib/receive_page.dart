@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'annotations.dart';
+import 'core/android_platform.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
 import 'receiver_controller.dart';
@@ -70,7 +71,12 @@ class _ReceivePageState extends State<ReceivePage> {
     core: widget.core,
     udpBind: widget.settings.udpBind,
     setFullscreen: widget.setFullscreen,
+    hardwareDecoder: _profile.videoDecoder,
   );
+
+  /// TV / hardware decoder / keep-screen-on settings of this device (fixed for the app's life).
+  DeviceProfile get _profile => DeviceProfile.peek(context);
+  bool get _tv => _profile.tv;
   bool _serverEmpty = false;
 
   /// Pen, highlighter, eraser, laser, undo, clear and freeze over the picture or page. Local
@@ -101,13 +107,29 @@ class _ReceivePageState extends State<ReceivePage> {
     widget.settings.discover(widget.core);
     widget.settings.addListener(_onSettings);
     _advertise();
+    // A screen that stays awake while the receive view is open (a TV or tablet on a table
+    // would otherwise go dark in the middle of a talk). UNCERTAIN: not run on a device.
+    final platform = _profile.platform;
+    if (platform != null) {
+      platform.setKeepScreenOn(true).catchError((Object _) {});
+      _keepAwakePlatform = platform;
+    }
+    // A television has no practical way to press "Start": receiving starts by itself.
+    if (_tv && widget.settings.serverAddress.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_controller.isActive) _start();
+      });
+    }
   }
+
+  AndroidPlatform? _keepAwakePlatform;
 
   @override
   void dispose() {
     widget.settings.removeListener(_onSettings);
     widget.settings.cancelDiscovery();
     _advertiseRun++;
+    _keepAwakePlatform?.setKeepScreenOn(false).catchError((Object _) {});
     // Queued behind a start that is still running, so that it cannot outlive this view.
     _advertiseQueue
         .run(() => widget.core.stopAdvertising())
@@ -128,7 +150,7 @@ class _ReceivePageState extends State<ReceivePage> {
       ReceivedImage() => ('image', c.contentEpoch),
       ReceivedDocument() => ('document', c.contentEpoch, shown.page),
       ReceivedLink() => null,
-      null => c.image != null ? 'video' : null,
+      null => c.hasLiveVideo ? 'video' : null,
     };
     if (key != _annotationKey) {
       _annotationKey = key;
@@ -165,7 +187,7 @@ class _ReceivePageState extends State<ReceivePage> {
     _announcementStopped = false;
     final run = ++_advertiseRun;
     bool stale() => !mounted || run != _advertiseRun;
-    final name = widget.receiverName();
+    final name = _profile.deviceName ?? widget.receiverName();
     final server = widget.settings.serverAddress.trim();
     try {
       final result = await _advertiseQueue.run<(AdvertiseOutcome, String?)?>(
@@ -230,6 +252,8 @@ class _ReceivePageState extends State<ReceivePage> {
             _syncAnnotations(_controller);
             return _controller.shown != null
                 ? _buildContent(context)
+                : _controller.textureId != null && _controller.hasLiveVideo
+                ? _buildTextureVideo(context)
                 : _controller.image != null
                 ? _buildVideo(context)
                 : _buildForm(context);
@@ -240,6 +264,54 @@ class _ReceivePageState extends State<ReceivePage> {
   }
 
   // --- the picture ---------------------------------------------------------------------
+
+  /// The picture of the hardware decoder: a Flutter texture. No pixels pass through Dart, so the
+  /// toolbar of annotations (which needs the picture for "freeze") and the size-to-fit scaling
+  /// of the software path are not available here. UNCERTAIN: not run on a device.
+  Widget _buildTextureVideo(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final c = _controller;
+    final (w, h) = c.pictureSize;
+    return CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.keyI): c.toggleStats},
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: w / h,
+                  child: Semantics(
+                    image: true,
+                    label: t.videoViewLabel,
+                    child: Texture(
+                      key: const Key('videoTexture'),
+                      textureId: c.textureId!,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: _VideoToolbar(controller: c, onStop: c.stop),
+              ),
+              ..._contentOverlays(c, t),
+              if (c.showStats)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: _VideoStatsOverlay(controller: c, t: t),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildVideo(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -328,19 +400,23 @@ class _ReceivePageState extends State<ReceivePage> {
 
   /// The toolbar, bottom left. UNCERTAIN: fixed in place (the web toolbar can be dragged);
   /// on a very narrow window it scrolls sideways.
-  Widget _annotationToolbar({ui.Image? Function()? freezeSource}) => Positioned(
-    left: 8,
-    bottom: 8,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        maxWidth: math.max(48, MediaQuery.sizeOf(context).width - 16),
-      ),
-      child: AnnotationToolbar(
-        controller: _annotations,
-        freezeSource: freezeSource,
-      ),
-    ),
-  );
+  Widget _annotationToolbar({ui.Image? Function()? freezeSource}) =>
+      _tv ? const SizedBox.shrink() : _annotationToolbarBox(freezeSource);
+
+  Widget _annotationToolbarBox(ui.Image? Function()? freezeSource) =>
+      Positioned(
+        left: 8,
+        bottom: 8,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: math.max(48, MediaQuery.sizeOf(context).width - 16),
+          ),
+          child: AnnotationToolbar(
+            controller: _annotations,
+            freezeSource: freezeSource,
+          ),
+        ),
+      );
 
   // --- received content (image, PDF page, link) -----------------------------------------
 
@@ -449,19 +525,21 @@ class _ReceivePageState extends State<ReceivePage> {
             child: _controller.isActive
                 ? OutlinedButton.icon(
                     key: const Key('stopButton'),
+                    autofocus: _tv,
                     onPressed: _controller.stop,
                     icon: const Icon(Icons.stop),
                     label: Text(t.stop),
                   )
                 : FilledButton.icon(
                     key: const Key('startButton'),
+                    autofocus: _tv,
                     onPressed: _start,
                     icon: const Icon(Icons.play_arrow),
                     label: Text(t.startReceiving),
                   ),
           ),
           const SizedBox(height: 24),
-          _RoomCodeCard(code: _controller.roomCode),
+          _RoomCodeCard(code: _controller.roomCode, tv: _tv),
           const SizedBox(height: 16),
           // liveRegion: screen readers announce changes of the status.
           Semantics(
@@ -543,9 +621,13 @@ class _ReceivePageState extends State<ReceivePage> {
 
 /// Shows the room code very large, with a copy button.
 class _RoomCodeCard extends StatelessWidget {
-  const _RoomCodeCard({required this.code});
+  const _RoomCodeCard({required this.code, this.tv = false});
 
   final String? code;
+
+  /// 10-foot display: the code is shown as large as the width allows and the copy button
+  /// (useless without a pointer and a keyboard) is left out.
+  final bool tv;
 
   @override
   Widget build(BuildContext context) {
@@ -573,13 +655,15 @@ class _RoomCodeCard extends StatelessWidget {
                         style: theme.textTheme.displayLarge?.copyWith(
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 8,
+                          letterSpacing: tv ? 16 : 8,
+                          // FittedBox scales it down if the screen is narrower than this.
+                          fontSize: tv ? 160 : null,
                         ),
                       ),
                     ),
                   ),
                 ),
-                if (code != null)
+                if (code != null && !tv)
                   IconButton(
                     key: const Key('copyCodeButton'),
                     tooltip: t.copyCode,
@@ -711,10 +795,10 @@ class _VideoStatsOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     final v = c.videoStats;
-    final img = c.image;
     String ms(int us) => (us / 1000).toStringAsFixed(1);
     final lines = <String>[
-      '${t.videoStatsSize}: ${img?.width ?? 0} x ${img?.height ?? 0}',
+      '${t.videoStatsSize}: ${c.pictureSize.$1} x ${c.pictureSize.$2}'
+          '${c.textureId != null ? ' (${t.videoStatsHardware})' : ''}',
       '${t.videoStatsDisplayRate}: ${c.displayFps.toStringAsFixed(1)} fps',
       '${t.videoStatsDecoded}: ${v.decoded}',
       '${t.videoStatsDropped}: ${v.dropped}',

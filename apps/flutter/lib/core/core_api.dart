@@ -14,6 +14,7 @@ import 'package:cometcast/src/rust/api.dart'
         ContentFrame,
         ContentSenderUiEvent,
         ContentSource,
+        EncodedVideoUnit,
         LinkCheck,
         NearbyReceiverEvent,
         PushResult,
@@ -42,6 +43,9 @@ export 'package:cometcast/src/rust/api.dart'
         roomCodeLength,
         takeFrame,
         setVideoMaxSize,
+        setVideoPassthrough,
+        requestVideoKeyframe,
+        takeEncodedVideo,
         takeContentFrame,
         setContentTargetWidth,
         validateLink,
@@ -119,6 +123,16 @@ abstract class CoreApi {
 
   /// Size of the drawing area in physical pixels; the core scales pictures down to fit.
   void setVideoMaxSize(int width, int height);
+
+  /// Hand the received H.264 undecoded to the host (Android `MediaCodec`) instead of decoding
+  /// it in Rust. Call before [startReceiver]; the choice is kept. See `set_video_passthrough`.
+  void setVideoPassthrough(bool on);
+
+  /// Ask the sender for a key frame (rate limited by the core).
+  void requestVideoKeyframe();
+
+  /// The encoded access units that wait in pass-through mode (after an `EncodedReady` event).
+  Future<List<EncodedVideoUnit>> takeEncodedVideo();
 
   /// Join the room [code] and send the built-in test video for [seconds] seconds, or with
   /// [screen] the screen of this computer (until stopped when [seconds] is null).
@@ -251,6 +265,15 @@ class RustCoreApi implements CoreApi {
   @override
   void setVideoMaxSize(int width, int height) =>
       rust.setVideoMaxSize(width: width, height: height);
+
+  @override
+  void setVideoPassthrough(bool on) => rust.setVideoPassthrough(on_: on);
+
+  @override
+  void requestVideoKeyframe() => rust.requestVideoKeyframe();
+
+  @override
+  Future<List<EncodedVideoUnit>> takeEncodedVideo() => rust.takeEncodedVideo();
 
   @override
   Future<CaptureInfo> captureInfo({String? display}) =>

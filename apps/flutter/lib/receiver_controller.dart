@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 
+import 'core/android_video.dart';
 import 'core/core_api.dart';
 import 'window_control.dart';
 
@@ -151,11 +152,17 @@ class ReceiverController extends ChangeNotifier {
     this.fetchTimeout = const Duration(seconds: 5),
     this.content = true,
     this.maxImagePixels = defaultMaxImagePixels,
+    this.hardwareDecoder,
   }) : _setFullscreen = setFullscreen ?? setWindowFullscreen;
 
   final CoreApi core;
   final String? udpBind;
   final SetFullscreen _setFullscreen;
+
+  /// The device's own H.264 decoder (Android `MediaCodec` into a texture), or null for the
+  /// software decoder of the core. When set, the core hands over undecoded video; if the
+  /// hardware path fails, the controller switches to the software decoder by itself.
+  final AndroidVideoDecoder? hardwareDecoder;
 
   /// Accept images, PDFs and links from the sender.
   final bool content;
@@ -184,6 +191,25 @@ class ReceiverController extends ChangeNotifier {
   /// The newest decoded picture, or null until one arrived. Owned by this controller
   /// (disposed when replaced); the screen only paints it.
   ui.Image? image;
+
+  /// Id of the Flutter texture that shows the hardware decoder's picture, or null while the
+  /// software path (or nothing) is used.
+  int? textureId;
+
+  /// Picture size reported by the hardware decoder (0 until known).
+  int videoWidth = 0;
+  int videoHeight = 0;
+
+  /// Why the hardware path was given up (technical English), or null.
+  String? hardwareError;
+
+  /// A live picture is on screen: a decoded image, or a texture that knows its size.
+  bool get hasLiveVideo =>
+      image != null || (textureId != null && videoWidth > 0 && videoHeight > 0);
+
+  /// Size of the live picture in pixels (0 x 0 if none).
+  (int, int) get pictureSize =>
+      image != null ? (image!.width, image!.height) : (videoWidth, videoHeight);
 
   /// Number of pictures drawn since [start].
   int imagesShown = 0;
@@ -245,13 +271,15 @@ class ReceiverController extends ChangeNotifier {
 
   /// True if the sender's track is something this version cannot draw (not H.264).
   bool get codecNotShown =>
-      codec != null && codec != 'h264' && image == null && isActive;
+      codec != null && codec != 'h264' && !hasLiveVideo && isActive;
 
   /// Create a room on [server] and start listening.
   void start(String server) {
     _cancel();
     _newSession();
     _clearImage();
+    _stopHardware();
+    _startHardware();
     phase = ReceiverPhase.starting;
     roomCode = null;
     senderJoined = false;
@@ -296,6 +324,7 @@ class ReceiverController extends ChangeNotifier {
   void _end() {
     phase = ReceiverPhase.ended;
     _clearImage();
+    _stopHardware();
     _clearContent();
     unawaited(_leaveFullscreen());
     notifyListeners();
@@ -320,6 +349,9 @@ class ReceiverController extends ChangeNotifier {
         _measureDisplayRate();
       case ReceiverUiEvent_FrameReady():
         _onFrameReady();
+        return;
+      case ReceiverUiEvent_EncodedReady():
+        _onEncodedReady();
         return;
       case ReceiverUiEvent_VideoStats():
         videoStats = VideoStatsView(
@@ -389,6 +421,105 @@ class ReceiverController extends ChangeNotifier {
       return;
     }
     unawaited(_fetchLoop());
+  }
+
+  // --- hardware decoding (Android) -------------------------------------------------------
+
+  StreamSubscription<VideoDecoderEvent>? _hwSub;
+  Future<void>? _hwReady;
+  bool _hwFetching = false;
+  bool _hwRefetch = false;
+
+  /// Switch the core to pass-through and bring up the decoder and its texture. The decoder start
+  /// is asynchronous; units that arrive earlier wait for it in [_hwFetchLoop].
+  void _startHardware() {
+    final d = hardwareDecoder;
+    if (d == null) return;
+    hardwareError = null;
+    core.setVideoPassthrough(true);
+    final session = _session;
+    _hwSub = d.events.listen(_onHardwareEvent);
+    _hwReady = () async {
+      try {
+        final id = await d.start();
+        if (_disposed || session != _session) return;
+        textureId = id;
+        notifyListeners();
+      } catch (e) {
+        if (!_disposed && session == _session) {
+          _hardwareFailed('cannot start the hardware decoder: $e');
+        }
+      }
+    }();
+  }
+
+  void _stopHardware() {
+    final d = hardwareDecoder;
+    if (d == null) return;
+    _hwSub?.cancel();
+    _hwSub = null;
+    _hwReady = null;
+    _hwFetching = false;
+    _hwRefetch = false;
+    textureId = null;
+    videoWidth = videoHeight = 0;
+    core.setVideoPassthrough(false);
+    unawaited(d.stop());
+  }
+
+  void _onHardwareEvent(VideoDecoderEvent e) {
+    if (_disposed) return;
+    switch (e) {
+      case VideoSize(:final width, :final height):
+        videoWidth = width;
+        videoHeight = height;
+        notifyListeners();
+      case VideoNeedKeyFrame():
+        core.requestVideoKeyframe();
+      case VideoDecoderError(:final message):
+        _hardwareFailed(message);
+    }
+  }
+
+  /// The hardware path does not work on this device (or just now): release it and let the core
+  /// decode in software. The core asks the sender for a key frame when the mode changes.
+  void _hardwareFailed(String message) {
+    debugPrint('cometcast: hardware video decoder failed: $message');
+    hardwareError = message;
+    _stopHardware(); // also switches the core back to the software decoder
+    notifyListeners();
+  }
+
+  void _onEncodedReady() {
+    if (hardwareDecoder == null) return;
+    if (_hwFetching) {
+      _hwRefetch = true;
+      return;
+    }
+    unawaited(_hwFetchLoop());
+  }
+
+  Future<void> _hwFetchLoop() async {
+    final session = _session;
+    _hwFetching = true;
+    try {
+      await _hwReady;
+      do {
+        _hwRefetch = false;
+        final units = await core.takeEncodedVideo().timeout(fetchTimeout);
+        if (_disposed || session != _session) return;
+        final d = hardwareDecoder;
+        // Hardware path gone (failed, stopped): the units are of no use.
+        if (d == null || _hwReady == null) return;
+        for (final u in units) {
+          d.queue(u.data, ptsUs: u.ptsUs.toInt(), key: u.isKey);
+        }
+      } while (_hwRefetch);
+    } catch (e) {
+      debugPrint('cometcast: cannot pass video to the hardware decoder: $e');
+    } finally {
+      if (session == _session) _hwFetching = false;
+    }
   }
 
   /// A new session invalidates fetches in flight and frees the fetch slot for the new one.
@@ -739,6 +870,7 @@ class ReceiverController extends ChangeNotifier {
     phase = ReceiverPhase.idle;
     roomCode = null;
     _clearImage();
+    _stopHardware();
     _clearContent();
     final wasFullscreen = fullscreen;
     notifyListeners();
@@ -759,6 +891,7 @@ class ReceiverController extends ChangeNotifier {
     _retryTimer?.cancel();
     _cancel();
     _clearImage();
+    _stopHardware();
     _clearContent();
     // Fire and forget: the screen is gone, the core must not keep a room open.
     unawaited(core.stopReceiver());

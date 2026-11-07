@@ -187,6 +187,26 @@ class FakeCoreApi implements CoreApi {
   @override
   void setVideoMaxSize(int width, int height) => maxSizes.add((width, height));
 
+  /// What setVideoPassthrough was last called with.
+  bool passthrough = false;
+  int videoKeyframeRequests = 0;
+
+  /// Units that the next takeEncodedVideo hands out (then cleared, like the real queue).
+  final encodedUnits = <EncodedVideoUnit>[];
+
+  @override
+  void setVideoPassthrough(bool on) => passthrough = on;
+
+  @override
+  void requestVideoKeyframe() => videoKeyframeRequests++;
+
+  @override
+  Future<List<EncodedVideoUnit>> takeEncodedVideo() async {
+    final out = List<EncodedVideoUnit>.of(encodedUnits);
+    encodedUnits.clear();
+    return out;
+  }
+
   @override
   Future<CaptureInfo> captureInfo({String? display}) async {
     captureInfoDisplay = display;

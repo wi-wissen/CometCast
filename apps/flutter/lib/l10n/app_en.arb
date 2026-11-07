@@ -913,5 +913,17 @@
   "toolbarFrozenHint": "Frozen. The live stream keeps running in the background.",
   "@toolbarFrozenHint": {
     "description": "Shown while the image is frozen."
+  },
+  "videoStatsHardware": "hardware decoder",
+  "@videoStatsHardware": {
+    "description": "Added to the picture size in the statistics when the device's own video decoder is used."
+  },
+  "homeReceiverOnlyTv": "This TV only receives. Start sharing on your phone, tablet or computer and enter the room code shown here.",
+  "@homeReceiverOnlyTv": {
+    "description": "Shown on a television instead of the send options."
+  },
+  "homeReceiveTvHint": "Show the room code and wait for a sender",
+  "@homeReceiveTvHint": {
+    "description": "Hint under the receive entry on a television."
   }
 }

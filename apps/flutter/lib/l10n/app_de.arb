@@ -192,5 +192,8 @@
   "toolbarColorBlue": "Blau",
   "toolbarColorWhite": "Weiß",
   "toolbarCanvasLabel": "Markierungen (nur auf diesem Gerät sichtbar)",
-  "toolbarFrozenHint": "Eingefroren. Der Live-Stream läuft im Hintergrund weiter."
+  "toolbarFrozenHint": "Eingefroren. Der Live-Stream läuft im Hintergrund weiter.",
+  "videoStatsHardware": "Hardware-Decoder",
+  "homeReceiverOnlyTv": "Dieser Fernseher empfängt nur. Starten Sie das Teilen auf Ihrem Smartphone, Tablet oder Computer und geben Sie den hier angezeigten Raumcode ein.",
+  "homeReceiveTvHint": "Raumcode anzeigen und auf einen Sender warten"
 }
