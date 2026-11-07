@@ -7,13 +7,12 @@
 Comet Cast is one app that is both sender and receiver. It sends your screen, documents, links and media, and files to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for offices, meetings, clubs, workshops and schools, where many different devices meet in one room. The idea is similar to LocalSend, but for presenting on a display.
 
 > **Status: v0.1 beta, in development.**
-> What works today, tested on one machine or one local network:
-> - Browser sender and receiver: screen sharing over WebRTC with a room code, a receiver toolbar (pen, marker, freeze, laser, black screen), image and link transfer.
-> - A signalling server with TLS, rate limits, ALTCHA and TURN credentials (Docker and coturn files exist but were never run).
-> - Native Rust peers and a command-line tool that talk to the browser app; a Flutter desktop app (Linux) that uses the Rust core.
-> - A supervisor for AirPlay receiving through UxPlay (tested with the real UxPlay program, not with an iPhone or iPad).
+> Built and tested on one machine or one local network (unit tests, browser end-to-end tests, screenshots):
+> - Web app (sender and display): screen, documents, links and files over WebRTC with a room code or QR code, three join modes chosen at the display (open, with approval, locked), a display toolbar (pen, marker, freeze, laser, black screen), dark, light and OLED themes, German (informal "du" by default) and English.
+> - Relay and signalling server: TLS, rate limits, ALTCHA, STUN list, join approval. A Docker image build exists and ran locally. The operating package is in [CometCast-Relay](https://github.com/wi-wissen/CometCast-Relay).
+> - Rust core with native peers and command-line tool, Flutter apps (desktop, Android, Android TV, iOS) with first-run, display, presenter, nearby screens and share entries, and an Apple TV app written in SwiftUI. Capture backends for Wayland, Windows and macOS, AirPlay receiving through UxPlay, Miracast and Cast/AirPlay sending exist as code written to specification.
 >
-> What does not work yet or was never run on a real device: screen capture and video display in the native apps on most systems, STUN/TURN across real networks, Apple TV, Miracast, Cast, the iOS broadcast extension (some of these exist as code written to specification, see the milestone status). Everything not listed above is a plan. See [docs/architecture.md](docs/architecture.md) for the milestone status and [docs/measurement-points.md](docs/measurement-points.md) for the unverified assumptions.
+> **Never run on a real device or service:** the native apps on Android, Android TV, iOS, Windows, macOS and Apple TV (Kotlin and Swift were never compiled), screen capture on those systems, AirPlay with an iPhone, Miracast, Cast, the iOS broadcast extension, STUN across real networks, the relay on a public server, and every GitHub release and image workflow (the check workflows are manual only, see [docs/ci.md](docs/ci.md)). No release or Docker image is published yet. Everything not listed above is a plan. See [docs/architecture.md](docs/architecture.md) for the milestone status and [docs/measurement-points.md](docs/measurement-points.md) for the unverified assumptions.
 
 ## Principles
 
@@ -115,6 +114,8 @@ Details and limits: [docs/transport.md](docs/transport.md).
 Running a server: [bins/cometcast-server/README.md](bins/cometcast-server/README.md) (settings, modes, troubleshooting) and [deploy/README.md](deploy/README.md) (Docker Compose, reverse proxy, coturn, firewall).
 
 More commands will be added here when the things they build exist.
+
+Server image without a release: the manual workflow `.github/workflows/docker-image.yml` pushes `ghcr.io/<owner>/cometcast-server:edge` ([docs/ci.md](docs/ci.md)).
 
 Releases: the GitHub workflow `.github/workflows/release.yml` builds all apps from a version number and creates a draft release. **UNCERTAIN: it has never run on GitHub; every job in it is unverified until its first real run.** See [docs/releasing.md](docs/releasing.md) (inputs, secrets, unsigned files, dry run).
 
