@@ -1,0 +1,3 @@
+/* Shown by iOS in the permission dialogs and under the icon. Keep in step with de.lproj. */
+"CFBundleDisplayName" = "Comet Cast";
+"NSLocalNetworkUsageDescription" = "Comet Cast looks for receivers and the Comet Cast server in your local network so you can share your screen with them.";

@@ -1,0 +1,14 @@
+/* Messages shown by iOS when the broadcast ends. Plain sentences, no technical terms. */
+"error.none" = "The broadcast has ended.";
+"error.noConfig" = "Open Comet Cast, enter the room code under \"Send\" and start the screen broadcast from there.";
+"error.configExpired" = "The broadcast was not started in time. Open Comet Cast and start it again.";
+"error.invalidRoomCode" = "The room code is not valid. Check it in Comet Cast.";
+"error.invalidRelay" = "The server address is not valid. Check it in Comet Cast.";
+"error.roomNotFound" = "No receiver with this room code was found. Check the code on the receiving screen.";
+"error.serverUnreachable" = "The server cannot be reached. Check your network connection.";
+"error.connectionLost" = "The connection to the receiver was lost.";
+"error.peerLeft" = "The receiver has ended the session.";
+"error.encoderFailed" = "The screen could not be encoded on this device.";
+"error.memory" = "The broadcast was stopped because the device ran low on memory.";
+"error.stoppedByApp" = "The broadcast was stopped in Comet Cast.";
+"error.internalError" = "The broadcast stopped because of an unexpected problem.";

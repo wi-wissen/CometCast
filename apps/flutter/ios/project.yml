@@ -1,0 +1,189 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XcodeGen spec: `xcodegen generate` (run by tools/ios-bootstrap.sh) creates Runner.xcodeproj
+# from this file. The project is NOT committed (ios/.gitignore); this file is the source.
+# Identifiers live in Config/CometCast.xcconfig, nowhere else.
+#
+# Targets:
+#   Runner             the Flutter app (Dart, Rust core libcc_ffi.a, VideoToolbox decoder bridge)
+#   BroadcastExtension ReplayKit Broadcast Upload Extension (Swift + libcc_ios.a)
+#   RunnerTests        XCTest: App Group files, Annex B conversion, frame size maths
+#
+# UNCERTAIN: written without Xcode and without XcodeGen. Key names follow the XcodeGen
+# documentation from memory (the same caveat as apps/apple-tv/project.yml). The Flutter build
+# phases copy what flutter create generated before (xcode_backend.sh build / embed_and_thin and
+# the scheme's "prepare" pre-action). Flutter's Swift Package Manager integration is NOT used
+# for this project: tools/ios-bootstrap.sh turns it off (docs/ios.md, "Project generation").
+name: Runner
+
+options:
+  bundleIdPrefix: de.cometcast
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+configs:
+  Debug: debug
+  Release: release
+  Profile: release
+
+configFiles:
+  Debug: Flutter/Debug.xcconfig
+  Release: Flutter/Release.xcconfig
+  Profile: Flutter/Release.xcconfig
+
+settings:
+  base:
+    SDKROOT: iphoneos
+    IPHONEOS_DEPLOYMENT_TARGET: $(COMETCAST_DEPLOYMENT_TARGET)
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_VERSION: "5.0"
+    ENABLE_BITCODE: NO
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: $(FLUTTER_BUILD_NUMBER)
+    MARKETING_VERSION: $(FLUTTER_BUILD_NAME)
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      SWIFT_OPTIMIZATION_LEVEL: -Onone
+    Release:
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: -O
+      VALIDATE_PRODUCT: YES
+    Profile:
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: -O
+      VALIDATE_PRODUCT: YES
+
+targets:
+  Runner:
+    type: application
+    platform: iOS
+    sources:
+      - path: Runner
+        excludes:
+          - Info.plist
+          - Runner.entitlements
+          - Runner-Bridging-Header.h
+      - path: Shared
+      - path: Runner/Runner-Bridging-Header.h
+        buildPhase: none
+      - path: Flutter/AppFrameworkInfo.plist
+        buildPhase: none
+      - path: Config/CometCast.xcconfig
+        buildPhase: none
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(COMETCAST_BUNDLE_ID)
+        PRODUCT_NAME: $(TARGET_NAME)
+        INFOPLIST_FILE: Runner/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Runner/Runner.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: Runner/Runner-Bridging-Header.h
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks
+        # The Rust core (flutter_rust_bridge) is linked statically and looked up by Dart with
+        # DynamicLibrary.process(): keep every symbol (no dead stripping, no global strip).
+        # `ios-build-rust.sh cc-ffi` puts libcc_ffi.a into build/rust/<platform>/.
+        DEAD_CODE_STRIPPING: NO
+        STRIP_STYLE: non-global
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(inherited) $(SRCROOT)/build/rust/iphoneos
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(inherited) $(SRCROOT)/build/rust/iphonesimulator
+        OTHER_LDFLAGS: $(inherited) -force_load $(SRCROOT)/build/rust/$(PLATFORM_NAME)/libcc_ffi.a -framework Security -framework SystemConfiguration -framework CoreFoundation -lresolv -lc++
+    dependencies:
+      - target: BroadcastExtension
+        embed: true
+        codeSign: true
+    preBuildScripts:
+      - name: Run Script
+        script: '/bin/sh "$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh" build'
+        basedOnDependencyAnalysis: false
+      - name: Build Rust core (cc-ffi)
+        script: '"$SRCROOT/../../../tools/ios-build-rust.sh" cc-ffi'
+        basedOnDependencyAnalysis: false
+    postBuildScripts:
+      - name: Thin Binary
+        script: '/bin/sh "$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh" embed_and_thin'
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - ${TARGET_BUILD_DIR}/${INFOPLIST_PATH}
+
+  BroadcastExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BroadcastExtension
+        excludes:
+          - Info.plist
+          - BroadcastExtension.entitlements
+          - cc_ios-Bridging-Header.h
+      - path: BroadcastExtension/cc_ios-Bridging-Header.h
+        buildPhase: none
+      - path: Shared/BroadcastShared.swift
+      - path: Shared/AnnexB.swift
+      - path: Shared/FrameSize.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(COMETCAST_EXTENSION_BUNDLE_ID)
+        PRODUCT_NAME: $(TARGET_NAME)
+        INFOPLIST_FILE: BroadcastExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: BroadcastExtension/BroadcastExtension.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: BroadcastExtension/cc_ios-Bridging-Header.h
+        HEADER_SEARCH_PATHS: $(inherited) $(SRCROOT)/../../../crates/cc-ios/include
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(inherited) $(SRCROOT)/build/rust/iphoneos
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(inherited) $(SRCROOT)/build/rust/iphonesimulator
+        # The system libraries that libcc_ios.a needs: the list printed by
+        # `cargo rustc -p cc-ios --crate-type staticlib -- --print native-static-libs`
+        # (saved by ios-build-rust.sh as build/rust/<platform>/native-static-libs.txt).
+        # UNCERTAIN: compare with that file on the first build.
+        OTHER_LDFLAGS: $(inherited) -lcc_ios -framework Security -framework SystemConfiguration -framework CoreFoundation -lresolv -lc++
+    preBuildScripts:
+      - name: Build Rust core (cc-ios)
+        script: '"$SRCROOT/../../../tools/ios-build-rust.sh" cc-ios'
+        basedOnDependencyAnalysis: false
+
+  RunnerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: RunnerTests
+    dependencies:
+      - target: Runner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(COMETCAST_BUNDLE_ID).RunnerTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Runner.app/Runner
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  Runner:
+    build:
+      targets:
+        Runner: all
+        BroadcastExtension: all
+      preActions:
+        - name: Run Prepare Flutter Framework Script
+          script: '/bin/sh "$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh" prepare'
+          settingsTarget: Runner
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - RunnerTests
+    profile:
+      config: Profile
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  BroadcastExtension:
+    build:
+      targets:
+        BroadcastExtension: all
+    run:
+      config: Debug
+      # Debug the extension: choose Runner as the host app and "Comet Cast" in the picker.
+      executable: Runner
