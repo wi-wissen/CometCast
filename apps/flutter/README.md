@@ -236,7 +236,9 @@ Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
 - Wayland check: a session counts as Wayland if `XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` is set (unless a display is
   forced with `COMETCAST_CAPTURE_DISPLAY`). Never tried on a real Wayland desktop.
 - Loading and bundling the Rust library is built for Linux (CMake) and Android (cargo-ndk, build only).
-  Windows, macOS and iOS need their own packaging (cargokit is the likely route); not tried.
+  Windows: `windows/CMakeLists.txt` builds and installs the Rust DLLs and workers with cargo (written, never run on Windows), and
+  the Windows-only screen "Receive via Miracast (Windows)" exists (docs/miracast.md, never run). macOS and iOS need their own
+  packaging (cargokit is the likely route); not tried.
 - Android: no device or emulator was available; see docs/android.md for everything that is untested.
 - Whether the default WebRTC bind address (`0.0.0.0:0`) connects two peers on one machine was not tested.
 - The CI workflow (`.github/workflows/flutter.yml`) has not run on GitHub. UNCERTAIN: the xvfb end-to-end tests (smoke, screen, content) were run locally on one machine only, not on GitHub CI.
