@@ -116,6 +116,8 @@ Running a server: [bins/cometcast-server/README.md](bins/cometcast-server/README
 
 More commands will be added here when the things they build exist.
 
+Releases: the GitHub workflow `.github/workflows/release.yml` builds all apps from a version number and creates a draft release. **UNCERTAIN: it has never run on GitHub; every job in it is unverified until its first real run.** See [docs/releasing.md](docs/releasing.md) (inputs, secrets, unsigned files, dry run).
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Contributions need agreement to the [CLA](CLA.md). Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](SECURITY.md).

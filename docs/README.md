@@ -21,6 +21,7 @@
 | [discovery.md](discovery.md) | How the app finds the server (`cc-discovery`): MDM policy file, DNS-SRV, display announcement over mDNS, built-in list; receiver discovery; trust rules; what is unverified |
 | [documents.md](documents.md) | PDF documents (`cc-docs`): render on the receiver with hayro, limits, hostile-input tests, measured numbers, WASM check, what is unverified |
 | [i18n.md](i18n.md) | How the bilingual (de/en) UI works |
+| [releasing.md](releasing.md) | The release workflow: version input, dry run, signing secrets, what is unsigned, tag protection; every job UNCERTAIN until its first real run |
 
 Other project files: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [CLA](../CLA.md), [SECURITY](../SECURITY.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md).
 
