@@ -408,16 +408,21 @@ bool sendContentCmd({required UiContentCmd cmd}) =>
 /// [`stop_presenter`] leaves. Replaces a running sender or presenter session.
 ///
 /// Errors are events, not return values (see [`start_receiver`]); a code that is not a room
-/// code is reported as `room_not_found`. `udp_bind` is for development only.
+/// code is reported as `room_not_found`. `handover` is a single-use token that the display issued
+/// to this person earlier ([`request_handover`], native-apps.md 20.5): the display admits the
+/// join without a dialog; `None` (or a token the display does not know) is an ordinary join.
+/// `udp_bind` is for development only.
 Stream<PresenterUiEvent> startPresenter({
   required String code,
   required String server,
   String? name,
+  String? handover,
   String? udpBind,
 }) => RustLib.instance.api.crateApiStartPresenter(
   code: code,
   server: server,
   name: name,
+  handover: handover,
   udpBind: udpBind,
 );
 
@@ -445,6 +450,14 @@ bool presentEncoded() => RustLib.instance.api.crateApiPresentEncoded();
 /// presenter session runs.
 bool presentContent({required ContentSource source}) =>
     RustLib.instance.api.crateApiPresentContent(source: source);
+
+/// iOS hand-over (native-apps.md 20.5, step 1): ask the display to hold the single-use `token`
+/// (128 random bits as base64url, 1 to 64 characters of `A-Z a-z 0-9 - _`, made by the app) for
+/// the broadcast extension, which joins with it. The answer is the event `HandoverResult`; then
+/// leave with [`stop_presenter`]. Opens a quiet content-only connection if nothing is
+/// presented. Returns `false` if no presenter session runs or the token is not valid.
+bool requestHandover({required String token}) =>
+    RustLib.instance.api.crateApiRequestHandover(token: token);
 
 /// End the running presentation only: the display goes Idle with the same code and the
 /// session stays joined (`PresentingStopped`); the next presentation needs no new approval.
@@ -1060,6 +1073,15 @@ sealed class PresenterUiEvent with _$PresenterUiEvent {
   /// The content was delivered (the transport confirmed it). Page commands can follow.
   const factory PresenterUiEvent.contentSent() = PresenterUiEvent_ContentSent;
 
+  /// The answer to [`request_handover`]: the display holds the token (`ok`), or it did not
+  /// answer in time (an old display, a web display, a lost connection). Either way the app
+  /// goes on: with the token the extension is let in without a dialog, without it the host
+  /// is asked as for any join.
+  const factory PresenterUiEvent.handoverResult({
+    /// The display answered `handover_ok`.
+    required bool ok,
+  }) = PresenterUiEvent_HandoverResult;
+
   /// The presentation is connected: media flows, or the channel is open.
   const factory PresenterUiEvent.presenting() = PresenterUiEvent_Presenting;
 
@@ -1128,7 +1150,25 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
   const factory ReceiverUiEvent.peerJoined({
     /// Cleaned display name of the sender (plain text, at most 40 characters).
     required String name,
+
+    /// The join came with a hand-over token this display had issued (the iOS broadcast
+    /// extension, native-apps.md 20.5) and was let in without a dialog: show no
+    /// "connected" notice, the person was approved before.
+    required bool handover,
   }) = ReceiverUiEvent_PeerJoined;
+
+  /// A presenter's hand-over token is stored (the display answered `handover_ok`). The
+  /// presenter leaving now is not a leave for the host (no notice) until the token is used
+  /// ([`ReceiverUiEvent::PeerJoined`] with `handover`) or runs out
+  /// ([`ReceiverUiEvent::HandoverExpired`]).
+  const factory ReceiverUiEvent.handoverStored({
+    /// The presenter's name.
+    required String name,
+  }) = ReceiverUiEvent_HandoverStored;
+
+  /// A hand-over token ran out unused (60 s): back to normal.
+  const factory ReceiverUiEvent.handoverExpired() =
+      ReceiverUiEvent_HandoverExpired;
 
   /// Join mode `confirm`: somebody waits for a decision ([`decide_join`]). The name is
   /// untrusted text that the server cleaned: show it as plain text.

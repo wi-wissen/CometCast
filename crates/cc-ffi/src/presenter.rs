@@ -43,6 +43,8 @@ pub(crate) enum PCmd {
     Cmd(ControlCmd),
     /// End the presentation, stay joined.
     StopPresenting,
+    /// Ask the display to hold this hand-over token (iOS, native-apps.md 20.5).
+    Handover(String),
 }
 
 static CMDS: Mutex<Option<mpsc::UnboundedSender<PCmd>>> = Mutex::new(None);
@@ -91,6 +93,7 @@ pub(crate) struct Join {
     pub(crate) code: RoomCode,
     pub(crate) server: String,
     pub(crate) name: Option<String>,
+    pub(crate) handover: Option<String>,
     pub(crate) udp_bind: Option<String>,
 }
 
@@ -106,6 +109,9 @@ pub(crate) async fn join(
         options.session.udp_bind = vec![b];
     }
     options.name = j.name;
+    options.handover = j
+        .handover
+        .filter(|h| cc_proto::sanitize_handover(Some(h)).is_some());
     let (ptx, mut prx) = mpsc::unbounded_channel();
     options.join_progress = Some(ptx);
     let notice_sink = events.clone();
@@ -256,6 +262,14 @@ pub(crate) async fn drive(
                         if control.is_some() {
                             session.stop_presenting();
                         }
+                    }
+                    PCmd::Handover(token) => {
+                        abort_jobs(&mut send_job, &mut preparing);
+                        let ok = tokio::select! {
+                            r = session.request_handover(&token) => r.is_ok(),
+                            _ = &mut stop => break,
+                        };
+                        let _ = events.add(PresenterUiEvent::HandoverResult { ok });
                     }
                 }
             }

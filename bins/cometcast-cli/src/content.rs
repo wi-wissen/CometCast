@@ -176,6 +176,8 @@ pub fn print_event(ev: &ContentEvent) {
             ..
         } => println!("Content: page={page} width={width} height={height}"),
         ContentEvent::ContentStopped => println!("Content: stopped"),
+        // Answered by the receiver core itself; not content.
+        ContentEvent::HandoverRequested { .. } => {}
         ContentEvent::Error { error, detail } => {
             println!("Content: error code={} detail={detail:?}", error.code());
         }

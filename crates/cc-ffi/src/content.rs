@@ -244,6 +244,8 @@ pub(crate) fn map_content_event(
             CONTENT.clear(generation);
             ReceiverUiEvent::ContentStopped
         }
+        // The receiver core answers a hand-over request itself; it never reaches the app.
+        ContentEvent::HandoverRequested { .. } => return None,
         ContentEvent::Error { error, detail: _ } => ReceiverUiEvent::ContentError {
             error: map_error(error, worker_found),
         },

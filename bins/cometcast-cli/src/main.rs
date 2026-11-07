@@ -914,12 +914,14 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                     println!("Blocked \"{name}\" for this room session (unblock {id} undoes it).");
                 }
                 Some(ReceiverEvent::Unblocked { id }) => println!("Unblocked entry {id}."),
+                // The hand-over of an iOS presenter is handled inside the core (docs/protocol.md).
+                Some(ReceiverEvent::HandoverStored { .. } | ReceiverEvent::HandoverExpired) => {}
                 Some(ReceiverEvent::RoomEnded) => {
                     println!("Room session ended.");
                     core.stop().await;
                     return ExitCode::SUCCESS;
                 }
-                Some(ReceiverEvent::PeerJoined { name }) => println!("Sender joined: \"{name}\"."),
+                Some(ReceiverEvent::PeerJoined { name, .. }) => println!("Sender joined: \"{name}\"."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
                 Some(ReceiverEvent::ConnectionCode(c)) => println!("Connection check code: {c}"),
                 Some(ReceiverEvent::PresentationStopped) => println!("The sender stopped presenting."),
