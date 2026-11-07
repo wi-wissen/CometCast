@@ -69,13 +69,93 @@ class FakeCoreApi implements CoreApi {
   );
   String? captureInfoDisplay;
 
+  /// Whether the last startReceiver asked for content.
+  bool? receiverContent;
+
   @override
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
+    bool content = true,
   }) {
     receiverServer = server;
+    receiverContent = content;
     return receiverEvents.stream;
+  }
+
+  // --- received content -----------------------------------------------------------------
+
+  /// Pictures waiting for takeContentFrame (the newest is handed out, like the real mailbox).
+  final contentFrames = <ContentFrame>[];
+  int takeContentFrameCalls = 0;
+  final contentWidths = <int>[];
+
+  @override
+  Future<ContentFrame?> takeContentFrame() async {
+    takeContentFrameCalls++;
+    final newest = contentFrames.isEmpty ? null : contentFrames.last;
+    contentFrames.clear();
+    return newest;
+  }
+
+  @override
+  void setContentTargetWidth(int width) => contentWidths.add(width);
+
+  /// The real rules live in Rust (cc-files); this stand-in accepts absolute http(s) URLs
+  /// with a host and no credentials. test/rust_core_test.dart checks the real thing.
+  final linkChecks = <String>[];
+
+  @override
+  LinkCheck validateLink(String input) {
+    linkChecks.add(input);
+    final u = Uri.tryParse(input.trim());
+    if (u == null ||
+        RegExp(r'\s').hasMatch(input.trim()) ||
+        (u.scheme != 'http' && u.scheme != 'https') ||
+        u.host.isEmpty ||
+        u.userInfo.isNotEmpty) {
+      return const LinkCheck.invalid();
+    }
+    return LinkCheck.valid(url: u.toString(), host: u.host);
+  }
+
+  String? docsWorker;
+
+  @override
+  void setDocsWorker(String? path) => docsWorker = path;
+
+  @override
+  String? docsWorkerPath() => docsWorker;
+
+  // --- content sender -------------------------------------------------------------------
+
+  final contentSenderEvents =
+      StreamController<ContentSenderUiEvent>.broadcast();
+  String? contentCode;
+  String? contentServer;
+  ContentSource? contentSource;
+  final contentCommands = <UiContentCmd>[];
+
+  /// What sendContentCmd answers.
+  bool acceptCommands = true;
+
+  @override
+  Stream<ContentSenderUiEvent> startContentSender({
+    required String code,
+    required String server,
+    String? udpBind,
+    required ContentSource source,
+  }) {
+    contentCode = code;
+    contentServer = server;
+    contentSource = source;
+    return contentSenderEvents.stream;
+  }
+
+  @override
+  bool sendContentCmd(UiContentCmd cmd) {
+    if (acceptCommands) contentCommands.add(cmd);
+    return acceptCommands;
   }
 
   @override

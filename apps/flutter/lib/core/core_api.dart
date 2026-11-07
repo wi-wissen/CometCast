@@ -11,6 +11,10 @@ import 'package:cometcast/src/rust/api.dart'
     show
         AdvertiseOutcome,
         CaptureInfo,
+        ContentFrame,
+        ContentSenderUiEvent,
+        ContentSource,
+        LinkCheck,
         NearbyReceiverEvent,
         PushResult,
         ReceiverUiEvent,
@@ -19,6 +23,7 @@ import 'package:cometcast/src/rust/api.dart'
         SenderUiEvent,
         ServerDefaults,
         ServerDiscovery,
+        UiContentCmd,
         VideoFrame;
 
 // The event and result classes (generated) are re-exported for the screens and tests.
@@ -37,6 +42,13 @@ export 'package:cometcast/src/rust/api.dart'
         roomCodeLength,
         takeFrame,
         setVideoMaxSize,
+        takeContentFrame,
+        setContentTargetWidth,
+        validateLink,
+        setDocsWorker,
+        docsWorkerPath,
+        startContentSender,
+        sendContentCmd,
         captureInfo,
         serverDefaults,
         discoverServers,
@@ -48,12 +60,48 @@ export 'package:cometcast/src/rust/api.dart'
 abstract class CoreApi {
   /// Connect to [server], create a room and report events. The first event is the room code.
   /// A start failure arrives as an `error` event, after which the stream ends.
+  ///
+  /// With [content] the receiver also accepts images, PDFs and links on the control channel
+  /// and reports them as the `content...` events (see `take_content_frame` in api.rs).
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
+    bool content = true,
   });
 
   Future<void> stopReceiver();
+
+  /// The received image or PDF page that waits, or null. Call it after a `contentFrameReady`
+  /// event; fetching re-arms that event. Only the latest picture is kept.
+  Future<ContentFrame?> takeContentFrame();
+
+  /// Width in physical pixels that PDF pages are rendered at (the view width times the device
+  /// pixel ratio). The page that is shown is rendered again.
+  void setContentTargetWidth(int width);
+
+  /// The link rules, in Rust (`cc-files`): valid http(s) links come back normalised with their
+  /// punycode host. The only place where link rules live; call before sending and before opening.
+  LinkCheck validateLink(String input);
+
+  /// Use this render worker program for PDFs, or null for the default search. Tests and hosts
+  /// with another layout; the app normally finds the worker next to its executable.
+  void setDocsWorker(String? path);
+
+  /// The PDF render worker that would be used now, or null if none was found.
+  String? docsWorkerPath();
+
+  /// Check [source] (an image or PDF file, or a link), join the room [code] and send it with
+  /// progress; commands follow with [sendContentCmd]. Errors arrive as events.
+  Stream<ContentSenderUiEvent> startContentSender({
+    required String code,
+    required String server,
+    String? udpBind,
+    required ContentSource source,
+  });
+
+  /// Queue a presenter command (next/previous/go to page/stop) for the running content sender.
+  /// False if it was not accepted (no sender, queue full, page 0).
+  bool sendContentCmd(UiContentCmd cmd);
 
   /// The newest decoded picture (RGBA) that was not fetched yet, or null. Call it after a
   /// `frameReady` event; fetching re-arms that event.
@@ -143,10 +191,43 @@ class RustCoreApi implements CoreApi {
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
-  }) => rust.startReceiver(server: server, udpBind: udpBind);
+    bool content = true,
+  }) => rust.startReceiver(server: server, udpBind: udpBind, content: content);
 
   @override
   Future<void> stopReceiver() => rust.stopReceiver();
+
+  @override
+  Future<ContentFrame?> takeContentFrame() => rust.takeContentFrame();
+
+  @override
+  void setContentTargetWidth(int width) =>
+      rust.setContentTargetWidth(width: width);
+
+  @override
+  LinkCheck validateLink(String input) => rust.validateLink(input: input);
+
+  @override
+  void setDocsWorker(String? path) => rust.setDocsWorker(path: path);
+
+  @override
+  String? docsWorkerPath() => rust.docsWorkerPath();
+
+  @override
+  Stream<ContentSenderUiEvent> startContentSender({
+    required String code,
+    required String server,
+    String? udpBind,
+    required ContentSource source,
+  }) => rust.startContentSender(
+    code: code,
+    server: server,
+    udpBind: udpBind,
+    source: source,
+  );
+
+  @override
+  bool sendContentCmd(UiContentCmd cmd) => rust.sendContentCmd(cmd: cmd);
 
   @override
   Future<VideoFrame?> takeFrame() => rust.takeFrame();

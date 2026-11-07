@@ -47,9 +47,13 @@ cc-transport.workspace = true
 cc-receiver.workspace = true
 cc-sender.workspace = true
 cc-capture.workspace = true
+cc-files.workspace = true
+cc-docs.workspace = true
 cc-discovery = { path = "../cc-discovery" }
 cc-media = { workspace = true, optional = true }
 tokio.workspace = true
+# Host name of a received link (WHATWG parser, the same one cc-files uses for validation).
+url = "2"
 # Pinned exactly: the Dart package of the same version must be used (see apps/flutter/pubspec.yaml).
 flutter_rust_bridge = "=2.13.0"
 

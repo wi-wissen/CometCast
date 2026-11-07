@@ -27,6 +27,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<ContentSenderUiEvent>
+  dco_decode_StreamSink_content_sender_ui_event_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<NearbyReceiverEvent>
   dco_decode_StreamSink_nearby_receiver_event_Sse(dynamic raw);
 
@@ -50,10 +54,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  ContentFrame dco_decode_box_autoadd_content_frame(dynamic raw);
+
+  @protected
+  ContentSource dco_decode_box_autoadd_content_source(dynamic raw);
+
+  @protected
   ScreenRequest dco_decode_box_autoadd_screen_request(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  UiContentCmd dco_decode_box_autoadd_ui_content_cmd(dynamic raw);
 
   @protected
   VideoFrame dco_decode_box_autoadd_video_frame(dynamic raw);
@@ -68,6 +81,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CaptureSupport dco_decode_capture_support(dynamic raw);
 
   @protected
+  ContentFrame dco_decode_content_frame(dynamic raw);
+
+  @protected
+  ContentSenderUiEvent dco_decode_content_sender_ui_event(dynamic raw);
+
+  @protected
+  ContentSource dco_decode_content_source(dynamic raw);
+
+  @protected
   DiscoveryWarning dco_decode_discovery_warning(dynamic raw);
 
   @protected
@@ -75,6 +97,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  LinkCheck dco_decode_link_check(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -99,6 +124,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  ContentFrame? dco_decode_opt_box_autoadd_content_frame(dynamic raw);
 
   @protected
   ScreenRequest? dco_decode_opt_box_autoadd_screen_request(dynamic raw);
@@ -146,6 +174,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiConnectionState dco_decode_ui_connection_state(dynamic raw);
 
   @protected
+  UiContentCmd dco_decode_ui_content_cmd(dynamic raw);
+
+  @protected
+  UiContentError dco_decode_ui_content_error(dynamic raw);
+
+  @protected
+  UiContentKind dco_decode_ui_content_kind(dynamic raw);
+
+  @protected
+  UiSendRejection dco_decode_ui_send_rejection(dynamic raw);
+
+  @protected
   void dco_decode_unit(dynamic raw);
 
   @protected
@@ -153,6 +193,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<ContentSenderUiEvent>
+  sse_decode_StreamSink_content_sender_ui_event_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RustStreamSink<NearbyReceiverEvent>
@@ -178,12 +224,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  ContentFrame sse_decode_box_autoadd_content_frame(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ContentSource sse_decode_box_autoadd_content_source(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ScreenRequest sse_decode_box_autoadd_screen_request(
     SseDeserializer deserializer,
   );
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  UiContentCmd sse_decode_box_autoadd_ui_content_cmd(
+    SseDeserializer deserializer,
+  );
 
   @protected
   VideoFrame sse_decode_box_autoadd_video_frame(SseDeserializer deserializer);
@@ -198,6 +259,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CaptureSupport sse_decode_capture_support(SseDeserializer deserializer);
 
   @protected
+  ContentFrame sse_decode_content_frame(SseDeserializer deserializer);
+
+  @protected
+  ContentSenderUiEvent sse_decode_content_sender_ui_event(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ContentSource sse_decode_content_source(SseDeserializer deserializer);
+
+  @protected
   DiscoveryWarning sse_decode_discovery_warning(SseDeserializer deserializer);
 
   @protected
@@ -205,6 +277,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  LinkCheck sse_decode_link_check(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -237,6 +312,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  ContentFrame? sse_decode_opt_box_autoadd_content_frame(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ScreenRequest? sse_decode_opt_box_autoadd_screen_request(
@@ -290,6 +370,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  UiContentCmd sse_decode_ui_content_cmd(SseDeserializer deserializer);
+
+  @protected
+  UiContentError sse_decode_ui_content_error(SseDeserializer deserializer);
+
+  @protected
+  UiContentKind sse_decode_ui_content_kind(SseDeserializer deserializer);
+
+  @protected
+  UiSendRejection sse_decode_ui_send_rejection(SseDeserializer deserializer);
+
+  @protected
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
@@ -298,6 +390,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_content_sender_ui_event_Sse(
+    RustStreamSink<ContentSenderUiEvent> self,
     SseSerializer serializer,
   );
 
@@ -332,6 +430,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_content_frame(
+    ContentFrame self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_content_source(
+    ContentSource self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_screen_request(
     ScreenRequest self,
     SseSerializer serializer,
@@ -339,6 +449,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_content_cmd(
+    UiContentCmd self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_video_frame(
@@ -362,6 +478,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_content_frame(ContentFrame self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_content_sender_ui_event(
+    ContentSenderUiEvent self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_content_source(ContentSource self, SseSerializer serializer);
+
+  @protected
   void sse_encode_discovery_warning(
     DiscoveryWarning self,
     SseSerializer serializer,
@@ -372,6 +500,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_link_check(LinkCheck self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -411,6 +542,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_content_frame(
+    ContentFrame? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_screen_request(
@@ -475,6 +612,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_ui_connection_state(
     UiConnectionState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ui_content_cmd(UiContentCmd self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_content_error(
+    UiContentError self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ui_content_kind(UiContentKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_send_rejection(
+    UiSendRejection self,
     SseSerializer serializer,
   );
 

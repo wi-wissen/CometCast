@@ -87,12 +87,17 @@ if(DEFINED ENV{COMETCAST_CARGO_TARGET_DIR} AND NOT "$ENV{COMETCAST_CARGO_TARGET_
   set(CC_FFI_TARGET_DIR "$ENV{COMETCAST_CARGO_TARGET_DIR}")
 endif()
 set(CC_FFI_LIB "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/libcc_ffi.so")
+# The PDF render worker (crates/cc-docs, program `cc-docs-worker`): a separate, resource-limited
+# child process that renders received PDFs (docs/documents.md). `-p cc-docs` builds its binary
+# (feature `worker-bin`, on by default). It is installed next to the executable, where the Rust
+# core looks for it (crates/cc-ffi/src/content.rs, `worker()`).
+set(CC_DOCS_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-docs-worker")
 add_custom_target(cc_ffi_build ALL
-  COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi ${CC_FFI_CARGO_FLAGS}
+  COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi -p cc-docs ${CC_FFI_CARGO_FLAGS}
           --manifest-path "${CC_REPO_ROOT}/Cargo.toml"
           --target-dir "${CC_FFI_TARGET_DIR}"
-  BYPRODUCTS "${CC_FFI_LIB}"
-  COMMENT "Building the Rust core (cc-ffi, ${CC_FFI_PROFILE})"
+  BYPRODUCTS "${CC_FFI_LIB}" "${CC_DOCS_WORKER}"
+  COMMENT "Building the Rust core (cc-ffi) and the PDF worker (cc-docs-worker, ${CC_FFI_PROFILE})"
   USES_TERMINAL)
 add_dependencies(${BINARY_NAME} cc_ffi_build)
 
@@ -138,6 +143,11 @@ install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
 
 # The Rust core (see the cc_ffi_build target above).
 install(FILES "${CC_FFI_LIB}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
+# The PDF render worker, a program next to the executable (bundle/cc-docs-worker). Not in lib/:
+# cc-docs and the Rust core look for it in the directory of the running executable.
+install(PROGRAMS "${CC_DOCS_WORKER}" DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
 foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})

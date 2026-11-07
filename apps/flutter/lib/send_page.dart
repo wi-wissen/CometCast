@@ -221,7 +221,7 @@ class _SendPageState extends State<SendPage> {
                   autocorrect: false,
                   enableSuggestions: false,
                   inputFormatters: [
-                    _UpperCaseFormatter(),
+                    UpperCaseFormatter(),
                     LengthLimitingTextInputFormatter(32),
                   ],
                   style: Theme.of(context).textTheme.headlineSmall
@@ -479,8 +479,8 @@ class _SendPageState extends State<SendPage> {
   }
 }
 
-/// Turns typed a-z into capitals (room codes are uppercase).
-class _UpperCaseFormatter extends TextInputFormatter {
+/// Turns typed a-z into capitals (room codes are uppercase). Also used by the content screen.
+class UpperCaseFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,

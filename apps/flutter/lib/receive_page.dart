@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // "Receive on this device": server field, big room code and status. When the sender's H.264
-// screen arrives, the picture fills the window (F11 = full screen, I = statistics).
+// screen arrives, the picture fills the window (F11 = full screen, I = statistics). Images,
+// PDF pages and links that the sender shares take the window instead (the latest content wins);
+// the close button goes back. Page changes come from the sender only.
 
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
 
@@ -29,6 +33,10 @@ String defaultReceiverName() {
   return 'Comet Cast';
 }
 
+/// Opens a link in the system's browser (the real [UrlOpener]).
+Future<bool> launchInBrowser(Uri url) =>
+    launchUrl(url, mode: LaunchMode.externalApplication);
+
 class ReceivePage extends StatefulWidget {
   const ReceivePage({
     super.key,
@@ -36,6 +44,7 @@ class ReceivePage extends StatefulWidget {
     required this.settings,
     this.setFullscreen = setWindowFullscreen,
     this.receiverName = defaultReceiverName,
+    this.openUrl = launchInBrowser,
   });
 
   final CoreApi core;
@@ -46,6 +55,9 @@ class ReceivePage extends StatefulWidget {
 
   /// The name announced in the local network (replaced in tests).
   final String Function() receiverName;
+
+  /// How a link is opened, only after the person chose "Open" (replaced in tests).
+  final UrlOpener openUrl;
 
   @override
   State<ReceivePage> createState() => _ReceivePageState();
@@ -185,7 +197,9 @@ class _ReceivePageState extends State<ReceivePage> {
         },
         child: ListenableBuilder(
           listenable: _controller,
-          builder: (context, _) => _controller.image != null
+          builder: (context, _) => _controller.shown != null
+              ? _buildContent(context)
+              : _controller.image != null
               ? _buildVideo(context)
               : _buildForm(context),
         ),
@@ -242,6 +256,7 @@ class _ReceivePageState extends State<ReceivePage> {
                 right: 8,
                 child: _VideoToolbar(controller: c, onStop: c.stop),
               ),
+              ..._contentOverlays(c, t),
               if (c.showStats)
                 Positioned(
                   top: 8,
@@ -250,6 +265,77 @@ class _ReceivePageState extends State<ReceivePage> {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // --- received content (image, PDF page, link) -----------------------------------------
+
+  /// The note and the "receiving" line that float over the picture or the content.
+  List<Widget> _contentOverlays(ReceiverController c, AppLocalizations t) => [
+    if (c.receiving != null)
+      Positioned(
+        top: 8,
+        left: 8,
+        child: Container(
+          key: const Key('receivingBanner'),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            t.contentReceiving(c.receiving!.name),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      ),
+    if (c.note != null)
+      Positioned(
+        left: 16,
+        right: 16,
+        bottom: 16,
+        child: _ContentNote(note: c.note!, onHide: c.dismissNote),
+      ),
+  ];
+
+  Widget _buildContent(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final c = _controller;
+    final shown = c.shown!;
+    return Focus(
+      // Keeps F11 and Escape working although the form is gone. A link card focuses its own
+      // (safe) button instead.
+      autofocus: shown is! ReceivedLink,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            switch (shown) {
+              ReceivedImage() => _ImageContent(image: shown, t: t),
+              ReceivedDocument() => _DocumentContent(
+                doc: shown,
+                controller: c,
+                t: t,
+              ),
+              ReceivedLink() => _LinkCard(
+                link: shown,
+                t: t,
+                onOpen: () => c.openLink(widget.openUrl),
+                onDismiss: c.closeContent,
+              ),
+            },
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _ContentToolbar(controller: c, onStop: c.stop),
+            ),
+            ..._contentOverlays(c, t),
+          ],
         ),
       ),
     );
@@ -316,6 +402,14 @@ class _ReceivePageState extends State<ReceivePage> {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],
+          if (_controller.note != null) ...[
+            const SizedBox(height: 8),
+            _ContentNote(
+              note: _controller.note!,
+              onHide: _controller.dismissNote,
+              onLight: true,
+            ),
+          ],
           if (_advertisedAs != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -349,6 +443,9 @@ class _ReceivePageState extends State<ReceivePage> {
     final c = _controller;
     if (c.error != null) return t.statusError(c.error!);
     if (c.senderLeft) return t.statusPeerLeftSender;
+    if (c.receiving != null && c.phase == ReceiverPhase.running) {
+      return t.contentReceiving(c.receiving!.name);
+    }
     switch (c.phase) {
       case ReceiverPhase.idle:
         return t.statusIdle;
@@ -567,6 +664,326 @@ class _VideoStatsOverlay extends StatelessWidget {
             fontSize: 12,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The text of a [ContentNote] (the words are in the ARB files).
+String contentNoteText(AppLocalizations t, ContentNote n) => switch (n) {
+  ContentNote.badMessage => t.contentNoteBadMessage,
+  ContentNote.incomplete => t.contentNoteIncomplete,
+  ContentNote.tooLarge => t.contentNoteTooLarge,
+  ContentNote.documentRejected => t.contentNoteDocumentRejected,
+  ContentNote.renderFailed => t.contentNoteRenderFailed,
+  ContentNote.tooManyErrors => t.contentNoteTooManyErrors,
+  ContentNote.transferTimeout => t.contentNoteTimeout,
+  ContentNote.workerUnavailable => t.contentNoteWorkerUnavailable,
+  ContentNote.imageUndecodable => t.contentImageUndecodable,
+  ContentNote.imageTooBig => t.contentImageTooBig,
+  ContentNote.linkOpenFailed => t.contentNoteLinkOpenFailed,
+};
+
+/// A calm, dismissable note (never alarming, never text from the sender).
+class _ContentNote extends StatelessWidget {
+  const _ContentNote({
+    required this.note,
+    required this.onHide,
+    this.onLight = false,
+  });
+
+  final ContentNote note;
+  final VoidCallback onHide;
+
+  /// On the light form (not over a black picture).
+  final bool onLight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final fg = onLight ? scheme.onSecondaryContainer : Colors.white;
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Material(
+        key: const Key('contentNote'),
+        color: onLight ? scheme.secondaryContainer : Colors.black87,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: fg),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  contentNoteText(t, note),
+                  key: const Key('contentNoteText'),
+                  style: TextStyle(color: fg),
+                ),
+              ),
+              IconButton(
+                key: const Key('contentNoteHide'),
+                tooltip: t.contentNoteHide,
+                color: fg,
+                icon: const Icon(Icons.close),
+                onPressed: onHide,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A received image, fitted into the window.
+class _ImageContent extends StatelessWidget {
+  const _ImageContent({required this.image, required this.t});
+
+  final ReceivedImage image;
+  final AppLocalizations t;
+
+  /// Larger pictures are decoded at this size at most (memory).
+  /// UNCERTAIN: 4096 is a guess; a PNG may still be decoded in full by the engine first.
+  static const _maxDecodeSide = 4096;
+
+  @override
+  Widget build(BuildContext context) {
+    final big = math.max(image.width, image.height) > _maxDecodeSide;
+    final wide = image.width >= image.height;
+    return Center(
+      child: Semantics(
+        image: true,
+        label: t.contentImageLabel,
+        child: Image.memory(
+          image.bytes,
+          key: const Key('contentImage'),
+          fit: BoxFit.contain,
+          cacheWidth: big && wide ? _maxDecodeSide : null,
+          cacheHeight: big && !wide ? _maxDecodeSide : null,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (context, error, stack) => Text(
+            t.contentImageUndecodable,
+            key: const Key('contentImageError'),
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A received PDF page, drawn by the core at the width of this view, with a page indicator.
+/// The page changes only when the sender says so.
+class _DocumentContent extends StatelessWidget {
+  const _DocumentContent({
+    required this.doc,
+    required this.controller,
+    required this.t,
+  });
+
+  final ReceivedDocument doc;
+  final ReceiverController controller;
+  final AppLocalizations t;
+
+  @override
+  Widget build(BuildContext context) {
+    final img = doc.image;
+    return LayoutBuilder(
+      builder: (context, box) {
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final w = (box.maxWidth * dpr).round();
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => controller.reportContentWidth(w),
+        );
+        if (img == null) {
+          return Center(
+            child: Text(
+              t.contentPageOpening(doc.name),
+              key: const Key('pageOpening'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white),
+            ),
+          );
+        }
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: img.width / img.height,
+                child: Semantics(
+                  image: true,
+                  label: t.contentPageLabel,
+                  child: RepaintBoundary(
+                    // The boundary is exactly the page (tests read its pixels).
+                    key: const Key('pageView'),
+                    child: RawImage(
+                      image: img,
+                      fit: BoxFit.fill,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Semantics(
+                  liveRegion: true,
+                  child: Container(
+                    key: const Key('pageIndicatorBox'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      t.contentPageIndicator(doc.page ?? 1, doc.pages),
+                      key: const Key('pageIndicator'),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// "The sender wants to open <host>": Open or Dismiss. Nothing opens before "Open" is
+/// pressed; "Dismiss" has the initial focus so that a stray Enter key does not open anything.
+class _LinkCard extends StatelessWidget {
+  const _LinkCard({
+    required this.link,
+    required this.t,
+    required this.onOpen,
+    required this.onDismiss,
+  });
+
+  final ReceivedLink link;
+  final AppLocalizations t;
+  final VoidCallback onOpen;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          key: const Key('linkCard'),
+          margin: const EdgeInsets.all(24),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.link),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        t.contentLinkTitle(link.host),
+                        key: const Key('linkTitle'),
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // The whole address, so that the person can judge it.
+                SelectableText(
+                  link.url,
+                  key: const Key('linkUrl'),
+                  maxLines: 3,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(t.contentLinkHint, style: theme.textTheme.bodySmall),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      key: const Key('linkDismissButton'),
+                      autofocus: true,
+                      onPressed: onDismiss,
+                      child: Text(t.contentLinkDismiss),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      key: const Key('linkOpenButton'),
+                      onPressed: onOpen,
+                      child: Text(t.contentLinkOpen),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Buttons over received content: full screen, close, stop receiving.
+class _ContentToolbar extends StatelessWidget {
+  const _ContentToolbar({required this.controller, required this.onStop});
+
+  final ReceiverController controller;
+  final VoidCallback onStop;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final c = controller;
+    return Material(
+      color: Colors.black54,
+      borderRadius: BorderRadius.circular(24),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            key: const Key('fullscreenButton'),
+            tooltip: c.fullscreen ? t.fullscreenExit : t.fullscreenEnter,
+            color: Colors.white,
+            icon: Icon(c.fullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+            onPressed: c.toggleFullscreen,
+          ),
+          IconButton(
+            key: const Key('contentCloseButton'),
+            tooltip: t.contentClose,
+            color: Colors.white,
+            icon: const Icon(Icons.close),
+            onPressed: c.closeContent,
+          ),
+          IconButton(
+            key: const Key('stopButton'),
+            tooltip: t.stop,
+            color: Colors.white,
+            icon: const Icon(Icons.stop),
+            onPressed: onStop,
+          ),
+        ],
       ),
     );
   }

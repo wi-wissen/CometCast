@@ -13,6 +13,9 @@ import 'core/android_capture.dart';
 import 'core/core_api.dart';
 import 'core/rust_loader.dart';
 import 'home_page.dart';
+import 'receive_page.dart' show launchInBrowser;
+import 'receiver_controller.dart' show UrlOpener;
+import 'send_content_page.dart';
 import 'settings.dart';
 import 'widgets.dart';
 
@@ -74,6 +77,8 @@ class CometCastApp extends StatelessWidget {
     required this.core,
     AppSettings? settings,
     this.androidCapture,
+    this.pickFile = pickImageOrPdf,
+    this.openUrl = launchInBrowser,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   final Locale? locale;
@@ -83,6 +88,12 @@ class CometCastApp extends StatelessWidget {
 
   /// The Rust core (or a fake in tests).
   final CoreApi core;
+
+  /// The file dialog (a fake in tests).
+  final PickFile pickFile;
+
+  /// Opens a link after the person chose "Open" (a fake in tests).
+  final UrlOpener openUrl;
 
   /// Settings shared by the screens (server address).
   final AppSettings settings;
@@ -114,6 +125,8 @@ class CometCastApp extends StatelessWidget {
         core: core,
         settings: settings,
         androidCapture: androidCapture,
+        pickFile: pickFile,
+        openUrl: openUrl,
       ),
     );
   }

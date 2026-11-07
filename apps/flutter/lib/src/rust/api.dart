@@ -11,7 +11,7 @@ part 'api.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `discover_servers_with`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -31,12 +31,19 @@ int roomCodeLength() => RustLib.instance.api.crateApiRoomCodeLength();
 /// returned error to the listener.)
 /// `udp_bind` is for development only (for example `127.0.0.1:0` for same-machine tests);
 /// `None` uses the default (all interfaces).
+///
+/// With `content` the receiver also accepts images, PDFs, links and page commands on the
+/// `control` data channel (docs/web-m2.md) and reports them as the `Content...` events; without
+/// it the channel is refused. PDFs render in a resource-limited child process (docs/documents.md);
+/// see [`docs_worker_path`] for how it is found.
 Stream<ReceiverUiEvent> startReceiver({
   required String server,
   String? udpBind,
+  required bool content,
 }) => RustLib.instance.api.crateApiStartReceiver(
   server: server,
   udpBind: udpBind,
+  content: content,
 );
 
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
@@ -177,6 +184,64 @@ Stream<NearbyReceiverEvent> watchReceivers() =>
 Future<void> stopWatchingReceivers() =>
     RustLib.instance.api.crateApiStopWatchingReceivers();
 
+/// The image or PDF page that waits, or `None`. Call it after a
+/// [`ReceiverUiEvent::ContentFrameReady`]. Fetching re-arms that event; a newer picture
+/// replaces an unfetched one (only the latest matters), and a link, a stop or a new document
+/// empties the slot. The bytes are copied once here and once by the bridge.
+Future<ContentFrame?> takeContentFrame() =>
+    RustLib.instance.api.crateApiTakeContentFrame();
+
+/// Tell the receiver how wide pages are rendered, in physical pixels (the width of the view
+/// times the device pixel ratio). The shown page is rendered again at the new width and
+/// arrives as a `ContentFrameReady`. Call it when the view is resized. The core clamps the
+/// value to its output limits.
+void setContentTargetWidth({required int width}) =>
+    RustLib.instance.api.crateApiSetContentTargetWidth(width: width);
+
+/// The one place where link rules live (`cc-files`, the same rules that the receiver applies
+/// to a received link): the Dart side asks here and does not repeat the rules. Call it
+/// before sending a link and again right before opening one.
+LinkCheck validateLink({required String input}) =>
+    RustLib.instance.api.crateApiValidateLink(input: input);
+
+/// Use this program to render PDFs (an absolute path) instead of looking for one; `None` goes
+/// back to the default search. For tests and for hosts whose layout differs. The path is not
+/// checked for ownership: only pass a path the app itself controls.
+void setDocsWorker({String? path}) =>
+    RustLib.instance.api.crateApiSetDocsWorker(path: path);
+
+/// The PDF render worker program that would be used now, or `None` when none was found (then
+/// received PDFs fail with [`UiContentError::WorkerUnavailable`], and nothing falls back to
+/// the unprotected in-process engine). Search order: [`set_docs_worker`]; the environment
+/// variable `COMETCAST_DOCS_WORKER` (only if `cc-docs` trusts the file); `cc-docs-worker` in
+/// the directory of the running executable; `cc-docs`' own discovery.
+String? docsWorkerPath() => RustLib.instance.api.crateApiDocsWorkerPath();
+
+/// Send an image, a PDF or a link: check it (events: `Prepared` or `Rejected`), join the room
+/// `code` on `server`, wait for the data channel, send with progress, and then forward
+/// [`send_content_cmd`] commands until stopped. Replaces a running sender.
+///
+/// Errors are events, not return values (see [`start_receiver`]). `udp_bind` is for
+/// development only.
+Stream<ContentSenderUiEvent> startContentSender({
+  required String code,
+  required String server,
+  String? udpBind,
+  required ContentSource source,
+}) => RustLib.instance.api.crateApiStartContentSender(
+  code: code,
+  server: server,
+  udpBind: udpBind,
+  source: source,
+);
+
+/// Queue a presenter command for the running content sender. Returns `false` if no content
+/// sender runs (or it has not sent its content yet), the command queue (64) is full, or the
+/// page is 0. Commands are not applied locally: the page that is shown is the receiver's
+/// business, the sender has no renderer.
+bool sendContentCmd({required UiContentCmd cmd}) =>
+    RustLib.instance.api.crateApiSendContentCmd(cmd: cmd);
+
 /// Result of [`start_advertising`].
 enum AdvertiseOutcome {
   /// The receiver is announced on the local network.
@@ -302,6 +367,123 @@ sealed class CaptureSupport with _$CaptureSupport {
   }) = CaptureSupport_Failed;
 }
 
+@freezed
+sealed class ContentFrame with _$ContentFrame {
+  const ContentFrame._();
+
+  /// An image file as it was sent (PNG, JPEG, WebP or GIF; the UI decodes it).
+  const factory ContentFrame.image({
+    /// File name, cleaned.
+    required String name,
+
+    /// `image/png`, `image/jpeg`, `image/webp` or `image/gif`.
+    required String mime,
+
+    /// The file's bytes (at most 10 MiB).
+    required Uint8List bytes,
+  }) = ContentFrame_Image;
+
+  /// One rendered PDF page.
+  const factory ContentFrame.page({
+    /// Page number, 1-based.
+    required int page,
+
+    /// Width in pixels.
+    required int width,
+
+    /// Height in pixels.
+    required int height,
+
+    /// RGBA, rows without padding, opaque white background.
+    required Uint8List rgba,
+  }) = ContentFrame_Page;
+}
+
+@freezed
+sealed class ContentSenderUiEvent with _$ContentSenderUiEvent {
+  const ContentSenderUiEvent._();
+
+  /// The file or link was read and checked. Always the first event.
+  const factory ContentSenderUiEvent.prepared({
+    /// File name, or the host of a link.
+    required String name,
+
+    /// Image, PDF or link.
+    required UiContentKind kind,
+
+    /// Size in bytes (the length of the URL for a link).
+    required BigInt size,
+
+    /// Pages of a PDF, if the render worker could tell. `None` = unknown.
+    int? pages,
+
+    /// Host of a link in its punycode form.
+    String? host,
+  }) = ContentSenderUiEvent_Prepared;
+
+  /// The room was joined and the offer sent.
+  const factory ContentSenderUiEvent.joined() = ContentSenderUiEvent_Joined;
+
+  /// The WebRTC connection state changed.
+  const factory ContentSenderUiEvent.connectionState({
+    /// New state.
+    required UiConnectionState state,
+  }) = ContentSenderUiEvent_ConnectionState;
+
+  /// The data channel is open; the transfer starts.
+  const factory ContentSenderUiEvent.connected() =
+      ContentSenderUiEvent_Connected;
+
+  /// Bytes handed to the data channel (at most one report per percent). The channel buffers
+  /// up to about 1 MiB, so the receiver may be that far behind.
+  const factory ContentSenderUiEvent.progress({
+    /// Bytes so far.
+    required BigInt sent,
+
+    /// Bytes in total.
+    required BigInt total,
+  }) = ContentSenderUiEvent_Progress;
+
+  /// Everything was delivered (the transport confirmed it). Commands can follow.
+  const factory ContentSenderUiEvent.sent() = ContentSenderUiEvent_Sent;
+
+  /// A stop command was delivered; the sender ended. The stream ends after this.
+  const factory ContentSenderUiEvent.stopped() = ContentSenderUiEvent_Stopped;
+
+  /// The receiver left. The stream ends after this.
+  const factory ContentSenderUiEvent.peerLeft() = ContentSenderUiEvent_PeerLeft;
+
+  /// The content was refused before connecting. The stream ends after this.
+  const factory ContentSenderUiEvent.rejected({
+    /// Why.
+    required UiSendRejection reason,
+  }) = ContentSenderUiEvent_Rejected;
+
+  /// Something failed (unknown room, connection). The stream ends after this.
+  const factory ContentSenderUiEvent.error({
+    /// Technical message in English.
+    required String message,
+  }) = ContentSenderUiEvent_Error;
+}
+
+@freezed
+sealed class ContentSource with _$ContentSource {
+  const ContentSource._();
+
+  /// A file on this computer: an image (`.png .jpg .jpeg .webp .gif`, at most 10 MiB) or a
+  /// PDF (`.pdf`, at most 64 MiB). Rust reads it; the bytes do not cross the bridge.
+  const factory ContentSource.file({
+    /// Path of the file.
+    required String path,
+  }) = ContentSource_File;
+
+  /// A web link; Rust validates it ([`validate_link`] rules).
+  const factory ContentSource.link({
+    /// The link as typed.
+    required String url,
+  }) = ContentSource_Link;
+}
+
 /// What went wrong while looking for servers, as a code. The UI shows a translated sentence
 /// for each code and never the raw text of `cc-discovery` (it may contain network content).
 enum DiscoveryWarning {
@@ -328,6 +510,24 @@ enum DiscoveryWarning {
 
   /// Any other note.
   other,
+}
+
+@freezed
+sealed class LinkCheck with _$LinkCheck {
+  const LinkCheck._();
+
+  /// An absolute http or https link without user name or password, no control or
+  /// whitespace characters, at most 2048 characters as written and as normalised.
+  const factory LinkCheck.valid({
+    /// The normalised URL (ASCII), the one to open.
+    required String url,
+
+    /// Host in its punycode form.
+    required String host,
+  }) = LinkCheck_Valid;
+
+  /// Not acceptable.
+  const factory LinkCheck.invalid() = LinkCheck_Invalid;
 }
 
 @freezed
@@ -462,6 +662,54 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// Last decoder problem in English, or `None`.
     String? error,
   }) = ReceiverUiEvent_VideoStats;
+
+  /// A transfer began (only with content enabled). For a "receiving ..." note; there is no
+  /// progress on the receiving side.
+  const factory ReceiverUiEvent.contentTransferStarted({
+    /// `true` for a PDF, `false` for an image.
+    required bool document,
+
+    /// File name, already cleaned of control and invisible characters.
+    required String name,
+
+    /// Announced size in bytes.
+    required BigInt size,
+  }) = ReceiverUiEvent_ContentTransferStarted;
+
+  /// An image or a PDF page waits: call [`take_content_frame`]. Sent again only after
+  /// `take_content_frame` was called.
+  const factory ReceiverUiEvent.contentFrameReady() =
+      ReceiverUiEvent_ContentFrameReady;
+
+  /// A PDF was accepted. Pages are rendered next and announced with `ContentFrameReady`.
+  const factory ReceiverUiEvent.contentDocumentOpened({
+    /// File name, cleaned.
+    required String name,
+
+    /// Number of pages (at least 1).
+    required int pages,
+  }) = ReceiverUiEvent_ContentDocumentOpened;
+
+  /// The sender asks to open a link. **Nothing is opened by the core or by this layer**:
+  /// the UI shows the host and opens the link only after a click. The URL passed the
+  /// `validate_link` rules.
+  const factory ReceiverUiEvent.contentLink({
+    /// The normalised URL (ASCII, http or https).
+    required String url,
+
+    /// Host in its punycode form (an internationalised name shows as `xn--...`).
+    required String host,
+  }) = ReceiverUiEvent_ContentLink;
+
+  /// The sender stopped the content: whatever is shown should disappear.
+  const factory ReceiverUiEvent.contentStopped() =
+      ReceiverUiEvent_ContentStopped;
+
+  /// A transfer was refused or failed. Only a code: text of the sender never reaches the UI.
+  const factory ReceiverUiEvent.contentError({
+    /// What happened.
+    required UiContentError error,
+  }) = ReceiverUiEvent_ContentError;
 
   /// The sender left. The stream ends after this.
   const factory ReceiverUiEvent.peerLeft() = ReceiverUiEvent_PeerLeft;
@@ -741,6 +989,104 @@ enum UiConnectionState {
 
   /// Closed.
   closed,
+}
+
+@freezed
+sealed class UiContentCmd with _$UiContentCmd {
+  const UiContentCmd._();
+
+  /// Next page.
+  const factory UiContentCmd.nextPage() = UiContentCmd_NextPage;
+
+  /// Previous page.
+  const factory UiContentCmd.prevPage() = UiContentCmd_PrevPage;
+
+  /// Go to a page (the first page is 1; the receiver clamps to the page count).
+  const factory UiContentCmd.goToPage({
+    /// Page number, 1-based.
+    required int page,
+  }) = UiContentCmd_GoToPage;
+
+  /// Stop showing the content; the sender ends after the command left.
+  const factory UiContentCmd.stop() = UiContentCmd_Stop;
+}
+
+/// Why received content could not be shown. The UI translates these codes.
+enum UiContentError {
+  /// A message that is malformed, unknown or refused (too large, type not allowed).
+  badMessage,
+
+  /// Data without a transfer.
+  unexpectedChunk,
+
+  /// More data than announced.
+  tooLarge,
+
+  /// Fewer bytes than announced.
+  sizeMismatch,
+
+  /// An end message without a transfer.
+  noTransfer,
+
+  /// A chunk that breaks the size rule.
+  badChunk,
+
+  /// A new transfer began before the previous one ended.
+  interrupted,
+
+  /// The PDF was refused (damaged, password, too many pages, ...).
+  documentRejected,
+
+  /// A page could not be rendered.
+  renderFailed,
+
+  /// Too many protocol violations; further input is ignored.
+  tooManyErrors,
+
+  /// A transfer stalled and was dropped.
+  transferTimeout,
+
+  /// No PDF render worker program was found, so no PDF can be shown.
+  workerUnavailable,
+}
+
+/// The kind of content that is being sent.
+enum UiContentKind {
+  /// An image.
+  image,
+
+  /// A PDF document.
+  pdf,
+
+  /// A link.
+  link,
+}
+
+/// Why something cannot be sent. Found before anything is connected.
+enum UiSendRejection {
+  /// The file cannot be opened or read.
+  unreadable,
+
+  /// The path is not a regular file (a folder, a device).
+  notARegularFile,
+
+  /// The file has no bytes.
+  empty,
+
+  /// Larger than the limit (10 MiB image, 64 MiB PDF).
+  tooLarge,
+
+  /// Not one of the allowed image types or PDF (by extension and by content).
+  unsupportedType,
+
+  /// Named like a PDF but without the PDF header.
+  notPdf,
+
+  /// The PDF cannot be shown by any receiver (password, damaged, too many pages, ...).
+  documentUnusable,
+
+  /// Not an acceptable http(s) link.
+  badLink,
 }
 
 /// One decoded picture for the UI.

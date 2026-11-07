@@ -16,7 +16,7 @@
   "@homeSendFileOrLink": {
     "description": "Home list row: send a document, file or web link."
   },
-  "homeSendFileOrLinkHint": "Documents, files and links",
+  "homeSendFileOrLinkHint": "Images, PDFs and links",
   "@homeSendFileOrLinkHint": {
     "description": "Subtitle of the 'Send file or link' row."
   },
@@ -146,7 +146,7 @@
   "@statsKeyframes": {
     "description": "Label: number of received key frames (complete pictures)."
   },
-  "receiveNotice": "Pictures are shown for H.264 video, for example when a Linux computer shares its screen. The built-in test video (VP8) is only counted.",
+  "receiveNotice": "Pictures are shown for H.264 video, for example when a Linux computer shares its screen. Images, PDF pages and links that a sender shares are shown too. The built-in test video (VP8) is only counted.",
   "@receiveNotice": {
     "description": "Notice on the receive screen: which video is shown."
   },
@@ -516,5 +516,293 @@
         "type": "String"
       }
     }
+  },
+  "contentClose": "Close",
+  "@contentClose": {
+    "description": "Tooltip of the button that closes the shown image, page or link and goes back to waiting."
+  },
+  "contentReceiving": "Receiving “{name}” …",
+  "@contentReceiving": {
+    "description": "Status while a file from the sender arrives. The name was cleaned by the core.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "contentImageLabel": "Image from the sender",
+  "@contentImageLabel": {
+    "description": "Screen reader label of a received image."
+  },
+  "contentImageUndecodable": "This image cannot be shown.",
+  "@contentImageUndecodable": {
+    "description": "Note when a received image file cannot be decoded."
+  },
+  "contentImageTooBig": "This image is too large to show.",
+  "@contentImageTooBig": {
+    "description": "Note when a received image has too many pixels."
+  },
+  "contentPageLabel": "PDF page from the sender",
+  "@contentPageLabel": {
+    "description": "Screen reader label of a received PDF page."
+  },
+  "contentPageIndicator": "Page {page} of {pages}",
+  "@contentPageIndicator": {
+    "description": "Page indicator of a PDF.",
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "pages": {
+        "type": "int"
+      }
+    }
+  },
+  "contentPageOpening": "Opening “{name}” …",
+  "@contentPageOpening": {
+    "description": "Shown while the first page of a received PDF is drawn.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "contentLinkTitle": "The sender wants to open {host}",
+  "@contentLinkTitle": {
+    "description": "Title of the link card. The host is shown in its punycode form for internationalised names.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "contentLinkHint": "Nothing is opened until you choose Open. Check the address first.",
+  "@contentLinkHint": {
+    "description": "Explanation under the link card."
+  },
+  "contentLinkOpen": "Open",
+  "@contentLinkOpen": {
+    "description": "Button of the link card: open the link in the browser."
+  },
+  "contentLinkDismiss": "Dismiss",
+  "@contentLinkDismiss": {
+    "description": "Button of the link card: do not open the link."
+  },
+  "contentNoteHide": "Hide this note",
+  "@contentNoteHide": {
+    "description": "Tooltip of the button that hides a note about received content."
+  },
+  "contentNoteBadMessage": "The sender sent something that this app cannot use. It was ignored.",
+  "@contentNoteBadMessage": {
+    "description": "Note: a malformed or refused message."
+  },
+  "contentNoteIncomplete": "A transfer from the sender was not complete and was discarded.",
+  "@contentNoteIncomplete": {
+    "description": "Note: a transfer broke the rules (wrong sizes, interrupted)."
+  },
+  "contentNoteTooLarge": "The file is larger than this app accepts.",
+  "@contentNoteTooLarge": {
+    "description": "Note: a file was over the size limit."
+  },
+  "contentNoteDocumentRejected": "This PDF cannot be shown. It may be damaged, protected by a password or too large.",
+  "@contentNoteDocumentRejected": {
+    "description": "Note: the PDF was refused."
+  },
+  "contentNoteRenderFailed": "A page could not be drawn.",
+  "@contentNoteRenderFailed": {
+    "description": "Note: rendering a PDF page failed."
+  },
+  "contentNoteTooManyErrors": "The sender sent too many invalid messages. Further content is ignored.",
+  "@contentNoteTooManyErrors": {
+    "description": "Note: the receiver blocked the sender."
+  },
+  "contentNoteTimeout": "A transfer stalled and was cancelled.",
+  "@contentNoteTimeout": {
+    "description": "Note: a transfer received nothing for too long."
+  },
+  "contentNoteWorkerUnavailable": "PDF documents cannot be shown on this device because the PDF component was not found.",
+  "@contentNoteWorkerUnavailable": {
+    "description": "Note: the PDF render worker program is missing."
+  },
+  "contentNoteLinkOpenFailed": "The link could not be opened.",
+  "@contentNoteLinkOpenFailed": {
+    "description": "Note: the system refused to open the link."
+  },
+  "sendContentTitle": "Send file or link",
+  "@sendContentTitle": {
+    "description": "Title of the screen that sends an image, a PDF or a link."
+  },
+  "sendContentModeFile": "File",
+  "@sendContentModeFile": {
+    "description": "Segment: send a file."
+  },
+  "sendContentModeLink": "Link",
+  "@sendContentModeLink": {
+    "description": "Segment: send a web link."
+  },
+  "sendContentPick": "Choose image or PDF …",
+  "@sendContentPick": {
+    "description": "Button that opens the file dialog."
+  },
+  "sendContentPickerTypes": "Images and PDF",
+  "@sendContentPickerTypes": {
+    "description": "Name of the file type filter in the file dialog."
+  },
+  "sendContentNoFile": "No file chosen.",
+  "@sendContentNoFile": {
+    "description": "Shown while no file is chosen."
+  },
+  "sendContentChosen": "Chosen: {name}",
+  "@sendContentChosen": {
+    "description": "The file that was chosen.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sendContentNeedFile": "Please choose a file first.",
+  "@sendContentNeedFile": {
+    "description": "Error when sending without a file."
+  },
+  "sendContentLinkLabel": "Link (http or https)",
+  "@sendContentLinkLabel": {
+    "description": "Label of the link field."
+  },
+  "sendContentLinkInvalid": "Please enter a link that starts with http:// or https://.",
+  "@sendContentLinkInvalid": {
+    "description": "Error under the link field. The rules are checked by the Rust core."
+  },
+  "sendContentLinkPreview": "The receiver will be asked to open {host}.",
+  "@sendContentLinkPreview": {
+    "description": "Preview under the link field. The host is shown in its punycode form for internationalised names.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "sendContentStart": "Send",
+  "@sendContentStart": {
+    "description": "Button that starts sending the file or link."
+  },
+  "sendContentPreparing": "Checking the content …",
+  "@sendContentPreparing": {
+    "description": "Status while the file is read and checked."
+  },
+  "sendContentSending": "Sending “{name}” … {percent} %",
+  "@sendContentSending": {
+    "description": "Status with the progress in percent.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "sendContentDone": "“{name}” was sent. The receiver keeps showing it while this screen stays open.",
+  "@sendContentDone": {
+    "description": "Status after an image or PDF was delivered.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sendContentLinkDone": "The receiver was asked to open {host}. Nothing opens until the person there agrees.",
+  "@sendContentLinkDone": {
+    "description": "Status after a link was delivered.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "sendContentStopped": "The content was closed on the receiver.",
+  "@sendContentStopped": {
+    "description": "Status after the stop command was delivered."
+  },
+  "sendContentStopShowing": "Stop showing",
+  "@sendContentStopShowing": {
+    "description": "Button that tells the receiver to close the content."
+  },
+  "sendContentProgress": "Progress of sending",
+  "@sendContentProgress": {
+    "description": "Screen reader label of the progress bar."
+  },
+  "sendPresenterTitle": "Presenter controls",
+  "@sendPresenterTitle": {
+    "description": "Heading of the page controls for a PDF."
+  },
+  "sendPresenterPrev": "Previous page",
+  "@sendPresenterPrev": {
+    "description": "Button: previous page."
+  },
+  "sendPresenterNext": "Next page",
+  "@sendPresenterNext": {
+    "description": "Button: next page."
+  },
+  "sendPresenterPageUnknown": "Page {page}",
+  "@sendPresenterPageUnknown": {
+    "description": "Page asked for, when the page count is not known.",
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "sendPresenterGoto": "Go to page",
+  "@sendPresenterGoto": {
+    "description": "Label of the page number field."
+  },
+  "sendPresenterGo": "Go",
+  "@sendPresenterGo": {
+    "description": "Button that jumps to the page in the field."
+  },
+  "sendPresenterGotoInvalid": "Enter a page number of 1 or more.",
+  "@sendPresenterGotoInvalid": {
+    "description": "Error under the page number field."
+  },
+  "sendPresenterKeys": "Keys: arrow keys, Page Up and Page Down turn pages.",
+  "@sendPresenterKeys": {
+    "description": "Hint about the keyboard."
+  },
+  "sendPresenterNote": "The page is shown on the receiver; this screen does not draw it. The number here is the one you asked for.",
+  "@sendPresenterNote": {
+    "description": "Explains that the sender has no preview."
+  },
+  "sendPresenterCmdFailed": "The command was not accepted. Try again.",
+  "@sendPresenterCmdFailed": {
+    "description": "Note when a page command could not be queued."
+  },
+  "sendRejectUnreadable": "The file could not be read.",
+  "@sendRejectUnreadable": {
+    "description": "Reason a file cannot be sent."
+  },
+  "sendRejectNotFile": "This is not a file.",
+  "@sendRejectNotFile": {
+    "description": "Reason a file cannot be sent."
+  },
+  "sendRejectEmpty": "The file is empty.",
+  "@sendRejectEmpty": {
+    "description": "Reason a file cannot be sent."
+  },
+  "sendRejectTooLarge": "The file is too large. Images may be up to 10 MiB, PDFs up to 64 MiB.",
+  "@sendRejectTooLarge": {
+    "description": "Reason a file cannot be sent."
+  },
+  "sendRejectType": "Only PNG, JPEG, WebP and GIF images and PDF files can be sent.",
+  "@sendRejectType": {
+    "description": "Reason a file cannot be sent."
+  },
+  "sendRejectNotPdf": "This file is not a valid PDF.",
+  "@sendRejectNotPdf": {
+    "description": "Reason a file cannot be sent."
+  },
+  "sendRejectDocument": "A receiver could not show this PDF. It may be damaged or protected by a password.",
+  "@sendRejectDocument": {
+    "description": "Reason a PDF cannot be sent."
   }
 }

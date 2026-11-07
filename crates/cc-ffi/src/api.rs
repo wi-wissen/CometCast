@@ -27,14 +27,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use cc_proto::{RoomCode, RoomCodeError};
-use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
+use cc_receiver::{ContentOptions, ReceiverCore, ReceiverEvent, ReceiverOptions};
 use cc_sender::{
-    ExternalInput, PushOutcome, ScreenOptions, SenderCore, SenderEvent, SenderOptions,
+    ContentSender, ContentSenderOptions, ExternalInput, PushOutcome, ScreenOptions, SenderCore,
+    SenderEvent, SenderOptions,
 };
 use cc_transport::{ConnectionState, MediaSnapshot};
 use flutter_rust_bridge::frb;
 use tokio::sync::oneshot;
 
+use crate::content::{self, CONTENT};
+use crate::content_sender;
 use crate::encoded;
 use crate::frb_generated::StreamSink;
 use crate::video::{self, VIDEO};
@@ -197,12 +200,102 @@ pub enum ReceiverUiEvent {
         /// Last decoder problem in English, or `None`.
         error: Option<String>,
     },
+    /// A transfer began (only with content enabled). For a "receiving ..." note; there is no
+    /// progress on the receiving side.
+    ContentTransferStarted {
+        /// `true` for a PDF, `false` for an image.
+        document: bool,
+        /// File name, already cleaned of control and invisible characters.
+        name: String,
+        /// Announced size in bytes.
+        size: u64,
+    },
+    /// An image or a PDF page waits: call [`take_content_frame`]. Sent again only after
+    /// `take_content_frame` was called.
+    ContentFrameReady,
+    /// A PDF was accepted. Pages are rendered next and announced with `ContentFrameReady`.
+    ContentDocumentOpened {
+        /// File name, cleaned.
+        name: String,
+        /// Number of pages (at least 1).
+        pages: u32,
+    },
+    /// The sender asks to open a link. **Nothing is opened by the core or by this layer**:
+    /// the UI shows the host and opens the link only after a click. The URL passed the
+    /// `validate_link` rules.
+    ContentLink {
+        /// The normalised URL (ASCII, http or https).
+        url: String,
+        /// Host in its punycode form (an internationalised name shows as `xn--...`).
+        host: String,
+    },
+    /// The sender stopped the content: whatever is shown should disappear.
+    ContentStopped,
+    /// A transfer was refused or failed. Only a code: text of the sender never reaches the UI.
+    ContentError {
+        /// What happened.
+        error: UiContentError,
+    },
     /// The sender left. The stream ends after this.
     PeerLeft,
     /// Something failed. The stream ends after this.
     Error {
         /// Technical message in English (for logs and for showing next to a translated title).
         message: String,
+    },
+}
+
+/// Why received content could not be shown. The UI translates these codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiContentError {
+    /// A message that is malformed, unknown or refused (too large, type not allowed).
+    BadMessage,
+    /// Data without a transfer.
+    UnexpectedChunk,
+    /// More data than announced.
+    TooLarge,
+    /// Fewer bytes than announced.
+    SizeMismatch,
+    /// An end message without a transfer.
+    NoTransfer,
+    /// A chunk that breaks the size rule.
+    BadChunk,
+    /// A new transfer began before the previous one ended.
+    Interrupted,
+    /// The PDF was refused (damaged, password, too many pages, ...).
+    DocumentRejected,
+    /// A page could not be rendered.
+    RenderFailed,
+    /// Too many protocol violations; further input is ignored.
+    TooManyErrors,
+    /// A transfer stalled and was dropped.
+    TransferTimeout,
+    /// No PDF render worker program was found, so no PDF can be shown.
+    WorkerUnavailable,
+}
+
+/// A picture of received content, fetched with [`take_content_frame`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentFrame {
+    /// An image file as it was sent (PNG, JPEG, WebP or GIF; the UI decodes it).
+    Image {
+        /// File name, cleaned.
+        name: String,
+        /// `image/png`, `image/jpeg`, `image/webp` or `image/gif`.
+        mime: String,
+        /// The file's bytes (at most 10 MiB).
+        bytes: Vec<u8>,
+    },
+    /// One rendered PDF page.
+    Page {
+        /// Page number, 1-based.
+        page: u32,
+        /// Width in pixels.
+        width: u32,
+        /// Height in pixels.
+        height: u32,
+        /// RGBA, rows without padding, opaque white background.
+        rgba: Vec<u8>,
     },
 }
 
@@ -323,16 +416,34 @@ fn spawn_guarded(
 /// returned error to the listener.)
 /// `udp_bind` is for development only (for example `127.0.0.1:0` for same-machine tests);
 /// `None` uses the default (all interfaces).
+///
+/// With `content` the receiver also accepts images, PDFs, links and page commands on the
+/// `control` data channel (docs/web-m2.md) and reports them as the `Content...` events; without
+/// it the channel is refused. PDFs render in a resource-limited child process (docs/documents.md);
+/// see [`docs_worker_path`] for how it is found.
 pub async fn start_receiver(
     server: String,
     udp_bind: Option<String>,
+    content: bool,
     events: StreamSink<ReceiverUiEvent>,
 ) {
     let generation = RECEIVER.begin();
     let video_generation = VIDEO.reset();
+    let content_generation = CONTENT.reset();
+    let worker = content::worker();
     let mut options = ReceiverOptions::new(server);
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
+    }
+    if content {
+        let mut co = ContentOptions {
+            isolation: worker.isolation.clone(),
+            ..ContentOptions::default()
+        };
+        if let Some(w) = content::initial_width() {
+            co.target_width = w;
+        }
+        options.content = Some(co);
     }
     // The decoder thread gets a copy of every incoming video packet. If the start fails below,
     // `options` is dropped, the channel closes and the thread ends.
@@ -369,16 +480,40 @@ pub async fn start_receiver(
         return;
     }
     let panic_sink = events.clone();
+    let mut content_events = core.take_content_events();
+    let (width_tx, mut width_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    content::set_width_channel(content_generation, width_tx);
     spawn_guarded(
         async move {
             // The decoder thread asks for key frames through a flag; this timer sends them.
             let mut keyframe_tick = tokio::time::interval(Duration::from_millis(250));
             loop {
                 tokio::select! {
+                    biased;
                     _ = &mut stop_rx => {
                         core.stop().await;
                         break;
                     }
+                    // Content first: the core waits for it to be read (docs/transport.md).
+                    cev = async {
+                        match content_events.as_mut() {
+                            Some(c) => c.next().await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        match cev {
+                            None => content_events = None,
+                            Some(cev) => {
+                                if let Some(ui) = content::map_content_event(content_generation, worker.found, cev)
+                                    && events.add(ui).is_err()
+                                {
+                                    core.stop().await;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Some(w) = width_rx.recv() => core.set_content_target_width(w),
                     _ = keyframe_tick.tick() => {
                         if VIDEO.take_keyframe_request() {
                             // Fails while no track exists yet; the decoder asks again.
@@ -391,6 +526,28 @@ pub async fn start_receiver(
                             VIDEO.set_codec_is_h264(matches!(codec, Some(cc_transport::VideoCodec::H264)));
                         }
                         let is_stats = matches!(ev, ReceiverEvent::Stats(_));
+                        let left = matches!(ev, ReceiverEvent::PeerLeft);
+                        if left
+                            && let Some(c) = content_events.as_mut()
+                        {
+                            // Content that arrived just before the sender left is still
+                            // queued: hand it to the UI first, then say that the sender left.
+                            let mut alive = true;
+                            while let Ok(Some(cev)) =
+                                tokio::time::timeout(CONTENT_DRAIN, c.next()).await
+                            {
+                                if let Some(ui) = content::map_content_event(content_generation, worker.found, cev)
+                                    && events.add(ui).is_err()
+                                {
+                                    alive = false;
+                                    break;
+                                }
+                            }
+                            if !alive {
+                                core.stop().await;
+                                break;
+                            }
+                        }
                         // If Dart stopped listening, `add` fails: shut down.
                         if events.add(map_receiver_event(ev)).is_err()
                             || (is_stats && events.add(video_stats_event()).is_err())
@@ -401,6 +558,7 @@ pub async fn start_receiver(
                     }
                 }
             }
+            content::clear_width_channel(content_generation);
             // `events` is dropped here, which ends the Dart stream.
         },
         move || {
@@ -411,10 +569,14 @@ pub async fn start_receiver(
     );
 }
 
+/// How long to wait for the next queued content event after the sender left.
+const CONTENT_DRAIN: Duration = Duration::from_secs(2);
+
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
 pub fn stop_receiver() {
     RECEIVER.stop();
     VIDEO.stop();
+    CONTENT.reset();
 }
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
@@ -708,6 +870,7 @@ async fn run_sender(
 pub fn stop_sender() {
     SENDER.stop();
     encoded::replace(None);
+    content_sender::clear_cmd_channel();
 }
 
 // ---------------------------------------------------------------------------
@@ -1274,6 +1437,289 @@ pub async fn watch_receivers(events: StreamSink<NearbyReceiverEvent>) {
 /// Stop [`watch_receivers`] (does nothing if none runs).
 pub fn stop_watching_receivers() {
     WATCH.stop();
+}
+
+// ---------------------------------------------------------------------------
+// Content: pictures of received content, link check, PDF worker
+// ---------------------------------------------------------------------------
+
+/// The image or PDF page that waits, or `None`. Call it after a
+/// [`ReceiverUiEvent::ContentFrameReady`]. Fetching re-arms that event; a newer picture
+/// replaces an unfetched one (only the latest matters), and a link, a stop or a new document
+/// empties the slot. The bytes are copied once here and once by the bridge.
+pub async fn take_content_frame() -> Option<ContentFrame> {
+    CONTENT.take().map(content::Stored::into_frame)
+}
+
+/// Tell the receiver how wide pages are rendered, in physical pixels (the width of the view
+/// times the device pixel ratio). The shown page is rendered again at the new width and
+/// arrives as a `ContentFrameReady`. Call it when the view is resized. The core clamps the
+/// value to its output limits.
+#[frb(sync)]
+pub fn set_content_target_width(width: u32) {
+    content::set_target_width(width);
+}
+
+/// The result of [`validate_link`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkCheck {
+    /// An absolute http or https link without user name or password, no control or
+    /// whitespace characters, at most 2048 characters as written and as normalised.
+    Valid {
+        /// The normalised URL (ASCII), the one to open.
+        url: String,
+        /// Host in its punycode form.
+        host: String,
+    },
+    /// Not acceptable.
+    Invalid,
+}
+
+/// The one place where link rules live (`cc-files`, the same rules that the receiver applies
+/// to a received link): the Dart side asks here and does not repeat the rules. Call it
+/// before sending a link and again right before opening one.
+#[frb(sync)]
+pub fn validate_link(input: String) -> LinkCheck {
+    content::check_link(&input)
+}
+
+/// Use this program to render PDFs (an absolute path) instead of looking for one; `None` goes
+/// back to the default search. For tests and for hosts whose layout differs. The path is not
+/// checked for ownership: only pass a path the app itself controls.
+#[frb(sync)]
+pub fn set_docs_worker(path: Option<String>) {
+    content::set_worker_override(path.map(std::path::PathBuf::from));
+}
+
+/// The PDF render worker program that would be used now, or `None` when none was found (then
+/// received PDFs fail with [`UiContentError::WorkerUnavailable`], and nothing falls back to
+/// the unprotected in-process engine). Search order: [`set_docs_worker`]; the environment
+/// variable `COMETCAST_DOCS_WORKER` (only if `cc-docs` trusts the file); `cc-docs-worker` in
+/// the directory of the running executable; `cc-docs`' own discovery.
+#[frb(sync)]
+pub fn docs_worker_path() -> Option<String> {
+    content::worker_path()
+}
+
+// ---------------------------------------------------------------------------
+// Content sender: an image, a PDF or a link, then page commands
+// ---------------------------------------------------------------------------
+
+/// What the person wants to send.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSource {
+    /// A file on this computer: an image (`.png .jpg .jpeg .webp .gif`, at most 10 MiB) or a
+    /// PDF (`.pdf`, at most 64 MiB). Rust reads it; the bytes do not cross the bridge.
+    File {
+        /// Path of the file.
+        path: String,
+    },
+    /// A web link; Rust validates it ([`validate_link`] rules).
+    Link {
+        /// The link as typed.
+        url: String,
+    },
+}
+
+/// The kind of content that is being sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiContentKind {
+    /// An image.
+    Image,
+    /// A PDF document.
+    Pdf,
+    /// A link.
+    Link,
+}
+
+/// Why something cannot be sent. Found before anything is connected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiSendRejection {
+    /// The file cannot be opened or read.
+    Unreadable,
+    /// The path is not a regular file (a folder, a device).
+    NotARegularFile,
+    /// The file has no bytes.
+    Empty,
+    /// Larger than the limit (10 MiB image, 64 MiB PDF).
+    TooLarge,
+    /// Not one of the allowed image types or PDF (by extension and by content).
+    UnsupportedType,
+    /// Named like a PDF but without the PDF header.
+    NotPdf,
+    /// The PDF cannot be shown by any receiver (password, damaged, too many pages, ...).
+    DocumentUnusable,
+    /// Not an acceptable http(s) link.
+    BadLink,
+}
+
+/// What the content sender tells the UI. Order: `Prepared`, `Joined`, `Connected`,
+/// `Progress`..., `Sent`; a problem ends the stream with `Rejected`, `Error`, `PeerLeft` or
+/// `Stopped`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSenderUiEvent {
+    /// The file or link was read and checked. Always the first event.
+    Prepared {
+        /// File name, or the host of a link.
+        name: String,
+        /// Image, PDF or link.
+        kind: UiContentKind,
+        /// Size in bytes (the length of the URL for a link).
+        size: u64,
+        /// Pages of a PDF, if the render worker could tell. `None` = unknown.
+        pages: Option<u32>,
+        /// Host of a link in its punycode form.
+        host: Option<String>,
+    },
+    /// The room was joined and the offer sent.
+    Joined,
+    /// The WebRTC connection state changed.
+    ConnectionState {
+        /// New state.
+        state: UiConnectionState,
+    },
+    /// The data channel is open; the transfer starts.
+    Connected,
+    /// Bytes handed to the data channel (at most one report per percent). The channel buffers
+    /// up to about 1 MiB, so the receiver may be that far behind.
+    Progress {
+        /// Bytes so far.
+        sent: u64,
+        /// Bytes in total.
+        total: u64,
+    },
+    /// Everything was delivered (the transport confirmed it). Commands can follow.
+    Sent,
+    /// A stop command was delivered; the sender ended. The stream ends after this.
+    Stopped,
+    /// The receiver left. The stream ends after this.
+    PeerLeft,
+    /// The content was refused before connecting. The stream ends after this.
+    Rejected {
+        /// Why.
+        reason: UiSendRejection,
+    },
+    /// Something failed (unknown room, connection). The stream ends after this.
+    Error {
+        /// Technical message in English.
+        message: String,
+    },
+}
+
+/// A command for the presenter view of a PDF, sent to the receiver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiContentCmd {
+    /// Next page.
+    NextPage,
+    /// Previous page.
+    PrevPage,
+    /// Go to a page (the first page is 1; the receiver clamps to the page count).
+    GoToPage {
+        /// Page number, 1-based.
+        page: u32,
+    },
+    /// Stop showing the content; the sender ends after the command left.
+    Stop,
+}
+
+/// Send an image, a PDF or a link: check it (events: `Prepared` or `Rejected`), join the room
+/// `code` on `server`, wait for the data channel, send with progress, and then forward
+/// [`send_content_cmd`] commands until stopped. Replaces a running sender.
+///
+/// Errors are events, not return values (see [`start_receiver`]). `udp_bind` is for
+/// development only.
+pub async fn start_content_sender(
+    code: String,
+    server: String,
+    udp_bind: Option<String>,
+    source: ContentSource,
+    events: StreamSink<ContentSenderUiEvent>,
+) {
+    let generation = SENDER.begin();
+    encoded::replace(None);
+    content_sender::clear_cmd_channel();
+    let code = match RoomCode::parse(&code) {
+        Ok(code) => code,
+        Err(e) => {
+            let _ = events.add(ContentSenderUiEvent::Error {
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    let worker = content::worker();
+    let prepared = match tokio::task::spawn_blocking(move || {
+        content_sender::prepare(&source, &worker)
+    })
+    .await
+    {
+        Ok(Ok(p)) => p,
+        Ok(Err(reason)) => {
+            let _ = events.add(ContentSenderUiEvent::Rejected { reason });
+            return;
+        }
+        Err(_) => {
+            let _ = events.add(ContentSenderUiEvent::Error {
+                message: "internal error: reading the content failed".into(),
+            });
+            return;
+        }
+    };
+    if !SENDER.is_current(generation)
+        || events
+            .add(ContentSenderUiEvent::Prepared {
+                name: prepared.name.clone(),
+                kind: prepared.kind,
+                size: prepared.size,
+                pages: prepared.pages,
+                host: prepared.host.clone(),
+            })
+            .is_err()
+    {
+        return;
+    }
+    let mut options = ContentSenderOptions::new(server, code);
+    if let Some(b) = udp_bind {
+        options.session.udp_bind = vec![b];
+    }
+    let sender = match ContentSender::start(options).await {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = events.add(ContentSenderUiEvent::Error {
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    if !SENDER.is_current(generation) || events.add(ContentSenderUiEvent::Joined).is_err() {
+        sender.stop().await;
+        return;
+    }
+    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    SENDER.store(stop_tx);
+    if !SENDER.is_current(generation) {
+        sender.stop().await;
+        return;
+    }
+    let (token, cmds) = content_sender::new_cmd_channel();
+    let panic_sink = events.clone();
+    spawn_guarded(
+        content_sender::drive(sender, prepared, events, stop_rx, cmds, token),
+        move || {
+            let _ = panic_sink.add(ContentSenderUiEvent::Error {
+                message: "internal error: the content sender task panicked".into(),
+            });
+        },
+    );
+}
+
+/// Queue a presenter command for the running content sender. Returns `false` if no content
+/// sender runs (or it has not sent its content yet), the command queue (64) is full, or the
+/// page is 0. Commands are not applied locally: the page that is shown is the receiver's
+/// business, the sender has no renderer.
+#[frb(sync)]
+pub fn send_content_cmd(cmd: UiContentCmd) -> bool {
+    content_sender::send_cmd(cmd)
 }
 
 #[cfg(test)]

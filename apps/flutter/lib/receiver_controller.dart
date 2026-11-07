@@ -11,6 +11,9 @@ import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'core/core_api.dart';
 import 'window_control.dart';
 
+/// Opens a link in the system's browser. Replaced in tests; the real one is `launchUrl`.
+typedef UrlOpener = Future<bool> Function(Uri url);
+
 enum ReceiverPhase {
   /// Nothing started (or stopped by the user).
   idle,
@@ -50,17 +53,115 @@ class VideoStatsView {
   final String? error;
 }
 
+/// What the receive view shows besides the live screen (the latest content wins).
+sealed class ReceivedContent {
+  const ReceivedContent();
+}
+
+/// A received image. [bytes] is the file as sent; the screen decodes it (scaled down).
+class ReceivedImage extends ReceivedContent {
+  const ReceivedImage({
+    required this.name,
+    required this.bytes,
+    required this.width,
+    required this.height,
+  });
+
+  final String name;
+  final Uint8List bytes;
+  final int width;
+  final int height;
+}
+
+/// A received PDF. [image] is null until the first page is drawn.
+class ReceivedDocument extends ReceivedContent {
+  const ReceivedDocument({
+    required this.name,
+    required this.pages,
+    this.page,
+    this.image,
+  });
+
+  final String name;
+  final int pages;
+
+  /// Page number of [image] (1-based).
+  final int? page;
+  final ui.Image? image;
+}
+
+/// A link the sender wants the person to open. Nothing is opened before a click.
+class ReceivedLink extends ReceivedContent {
+  const ReceivedLink({required this.url, required this.host});
+
+  /// The normalised URL (validated by Rust).
+  final String url;
+
+  /// Host in its punycode form.
+  final String host;
+}
+
+/// A calm note about received content. Always a code, never text from the sender.
+enum ContentNote {
+  badMessage,
+  incomplete,
+  tooLarge,
+  documentRejected,
+  renderFailed,
+  tooManyErrors,
+  transferTimeout,
+  workerUnavailable,
+  imageUndecodable,
+  imageTooBig,
+  linkOpenFailed,
+}
+
+ContentNote contentNoteFor(UiContentError e) => switch (e) {
+  UiContentError.badMessage => ContentNote.badMessage,
+  UiContentError.unexpectedChunk ||
+  UiContentError.sizeMismatch ||
+  UiContentError.noTransfer ||
+  UiContentError.badChunk ||
+  UiContentError.interrupted => ContentNote.incomplete,
+  UiContentError.tooLarge => ContentNote.tooLarge,
+  UiContentError.documentRejected => ContentNote.documentRejected,
+  UiContentError.renderFailed => ContentNote.renderFailed,
+  UiContentError.tooManyErrors => ContentNote.tooManyErrors,
+  UiContentError.transferTimeout => ContentNote.transferTimeout,
+  UiContentError.workerUnavailable => ContentNote.workerUnavailable,
+};
+
+/// An image with more pixels than this is not decoded.
+/// UNCERTAIN: 64 Mpx (8000 x 8000) is a guess, chosen like the image limit of cc-docs; not measured.
+const defaultMaxImagePixels = 64 * 1000 * 1000;
+
+/// What is being received right now (a transfer in progress).
+class ReceivingInfo {
+  const ReceivingInfo({required this.name, required this.document});
+
+  final String name;
+  final bool document;
+}
+
 class ReceiverController extends ChangeNotifier {
   ReceiverController({
     required this.core,
     this.udpBind,
     SetFullscreen? setFullscreen,
     this.fetchTimeout = const Duration(seconds: 5),
+    this.content = true,
+    this.maxImagePixels = defaultMaxImagePixels,
   }) : _setFullscreen = setFullscreen ?? setWindowFullscreen;
 
   final CoreApi core;
   final String? udpBind;
   final SetFullscreen _setFullscreen;
+
+  /// Accept images, PDFs and links from the sender.
+  final bool content;
+
+  /// An image with more pixels than this is not decoded (a small file can hold a huge picture).
+  final int maxImagePixels;
 
   /// How long one picture fetch (core call plus image creation) may take before it is given
   /// up, so that a stuck call cannot block all later pictures.
@@ -91,6 +192,25 @@ class ReceiverController extends ChangeNotifier {
   double displayFps = 0;
 
   VideoStatsView videoStats = const VideoStatsView();
+
+  /// The received image, PDF page or link that is shown now, or null. It is shown instead of
+  /// the live screen; closing it goes back to the screen (or to waiting).
+  ReceivedContent? shown;
+
+  /// A transfer that is arriving, or null.
+  ReceivingInfo? receiving;
+
+  /// A note about content that failed or was refused, or null.
+  ContentNote? note;
+
+  /// Bumped when the shown content is replaced or removed; a picture fetch that began earlier
+  /// drops its result.
+  int _contentEpoch = 0;
+  bool _contentFetching = false;
+  bool _contentRefetch = false;
+
+  /// The person closed the document: its pages are ignored until the next one opens.
+  bool _documentClosed = false;
 
   /// Mean time (microseconds) the UI side needed per picture: fetching it from the core
   /// (`takeFrame`, includes copying the pixels over the bridge) and turning it into an image.
@@ -141,13 +261,18 @@ class ReceiverController extends ChangeNotifier {
     videoStats = const VideoStatsView();
     avgFetchUs = avgImageUs = _fetchUsTotal = _imageUsTotal = _fetched = 0;
     error = null;
+    _clearContent();
     _clock
       ..reset()
       ..start();
     _lastStatsMs = 0;
     notifyListeners();
     _sub = core
-        .startReceiver(server: server.trim(), udpBind: udpBind)
+        .startReceiver(
+          server: server.trim(),
+          udpBind: udpBind,
+          content: content,
+        )
         .listen(
           _onEvent,
           onError: (Object e) {
@@ -167,6 +292,7 @@ class ReceiverController extends ChangeNotifier {
   void _end() {
     phase = ReceiverPhase.ended;
     _clearImage();
+    _clearContent();
     unawaited(_leaveFullscreen());
     notifyListeners();
   }
@@ -203,6 +329,30 @@ class ReceiverController extends ChangeNotifier {
           avgDecodeUs: e.avgDecodeUs.toInt(),
           error: e.error,
         );
+      case ReceiverUiEvent_ContentTransferStarted(:final document, :final name):
+        receiving = ReceivingInfo(name: name, document: document);
+      case ReceiverUiEvent_ContentFrameReady():
+        _onContentFrameReady();
+        return;
+      case ReceiverUiEvent_ContentDocumentOpened(:final name, :final pages):
+        _replaceContent(ReceivedDocument(name: name, pages: pages));
+        _documentClosed = false;
+        note = null;
+      case ReceiverUiEvent_ContentLink(:final url, :final host):
+        _replaceContent(ReceivedLink(url: url, host: host));
+        _documentClosed = false;
+        note = null;
+      case ReceiverUiEvent_ContentStopped():
+        _replaceContent(null);
+        _documentClosed = false;
+      case ReceiverUiEvent_ContentError(:final error):
+        receiving = null;
+        note = contentNoteFor(error);
+        // The core closes the shown document when a PDF is refused.
+        if (error == UiContentError.documentRejected ||
+            error == UiContentError.workerUnavailable) {
+          if (shown is ReceivedDocument) _replaceContent(null);
+        }
       case ReceiverUiEvent_PeerLeft():
         senderLeft = true;
         _end();
@@ -242,6 +392,8 @@ class ReceiverController extends ChangeNotifier {
     _session++;
     _fetching = false;
     _refetch = false;
+    _contentFetching = false;
+    _contentRefetch = false;
     _retryTimer?.cancel();
     _retryTimer = null;
   }
@@ -288,23 +440,27 @@ class ReceiverController extends ChangeNotifier {
     }
   }
 
-  static Future<ui.Image> _toImage(VideoFrame f, Duration timeout) {
+  static Future<ui.Image> _toImage(VideoFrame f, Duration timeout) =>
+      _pixelsToImage(f.rgba, f.width, f.height, timeout);
+
+  static Future<ui.Image> _pixelsToImage(
+    Uint8List rgba,
+    int width,
+    int height,
+    Duration timeout,
+  ) {
     final completer = Completer<ui.Image>();
     var abandoned = false;
-    ui.decodeImageFromPixels(
-      f.rgba,
-      f.width,
-      f.height,
-      ui.PixelFormat.rgba8888,
-      (img) {
-        // Too late: nobody waits for it any more.
-        if (abandoned) {
-          img.dispose();
-        } else {
-          completer.complete(img);
-        }
-      },
-    );
+    ui.decodeImageFromPixels(rgba, width, height, ui.PixelFormat.rgba8888, (
+      img,
+    ) {
+      // Too late: nobody waits for it any more.
+      if (abandoned) {
+        img.dispose();
+      } else {
+        completer.complete(img);
+      }
+    });
     return completer.future.timeout(
       timeout,
       onTimeout: () {
@@ -344,6 +500,209 @@ class ReceiverController extends ChangeNotifier {
     core.setVideoMaxSize(width, height);
   }
 
+  // --- received content ----------------------------------------------------------------
+
+  /// The core says an image or page waits. At most one fetch runs; a second notice during a
+  /// fetch makes the loop fetch again (the core only sends a new notice after a fetch).
+  void _onContentFrameReady() {
+    if (_contentFetching) {
+      _contentRefetch = true;
+      return;
+    }
+    unawaited(_contentFetchLoop());
+  }
+
+  Future<void> _contentFetchLoop() async {
+    final session = _session;
+    _contentFetching = true;
+    try {
+      do {
+        _contentRefetch = false;
+        final epoch = _contentEpoch;
+        final frame = await core.takeContentFrame().timeout(fetchTimeout);
+        if (_disposed || session != _session) return;
+        // The content it belonged to was replaced meanwhile.
+        if (frame == null || epoch != _contentEpoch) continue;
+        switch (frame) {
+          case ContentFrame_Image(:final name, :final bytes):
+            await _showImage(session, epoch, name, bytes);
+          case ContentFrame_Page(
+            :final page,
+            :final width,
+            :final height,
+            :final rgba,
+          ):
+            await _showPage(session, epoch, page, width, height, rgba);
+        }
+      } while (_contentRefetch);
+    } catch (e) {
+      debugPrint('cometcast: cannot show received content: $e');
+      if (!_disposed && session == _session) {
+        note = ContentNote.renderFailed;
+        notifyListeners();
+      }
+    } finally {
+      if (session == _session) _contentFetching = false;
+    }
+  }
+
+  Future<void> _showImage(
+    int session,
+    int epoch,
+    String name,
+    Uint8List bytes,
+  ) async {
+    // Read the size from the header first: a small file can hold a huge picture.
+    int w;
+    int h;
+    try {
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      try {
+        final d = await ui.ImageDescriptor.encoded(buffer);
+        w = d.width;
+        h = d.height;
+        d.dispose();
+      } finally {
+        buffer.dispose();
+      }
+    } catch (_) {
+      if (_stale(session, epoch)) return;
+      _replaceContent(null);
+      note = ContentNote.imageUndecodable;
+      notifyListeners();
+      return;
+    }
+    if (_stale(session, epoch)) return;
+    if (w <= 0 || h <= 0) {
+      _replaceContent(null);
+      note = ContentNote.imageUndecodable;
+    } else if (w * h > maxImagePixels) {
+      _replaceContent(null);
+      note = ContentNote.imageTooBig;
+    } else {
+      _replaceContent(
+        ReceivedImage(name: name, bytes: bytes, width: w, height: h),
+      );
+      _documentClosed = false;
+      note = null;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _showPage(
+    int session,
+    int epoch,
+    int page,
+    int width,
+    int height,
+    Uint8List rgba,
+  ) async {
+    final doc = shown;
+    if (_documentClosed || doc is! ReceivedDocument) return;
+    final img = await _pixelsToImage(rgba, width, height, fetchTimeout);
+    if (_stale(session, epoch) || !identical(shown, doc)) {
+      img.dispose();
+      return;
+    }
+    final old = doc.image;
+    shown = ReceivedDocument(
+      name: doc.name,
+      pages: doc.pages,
+      page: page,
+      image: img,
+    );
+    receiving = null;
+    notifyListeners();
+    if (old != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+    }
+  }
+
+  bool _stale(int session, int epoch) =>
+      _disposed || session != _session || epoch != _contentEpoch;
+
+  /// Make [next] the shown content (null = nothing). Fetches of older content are dropped.
+  void _replaceContent(ReceivedContent? next) {
+    _contentEpoch++;
+    final old = shown;
+    shown = next;
+    receiving = null;
+    if (old is ReceivedDocument && old.image != null) {
+      final img = old.image!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+  }
+
+  void _clearContent() {
+    final old = shown;
+    shown = null;
+    receiving = null;
+    note = null;
+    _contentEpoch++;
+    _contentRefetch = false;
+    _documentClosed = false;
+    if (old is ReceivedDocument) old.image?.dispose();
+  }
+
+  /// The person closes what is shown (image, page or link). The receiver keeps running;
+  /// the live screen (if any) comes back, otherwise the waiting view. Pages that still
+  /// arrive for a closed document are ignored. UNCERTAIN: the core cannot be told to close a
+  /// document, so it may go on rendering pages for the sender's page commands until the
+  /// sender sends `stop` or a new document (no UI effect, some wasted work).
+  void closeContent() {
+    if (shown is ReceivedDocument) _documentClosed = true;
+    _replaceContent(null);
+    notifyListeners();
+  }
+
+  void dismissNote() {
+    if (note == null) return;
+    note = null;
+    notifyListeners();
+  }
+
+  /// Open the shown link in the browser. Only after the person asked for it (a click on
+  /// "Open"); the link is checked again by Rust and its scheme once more here. Returns true
+  /// if the system accepted it.
+  Future<bool> openLink(UrlOpener open) async {
+    final link = shown;
+    if (link is! ReceivedLink) return false;
+    final check = core.validateLink(link.url);
+    final uri = switch (check) {
+      LinkCheck_Valid(:final url) => Uri.tryParse(url),
+      _ => null,
+    };
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty) {
+      note = ContentNote.linkOpenFailed;
+      _replaceContent(null);
+      notifyListeners();
+      return false;
+    }
+    var ok = false;
+    try {
+      ok = await open(uri);
+    } catch (_) {
+      ok = false;
+    }
+    if (_disposed) return ok;
+    // The card is done either way; a failure leaves a note.
+    if (identical(shown, link)) _replaceContent(null);
+    note = ok ? null : ContentNote.linkOpenFailed;
+    notifyListeners();
+    return ok;
+  }
+
+  int _lastContentWidth = 0;
+
+  /// Tell the core how wide pages should be drawn (physical pixels of the view).
+  void reportContentWidth(int width) {
+    if (width <= 0 || width == _lastContentWidth) return;
+    _lastContentWidth = width;
+    core.setContentTargetWidth(width);
+  }
+
   // --- window --------------------------------------------------------------------------
 
   Future<void> toggleFullscreen() async {
@@ -373,6 +732,7 @@ class ReceiverController extends ChangeNotifier {
     phase = ReceiverPhase.idle;
     roomCode = null;
     _clearImage();
+    _clearContent();
     final wasFullscreen = fullscreen;
     notifyListeners();
     await core.stopReceiver();
@@ -392,6 +752,7 @@ class ReceiverController extends ChangeNotifier {
     _retryTimer?.cancel();
     _cancel();
     _clearImage();
+    _clearContent();
     // Fire and forget: the screen is gone, the core must not keep a room open.
     unawaited(core.stopReceiver());
     if (fullscreen) unawaited(_setFullscreen(false));

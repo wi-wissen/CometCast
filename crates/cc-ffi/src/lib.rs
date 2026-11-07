@@ -8,6 +8,8 @@
 //! `flutter_rust_bridge_codegen` (do not edit it by hand, see docs/flutter-bridge.md).
 
 pub mod api;
+mod content;
+mod content_sender;
 mod encoded;
 mod video;
 

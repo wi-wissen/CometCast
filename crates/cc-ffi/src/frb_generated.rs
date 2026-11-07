@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1152294042;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1333712061;
 
 // Section: executor
 
@@ -145,6 +145,35 @@ fn wire__crate__api__discover_servers_impl(
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__docs_worker_path_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "docs_worker_path",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::docs_worker_path())?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -333,6 +362,36 @@ fn wire__crate__api__room_code_length_impl(
         },
     )
 }
+fn wire__crate__api__send_content_cmd_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "send_content_cmd",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_cmd = <crate::api::UiContentCmd>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::send_content_cmd(api_cmd))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__server_defaults_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -357,6 +416,70 @@ fn wire__crate__api__server_defaults_impl(
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
                 let output_ok = Ok::<_, ()>(crate::api::server_defaults())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__set_content_target_width_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_content_target_width",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_width = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::set_content_target_width(api_width);
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__set_docs_worker_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_docs_worker",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::set_docs_worker(api_path);
+                })?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -426,6 +549,58 @@ fn wire__crate__api__start_advertising_impl(
                         let output_ok = Ok::<_, ()>(
                             crate::api::start_advertising(api_name, api_preferred_server).await,
                         )?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__start_content_sender_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_content_sender",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_code = <String>::sse_decode(&mut deserializer);
+            let api_server = <String>::sse_decode(&mut deserializer);
+            let api_udp_bind = <Option<String>>::sse_decode(&mut deserializer);
+            let api_source = <crate::api::ContentSource>::sse_decode(&mut deserializer);
+            let api_events = <StreamSink<
+                crate::api::ContentSenderUiEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>({
+                            crate::api::start_content_sender(
+                                api_code,
+                                api_server,
+                                api_udp_bind,
+                                api_source,
+                                api_events,
+                            )
+                            .await;
+                        })?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -508,6 +683,7 @@ fn wire__crate__api__start_receiver_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_server = <String>::sse_decode(&mut deserializer);
             let api_udp_bind = <Option<String>>::sse_decode(&mut deserializer);
+            let api_content = <bool>::sse_decode(&mut deserializer);
             let api_events = <StreamSink<
                 crate::api::ReceiverUiEvent,
                 flutter_rust_bridge::for_generated::SseCodec,
@@ -517,7 +693,13 @@ fn wire__crate__api__start_receiver_impl(
                 transform_result_sse::<_, ()>(
                     (move || async move {
                         let output_ok = Ok::<_, ()>({
-                            crate::api::start_receiver(api_server, api_udp_bind, api_events).await;
+                            crate::api::start_receiver(
+                                api_server,
+                                api_udp_bind,
+                                api_content,
+                                api_events,
+                            )
+                            .await;
                         })?;
                         std::result::Result::Ok(output_ok)
                     })()
@@ -717,6 +899,41 @@ fn wire__crate__api__stop_watching_receivers_impl(
         },
     )
 }
+fn wire__crate__api__take_content_frame_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "take_content_frame",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(crate::api::take_content_frame().await)?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__take_frame_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -749,6 +966,36 @@ fn wire__crate__api__take_frame_impl(
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__validate_link_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "validate_link",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_input = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::validate_link(api_input))?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -801,6 +1048,16 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <String>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::anyhow::anyhow!("{}", inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<crate::api::ContentSenderUiEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
     }
 }
 
@@ -927,6 +1184,123 @@ impl SseDecode for crate::api::CaptureSupport {
     }
 }
 
+impl SseDecode for crate::api::ContentFrame {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_name = <String>::sse_decode(deserializer);
+                let mut var_mime = <String>::sse_decode(deserializer);
+                let mut var_bytes = <Vec<u8>>::sse_decode(deserializer);
+                return crate::api::ContentFrame::Image {
+                    name: var_name,
+                    mime: var_mime,
+                    bytes: var_bytes,
+                };
+            }
+            1 => {
+                let mut var_page = <u32>::sse_decode(deserializer);
+                let mut var_width = <u32>::sse_decode(deserializer);
+                let mut var_height = <u32>::sse_decode(deserializer);
+                let mut var_rgba = <Vec<u8>>::sse_decode(deserializer);
+                return crate::api::ContentFrame::Page {
+                    page: var_page,
+                    width: var_width,
+                    height: var_height,
+                    rgba: var_rgba,
+                };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseDecode for crate::api::ContentSenderUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_name = <String>::sse_decode(deserializer);
+                let mut var_kind = <crate::api::UiContentKind>::sse_decode(deserializer);
+                let mut var_size = <u64>::sse_decode(deserializer);
+                let mut var_pages = <Option<u32>>::sse_decode(deserializer);
+                let mut var_host = <Option<String>>::sse_decode(deserializer);
+                return crate::api::ContentSenderUiEvent::Prepared {
+                    name: var_name,
+                    kind: var_kind,
+                    size: var_size,
+                    pages: var_pages,
+                    host: var_host,
+                };
+            }
+            1 => {
+                return crate::api::ContentSenderUiEvent::Joined;
+            }
+            2 => {
+                let mut var_state = <crate::api::UiConnectionState>::sse_decode(deserializer);
+                return crate::api::ContentSenderUiEvent::ConnectionState { state: var_state };
+            }
+            3 => {
+                return crate::api::ContentSenderUiEvent::Connected;
+            }
+            4 => {
+                let mut var_sent = <u64>::sse_decode(deserializer);
+                let mut var_total = <u64>::sse_decode(deserializer);
+                return crate::api::ContentSenderUiEvent::Progress {
+                    sent: var_sent,
+                    total: var_total,
+                };
+            }
+            5 => {
+                return crate::api::ContentSenderUiEvent::Sent;
+            }
+            6 => {
+                return crate::api::ContentSenderUiEvent::Stopped;
+            }
+            7 => {
+                return crate::api::ContentSenderUiEvent::PeerLeft;
+            }
+            8 => {
+                let mut var_reason = <crate::api::UiSendRejection>::sse_decode(deserializer);
+                return crate::api::ContentSenderUiEvent::Rejected { reason: var_reason };
+            }
+            9 => {
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::api::ContentSenderUiEvent::Error {
+                    message: var_message,
+                };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseDecode for crate::api::ContentSource {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_path = <String>::sse_decode(deserializer);
+                return crate::api::ContentSource::File { path: var_path };
+            }
+            1 => {
+                let mut var_url = <String>::sse_decode(deserializer);
+                return crate::api::ContentSource::Link { url: var_url };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for crate::api::DiscoveryWarning {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -956,6 +1330,29 @@ impl SseDecode for i64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_i64::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for crate::api::LinkCheck {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_url = <String>::sse_decode(deserializer);
+                let mut var_host = <String>::sse_decode(deserializer);
+                return crate::api::LinkCheck::Valid {
+                    url: var_url,
+                    host: var_host,
+                };
+            }
+            1 => {
+                return crate::api::LinkCheck::Invalid;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -1053,6 +1450,17 @@ impl SseDecode for Option<String> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::ContentFrame> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::ContentFrame>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -1173,9 +1581,45 @@ impl SseDecode for crate::api::ReceiverUiEvent {
                 };
             }
             7 => {
-                return crate::api::ReceiverUiEvent::PeerLeft;
+                let mut var_document = <bool>::sse_decode(deserializer);
+                let mut var_name = <String>::sse_decode(deserializer);
+                let mut var_size = <u64>::sse_decode(deserializer);
+                return crate::api::ReceiverUiEvent::ContentTransferStarted {
+                    document: var_document,
+                    name: var_name,
+                    size: var_size,
+                };
             }
             8 => {
+                return crate::api::ReceiverUiEvent::ContentFrameReady;
+            }
+            9 => {
+                let mut var_name = <String>::sse_decode(deserializer);
+                let mut var_pages = <u32>::sse_decode(deserializer);
+                return crate::api::ReceiverUiEvent::ContentDocumentOpened {
+                    name: var_name,
+                    pages: var_pages,
+                };
+            }
+            10 => {
+                let mut var_url = <String>::sse_decode(deserializer);
+                let mut var_host = <String>::sse_decode(deserializer);
+                return crate::api::ReceiverUiEvent::ContentLink {
+                    url: var_url,
+                    host: var_host,
+                };
+            }
+            11 => {
+                return crate::api::ReceiverUiEvent::ContentStopped;
+            }
+            12 => {
+                let mut var_error = <crate::api::UiContentError>::sse_decode(deserializer);
+                return crate::api::ReceiverUiEvent::ContentError { error: var_error };
+            }
+            13 => {
+                return crate::api::ReceiverUiEvent::PeerLeft;
+            }
+            14 => {
                 let mut var_message = <String>::sse_decode(deserializer);
                 return crate::api::ReceiverUiEvent::Error {
                     message: var_message,
@@ -1382,6 +1826,84 @@ impl SseDecode for crate::api::UiConnectionState {
     }
 }
 
+impl SseDecode for crate::api::UiContentCmd {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                return crate::api::UiContentCmd::NextPage;
+            }
+            1 => {
+                return crate::api::UiContentCmd::PrevPage;
+            }
+            2 => {
+                let mut var_page = <u32>::sse_decode(deserializer);
+                return crate::api::UiContentCmd::GoToPage { page: var_page };
+            }
+            3 => {
+                return crate::api::UiContentCmd::Stop;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseDecode for crate::api::UiContentError {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::UiContentError::BadMessage,
+            1 => crate::api::UiContentError::UnexpectedChunk,
+            2 => crate::api::UiContentError::TooLarge,
+            3 => crate::api::UiContentError::SizeMismatch,
+            4 => crate::api::UiContentError::NoTransfer,
+            5 => crate::api::UiContentError::BadChunk,
+            6 => crate::api::UiContentError::Interrupted,
+            7 => crate::api::UiContentError::DocumentRejected,
+            8 => crate::api::UiContentError::RenderFailed,
+            9 => crate::api::UiContentError::TooManyErrors,
+            10 => crate::api::UiContentError::TransferTimeout,
+            11 => crate::api::UiContentError::WorkerUnavailable,
+            _ => unreachable!("Invalid variant for UiContentError: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::UiContentKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::UiContentKind::Image,
+            1 => crate::api::UiContentKind::Pdf,
+            2 => crate::api::UiContentKind::Link,
+            _ => unreachable!("Invalid variant for UiContentKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::UiSendRejection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::UiSendRejection::Unreadable,
+            1 => crate::api::UiSendRejection::NotARegularFile,
+            2 => crate::api::UiSendRejection::Empty,
+            3 => crate::api::UiSendRejection::TooLarge,
+            4 => crate::api::UiSendRejection::UnsupportedType,
+            5 => crate::api::UiSendRejection::NotPdf,
+            6 => crate::api::UiSendRejection::DocumentUnusable,
+            7 => crate::api::UiSendRejection::BadLink,
+            _ => unreachable!("Invalid variant for UiSendRejection: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for () {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {}
@@ -1414,17 +1936,19 @@ fn pde_ffi_dispatcher_primary_impl(
     match func_id {
         1 => wire__crate__api__capture_info_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__discover_servers_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1438,13 +1962,18 @@ fn pde_ffi_dispatcher_sync_impl(
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
         2 => wire__crate__api__check_room_code_impl(ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__keyframe_requested_impl(ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__docs_worker_path_impl(ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__keyframe_requested_impl(ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1532,6 +2061,120 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::CaptureSupport> for crate::ap
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::ContentFrame {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::ContentFrame::Image { name, mime, bytes } => [
+                0.into_dart(),
+                name.into_into_dart().into_dart(),
+                mime.into_into_dart().into_dart(),
+                bytes.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::ContentFrame::Page {
+                page,
+                width,
+                height,
+                rgba,
+            } => [
+                1.into_dart(),
+                page.into_into_dart().into_dart(),
+                width.into_into_dart().into_dart(),
+                height.into_into_dart().into_dart(),
+                rgba.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::ContentFrame {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::ContentFrame> for crate::api::ContentFrame {
+    fn into_into_dart(self) -> crate::api::ContentFrame {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::ContentSenderUiEvent {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::ContentSenderUiEvent::Prepared {
+                name,
+                kind,
+                size,
+                pages,
+                host,
+            } => [
+                0.into_dart(),
+                name.into_into_dart().into_dart(),
+                kind.into_into_dart().into_dart(),
+                size.into_into_dart().into_dart(),
+                pages.into_into_dart().into_dart(),
+                host.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::ContentSenderUiEvent::Joined => [1.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::ConnectionState { state } => {
+                [2.into_dart(), state.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::ContentSenderUiEvent::Connected => [3.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::Progress { sent, total } => [
+                4.into_dart(),
+                sent.into_into_dart().into_dart(),
+                total.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::ContentSenderUiEvent::Sent => [5.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::Stopped => [6.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::PeerLeft => [7.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::Rejected { reason } => {
+                [8.into_dart(), reason.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::ContentSenderUiEvent::Error { message } => {
+                [9.into_dart(), message.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::ContentSenderUiEvent
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::ContentSenderUiEvent>
+    for crate::api::ContentSenderUiEvent
+{
+    fn into_into_dart(self) -> crate::api::ContentSenderUiEvent {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::ContentSource {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::ContentSource::File { path } => {
+                [0.into_dart(), path.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::ContentSource::Link { url } => {
+                [1.into_dart(), url.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::ContentSource {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::ContentSource> for crate::api::ContentSource {
+    fn into_into_dart(self) -> crate::api::ContentSource {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::DiscoveryWarning {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
@@ -1552,6 +2195,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::DiscoveryWarning>
     for crate::api::DiscoveryWarning
 {
     fn into_into_dart(self) -> crate::api::DiscoveryWarning {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::LinkCheck {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::LinkCheck::Valid { url, host } => [
+                0.into_dart(),
+                url.into_into_dart().into_dart(),
+                host.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::LinkCheck::Invalid => [1.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::LinkCheck {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::LinkCheck> for crate::api::LinkCheck {
+    fn into_into_dart(self) -> crate::api::LinkCheck {
         self
     }
 }
@@ -1664,9 +2330,37 @@ impl flutter_rust_bridge::IntoDart for crate::api::ReceiverUiEvent {
                 error.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            crate::api::ReceiverUiEvent::PeerLeft => [7.into_dart()].into_dart(),
+            crate::api::ReceiverUiEvent::ContentTransferStarted {
+                document,
+                name,
+                size,
+            } => [
+                7.into_dart(),
+                document.into_into_dart().into_dart(),
+                name.into_into_dart().into_dart(),
+                size.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::ReceiverUiEvent::ContentFrameReady => [8.into_dart()].into_dart(),
+            crate::api::ReceiverUiEvent::ContentDocumentOpened { name, pages } => [
+                9.into_dart(),
+                name.into_into_dart().into_dart(),
+                pages.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::ReceiverUiEvent::ContentLink { url, host } => [
+                10.into_dart(),
+                url.into_into_dart().into_dart(),
+                host.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::ReceiverUiEvent::ContentStopped => [11.into_dart()].into_dart(),
+            crate::api::ReceiverUiEvent::ContentError { error } => {
+                [12.into_dart(), error.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::ReceiverUiEvent::PeerLeft => [13.into_dart()].into_dart(),
             crate::api::ReceiverUiEvent::Error { message } => {
-                [8.into_dart(), message.into_into_dart().into_dart()].into_dart()
+                [14.into_dart(), message.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -1866,6 +2560,95 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::UiConnectionState>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::UiContentCmd {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::UiContentCmd::NextPage => [0.into_dart()].into_dart(),
+            crate::api::UiContentCmd::PrevPage => [1.into_dart()].into_dart(),
+            crate::api::UiContentCmd::GoToPage { page } => {
+                [2.into_dart(), page.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::UiContentCmd::Stop => [3.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::UiContentCmd {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::UiContentCmd> for crate::api::UiContentCmd {
+    fn into_into_dart(self) -> crate::api::UiContentCmd {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::UiContentError {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::BadMessage => 0.into_dart(),
+            Self::UnexpectedChunk => 1.into_dart(),
+            Self::TooLarge => 2.into_dart(),
+            Self::SizeMismatch => 3.into_dart(),
+            Self::NoTransfer => 4.into_dart(),
+            Self::BadChunk => 5.into_dart(),
+            Self::Interrupted => 6.into_dart(),
+            Self::DocumentRejected => 7.into_dart(),
+            Self::RenderFailed => 8.into_dart(),
+            Self::TooManyErrors => 9.into_dart(),
+            Self::TransferTimeout => 10.into_dart(),
+            Self::WorkerUnavailable => 11.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::UiContentError {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::UiContentError> for crate::api::UiContentError {
+    fn into_into_dart(self) -> crate::api::UiContentError {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::UiContentKind {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Image => 0.into_dart(),
+            Self::Pdf => 1.into_dart(),
+            Self::Link => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::UiContentKind {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::UiContentKind> for crate::api::UiContentKind {
+    fn into_into_dart(self) -> crate::api::UiContentKind {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::UiSendRejection {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Unreadable => 0.into_dart(),
+            Self::NotARegularFile => 1.into_dart(),
+            Self::Empty => 2.into_dart(),
+            Self::TooLarge => 3.into_dart(),
+            Self::UnsupportedType => 4.into_dart(),
+            Self::NotPdf => 5.into_dart(),
+            Self::DocumentUnusable => 6.into_dart(),
+            Self::BadLink => 7.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::UiSendRejection {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::UiSendRejection>
+    for crate::api::UiSendRejection
+{
+    fn into_into_dart(self) -> crate::api::UiSendRejection {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::VideoFrame {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -1888,6 +2671,15 @@ impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(format!("{:?}", self), serializer);
+    }
+}
+
+impl SseEncode
+    for StreamSink<crate::api::ContentSenderUiEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
     }
 }
 
@@ -1998,6 +2790,111 @@ impl SseEncode for crate::api::CaptureSupport {
     }
 }
 
+impl SseEncode for crate::api::ContentFrame {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::ContentFrame::Image { name, mime, bytes } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(name, serializer);
+                <String>::sse_encode(mime, serializer);
+                <Vec<u8>>::sse_encode(bytes, serializer);
+            }
+            crate::api::ContentFrame::Page {
+                page,
+                width,
+                height,
+                rgba,
+            } => {
+                <i32>::sse_encode(1, serializer);
+                <u32>::sse_encode(page, serializer);
+                <u32>::sse_encode(width, serializer);
+                <u32>::sse_encode(height, serializer);
+                <Vec<u8>>::sse_encode(rgba, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseEncode for crate::api::ContentSenderUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::ContentSenderUiEvent::Prepared {
+                name,
+                kind,
+                size,
+                pages,
+                host,
+            } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(name, serializer);
+                <crate::api::UiContentKind>::sse_encode(kind, serializer);
+                <u64>::sse_encode(size, serializer);
+                <Option<u32>>::sse_encode(pages, serializer);
+                <Option<String>>::sse_encode(host, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Joined => {
+                <i32>::sse_encode(1, serializer);
+            }
+            crate::api::ContentSenderUiEvent::ConnectionState { state } => {
+                <i32>::sse_encode(2, serializer);
+                <crate::api::UiConnectionState>::sse_encode(state, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Connected => {
+                <i32>::sse_encode(3, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Progress { sent, total } => {
+                <i32>::sse_encode(4, serializer);
+                <u64>::sse_encode(sent, serializer);
+                <u64>::sse_encode(total, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Sent => {
+                <i32>::sse_encode(5, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Stopped => {
+                <i32>::sse_encode(6, serializer);
+            }
+            crate::api::ContentSenderUiEvent::PeerLeft => {
+                <i32>::sse_encode(7, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Rejected { reason } => {
+                <i32>::sse_encode(8, serializer);
+                <crate::api::UiSendRejection>::sse_encode(reason, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Error { message } => {
+                <i32>::sse_encode(9, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseEncode for crate::api::ContentSource {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::ContentSource::File { path } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(path, serializer);
+            }
+            crate::api::ContentSource::Link { url } => {
+                <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(url, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for crate::api::DiscoveryWarning {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2031,6 +2928,25 @@ impl SseEncode for i64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_i64::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for crate::api::LinkCheck {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::LinkCheck::Valid { url, host } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(url, serializer);
+                <String>::sse_encode(host, serializer);
+            }
+            crate::api::LinkCheck::Invalid => {
+                <i32>::sse_encode(1, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -2114,6 +3030,16 @@ impl SseEncode for Option<String> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::ContentFrame> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::ContentFrame>::sse_encode(value, serializer);
         }
     }
 }
@@ -2228,11 +3154,41 @@ impl SseEncode for crate::api::ReceiverUiEvent {
                 <u64>::sse_encode(avg_decode_us, serializer);
                 <Option<String>>::sse_encode(error, serializer);
             }
-            crate::api::ReceiverUiEvent::PeerLeft => {
+            crate::api::ReceiverUiEvent::ContentTransferStarted {
+                document,
+                name,
+                size,
+            } => {
                 <i32>::sse_encode(7, serializer);
+                <bool>::sse_encode(document, serializer);
+                <String>::sse_encode(name, serializer);
+                <u64>::sse_encode(size, serializer);
+            }
+            crate::api::ReceiverUiEvent::ContentFrameReady => {
+                <i32>::sse_encode(8, serializer);
+            }
+            crate::api::ReceiverUiEvent::ContentDocumentOpened { name, pages } => {
+                <i32>::sse_encode(9, serializer);
+                <String>::sse_encode(name, serializer);
+                <u32>::sse_encode(pages, serializer);
+            }
+            crate::api::ReceiverUiEvent::ContentLink { url, host } => {
+                <i32>::sse_encode(10, serializer);
+                <String>::sse_encode(url, serializer);
+                <String>::sse_encode(host, serializer);
+            }
+            crate::api::ReceiverUiEvent::ContentStopped => {
+                <i32>::sse_encode(11, serializer);
+            }
+            crate::api::ReceiverUiEvent::ContentError { error } => {
+                <i32>::sse_encode(12, serializer);
+                <crate::api::UiContentError>::sse_encode(error, serializer);
+            }
+            crate::api::ReceiverUiEvent::PeerLeft => {
+                <i32>::sse_encode(13, serializer);
             }
             crate::api::ReceiverUiEvent::Error { message } => {
-                <i32>::sse_encode(8, serializer);
+                <i32>::sse_encode(14, serializer);
                 <String>::sse_encode(message, serializer);
             }
             _ => {
@@ -2399,6 +3355,95 @@ impl SseEncode for crate::api::UiConnectionState {
                 crate::api::UiConnectionState::Disconnected => 3,
                 crate::api::UiConnectionState::Failed => 4,
                 crate::api::UiConnectionState::Closed => 5,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::UiContentCmd {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::UiContentCmd::NextPage => {
+                <i32>::sse_encode(0, serializer);
+            }
+            crate::api::UiContentCmd::PrevPage => {
+                <i32>::sse_encode(1, serializer);
+            }
+            crate::api::UiContentCmd::GoToPage { page } => {
+                <i32>::sse_encode(2, serializer);
+                <u32>::sse_encode(page, serializer);
+            }
+            crate::api::UiContentCmd::Stop => {
+                <i32>::sse_encode(3, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseEncode for crate::api::UiContentError {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::UiContentError::BadMessage => 0,
+                crate::api::UiContentError::UnexpectedChunk => 1,
+                crate::api::UiContentError::TooLarge => 2,
+                crate::api::UiContentError::SizeMismatch => 3,
+                crate::api::UiContentError::NoTransfer => 4,
+                crate::api::UiContentError::BadChunk => 5,
+                crate::api::UiContentError::Interrupted => 6,
+                crate::api::UiContentError::DocumentRejected => 7,
+                crate::api::UiContentError::RenderFailed => 8,
+                crate::api::UiContentError::TooManyErrors => 9,
+                crate::api::UiContentError::TransferTimeout => 10,
+                crate::api::UiContentError::WorkerUnavailable => 11,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::UiContentKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::UiContentKind::Image => 0,
+                crate::api::UiContentKind::Pdf => 1,
+                crate::api::UiContentKind::Link => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::UiSendRejection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::UiSendRejection::Unreadable => 0,
+                crate::api::UiSendRejection::NotARegularFile => 1,
+                crate::api::UiSendRejection::Empty => 2,
+                crate::api::UiSendRejection::TooLarge => 3,
+                crate::api::UiSendRejection::UnsupportedType => 4,
+                crate::api::UiSendRejection::NotPdf => 5,
+                crate::api::UiSendRejection::DocumentUnusable => 6,
+                crate::api::UiSendRejection::BadLink => 7,
                 _ => {
                     unimplemented!("");
                 }

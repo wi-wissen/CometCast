@@ -187,4 +187,148 @@ void main() {
     },
     skip: skip,
   );
+
+  group('content', () {
+    test('link rules come from Rust; the host is the punycode form', () {
+      const core = RustCoreApi();
+      final fake = FakeCoreApi();
+      final ok = core.validateLink(' https://bücher.example/a?b=1 ');
+      expect(ok, isA<LinkCheck_Valid>());
+      final valid = ok as LinkCheck_Valid;
+      expect(valid.host, 'xn--bcher-kva.example');
+      expect(valid.url, startsWith('https://xn--bcher-kva.example/'));
+      for (final bad in [
+        'javascript:alert(1)',
+        'file:///etc/passwd',
+        'ftp://x.example/',
+        'https://user:pw@x.example/',
+        'https://x.example/a b',
+        'https://',
+        '',
+      ]) {
+        expect(core.validateLink(bad), isA<LinkCheck_Invalid>(), reason: bad);
+        expect(fake.validateLink(bad), isA<LinkCheck_Invalid>(), reason: bad);
+      }
+      // A link that passes passes again unchanged (idempotent).
+      final again = core.validateLink(valid.url) as LinkCheck_Valid;
+      expect(again.url, valid.url);
+    }, skip: skip);
+
+    test('commands are refused while no content sender runs', () {
+      const core = RustCoreApi();
+      expect(core.sendContentCmd(const UiContentCmd.nextPage()), isFalse);
+      expect(
+        core.sendContentCmd(const UiContentCmd.goToPage(page: 0)),
+        isFalse,
+      );
+    }, skip: skip);
+
+    test('no content frame waits before a receiver ran', () async {
+      const core = RustCoreApi();
+      expect(await core.takeContentFrame(), isNull);
+      core.setContentTargetWidth(1280); // must not throw
+    }, skip: skip);
+
+    test(
+      'files and links that cannot be sent are refused before connecting',
+      () async {
+        const core = RustCoreApi();
+        final dir = Directory.systemTemp.createTempSync('cometcast_content_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        Future<UiSendRejection> rejected(ContentSource source) async {
+          final events = await core
+              .startContentSender(
+                code: 'K7M2QX',
+                server: '127.0.0.1:1',
+                source: source,
+              )
+              .toList();
+          expect(events, hasLength(1), reason: '$source');
+          return (events.single as ContentSenderUiEvent_Rejected).reason;
+        }
+
+        expect(
+          await rejected(ContentSource.file(path: '${dir.path}/missing.png')),
+          UiSendRejection.unreadable,
+        );
+        File('${dir.path}/words.png')
+            .writeAsStringSync('this is not a picture');
+        expect(
+          await rejected(ContentSource.file(path: '${dir.path}/words.png')),
+          UiSendRejection.unsupportedType,
+        );
+        File('${dir.path}/empty.pdf').writeAsBytesSync([]);
+        expect(
+          await rejected(ContentSource.file(path: '${dir.path}/empty.pdf')),
+          UiSendRejection.empty,
+        );
+        File('${dir.path}/fake.pdf').writeAsStringSync('not a pdf at all');
+        expect(
+          await rejected(ContentSource.file(path: '${dir.path}/fake.pdf')),
+          UiSendRejection.notPdf,
+        );
+        File('${dir.path}/vector.svg').writeAsStringSync('<svg/>');
+        expect(
+          await rejected(ContentSource.file(path: '${dir.path}/vector.svg')),
+          UiSendRejection.unsupportedType,
+        );
+        expect(
+          await rejected(const ContentSource.link(url: 'javascript:alert(1)')),
+          UiSendRejection.badLink,
+        );
+      },
+      skip: skip,
+    );
+
+    test('a bad room code is an error event', () async {
+      const core = RustCoreApi();
+      final events = await core
+          .startContentSender(
+            code: 'nope',
+            server: '127.0.0.1:1',
+            source: const ContentSource.link(url: 'https://example.org/'),
+          )
+          .toList();
+      expect(events.single, isA<ContentSenderUiEvent_Error>());
+    }, skip: skip);
+
+    test('the render worker counts the pages of a real PDF', () async {
+      const core = RustCoreApi();
+      final worker = File('${File(lib!).parent.path}/cc-docs-worker');
+      final pdf = File('../../crates/cc-docs/tests/data/classroom.pdf');
+      if (!worker.existsSync() || !pdf.existsSync()) {
+        markTestSkipped(
+          'cc-docs-worker or the test PDF is missing (cargo build --workspace --bins)',
+        );
+        return;
+      }
+      core.setDocsWorker(worker.absolute.path);
+      addTearDown(() => core.setDocsWorker(null));
+      expect(core.docsWorkerPath(), worker.absolute.path);
+      // No server on port 1: the file is checked first, then the connection fails.
+      final events = await core
+          .startContentSender(
+            code: 'K7M2QX',
+            server: '127.0.0.1:1',
+            source: ContentSource.file(path: pdf.absolute.path),
+          )
+          .toList();
+      final prepared = events.first as ContentSenderUiEvent_Prepared;
+      expect(prepared.kind, UiContentKind.pdf);
+      expect(prepared.name, 'classroom.pdf');
+      expect(prepared.pages, 3);
+      expect(events.last, isA<ContentSenderUiEvent_Error>());
+    }, skip: skip);
+
+    test(
+      'a missing worker is named, never replaced by an unprotected engine',
+      () {
+        const core = RustCoreApi();
+        core.setDocsWorker('/nonexistent/cc-docs-worker');
+        addTearDown(() => core.setDocsWorker(null));
+        expect(core.docsWorkerPath(), isNull);
+      },
+      skip: skip,
+    );
+  });
 }
