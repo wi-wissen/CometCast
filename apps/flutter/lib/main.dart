@@ -15,8 +15,10 @@ import 'core/android_platform.dart';
 import 'core/android_video.dart';
 import 'core/core_api.dart';
 import 'core/ios_broadcast.dart';
+import 'core/miracast.dart';
 import 'core/rust_loader.dart';
 import 'home_page.dart';
+import 'miracast_page.dart' show miracastSupportedHere;
 import 'receive_page.dart' show launchInBrowser;
 import 'receiver_controller.dart' show UrlOpener;
 import 'send_content_page.dart';
@@ -59,6 +61,8 @@ Future<void> main() async {
           : android.videoDecoder,
       hardwareDecoderOnly: Platform.isIOS,
       deviceName: android.deviceName,
+      // Windows only: the DLL is loaded when the Miracast screen is first used.
+      miracast: miracastSupportedHere() ? FfiMiracastCore() : null,
     ),
   );
 }
@@ -149,6 +153,7 @@ class CometCastApp extends StatelessWidget {
     this.androidPlatform,
     this.videoDecoder,
     this.deviceName,
+    this.miracast,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   final Locale? locale;
@@ -173,6 +178,9 @@ class CometCastApp extends StatelessWidget {
 
   /// No software video decoder exists (iOS): see [DeviceProfile.hardwareDecoderOnly].
   final bool hardwareDecoderOnly;
+  /// The Windows Miracast receiver (a fake in tests); null on other platforms, which hides
+  /// the "Receive via Miracast (Windows)" row.
+  final MiracastCore? miracast;
 
   /// The Rust core (or a fake in tests).
   final CoreApi core;
@@ -227,6 +235,7 @@ class CometCastApp extends StatelessWidget {
         iosBroadcast: iosBroadcast,
         pickFile: pickFile,
         openUrl: openUrl,
+        miracast: miracast,
       ),
     );
   }

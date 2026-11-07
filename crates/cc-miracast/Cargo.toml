@@ -32,6 +32,15 @@ windows = { version = "0.62", features = [
     "Foundation_Collections",
     "Media_Core",
     "Media_Miracast",
-    "Media_Playback", # gates the MediaSource type
+    "Media_Playback", # MediaPlayer (frame server mode) and the MediaSource type
+    "Graphics_DirectX_Direct3D11", # IDirect3DSurface for CopyFrameToVideoSurface
+    "Graphics_Imaging", # SoftwareBitmap: read a Direct3D surface on the CPU
+    "Storage_Streams", # Buffer and DataReader for the pixel copy
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
     "Win32_System_WinRT",
+    "Win32_System_WinRT_Direct3D11", # CreateDirect3D11SurfaceFromDXGISurface
 ] }

@@ -273,9 +273,11 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------------------
-  # Windows desktop. The Flutter Windows project does NOT build the Rust core by itself
-  # (only linux/CMakeLists.txt and the Android Gradle file do), so this job builds cc_ffi.dll
-  # and the workers with cargo and copies them next to the executable.
+  # Windows desktop. apps/flutter/windows/CMakeLists.txt builds the Rust parts (cc_ffi.dll,
+  # cc_miracast_ffi.dll, cc-docs-worker.exe, cc-office-worker.exe) with cargo and installs
+  # them next to cometcast.exe. This job builds them first with `--locked` (fail early, and
+  # COMETCAST_CARGO_TARGET_DIR makes the CMake step reuse that target folder, so cargo does not
+  # build twice), then checks that the install step put every file into the bundle.
   # The Visual C++ runtime DLLs are bundled app-local (see the Package step).
   # UNCERTAIN: never tried; the Windows build of the app and of cc-ffi is unverified (README).
   # MSI/installer: not made.
@@ -316,13 +318,16 @@ jobs:
         run: |
           # Two commands: building cc-docs and cc-office together would unify features and link
           # the Office engine into the core (same reason as in linux/CMakeLists.txt).
-          cargo build --release --locked -p cc-ffi -p cc-docs
+          cargo build --release --locked -p cc-ffi -p cc-docs -p cc-miracast-ffi
           cargo build --release --locked -p cc-office
-          for f in cc_ffi.dll cc-docs-worker.exe cc-office-worker.exe; do
+          for f in cc_ffi.dll cc_miracast_ffi.dll cc-docs-worker.exe cc-office-worker.exe; do
             test -f "target/release/$f" || { echo "::error::target/release/$f was not built"; exit 1; }
           done
       - name: Build the app (release)
         working-directory: apps/flutter
+        env:
+          # The CMake step of the Windows runner reuses the cargo output of the step above.
+          COMETCAST_CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           flutter pub get
           flutter gen-l10n
@@ -332,7 +337,11 @@ jobs:
           set -euo pipefail
           out=apps/flutter/build/windows/x64/runner/Release
           test -f "$out/cometcast.exe" || { echo "::error::cometcast.exe not found in $out"; ls "$out"; exit 1; }
-          cp target/release/cc_ffi.dll target/release/cc-docs-worker.exe target/release/cc-office-worker.exe "$out/"
+          # The CMake install step copies these next to the executable; check instead of copying
+          # a second time (one place knows the layout).
+          for f in cc_ffi.dll cc_miracast_ffi.dll cc-docs-worker.exe cc-office-worker.exe; do
+            test -f "$out/$f" || { echo "::error::$f is missing in $out (CMake install step)"; ls "$out"; exit 1; }
+          done
           # The Visual C++ runtime, app-local (Flutter's engine, cc_ffi.dll and the workers all
           # link it dynamically; a clean Windows has no copy). Taken from the Visual Studio of
           # this runner. We do NOT link the CRT statically: Flutter itself needs these DLLs.

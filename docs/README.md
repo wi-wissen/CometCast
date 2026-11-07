@@ -19,7 +19,8 @@
 | [flutter-bridge.md](flutter-bridge.md) | How the Flutter app talks to the Rust core (flutter_rust_bridge), codegen, build integration |
 | [airplay.md](airplay.md) | AirPlay receiving through the separate UxPlay process (`cc-airplay`): supervisor, policy, licence boundary, what is unverified |
 | [airplay-sender.md](airplay-sender.md) | AirPlay sender without FairPlay (`cc-airplay-sender`): discovery, pairing, media link, photo, the screen as an HLS stream; what was tested against UxPlay, what is unverified; real mirroring is not possible (FairPlay) |
-| [miracast.md](miracast.md) | Miracast receiving on Windows 11 through `MiracastReceiver` (`cc-miracast`): design, requirements, test checklist for a real machine; compile-checked only, never run |
+| [miracast.md](miracast.md) | Miracast receiving on Windows 10 and 11 through `MiracastReceiver` (`cc-miracast`, `cc-miracast-ffi`, Flutter screen): design, consent rules, video path, requirements and hints, C interface, limits; built to specification, never run |
+| [miracast-device-test-plan.md](miracast-device-test-plan.md) | Checklist for a person with a Windows 11 PC and an Android phone: optional feature, start, senders, PIN modes, video and audio numbers, firewall, adapters; what to record and pass criteria |
 | [cast.md](cast.md) | Chromecast / Google Cast compatible sender (`cc-cast`, BETA): what is implemented from which Open Screen files, device-auth rules, what is unverified, fallbacks, legal notes |
 | [discovery.md](discovery.md) | How the app finds the server (`cc-discovery`): MDM policy file, DNS-SRV, display announcement over mDNS, built-in list; receiver discovery; trust rules; what is unverified |
 | [documents.md](documents.md) | PDF documents (`cc-docs`): render on the receiver with hayro, limits, hostile-input tests, measured numbers, WASM check, what is unverified |

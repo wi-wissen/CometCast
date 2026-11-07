@@ -17,8 +17,10 @@ pub enum MiracastStatus {
     ConnectionPending,
     /// A sender is connected.
     Connected,
-    /// Windows reports that receiving is disabled (policy) or temporarily unavailable.
+    /// Windows reports that receiving is temporarily unavailable (Wi-Fi off, adapter busy).
     Unavailable,
+    /// Windows reports that receiving is switched off by policy (group policy or MDM).
+    DisabledByPolicy,
     /// This system cannot receive Miracast (no support, or not Windows).
     Unsupported,
     /// Setup or operation failed; see the error event.
@@ -159,6 +161,7 @@ mod tests {
             S::ConnectionPending,
             S::Connected,
             S::Unavailable,
+            S::DisabledByPolicy,
             S::Failed,
         ] {
             assert_eq!(status_after(s, &rejected), s);
@@ -178,6 +181,7 @@ mod tests {
             S::Off,
             S::Starting,
             S::Unavailable,
+            S::DisabledByPolicy,
             S::Unsupported,
             S::Failed,
             S::Listening,
