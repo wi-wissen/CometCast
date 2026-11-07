@@ -9,7 +9,9 @@ import 'dart:typed_data';
 import 'package:cometcast/src/rust/api.dart' as rust;
 import 'package:cometcast/src/rust/api.dart'
     show
+        AddressParse,
         AdvertiseOutcome,
+        AirplayUiEvent,
         AnnounceStatus,
         CaptureInfo,
         ContentFrame,
@@ -23,12 +25,14 @@ import 'package:cometcast/src/rust/api.dart'
         NearbyUiEvent,
         PushResult,
         PresenterUiEvent,
+        ProbeResult,
         ReceiverUiEvent,
         RoomCodeCheck,
         ScreenRequest,
         SenderUiEvent,
         ServerDefaults,
         ServerDiscovery,
+        TvUiEvent,
         UiCodecInfo,
         UiCodecState,
         UiContentCmd,
@@ -96,7 +100,26 @@ export 'package:cometcast/src/rust/api.dart'
         codecState,
         codecInfo,
         ensureCodec,
-        setCodecDir;
+        setCodecDir,
+        appVersion,
+        joinAddress,
+        serverForAddress,
+        probeServer,
+        airplayReceiveAvailable,
+        startAirplayReceive,
+        airplaySetAskFirst,
+        airplaySetLocked,
+        airplaySetRefusing,
+        airplayAnswer,
+        airplayEndSession,
+        stopAirplayReceive,
+        officeConvertAvailable,
+        watchTvs,
+        stopWatchingTvs,
+        startTvPresenter,
+        tvPair,
+        setTvDataDir,
+        setCastTrustAnchors;
 
 abstract class CoreApi {
   /// Connect to [server], create a room and report events. The first event is the room code.
@@ -356,6 +379,66 @@ abstract class CoreApi {
   /// Android: the app-private directory in which the codec is stored.
   void setCodecDir(String? path);
 
+  // --- round 5: address, About, AirPlay receive, TVs, Office (native-apps.md 21) ---
+
+  /// The core's version (About, the source link tag `v{version}`).
+  String appVersion();
+
+  /// The join address `{dom}` of a server: `cometcast.de/app` for the built-in relay.
+  String joinAddress(String server);
+
+  /// The server for what a person typed in the address field (spec 15.7).
+  AddressParse serverForAddress(String input);
+
+  /// Is there a Comet Cast server at [server]? (`/healthz`, 5 s, certificate checked.)
+  Future<ProbeResult> probeServer(String server);
+
+  /// Can this computer receive AirPlay (UxPlay with the mirroring signal present)?
+  bool airplayReceiveAvailable();
+
+  /// Start the AirPlay receiver under [name] (the room name); [askFirst] = Approval on.
+  Stream<AirplayUiEvent> startAirplayReceive({
+    required String name,
+    required bool askFirst,
+  });
+
+  /// Open (false) or Approval on (true).
+  bool airplaySetAskFirst(bool ask);
+
+  /// Locked: no new device, the service stops once no mirroring runs.
+  bool airplaySetLocked(bool locked);
+
+  /// A Comet Cast presenter presents: pairings are refused without a question.
+  bool airplaySetRefusing(bool refusing);
+
+  /// Answer the open request.
+  bool airplayAnswer(bool allow);
+
+  /// End the running mirroring.
+  bool airplayEndSession();
+
+  void stopAirplayReceive();
+
+  /// Can this device convert Office files (never on iOS)?
+  bool officeConvertAvailable();
+
+  /// The TVs on the network (Cast, AirPlay), desktops only; ends after [stopWatchingTvs].
+  Stream<TvUiEvent> watchTvs();
+
+  void stopWatchingTvs();
+
+  /// A presenter session to one TV ([TvUiEvent_Seen.id]); the events are those of [startPresenter].
+  Stream<PresenterUiEvent> startTvPresenter({required String id});
+
+  /// The code the TV shows after `PairingRequired`; true = paired.
+  Future<bool> tvPair(String pin);
+
+  /// Where AirPlay pairing credentials are kept.
+  void setTvDataDir(String? path);
+
+  /// PEM file with trust anchors for Cast devices; true = loaded.
+  bool setCastTrustAnchors(String? path);
+
   /// Same rules as `cc_proto::RoomCode::parse` (the Rust code is the single source of truth).
   RoomCodeCheck checkRoomCode(String input);
 
@@ -516,6 +599,71 @@ class RustCoreApi implements CoreApi {
 
   @override
   Future<void> stopAdvertising() => rust.stopAdvertising();
+
+  @override
+  String appVersion() => rust.appVersion();
+
+  @override
+  String joinAddress(String server) => rust.joinAddress(server: server);
+
+  @override
+  AddressParse serverForAddress(String input) =>
+      rust.serverForAddress(input: input);
+
+  @override
+  Future<ProbeResult> probeServer(String server) =>
+      rust.probeServer(server: server);
+
+  @override
+  bool airplayReceiveAvailable() => rust.airplayReceiveAvailable();
+
+  @override
+  Stream<AirplayUiEvent> startAirplayReceive({
+    required String name,
+    required bool askFirst,
+  }) => rust.startAirplayReceive(name: name, askFirst: askFirst);
+
+  @override
+  bool airplaySetAskFirst(bool ask) => rust.airplaySetAskFirst(ask: ask);
+
+  @override
+  bool airplaySetLocked(bool locked) => rust.airplaySetLocked(locked: locked);
+
+  @override
+  bool airplaySetRefusing(bool refusing) =>
+      rust.airplaySetRefusing(refusing: refusing);
+
+  @override
+  bool airplayAnswer(bool allow) => rust.airplayAnswer(allow: allow);
+
+  @override
+  bool airplayEndSession() => rust.airplayEndSession();
+
+  @override
+  void stopAirplayReceive() => rust.stopAirplayReceive();
+
+  @override
+  bool officeConvertAvailable() => rust.officeConvertAvailable();
+
+  @override
+  Stream<TvUiEvent> watchTvs() => rust.watchTvs();
+
+  @override
+  void stopWatchingTvs() => rust.stopWatchingTvs();
+
+  @override
+  Stream<PresenterUiEvent> startTvPresenter({required String id}) =>
+      rust.startTvPresenter(id: id);
+
+  @override
+  Future<bool> tvPair(String pin) => rust.tvPair(pin: pin);
+
+  @override
+  void setTvDataDir(String? path) => rust.setTvDataDir(path: path);
+
+  @override
+  bool setCastTrustAnchors(String? path) =>
+      rust.setCastTrustAnchors(path: path);
 
   @override
   Stream<NearbyReceiverEvent> watchReceivers() => rust.watchReceivers();

@@ -33,12 +33,23 @@ pub enum Recognized {
     Error(String),
     /// UxPlay is shutting down by itself. Real line (1.68): `Stopping...`.
     Stopping,
+    /// A device's mirror stream started: UxPlay's mirror thread begins to accept the video
+    /// connection. The line is [`MIRRORING_STARTED_LINE`]; its text is a format string of the
+    /// UxPlay 1.68 binary (found in the shipped binary, see `docs/airplay.md`; the supervisor
+    /// believes it only after a PIN was shown in the same connection).
+    MirroringStarted,
     /// The stream may have stopped (client silent). A HINT only.
     /// UNCERTAIN: the exact text is not known. UxPlay has the option `-reset n`
     /// ("Reset after 3n seconds client silence"), so we accept a line that starts with
     /// "reset" and mentions "client silence". Not seen in a real run.
     StreamStalled,
 }
+
+/// The line that UxPlay prints when a device starts mirroring (`raop_rtp_mirror.c`, logged when
+/// the mirror thread starts). Read from the format strings of the shipped binary; the end of a
+/// mirroring is `Open connections: 0` (needs UxPlay's `-d`, which this crate always passes for
+/// receiving, see [`crate::AirplayConfig::debug_log`]).
+pub const MIRRORING_STARTED_LINE: &str = "raop_rtp_mirror starting mirroring";
 
 /// Longest message text we keep for an error (keeps events small).
 const MAX_TEXT: usize = 300;
@@ -88,6 +99,9 @@ pub fn parse_line(line: &str) -> Option<Recognized> {
             return n.parse().ok().map(Recognized::OpenConnections);
         }
         return None;
+    }
+    if line == MIRRORING_STARTED_LINE {
+        return Some(Recognized::MirroringStarted);
     }
     if line == "Stopping..." {
         return Some(Recognized::Stopping);
@@ -148,6 +162,28 @@ mod tests {
         let got = all(REAL_NO_DNSSD);
         assert_eq!(got[0], Recognized::ServerReady);
         assert!(matches!(&got[1..], [Recognized::Error(m)] if m.contains("No DNS-SD Server")));
+    }
+
+    #[test]
+    fn mirroring_started_line() {
+        assert_eq!(
+            parse_line("raop_rtp_mirror starting mirroring"),
+            Some(Recognized::MirroringStarted)
+        );
+        assert_eq!(
+            parse_line("raop_rtp_mirror starting mirroring\r"),
+            Some(Recognized::MirroringStarted)
+        );
+        // Anchored: a device name cannot fake it from the middle of a line, and near misses
+        // are nothing.
+        for l in [
+            "Remote: raop_rtp_mirror starting mirroring",
+            " raop_rtp_mirror starting mirroring",
+            "raop_rtp_mirror starting mirroring now",
+            "raop_rtp_mirror starting",
+        ] {
+            assert_eq!(parse_line(l), None, "{l:?}");
+        }
     }
 
     #[test]

@@ -845,6 +845,7 @@ dependencies = [
  "ctr",
  "ed25519-dalek",
  "hkdf",
+ "image",
  "mdns-sd",
  "num-bigint",
  "plist",
@@ -972,7 +973,10 @@ dependencies = [
 name = "cc-ffi"
 version = "0.1.0"
 dependencies = [
+ "cc-airplay",
+ "cc-airplay-sender",
  "cc-capture",
+ "cc-cast",
  "cc-codec",
  "cc-discovery",
  "cc-docs",
@@ -985,6 +989,7 @@ dependencies = [
  "cc-transport",
  "flate2",
  "flutter_rust_bridge",
+ "image",
  "tempfile",
  "tokio",
  "url",

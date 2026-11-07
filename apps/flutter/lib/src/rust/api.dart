@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -220,6 +220,27 @@ Future<CaptureInfo> captureInfo({String? display}) =>
 /// why the UI also offers `dev_fallback` (unless `locked`).
 ServerDefaults serverDefaults() =>
     RustLib.instance.api.crateApiServerDefaults();
+
+/// The version of the core (`cc-ffi`'s package version, with a pre-release suffix when it has
+/// one). The About page shows it and links the source of this tag (`v{version}`).
+String appVersion() => RustLib.instance.api.crateApiAppVersion();
+
+/// The join address (`{dom}`) of `server`: where a browser finds the web app. The built-in relay
+/// gives `cometcast.de/app`, every other server its host with `:port` only if not 443.
+String joinAddress({required String server}) =>
+    RustLib.instance.api.crateApiJoinAddress(server: server);
+
+/// Turn what a person typed in the address field ("via {dom} · Change", spec 15.7) into a
+/// server: scheme, trailing `/`, a path (except `/app`) and `:443` are dropped; `cometcast.de`
+/// and `cometcast.de/app` give the built-in relay; names, IP literals and `.local` names work.
+AddressParse serverForAddress({required String input}) =>
+    RustLib.instance.api.crateApiServerForAddress(input: input);
+
+/// Is there a Comet Cast server at `server`? `GET https://{server}/healthz`, 5 seconds, the
+/// certificate is checked (no self-signed exception). Used by the address field before an
+/// address is accepted.
+Future<ProbeResult> probeServer({required String server}) =>
+    RustLib.instance.api.crateApiProbeServer(server: server);
 
 /// Ask all sources for servers: policy file, DNS-SRV and announcements by display devices (it
 /// listens on the network for a moment, so this takes some seconds; the time limits are those
@@ -474,6 +495,90 @@ bool requestHandover({required String token}) =>
 /// Returns `false` if no presenter session runs.
 bool stopPresenting() => RustLib.instance.api.crateApiStopPresenting();
 
+/// List the TVs on the network (mDNS `_googlecast._tcp` and `_airplay._tcp`) until
+/// [`stop_watching_tvs`] is called or Dart stops listening. Run it exactly while the nearby
+/// search runs and the switch is on. Desktops only: elsewhere the stream gets `Unavailable`.
+Stream<TvUiEvent> watchTvs() => RustLib.instance.api.crateApiWatchTvs();
+
+/// Stop [`watch_tvs`] (does nothing if none runs).
+void stopWatchingTvs() => RustLib.instance.api.crateApiStopWatchingTvs();
+
+/// Open a presenter session to the TV `id` (from `Seen`). Events are those of
+/// [`start_presenter`]: `PairingRequired` (AirPlay, the first time; answer with [`tv_pair`]),
+/// then `Joined { room_name }` with the TV's name; `present_screen` (the whole screen; a Cast
+/// device needs trust anchors), `present_content` (AirPlay: a picture, re-encoded as JPEG here,
+/// or a link to a media file or stream), `stop_presenting` and `stop_presenter` work on it
+/// unchanged. Errors: `tv_refused` and `tv_lost` end the stream; `tv_pair_wrong` and
+/// `tv_unsupported_content` are inline and do not. Replaces a running presenter session.
+Stream<PresenterUiEvent> startTvPresenter({required String id}) =>
+    RustLib.instance.api.crateApiStartTvPresenter(id: id);
+
+/// Give the TV the code it shows (after `PairingRequired`). `true` = the TV accepted it (then
+/// `Joined` follows and the credentials are kept for next time); `false` = wrong code (the
+/// event `Error { tv_pair_wrong }` was sent, the TV shows a new code) or no TV session waits.
+Future<bool> tvPair({required String pin}) =>
+    RustLib.instance.api.crateApiTvPair(pin: pin);
+
+/// The folder where pairing credentials of AirPlay TVs are kept (one file in it); `None` = the
+/// default place of the user's configuration folder. Set it to the app's data folder.
+void setTvDataDir({String? path}) =>
+    RustLib.instance.api.crateApiSetTvDataDir(path: path);
+
+/// Load the PEM file with trust anchors for checking Cast devices (`None` removes them). The
+/// program embeds none (docs/cast.md); without them no Cast device can show the screen.
+/// Returns whether anchors are loaded now.
+bool setCastTrustAnchors({String? path}) =>
+    RustLib.instance.api.crateApiSetCastTrustAnchors(path: path);
+
+/// Can this computer receive AirPlay? True where the `uxplay` program is found (next to the
+/// app, then `PATH`) **and** prints the lines the mirroring signal needs. Release builds with a
+/// UxPlay without them do not list AirPlay. False on phones, tablets and TVs.
+bool airplayReceiveAvailable() =>
+    RustLib.instance.api.crateApiAirplayReceiveAvailable();
+
+/// Start the AirPlay receiver with the room name as its name (empty: "Comet Cast"). `ask_first`
+/// = the display is in Approval on. Replaces a running receiver. Events end with `Stopped`.
+Stream<AirplayUiEvent> startAirplayReceive({
+  required String name,
+  required bool askFirst,
+}) => RustLib.instance.api.crateApiStartAirplayReceive(
+  name: name,
+  askFirst: askFirst,
+);
+
+/// Change the join mode between Open (`false`) and Approval on (`true`). `false` if no receiver
+/// runs.
+bool airplaySetAskFirst({required bool ask}) =>
+    RustLib.instance.api.crateApiAirplaySetAskFirst(ask: ask);
+
+/// Locked (`true`): no new device, the service stops as soon as no mirroring runs (a running
+/// one stays until it ends); `false` starts it again. `false` if no receiver runs.
+bool airplaySetLocked({required bool locked}) =>
+    RustLib.instance.api.crateApiAirplaySetLocked(locked: locked);
+
+/// A Comet Cast presenter presents (`true`): every new pairing is refused without a request
+/// ("Comet Cast first", decision N88); `false` when it stopped. `false` if no receiver runs.
+bool airplaySetRefusing({required bool refusing}) =>
+    RustLib.instance.api.crateApiAirplaySetRefusing(refusing: refusing);
+
+/// Answer the open `Request`. `false` if none is open.
+bool airplayAnswer({required bool allow}) =>
+    RustLib.instance.api.crateApiAirplayAnswer(allow: allow);
+
+/// End the running mirroring (a Comet Cast presentation starts, the host stops it). `false` if
+/// no receiver runs.
+bool airplayEndSession() => RustLib.instance.api.crateApiAirplayEndSession();
+
+/// Stop the AirPlay receiver and end a running mirroring. Does nothing if none runs.
+void stopAirplayReceive() => RustLib.instance.api.crateApiStopAirplayReceive();
+
+/// Can this device convert Office files (`.docx .pptx .xlsx`)? True where the conversion worker
+/// is found (Linux, Windows, macOS, Android builds that ship it); always false on iOS and iPadOS
+/// (no child processes, decision N81). The switch in the app settings is the app's own (default
+/// on): off means the picker no longer offers Office files.
+bool officeConvertAvailable() =>
+    RustLib.instance.api.crateApiOfficeConvertAvailable();
+
 /// Current state of the H.264 codec. Cheap; the UI polls it while a download runs.
 UiCodecState codecState() => RustLib.instance.api.crateApiCodecState();
 
@@ -492,6 +597,20 @@ Future<UiCodecState> ensureCodec() =>
 void setCodecDir({String? path}) =>
     RustLib.instance.api.crateApiSetCodecDir(path: path);
 
+@freezed
+sealed class AddressParse with _$AddressParse {
+  const AddressParse._();
+
+  /// The server to use (`host:port`; the built-in relay as in the built-in list).
+  const factory AddressParse.ok({
+    /// The server address.
+    required String server,
+  }) = AddressParse_Ok;
+
+  /// Not an address that can be used.
+  const factory AddressParse.invalid() = AddressParse_Invalid;
+}
+
 /// Result of [`start_advertising`].
 enum AdvertiseOutcome {
   /// The receiver is announced on the local network.
@@ -506,6 +625,46 @@ enum AdvertiseOutcome {
 
   /// A stop or a newer start came first; nothing is announced.
   superseded,
+}
+
+@freezed
+sealed class AirplayUiEvent with _$AirplayUiEvent {
+  const AirplayUiEvent._();
+
+  /// The receiver is ready and offered to devices.
+  const factory AirplayUiEvent.advertising() = AirplayUiEvent_Advertising;
+
+  /// The receiver is not offered (Locked stopped it).
+  const factory AirplayUiEvent.notAnnouncing() = AirplayUiEvent_NotAnnouncing;
+
+  /// Approval on: a device wants to connect; ask the host ([`airplay_answer`]), the PIN
+  /// follows.
+  const factory AirplayUiEvent.request() = AirplayUiEvent_Request;
+
+  /// Show this PIN on the screen.
+  const factory AirplayUiEvent.pin({
+    /// Four digits, read from UxPlay.
+    required String pin,
+  }) = AirplayUiEvent_Pin;
+
+  /// The attempt is over: close the request or PIN dialog.
+  const factory AirplayUiEvent.pinDone() = AirplayUiEvent_PinDone;
+
+  /// A device started or stopped mirroring (a trusted signal: UxPlay's own output).
+  const factory AirplayUiEvent.mirroring({
+    /// True while a picture is shown.
+    required bool active,
+  }) = AirplayUiEvent_Mirroring;
+
+  /// The receiver cannot run: `not_installed`, `gstreamer_missing`, `no_dnssd`, `bad_config`,
+  /// `failed`.
+  const factory AirplayUiEvent.failed({
+    /// The code the app maps to a state line.
+    required String code,
+  }) = AirplayUiEvent_Failed;
+
+  /// The receiver was stopped. The stream ends.
+  const factory AirplayUiEvent.stopped() = AirplayUiEvent_Stopped;
 }
 
 /// Whether the display announces itself now (result of [`set_display_announcing`]).
@@ -1023,6 +1182,12 @@ sealed class NearbyUiEvent with _$NearbyUiEvent {
 sealed class PresenterUiEvent with _$PresenterUiEvent {
   const PresenterUiEvent._();
 
+  /// A TV asks for its pairing code (AirPlay, the first time; `start_tv_presenter` only): the
+  /// TV shows a code, the app asks for it and calls [`tv_pair`]. Nothing can be shown before
+  /// `Joined`.
+  const factory PresenterUiEvent.pairingRequired() =
+      PresenterUiEvent_PairingRequired;
+
   /// The room needs the host's approval: show the waiting page with the check number (the
   /// display shows the same number). Nothing is presented until `Joined`.
   const factory PresenterUiEvent.waitingForApproval({
@@ -1134,6 +1299,18 @@ sealed class PresenterUiEvent with _$PresenterUiEvent {
     /// Technical message in English (logs only).
     required String message,
   }) = PresenterUiEvent_Error;
+}
+
+/// The answer of [`probe_server`].
+enum ProbeResult {
+  /// A Comet Cast server answered `GET /healthz`.
+  ok,
+
+  /// Something answered, but not like a Comet Cast server (no `/healthz`).
+  notCometCast,
+
+  /// No answer within 5 seconds, no connection, or the certificate was refused.
+  unreachable,
 }
 
 /// What happened to an access unit given to [`push_encoded_frame`].
@@ -1676,6 +1853,57 @@ class ServerDiscovery {
           announcementsAllowed == other.announcementsAllowed &&
           notices == other.notices &&
           warnings == other.warnings;
+}
+
+/// Which way a TV is reached.
+enum TvKind {
+  /// Google Cast (Chromecast, Google TV): the screen.
+  cast,
+
+  /// AirPlay (Apple TV, many smart TVs): the screen as a video a few seconds behind, a photo,
+  /// a media link.
+  airPlay,
+}
+
+@freezed
+sealed class TvUiEvent with _$TvUiEvent {
+  const TvUiEvent._();
+
+  /// A TV appeared or changed.
+  const factory TvUiEvent.seen({
+    /// Stable id for [`start_tv_presenter`] (`cast:<id>` or `airplay:<id>`).
+    required String id,
+
+    /// The name the TV gives itself, cleaned.
+    required String name,
+
+    /// Cast or AirPlay.
+    required TvKind kind,
+
+    /// Its addresses as text. The app hides a TV whose address is also the address of a
+    /// Comet Cast screen in the nearby list (decision N84).
+    required List<String> addresses,
+
+    /// Can show the screen. For Cast false when the program has no trust anchors to check
+    /// the device ([`set_cast_trust_anchors`]) or the device has no screen.
+    required bool canScreen,
+
+    /// Can show a photo (AirPlay).
+    required bool canPhoto,
+
+    /// Can play a media link (AirPlay).
+    required bool canVideo,
+  }) = TvUiEvent_Seen;
+
+  /// A TV went away.
+  const factory TvUiEvent.gone({
+    /// The id of its last `Seen`.
+    required String id,
+  }) = TvUiEvent_Gone;
+
+  /// Searching is not possible here (no multicast, or a platform without TV sending); the
+  /// stream ends after this.
+  const factory TvUiEvent.unavailable() = TvUiEvent_Unavailable;
 }
 
 /// What the UI shows before it asks to download the codec.

@@ -34,6 +34,7 @@ pub mod rtp;
 pub mod session;
 pub mod streamer;
 pub mod tls;
+pub mod watch;
 
 pub use device_auth::{DeviceAuth, TrustAnchors};
 pub use discovery::{CastDevice, discover, find_by_name};

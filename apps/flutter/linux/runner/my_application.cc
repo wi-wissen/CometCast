@@ -16,6 +16,8 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 // Comet Cast: full screen for the receiver. The Dart side (lib/window_control.dart) calls the
 // method "setFullscreen" with a bool on the channel "de.cometcast/window".
+// Round 5 (native-apps.md 21.4): "raise" with a bool puts the window above other windows
+// (UxPlay's full-screen mirror) and presents it, false lowers it again.
 static void window_method_call_cb(FlMethodChannel* channel,
                                   FlMethodCall* method_call,
                                   gpointer user_data) {
@@ -33,6 +35,20 @@ static void window_method_call_cb(FlMethodChannel* channel,
     } else {
       response = FL_METHOD_RESPONSE(fl_method_error_response_new(
           "bad_argument", "setFullscreen expects a bool", nullptr));
+    }
+  } else if (g_strcmp0(fl_method_call_get_name(method_call), "raise") == 0) {
+    FlValue* args = fl_method_call_get_args(method_call);
+    if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_BOOL) {
+      if (fl_value_get_bool(args)) {
+        gtk_window_set_keep_above(window, TRUE);
+        gtk_window_present(window);
+      } else {
+        gtk_window_set_keep_above(window, FALSE);
+      }
+      response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    } else {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "bad_argument", "raise expects a bool", nullptr));
     }
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());

@@ -43,6 +43,8 @@ ctr = "0.9"
 aes-gcm = "0.10"
 # Wipes secret keys from memory when they are dropped. MIT OR Apache-2.0.
 zeroize = "1"
+# Photos: any app image format to JPEG (the AirPlay photo endpoint takes JPEG only).
+image.workspace = true
 
 [dev-dependencies]
 cc-capture = { workspace = true, features = ["test-support"] }

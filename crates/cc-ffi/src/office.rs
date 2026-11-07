@@ -33,6 +33,12 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// Can Office files be converted on this system? Never on iOS and iPadOS (no child processes,
+/// decision N81); elsewhere when a trusted conversion worker is found.
+pub(crate) fn available() -> bool {
+    !cfg!(target_os = "ios") && worker_path().is_some()
+}
+
 /// Set (or with `None` remove) an explicit conversion worker program. For tests and for hosts
 /// whose layout differs from "next to the executable".
 pub(crate) fn set_worker_override(path: Option<PathBuf>) {

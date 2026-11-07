@@ -17,6 +17,12 @@
 #   helper        like "normal" but starts a background helper (pid in FAKE_UXPLAY_HELPER_PID)
 #   helper-crash  starts a background helper, then exits with code 3
 #   self-kill     kills itself with SIGKILL after the banner
+#   mirror        like "normal", then a device mirrors: a second connection opens and the mirror
+#                 line is printed (UxPlay's `raop_rtp_mirror starting mirroring`); it goes on
+#                 until the process ends
+#   mirror-ends   like "mirror", but the connection closes again after a moment
+#                 (`Open connections: 0`)
+#   mirror-spoof  prints the mirror line BEFORE any pairing (a device that never paired)
 #   chatty        prints a very long line and some junk, then behaves like "normal"
 
 mode=${FAKE_UXPLAY_MODE:-normal}
@@ -66,6 +72,10 @@ chatty)
     echo
     printf '\033[31mcolour\033[0m \001\002 junk\n'
     ;;
+mirror-spoof)
+    trap 'echo "Stopping..."; exit 0' TERM
+    echo "raop_rtp_mirror starting mirroring"
+    ;;
 *)
     trap 'echo "Stopping..."; exit 0' TERM
     ;;
@@ -84,6 +94,18 @@ if [ "$mode" = twopins ]; then
     echo "client sent PAIR-PIN-START request"
     echo '*** CLIENT MUST NOW ENTER PIN = "5432" AS AIRPLAY PASSWORD'
 fi
+
+case "$mode" in
+mirror | mirror-ends)
+    # The real flow: the probe connection above closed, a second one carries the session.
+    echo "Open connections: 1"
+    echo "raop_rtp_mirror starting mirroring"
+    if [ "$mode" = mirror-ends ]; then
+        sleep 0.3
+        echo "Open connections: 0"
+    fi
+    ;;
+esac
 
 # Wait until we get a signal. Short sleeps so that a signal is handled quickly.
 while true; do

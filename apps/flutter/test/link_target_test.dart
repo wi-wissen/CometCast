@@ -44,10 +44,16 @@ void main() {
         'K7QM2W',
       );
       // Not a join link: other paths of the website, a wrong code, another host or port.
-      expect(parseLinkUrl('https://cometcast.de/app/display', normalize), isNull);
+      expect(
+        parseLinkUrl('https://cometcast.de/app/display', normalize),
+        isNull,
+      );
       expect(parseLinkUrl('https://cometcast.de/app/', normalize), isNull);
       expect(parseLinkUrl('https://cometcast.de/x/K7QM2W', normalize), isNull);
-      expect(parseLinkUrl('https://cometcast.de:8443/app/K7QM2W', normalize), isNull);
+      expect(
+        parseLinkUrl('https://cometcast.de:8443/app/K7QM2W', normalize),
+        isNull,
+      );
       expect(parseLinkUrl('https://example.org/app/K7QM2W', normalize), isNull);
     });
 

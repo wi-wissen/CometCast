@@ -64,6 +64,14 @@ pub enum AirplayEvent {
     },
     /// All connections are closed again (same limits as above).
     ClientDisconnected,
+    /// A device started or stopped mirroring: the trusted signal for "a screen is mirrored"
+    /// (wake lock, "Comet Cast first", `toast.rxEnded`). Start = UxPlay's line
+    /// [`crate::MIRRORING_STARTED_LINE`] after a PIN was shown; end = `Open connections: 0`, or
+    /// the end of the UxPlay process. Always arrives in pairs.
+    MirroringChanged {
+        /// True = mirroring started, false = it ended.
+        active: bool,
+    },
     /// UxPlay printed an error.
     Error(String),
     /// Hint only: UxPlay may get no data from the device (line wording is UNCERTAIN).
@@ -104,8 +112,9 @@ pub enum AirplayEvent {
 
 /// Fold an event into the status the UI shows.
 ///
-/// `Connected` is set only by [`AirplayEvent::SessionChanged`] (the app knows when a
-/// session is really active). A PIN seen while `Connected` never overwrites that status.
+/// `Connected` is set by [`AirplayEvent::SessionChanged`] (the app knows when a session is
+/// active) and by [`AirplayEvent::MirroringChanged`] (the trusted signal). A PIN seen while
+/// `Connected` never overwrites that status.
 pub fn status_after(prev: &AirplayStatus, ev: &AirplayEvent) -> AirplayStatus {
     match ev {
         AirplayEvent::Starting { .. } => AirplayStatus::Starting,
@@ -117,8 +126,10 @@ pub fn status_after(prev: &AirplayStatus, ev: &AirplayEvent) -> AirplayStatus {
                 AirplayStatus::PinShown { pin: pin.clone() }
             }
         }
-        AirplayEvent::SessionChanged { active: true } => AirplayStatus::Connected,
-        AirplayEvent::SessionChanged { active: false } => AirplayStatus::Waiting,
+        AirplayEvent::SessionChanged { active: true }
+        | AirplayEvent::MirroringChanged { active: true } => AirplayStatus::Connected,
+        AirplayEvent::SessionChanged { active: false }
+        | AirplayEvent::MirroringChanged { active: false } => AirplayStatus::Waiting,
         AirplayEvent::Restarting { attempt, .. } => AirplayStatus::Restarting { attempt: *attempt },
         AirplayEvent::Failed(r) => AirplayStatus::Failed { reason: r.clone() },
         AirplayEvent::Stopped => AirplayStatus::Off,
@@ -246,6 +257,9 @@ struct Shared {
     session_active: AtomicBool,
     /// A confirmation dialog is open.
     confirm_pending: AtomicBool,
+    /// The reader of the current run reported `MirroringChanged { active: true }` and not yet
+    /// the end: the manager sends the end when the process dies first.
+    mirroring: AtomicBool,
     /// Number of the current run. Events of older runs are dropped.
     generation: AtomicU32,
 }
@@ -271,6 +285,7 @@ impl Supervisor {
         let shared = Arc::new(Shared {
             session_active: AtomicBool::new(false),
             confirm_pending: AtomicBool::new(false),
+            mirroring: AtomicBool::new(false),
             generation: AtomicU32::new(0),
         });
         let ctx = ManagerCtx {
@@ -366,6 +381,9 @@ fn spawn_uxplay(
         .map_err(|e| format!("cannot open a pseudo-terminal: {e}"))?;
     let mut cmd = CommandBuilder::new(&config.uxplay_path);
     cmd.args(args);
+    if let Some(d) = &config.x11_display {
+        cmd.env("DISPLAY", d);
+    }
     if let Ok(dir) = std::env::current_dir() {
         cmd.cwd(dir);
     }
@@ -450,6 +468,11 @@ struct LineState {
     connected: bool,
     /// A pairing request was seen and its PIN line has not come yet.
     pairing: bool,
+    /// A PIN was shown in this run: only then is the mirroring line believed (a device that
+    /// never paired cannot start a mirror, whatever text it makes UxPlay print).
+    pin_seen: bool,
+    /// A mirroring is running (we reported its start).
+    mirroring: bool,
 }
 
 fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
@@ -468,8 +491,17 @@ fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
             if !std::mem::take(&mut state.pairing) {
                 return;
             }
+            state.pin_seen = true;
             maybe_ask_operator(&pin, rc);
             AirplayEvent::PinShown { pin }
+        }
+        Recognized::MirroringStarted => {
+            if !state.pin_seen || state.mirroring {
+                return;
+            }
+            state.mirroring = true;
+            rc.ctx.shared.mirroring.store(true, Ordering::SeqCst);
+            AirplayEvent::MirroringChanged { active: true }
         }
         Recognized::OpenConnections(n) => {
             if n > 0 && !state.connected {
@@ -479,6 +511,13 @@ fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
                 }
             } else if n == 0 && state.connected {
                 state.connected = false;
+                if state.mirroring {
+                    // The last connection is gone: the mirroring ended with it.
+                    state.mirroring = false;
+                    state.pin_seen = false;
+                    rc.ctx.shared.mirroring.store(false, Ordering::SeqCst);
+                    rc.emit(AirplayEvent::MirroringChanged { active: false });
+                }
                 AirplayEvent::ClientDisconnected
             } else {
                 return;
@@ -595,6 +634,15 @@ fn finish_reader(run: &Running, grace: Duration) {
     let _ = run.reader_done.recv_timeout(grace);
 }
 
+/// A run that ends while a mirroring was reported ends that mirroring too (its picture is gone).
+fn end_mirroring_with_run(ctx: &ManagerCtx) {
+    if ctx.shared.mirroring.swap(false, Ordering::SeqCst) {
+        let _ = ctx
+            .tx
+            .send(AirplayEvent::MirroringChanged { active: false });
+    }
+}
+
 /// Why the inner loop of one run ended.
 enum RunEnd {
     /// The process ended by itself.
@@ -665,6 +713,7 @@ fn manage(
             RunEnd::Asked { mut stop, denied } => {
                 let (code, signal) = terminate(&mut run, options.stop_timeout);
                 finish_reader(&run, options.reader_grace);
+                end_mirroring_with_run(ctx);
                 if denied {
                     send(AirplayEvent::Denied);
                 }
@@ -688,6 +737,7 @@ fn manage(
             RunEnd::Died((code, signal)) => {
                 // Already reaped by try_wait. Clean up the output thread.
                 finish_reader(&run, options.reader_grace);
+                end_mirroring_with_run(ctx);
                 send(AirplayEvent::ProcessExited {
                     code,
                     signal,
@@ -792,6 +842,14 @@ mod tests {
                 AirplayStatus::Connected,
             ),
             (AirplayEvent::StreamStalled, AirplayStatus::Connected),
+            (
+                AirplayEvent::MirroringChanged { active: false },
+                AirplayStatus::Waiting,
+            ),
+            (
+                AirplayEvent::MirroringChanged { active: true },
+                AirplayStatus::Connected,
+            ),
             (AirplayEvent::DenyIgnored, AirplayStatus::Connected),
             (
                 AirplayEvent::SessionChanged { active: false },

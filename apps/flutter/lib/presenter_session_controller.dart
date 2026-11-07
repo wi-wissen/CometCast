@@ -74,6 +74,9 @@ class PresenterSessionController extends ChangeNotifier {
   /// The name the display gave its room (decision 49: lenient), or null.
   String? roomName;
 
+  /// A TV session waits for the code the TV shows (`PairingRequired`, until `Joined`).
+  bool pairingRequired = false;
+
   /// The check number and the wait while the host decides.
   int? check;
   int? timeoutSecs;
@@ -215,7 +218,11 @@ class PresenterSessionController extends ChangeNotifier {
         this.timeoutSecs = timeoutSecs;
         this.check = check;
         this.roomName = roomName ?? this.roomName;
+      case PresenterUiEvent_PairingRequired():
+        // A TV asks for the code it shows (fix list F10 draws the pair page).
+        pairingRequired = true;
       case PresenterUiEvent_Joined(:final roomName):
+        pairingRequired = false;
         phase = PresenterSessionPhase.joined;
         wasJoined = true;
         this.roomName = roomName ?? this.roomName;

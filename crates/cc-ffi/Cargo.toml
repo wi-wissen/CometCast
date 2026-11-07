@@ -38,8 +38,8 @@ all = { level = "warn", priority = -1 }
 # loads Cisco's prebuilt library at run time (the variant intended for releases).
 default = ["h264-source"]
 h264 = ["dep:cc-media"]
-h264-source = ["h264", "cc-media/h264-source", "cc-sender/h264-source"]
-h264-libloading = ["h264", "cc-media/h264-libloading", "cc-sender/h264-libloading", "dep:cc-codec"]
+h264-source = ["h264", "cc-media/h264-source", "cc-sender/h264-source", "cc-cast/h264-source", "cc-airplay-sender/h264-source"]
+h264-libloading = ["h264", "cc-media/h264-libloading", "cc-sender/h264-libloading", "cc-cast/h264-libloading", "cc-airplay-sender/h264-libloading", "dep:cc-codec"]
 # Linux: system screen picker through the desktop portal and PipeWire (Wayland). Needs
 # libpipewire-0.3-dev to build and libpipewire-0.3.so.0 at run time; see docs/capture.md.
 wayland = ["cc-sender/wayland"]
@@ -68,7 +68,16 @@ url = "2"
 # Pinned exactly: the Dart package of the same version must be used (see apps/flutter/pubspec.yaml).
 flutter_rust_bridge = "=2.13.0"
 
+# Desktop only: sending to TVs (Cast, AirPlay) and AirPlay receive through UxPlay (native-apps.md
+# 21.4, 21.5). Phones, tablets and TVs do not link them.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+cc-cast.workspace = true
+cc-airplay-sender.workspace = true
+cc-airplay.workspace = true
+
 [dev-dependencies]
 tempfile = "3"
+# Makes a picture for the TV photo test (tv.rs).
+image.workspace = true
 # The ZIP writer of the cc-office tests is included by path (office.rs tests).
 flate2.workspace = true

@@ -86,6 +86,42 @@ void main() {
     expect((ok as RoomCodeCheck_Valid).code, 'K7M2QX');
   }, skip: skip);
 
+  test(
+    'round 5: version, join address, typed address, probe, office switch',
+    () async {
+      const core = RustCoreApi();
+      expect(core.appVersion(), isNotEmpty);
+      expect(core.joinAddress('relay.cometcast.de:443'), 'cometcast.de/app');
+      expect(
+        core.joinAddress('cast.musterfirma.de:443'),
+        'cast.musterfirma.de',
+      );
+      expect(
+        core.serverForAddress('https://cometcast.de/app/'),
+        const AddressParse.ok(server: 'relay.cometcast.de:443'),
+      );
+      expect(
+        core.serverForAddress('CAST.Musterfirma.de:443/x'),
+        const AddressParse.ok(server: 'cast.musterfirma.de:443'),
+      );
+      expect(
+        core.serverForAddress('not an address'),
+        isA<AddressParse_Invalid>(),
+      );
+      // Nothing listens on port 1: the probe ends quickly as unreachable.
+      expect(await core.probeServer('127.0.0.1:1'), ProbeResult.unreachable);
+      // Office conversion is available exactly where a worker is found.
+      expect(core.officeConvertAvailable(), core.officeWorkerPath() != null);
+      // AirPlay receive and TV sending: no receiver and no TV session run in this test.
+      expect(core.airplayAnswer(true), isFalse);
+      expect(core.airplaySetLocked(true), isFalse);
+      expect(await core.tvPair('1234'), isFalse);
+      core.stopAirplayReceive();
+      core.stopWatchingTvs();
+    },
+    skip: skip,
+  );
+
   test('starting a receiver on a closed port reports an error event', () async {
     const core = RustCoreApi();
     final events = await core.startReceiver(server: '127.0.0.1:1').toList();

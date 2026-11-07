@@ -112,6 +112,8 @@ hayro = "0.9"
 # Pure-Rust image encoders for rendered pages (cc-docs): PNG and lossless WebP. No C code.
 png = "0.18"
 image-webp = "0.2"
+# Decoding PNG/WebP/GIF/JPEG and encoding JPEG for photos sent to AirPlay TVs (cc-airplay-sender). Pure Rust.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 # Inflate pre-scan in cc-docs (pure Rust miniz_oxide backend, no C code). Tests use it too.
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
