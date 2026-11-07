@@ -64,6 +64,8 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<CodecCmd>,
 }
 
 /// May the download start? The person said `--yes`, or the administrator allows it.
+/// Only the download manager (feature `h264-libloading`) calls it; the tests cover it in every build.
+#[cfg(any(feature = "h264-libloading", test))]
 pub fn may_download(yes: bool, admin_allows: bool) -> bool {
     yes || admin_allows
 }

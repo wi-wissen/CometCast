@@ -253,7 +253,9 @@ fn read_reply(mut out: ChildStdout, call: Call, limits: &Limits) -> Result<Reply
             let mut buf = vec![0u8; n * 8];
             out.read_exact(&mut buf).map_err(|_| bad.clone())?;
             let sizes = buf
-                .chunks_exact(8)
+                .as_chunks::<8>()
+                .0
+                .iter()
                 .map(|c| PageSize {
                     width_pt: f32::from_le_bytes([c[0], c[1], c[2], c[3]]),
                     height_pt: f32::from_le_bytes([c[4], c[5], c[6], c[7]]),

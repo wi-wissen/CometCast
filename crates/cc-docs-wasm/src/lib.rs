@@ -222,7 +222,13 @@ mod tests {
         let p = v.render(0, 100).expect("render");
         assert_eq!((p.width, p.height), (100, 100));
         assert_eq!(p.rgba.len(), 100 * 100 * 4);
-        let dark = p.rgba.chunks_exact(4).filter(|px| px[0] < 64).count();
+        let dark = p
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|px| px[0] < 64)
+            .count();
         assert!(
             dark > 500,
             "the black rectangle must be drawn, dark pixels: {dark}"

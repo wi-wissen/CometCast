@@ -458,7 +458,12 @@ pub(crate) fn rgb_to_rgba_scaled(rgb: &[u8], w: u32, h: u32, dw: u32, dh: u32) -
         return out;
     }
     if (w, h) == (dw, dh) {
-        for (src, dst) in rgb.chunks_exact(3).zip(out.chunks_exact_mut(4)) {
+        for (src, dst) in rgb
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .zip(out.as_chunks_mut::<4>().0.iter_mut())
+        {
             dst[..3].copy_from_slice(src);
         }
         return out;
@@ -466,7 +471,7 @@ pub(crate) fn rgb_to_rgba_scaled(rgb: &[u8], w: u32, h: u32, dw: u32, dh: u32) -
     let xmap: Vec<usize> = (0..dw).map(|x| x * w / dw * 3).collect();
     for (y, row) in out.chunks_exact_mut(dw * 4).enumerate() {
         let src_row = &rgb[(y * h / dh) * w * 3..][..w * 3];
-        for (dst, &sx) in row.chunks_exact_mut(4).zip(&xmap) {
+        for (dst, &sx) in row.as_chunks_mut::<4>().0.iter_mut().zip(&xmap) {
             dst[..3].copy_from_slice(&src_row[sx..sx + 3]);
         }
     }

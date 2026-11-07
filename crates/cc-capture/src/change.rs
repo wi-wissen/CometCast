@@ -45,8 +45,8 @@ pub fn hash_bytes(bytes: &[u8]) -> u64 {
         0x85EB_CA77_C2B2_AE63,
     ];
     let mut lanes: [u64; 4] = [1, 2, 3, 4];
-    let mut chunks = bytes.chunks_exact(32);
-    for c in &mut chunks {
+    let (chunks, remainder) = bytes.as_chunks::<32>();
+    for c in chunks {
         for (i, lane) in lanes.iter_mut().enumerate() {
             let mut w = [0u8; 8];
             w.copy_from_slice(&c[i * 8..i * 8 + 8]);
@@ -56,7 +56,7 @@ pub fn hash_bytes(bytes: &[u8]) -> u64 {
         }
     }
     let mut h = bytes.len() as u64;
-    for &b in chunks.remainder() {
+    for &b in remainder {
         h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3);
     }
     for (l, k) in lanes.iter().zip(K) {

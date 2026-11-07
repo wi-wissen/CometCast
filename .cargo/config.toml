@@ -2,3 +2,9 @@
 [alias]
 # `cargo xtask <command>` runs the helper program in the xtask/ folder.
 xtask = "run --package xtask --"
+
+# 16 KB page alignment of the 32-bit ARM Android libraries and workers. NDK r28 and cargo-ndk only
+# link the 64-bit ABIs with a 16 KB max page size; armeabi-v7a came out with p_align 0x1000 and
+# failed the alignment check of the Flutter android job (docs/android.md, "CI and 16 KB pages").
+[target.armv7-linux-androideabi]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
