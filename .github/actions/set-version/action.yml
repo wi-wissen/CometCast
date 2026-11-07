@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Set release version
+description: Applies the release version to the checked-out tree (nothing is committed).
+inputs:
+  version:
+    description: Semantic version without a leading v
+    required: true
+  build-number:
+    description: Monotonic build number (Flutter build number, Android versionCode)
+    required: true
+  image:
+    description: Lower-case Docker image name without tag
+    required: true
+  h264:
+    description: OpenH264 mode for the Flutter core (keep, libloading or source)
+    required: false
+    default: libloading
+runs:
+  using: composite
+  steps:
+    - name: Run tools/set-version.mjs
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        BUILD_NUMBER: ${{ inputs.build-number }}
+        IMAGE: ${{ inputs.image }}
+        H264: ${{ inputs.h264 }}
+      run: |
+        node tools/set-version.mjs "$VERSION" --build-number "$BUILD_NUMBER" --image "$IMAGE" --h264 "$H264"
+        git --no-pager diff --stat

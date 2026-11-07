@@ -20,3 +20,14 @@ Checks:
 Exit code 1 on a real mismatch or unreadable file. A missing file is reported
 as "skipped: file missing" and does not fail. Keys are compared only within
 each app, never across apps. Runs in CI via `.github/workflows/i18n.yml`.
+
+## set-version.mjs, set-version.test.mjs, release-stage.sh, release-summary.mjs
+
+Helpers of `.github/workflows/release.yml` (docs/releasing.md). `set-version.mjs VERSION` writes one
+version into Cargo, Flutter, web, tvOS and the compose file (nothing is committed; run it in a
+scratch copy). `release-stage.sh` adds LICENSE, THIRD_PARTY_NOTICES.md and VERSION to a staging
+folder. `release-summary.mjs` writes the build-status part of the release notes.
+
+```sh
+node --test tools/set-version.test.mjs
+```
