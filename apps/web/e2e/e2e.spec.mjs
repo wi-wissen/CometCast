@@ -105,6 +105,15 @@ try {
   await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 15000 })
   await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 15000 })
 
+  // --- Connection check code: both sides derive the same 6 digits from the DTLS fingerprints
+  {
+    const sCode = (await sender.getByTestId('sas-code').innerText()).trim()
+    const rCode = (await receiver.getByTestId('sas-code').innerText()).trim()
+    assert.match(sCode, /^\d{3} \d{3}$/, 'sender shows a connection check code')
+    assert.equal(rCode, sCode, 'sender and receiver show the same connection check code')
+    console.log('connection check code:', sCode)
+  }
+
   // --- Receiver video plays
   const video = receiver.getByTestId('remote-video')
   await waitFor(() => video.evaluate((v) => v.videoWidth > 0), 'videoWidth > 0')

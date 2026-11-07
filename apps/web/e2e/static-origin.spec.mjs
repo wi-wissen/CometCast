@@ -12,6 +12,9 @@
 //   2) config.json next to index.html: no ?server=, the page uses the relay from the file (tag "default", no warning);
 //      a config.json that is not valid (ws:// to a public host) is ignored.
 //   3) ALTCHA over CORS: against O the receiver fetches /altcha/challenge from another origin and gets a room.
+//      A relay that only the link asked for is NOT used before the person confirms it in a dialog (no WebSocket,
+//      no request to it until then); Cancel falls back to the default; config.json relays need no dialog.
+//      Both ends show the same connection check code. A config.json that cannot be used shows a hint.
 //   4) Origin X is rejected: WebSocket refused (translated error) and fetch() is blocked by CORS; a raw WebSocket
 //      with a foreign Origin header and one without Origin behave as documented.
 //
@@ -105,6 +108,7 @@ async function startRelay(label, extraArgs) {
   return { port, base, host: `127.0.0.1:${port}` }
 }
 const R = await startRelay('R internal', ['--allowed-origins', S.origin])
+const L = await startRelay('L limited', ['--allowed-origins', S.origin, '--set', 'limits.http_per_min=1'])
 const O = await startRelay('O open', ['--mode', 'open', '--allowed-origins', S.origin])
 
 async function waitFor(fn, what, ms = 20000) {
@@ -143,7 +147,21 @@ try {
   }
 
   /** Receiver + sender from the same static origin; both must end up connected through `relay`. */
-  async function connectPair(query, relayHost, { expectWarning }) {
+  async function connectPair(query, relayHost, { expectWarning, expectConfirm = false }) {
+    // The dialog of a relay that came from ?server= (UI only, no URL parameter can skip it).
+    const confirmRelay = async (p) => {
+      const dlg = p.getByTestId('relay-confirm')
+      if (!expectConfirm) {
+        assert.equal(await dlg.count(), 0, 'no dialog for a trusted relay')
+        return
+      }
+      await dlg.waitFor({ timeout: 10000 })
+      assert.equal(await p.getByTestId('relay-confirm-host').innerText(), relayHost)
+      await new Promise((r) => setTimeout(r, 400))
+      assert.deepEqual(p.log.sockets, [], 'no WebSocket before the confirmation')
+      assert.ok(!p.log.requests.some((u) => u.startsWith(`http://${relayHost}`)), 'no request to the relay before the confirmation')
+      await p.getByTestId('relay-confirm-use').click()
+    }
     const receiver = await newPage()
     await receiver.goto(S.app + query)
     // The relay field names the host only.
@@ -151,6 +169,7 @@ try {
     assert.equal(await receiver.getByTestId('relay-warning').count(), expectWarning ? 1 : 0, 'warning for non-default relay')
     assert.equal(await receiver.getByTestId('relay-tag').innerText(), expectWarning ? 'custom' : 'default')
     await receiver.getByRole('button', { name: /Receive on this device/ }).click()
+    await confirmRelay(receiver)
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     const code = (await receiver.getByTestId('room-code').innerText()).trim()
     assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/)
@@ -163,8 +182,12 @@ try {
     await sender.getByRole('button', { name: /Send screen/ }).click()
     await sender.locator('#room-code').fill(code)
     await sender.getByRole('button', { name: 'Share screen' }).click()
+    await confirmRelay(sender)
     await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
     await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 20000 })
+    const sas = await waitFor(() => sender.getByTestId('sas-code').innerText(), 'connection check code (sender)')
+    assert.match(sas.trim(), /^\d{3} \d{3}$/)
+    assert.equal((await waitFor(() => receiver.getByTestId('sas-code').innerText(), 'connection check code (receiver)')).trim(), sas.trim())
     const video = receiver.getByTestId('remote-video')
     await waitFor(() => video.evaluate((v) => v.videoWidth > 0), 'videoWidth > 0')
     const t0 = await video.evaluate((v) => v.currentTime)
@@ -182,13 +205,31 @@ try {
   }
 
   console.log('1) ?server= : static origin S -> relay R (cross-origin, allow-listed)')
-  await connectPair(`?server=${R.host}`, R.host, { expectWarning: true })
+  await connectPair(`?server=${R.host}`, R.host, { expectWarning: true, expectConfirm: true })
+  {
+    // Cancel: the default relay (here the static host, which has no relay) is used and nothing connects.
+    const p = await newPage()
+    await p.goto(`${S.app}?server=${R.host}`)
+    await p.getByRole('button', { name: /Receive on this device/ }).click()
+    await p.getByTestId('relay-confirm-cancel').click()
+    assert.equal(await p.getByTestId('relay-host').innerText(), S.origin.replace('http://', ''))
+    await new Promise((r) => setTimeout(r, 500))
+    assert.deepEqual(p.log.sockets, [], 'no WebSocket after Cancel')
+    assert.ok(!p.log.requests.some((u) => u.startsWith(`http://${R.host}`)), 'no request to the declined relay')
+    await p.context().close()
+  }
   console.log('   ok')
 
   console.log('2) config.json next to index.html')
   {
     writeFileSync(join(distDir, 'config.json'), JSON.stringify({ relays: [`ws://${R.host}/ws`] }))
     await connectPair('', R.host, { expectWarning: false })
+    {
+      const h = await newPage()
+      await h.goto(S.app)
+      assert.equal(await h.getByTestId('relay-config-hint').count(), 0, 'valid config.json: no hint')
+      await h.context().close()
+    }
     console.log('   ok: relay from config.json is the default (no warning)')
     // ?server= still wins over config.json.
     const p = await newPage()
@@ -211,6 +252,7 @@ try {
     const q = await newPage()
     await q.goto(S.app)
     assert.equal(await q.getByTestId('relay-host').innerText(), S.origin.replace('http://', ''))
+    assert.match(await q.getByTestId('relay-config-hint').innerText(), /relay configuration could not be read/, 'visible hint')
     await q.context().close()
     writeFileSync(join(distDir, 'config.json'), JSON.stringify({ relays: [`ws://${R.host}/ws`] }))
   }
@@ -220,6 +262,7 @@ try {
     const receiver = await newPage()
     await receiver.goto(`${S.app}?server=${O.host}`)
     await receiver.getByRole('button', { name: /Receive on this device/ }).click()
+    await receiver.getByTestId('relay-confirm-use').click()
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     assert.ok(receiver.log.requests.includes(`http://${O.host}/altcha/challenge`), 'challenge fetched from the relay')
     await receiver.context().close()
@@ -230,6 +273,7 @@ try {
   {
     const p = await newPage()
     await p.goto(`${X.app}?server=${R.host}`)
+    // R is the config.json default here, so no dialog.
     await p.getByRole('button', { name: /Receive on this device/ }).click()
     await p.locator('[data-testid=status][data-phase=error]').waitFor({ timeout: 20000 })
     assert.match(await p.getByTestId('status').innerText(), /connection to the server was lost or could not be made/)
@@ -243,6 +287,25 @@ try {
     assert.equal(await ok.evaluate(async (u) => fetch(u).then((r) => r.text(), () => 'blocked'), `${R.base}/healthz`), 'ok')
     await ok.context().close()
     console.log('   ok: WebSocket refused and fetch blocked for the unlisted origin')
+
+    // A limited client on the allowed origin can read the status and Retry-After; on origin X it cannot.
+    const probe = (page) =>
+      page.evaluate(async (u) => {
+        await fetch(u).catch(() => null)
+        const r = await fetch(u).catch(() => null)
+        return r ? { status: r.status, retryAfter: r.headers.get('retry-after') } : 'blocked'
+      }, `${L.base}/altcha/challenge`)
+    const lp = await newPage()
+    await lp.goto(S.app)
+    const seen = await probe(lp)
+    assert.equal(seen.status, 429, 'rate limited')
+    assert.match(seen.retryAfter ?? '', /^\d+$/, 'Retry-After is readable from the allowed origin')
+    await lp.context().close()
+    const lx = await newPage()
+    await lx.goto(X.app)
+    assert.equal(await lx.evaluate(async (u) => fetch(u).then(() => 'readable', () => 'blocked'), `${L.base}/healthz`), 'blocked')
+    await lx.context().close()
+    console.log('   ok: 429 and Retry-After readable from the allowed origin only')
   }
 
   console.log('5) raw WebSocket checks against R (Node, so the Origin header is ours)')

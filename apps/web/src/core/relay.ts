@@ -24,7 +24,7 @@ export interface Relay {
   source: RelaySource
 }
 
-export type RelayErrorCode = 'empty' | 'invalid' | 'insecure' | 'credentials' | 'path'
+export type RelayErrorCode = 'empty' | 'invalid' | 'insecure' | 'credentials' | 'path' | 'mixed'
 
 export type ParsedRelay = { ok: true; relay: Omit<Relay, 'source'> } | { ok: false; error: RelayErrorCode }
 
@@ -92,6 +92,8 @@ export function parseRelay(input: string, opts: { strictWs?: boolean; pageProtoc
   if (!['', '/', '/ws', '/ws/'].includes(u.pathname)) return { ok: false, error: 'path' }
   if (!u.hostname || u.hostname === '[]') return { ok: false, error: 'invalid' }
   if (!secure && !isLocalOrPrivateHost(u.hostname)) return { ok: false, error: 'insecure' }
+  // An https page may not open ws:// (mixed content): the browser would block it anyway.
+  if (!secure && opts.pageProtocol === 'https:') return { ok: false, error: 'mixed' }
   // URL drops default ports (wss:443), which is what we want for display and for comparing.
   const wsScheme = secure ? 'wss:' : 'ws:'
   const httpScheme = secure ? 'https:' : 'http:'
@@ -128,7 +130,7 @@ export const MAX_CONFIG_RELAYS = 8
  * most MAX_CONFIG_RELAYS are kept, duplicates removed. The first is the default. Anything else
  * in the file is ignored. The text is only parsed as JSON, never executed.
  */
-export function parseRelayConfig(text: string): Relay[] {
+export function parseRelayConfig(text: string, pageProtocol?: string): Relay[] {
   if (typeof text !== 'string' || text.length > MAX_CONFIG_BYTES) return []
   let v: unknown
   try {
@@ -142,7 +144,7 @@ export function parseRelayConfig(text: string): Relay[] {
   const out: Relay[] = []
   for (const e of raw.slice(0, MAX_CONFIG_RELAYS * 4)) {
     if (typeof e !== 'string') continue
-    const p = parseRelay(e, { strictWs: true })
+    const p = parseRelay(e, { strictWs: true, pageProtocol })
     if (!p.ok || out.some((r) => r.wsUrl === p.relay.wsUrl)) continue
     out.push({ ...p.relay, source: 'config' })
     if (out.length >= MAX_CONFIG_RELAYS) break
@@ -150,23 +152,75 @@ export function parseRelayConfig(text: string): Relay[] {
   return out
 }
 
-/** Fetches `config.json` from the app's base path. Missing file, wrong content, timeout: no relays. */
+export interface RelayConfigResult {
+  relays: Relay[]
+  /** The file exists (or the request went wrong) but could not be used: the page tells the person. */
+  failed: boolean
+}
+
+/** Reads at most `max` bytes of a response body as text; `null` when it is longer. */
+async function readCapped(res: Response, max: number): Promise<string | null> {
+  if (!res.body) {
+    const t = await res.text()
+    return t.length > max ? null : t
+  }
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > max) {
+      void reader.cancel().catch(() => undefined)
+      return null
+    }
+    chunks.push(value)
+  }
+  const all = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    all.set(c, at)
+    at += c.byteLength
+  }
+  return new TextDecoder().decode(all)
+}
+
+/**
+ * Fetches `config.json` from the app's base path. No file (404, or an HTML page from a
+ * catch-all) is normal and not a failure. A timeout, a network error, another HTTP error, a body
+ * over 8 KiB (reading stops there), invalid JSON or a file without any usable relay is `failed`.
+ */
 export async function loadRelayConfig(
-  deps: { fetchImpl?: typeof fetch; base?: string; timeoutMs?: number } = {},
-): Promise<Relay[]> {
+  deps: { fetchImpl?: typeof fetch; base?: string; timeoutMs?: number; pageProtocol?: string } = {},
+): Promise<RelayConfigResult> {
   const doFetch = deps.fetchImpl ?? fetch
   const base = deps.base ?? import.meta.env.BASE_URL
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), deps.timeoutMs ?? 1500)
   try {
     const res = await doFetch(`${base}config.json`, { cache: 'no-cache', credentials: 'omit', signal: ctl.signal })
-    if (!res.ok) return []
-    return parseRelayConfig(await res.text())
+    if (res.status === 404 || res.status === 410) return { relays: [], failed: false }
+    if (!res.ok) return { relays: [], failed: true }
+    if ((res.headers.get('content-type') ?? '').toLowerCase().includes('text/html')) return { relays: [], failed: false }
+    const text = await readCapped(res, MAX_CONFIG_BYTES)
+    if (text === null) return { relays: [], failed: true }
+    const relays = parseRelayConfig(text, deps.pageProtocol)
+    return { relays, failed: relays.length === 0 }
   } catch {
-    return []
+    return { relays: [], failed: true }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * A relay that only a link (`?server=`) asked for must be confirmed by the person before any
+ * connection or capture. Relays from config.json and the build default (all in `choices`), the
+ * page's own origin, and one typed or picked in the relay field are trusted.
+ */
+export function needsRelayConfirmation(current: Relay, choices: Relay[]): boolean {
+  return current.source === 'query' && !choices.some((c) => c.wsUrl === current.wsUrl)
 }
 
 export interface RelayInputs {

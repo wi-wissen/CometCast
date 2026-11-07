@@ -4,6 +4,7 @@ import {
   isLocalOrPrivateHost,
   loadRelayConfig,
   MAX_CONFIG_RELAYS,
+  needsRelayConfirmation,
   parseRelay,
   parseRelayConfig,
   resolveRelay,
@@ -119,18 +120,78 @@ describe('loadRelayConfig', () => {
       return new Response('{"relays":["wss://a.example"]}')
     }) as unknown as typeof fetch
     const r = await loadRelayConfig({ fetchImpl, base: '/app/' })
-    expect(r.map((x) => x.host)).toEqual(['a.example'])
+    expect(r.relays.map((x) => x.host)).toEqual(['a.example'])
+    expect(r.failed).toBe(false)
     expect(seen!.url).toBe('/app/config.json')
     expect(seen!.init?.credentials).toBe('omit')
   })
-  it('is empty for 404, HTML fallbacks, network errors and timeouts', async () => {
-    expect(await loadRelayConfig({ fetchImpl: resp('', 404) as unknown as typeof fetch })).toEqual([])
-    expect(await loadRelayConfig({ fetchImpl: resp('<!doctype html>') as unknown as typeof fetch })).toEqual([])
-    expect(await loadRelayConfig({ fetchImpl: (async () => { throw new TypeError('x') }) as unknown as typeof fetch })).toEqual([])
+  it('no file (404, HTML catch-all) is not a failure', async () => {
+    const none = { relays: [], failed: false }
+    expect(await loadRelayConfig({ fetchImpl: resp('', 404) as unknown as typeof fetch })).toEqual(none)
+    const html = (async () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch
+    expect(await loadRelayConfig({ fetchImpl: html })).toEqual(none)
+  })
+  it('timeouts, network errors, server errors and invalid content are failures', async () => {
+    const failed = { relays: [], failed: true }
+    expect(await loadRelayConfig({ fetchImpl: (async () => { throw new TypeError('x') }) as unknown as typeof fetch })).toEqual(failed)
+    expect(await loadRelayConfig({ fetchImpl: resp('', 500) as unknown as typeof fetch })).toEqual(failed)
+    expect(await loadRelayConfig({ fetchImpl: resp('not json') as unknown as typeof fetch })).toEqual(failed)
+    expect(await loadRelayConfig({ fetchImpl: resp('{"relays":["ws://relay.example.org"]}') as unknown as typeof fetch })).toEqual(failed)
     const hang = ((_u: string, init: RequestInit) => new Promise((_res, rej) => init.signal!.addEventListener('abort', () => rej(new Error('aborted'))))) as unknown as typeof fetch
     const t0 = Date.now()
-    expect(await loadRelayConfig({ fetchImpl: hang, timeoutMs: 30 })).toEqual([])
+    expect(await loadRelayConfig({ fetchImpl: hang, timeoutMs: 30 })).toEqual(failed)
     expect(Date.now() - t0).toBeLessThan(1000)
+  })
+  it('stops reading at 8 KiB instead of buffering the whole body', async () => {
+    let pulled = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled += 1024
+        c.enqueue(new Uint8Array(1024).fill(32))
+      },
+    })
+    const fetchImpl = (async () => new Response(body)) as unknown as typeof fetch
+    expect(await loadRelayConfig({ fetchImpl })).toEqual({ relays: [], failed: true })
+    expect(pulled).toBeLessThanOrEqual(8 * 1024 + 4096) // a few chunks of read-ahead at most, never unbounded
+  })
+  it('a ws:// relay in config.json is dropped on an https page (mixed content)', async () => {
+    const f = resp('{"relays":["ws://192.168.1.5:8443"]}') as unknown as typeof fetch
+    expect((await loadRelayConfig({ fetchImpl: f })).relays).toHaveLength(1)
+    expect(await loadRelayConfig({ fetchImpl: f, pageProtocol: 'https:' })).toEqual({ relays: [], failed: true })
+  })
+})
+
+describe('ws:// private relay on an https page', () => {
+  it('is refused with the mixed-content code, but fine on an http page', () => {
+    expect(err('ws://192.168.1.5:8443', { pageProtocol: 'https:' })).toBe('mixed')
+    expect(err('ws://localhost:8443', { pageProtocol: 'https:' })).toBe('mixed')
+    expect(err('http://192.168.1.5', { pageProtocol: 'https:' })).toBe('mixed')
+    expect(err('ws://192.168.1.5:8443', { pageProtocol: 'http:' })).toBe('OK')
+    expect(err('wss://192.168.1.5:8443', { pageProtocol: 'https:' })).toBe('OK')
+    expect(err('ws://relay.example.org', { pageProtocol: 'https:' })).toBe('insecure')
+  })
+  it('an https page ignores a ws:// ?server= and falls through', () => {
+    const r = resolveRelay({ loc: { ...page, search: '?server=ws%3A%2F%2F192.168.1.5%3A8443' } })
+    expect(r.current.source).toBe('origin')
+  })
+})
+
+describe('needsRelayConfirmation', () => {
+  const cfg = parseRelayConfig('{"relays":["wss://config.example.org","wss://second.example.org"]}')
+  const q = (s: string, extra = {}) => resolveRelay({ loc: { ...page, search: `?server=${encodeURIComponent(s)}` }, ...extra })
+  it('only a relay that came from ?server= and is not otherwise known needs it', () => {
+    const r = q('wss://evil.example.org', { configRelays: cfg })
+    expect(needsRelayConfirmation(r.current, r.choices)).toBe(true)
+    const known = q('wss://second.example.org', { configRelays: cfg })
+    expect(needsRelayConfirmation(known.current, known.choices)).toBe(false)
+    const dflt = q('wss://config.example.org', { configRelays: cfg })
+    expect(needsRelayConfirmation(dflt.current, dflt.choices)).toBe(false)
+    const cfgOnly = resolveRelay({ loc: page, configRelays: cfg })
+    expect(needsRelayConfirmation(cfgOnly.current, cfgOnly.choices)).toBe(false)
+    const build = resolveRelay({ loc: page, buildDefault: 'wss://b.example.org' })
+    expect(needsRelayConfirmation(build.current, build.choices)).toBe(false)
+    const typed = resolveRelay({ loc: page, userChoice: 'wss://typed.example.org' })
+    expect(needsRelayConfirmation(typed.current, typed.choices)).toBe(false)
   })
 })
 

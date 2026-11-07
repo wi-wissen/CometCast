@@ -15,7 +15,7 @@
   "relay": {
     "label": "Relay server",
     "using": "Using relay: {host}",
-    "hint": "The relay only connects the two devices (room codes and connection data pass through it, never your screen or files). Sender and receiver must use the same relay.",
+    "hint": "The relay connects the two devices: room codes, connection data and network addresses pass through it. Media (screen, images) travels directly between the devices, encrypted (DTLS-SRTP), but the relay carries the signalling and could in principle interfere with the key exchange. Compare the connection check code on both devices. Sender and receiver must use the same relay.",
     "defaultTag": "default",
     "customTag": "custom",
     "inputLabel": "Use another relay",
@@ -33,7 +33,16 @@
       "invalid": "This is not a valid relay address.",
       "insecure": "Unencrypted ws:// is only allowed for localhost and local network addresses. Please use wss://.",
       "credentials": "The address must not contain a user name or password.",
-      "path": "The address must not contain a path, query or fragment (only an optional /ws)."
+      "path": "The address must not contain a path, query or fragment (only an optional /ws).",
+      "mixed": "A page opened over https cannot use an unencrypted ws:// relay (the browser blocks it). Please use wss://."
+    },
+    "configFailed": "The relay configuration could not be read. The default relay is used.",
+    "confirm": {
+      "title": "Use this relay?",
+      "body": "A link asks this page to use the relay {host} instead of the default. Only continue if you know and trust its operator.",
+      "risk": "The operator of this relay can see who connects, your room codes and network addresses, and can redirect the connection. Nothing is connected and no screen is captured before you decide.",
+      "use": "Use this relay",
+      "cancel": "Cancel (use the default relay)"
     }
   },
   "home": {
@@ -289,5 +298,9 @@
         "failed": "The PDF could not be sent."
       }
     }
+  },
+  "sas": {
+    "label": "Connection check code",
+    "explain": "Both devices should show the same code. If they differ, stop: the connection may be intercepted. Comparing is up to you, the app does not enforce it."
   }
 }

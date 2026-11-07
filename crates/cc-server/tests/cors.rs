@@ -217,6 +217,88 @@ async fn preflight_allowed_and_refused() {
 }
 
 #[tokio::test]
+async fn retry_after_is_exposed_to_allowed_origins_only() {
+    let mut c = with_origins(&[PAGE]);
+    c.limits.http_per_min = 1;
+    let addr = start(c).await;
+    let _ = request(addr, "GET", "/altcha/challenge", &[("Origin", PAGE)]).await;
+    let r = request(addr, "GET", "/altcha/challenge", &[("Origin", PAGE)]).await;
+    assert_eq!(r.status, 429);
+    assert!(r.header("retry-after").is_some());
+    assert_eq!(
+        r.header("access-control-expose-headers").as_deref(),
+        Some("retry-after"),
+        "the page must be able to read Retry-After of a refusal"
+    );
+    assert_eq!(
+        r.header("access-control-allow-origin").as_deref(),
+        Some(PAGE)
+    );
+    let r = request(
+        addr,
+        "GET",
+        "/altcha/challenge",
+        &[("Origin", "https://evil.example")],
+    )
+    .await;
+    assert_eq!(r.header("access-control-expose-headers"), None);
+}
+
+fn pna_headers(origin: &'static str) -> [(&'static str, &'static str); 4] {
+    [
+        ("Origin", origin),
+        ("Access-Control-Request-Method", "GET"),
+        ("Access-Control-Request-Private-Network", "true"),
+        ("Access-Control-Request-Headers", "cache-control"),
+    ]
+}
+
+#[tokio::test]
+async fn private_network_access_only_for_allowed_origin_and_private_relay() {
+    // Internal mode: answered for the listed origin, not for another one, not without the request header.
+    let addr = start(with_origins(&[PAGE])).await;
+    let r = request(addr, "OPTIONS", "/ice-servers", &pna_headers(PAGE)).await;
+    assert_eq!(r.status, 204);
+    assert_eq!(
+        r.header("access-control-allow-private-network").as_deref(),
+        Some("true")
+    );
+    let r = request(
+        addr,
+        "OPTIONS",
+        "/ice-servers",
+        &pna_headers("https://evil.example"),
+    )
+    .await;
+    assert_eq!(r.status, 403);
+    assert_eq!(r.header("access-control-allow-private-network"), None);
+    let r = request(
+        addr,
+        "OPTIONS",
+        "/ice-servers",
+        &[("Origin", PAGE), ("Access-Control-Request-Method", "GET")],
+    )
+    .await;
+    assert_eq!(r.header("access-control-allow-private-network"), None);
+
+    // Open mode on a public listen address: never. On a loopback/private one: yes.
+    let mut open = ServerConfig::for_mode(Mode::Open);
+    open.allowed_origins = vec![PAGE.into()];
+    open.listen_addr = "203.0.113.5:8443".parse().unwrap();
+    let addr = start(open.clone()).await;
+    let r = request(addr, "OPTIONS", "/ice-servers", &pna_headers(PAGE)).await;
+    assert_eq!(r.status, 204);
+    assert_eq!(r.header("access-control-allow-private-network"), None);
+    open.listen_addr = "192.168.1.5:8443".parse().unwrap();
+    let addr = start(open).await;
+    let r = request(addr, "OPTIONS", "/ice-servers", &pna_headers(PAGE)).await;
+    assert_eq!(
+        r.header("access-control-allow-private-network").as_deref(),
+        Some("true")
+    );
+}
+
+#[tokio::test]
 async fn cors_does_not_cover_static_files_or_ws_upgrade_path() {
     let dir = std::env::temp_dir().join(format!("cc-cors-web-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -327,6 +409,53 @@ fn config_sources_and_validation() {
             ]
         )
         .is_ok()
+    );
+}
+
+#[test]
+fn empty_allowed_origins_is_a_start_error_in_every_mode() {
+    for mode in ["internal", "open"] {
+        for bad in ["", ",", " , ,"] {
+            // env / CLI / --set path (string override)
+            let e = load_config(
+                None,
+                &[
+                    ("mode".into(), mode.into()),
+                    ("allowed_origins".into(), bad.into()),
+                ],
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                e.contains("allowed_origins") && e.contains("no origin"),
+                "{mode} {bad:?}: {e}"
+            );
+            // TOML string in a config file names the file
+            let path = std::env::temp_dir().join(format!(
+                "cc-empty-origins-{}-{mode}-{}.toml",
+                std::process::id(),
+                bad.len()
+            ));
+            std::fs::write(
+                &path,
+                format!("mode = \"{mode}\"\nallowed_origins = \"{bad}\"\n"),
+            )
+            .unwrap();
+            let e = load_config(Some(&path), &[]).unwrap_err().to_string();
+            assert!(
+                e.contains(path.to_str().unwrap()) && e.contains("no origin"),
+                "{e}"
+            );
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    // Absent, and an empty TOML array (the documented default), still mean "not set".
+    assert!(load_config(None, &[]).unwrap().allowed_origins.is_empty());
+    assert!(
+        load_config(None, &[("allowed_origins".into(), "[]".into())])
+            .unwrap()
+            .allowed_origins
+            .is_empty()
     );
 }
 

@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
+import SasLine from '../components/SasLine.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AnnotationLayer from '../components/AnnotationLayer.vue'
@@ -166,6 +167,7 @@ const contentErrorText = computed(() => {
       {{ t(`receive.status.${state.phase}`) }}
       <template v-if="state.phase === 'error'"> {{ errorText }}</template>
     </p>
+    <SasLine :code="state.sas" />
 
     <div v-if="state.phase === 'error' || state.phase === 'idle'">
       <button type="button" class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg" @click="start">

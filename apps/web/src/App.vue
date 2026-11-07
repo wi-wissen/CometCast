@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppHeader from './components/AppHeader.vue'
 import RelayField from './components/RelayField.vue'
+import RelayConfirm from './components/RelayConfirm.vue'
 import HomeView from './views/HomeView.vue'
 import SendView from './views/SendView.vue'
 import SendContentView from './views/SendContentView.vue'
@@ -34,5 +35,6 @@ const view = ref<ViewName>('home')
       <SendContentView v-else-if="view === 'sendContent'" />
       <ReceiveView v-else />
     </main>
+  <RelayConfirm />
   </div>
 </template>

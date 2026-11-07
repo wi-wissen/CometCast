@@ -197,7 +197,7 @@ Whether the public relay needs a different arrangement is not decided (see
 
 Refusals: `403` (not allowed or banned, with `Retry-After` when banned), `429` (rate limit),
 `503` (server full), `400` (broken `X-Forwarded-For` from a trusted proxy). No CORS headers are
-sent unless `allowed_origins` is set (then only for the listed origins, see
+sent unless `allowed_origins` is set (then only for the listed origins, with `Retry-After` exposed; an empty value is a start error, see
 [docs/server.md](../../docs/server.md#web-app-on-another-origin)).
 
 ## ALTCHA

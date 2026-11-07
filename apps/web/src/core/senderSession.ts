@@ -22,6 +22,8 @@ export interface SenderState {
   errorCode: string | null
   /** True while the control data channel is open (content can be sent). */
   channelOpen: boolean
+  /** Connection check code once connected (compare with the receiver), else absent. */
+  sas?: string
 }
 
 export interface SenderDeps {
@@ -39,6 +41,7 @@ export class SenderSession {
   private state: SenderState = { phase: 'idle', errorCode: null, channelOpen: false }
   private control: ControlSender | null = null
   private channelOpen = false
+  private sas: string | undefined
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private stream: MediaStream | null = null
@@ -56,6 +59,7 @@ export class SenderSession {
 
   private set(phase: SenderPhase, errorCode: string | null = null): void {
     this.state = { phase, errorCode, channelOpen: this.channelOpen }
+    if (phase === 'sharing' && this.sas) this.state.sas = this.sas
     this.deps.onChange(this.state)
   }
 
@@ -141,6 +145,7 @@ export class SenderSession {
   }
 
   private teardown(): void {
+    this.sas = undefined
     this.control = null
     this.channelOpen = false
     this.peer?.close()
@@ -201,7 +206,16 @@ export class SenderSession {
           onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
           onTrack: () => {},
           onState: (s: PeerState) => {
-            if (s === 'connected') this.set('sharing')
+            if (s === 'connected') {
+              this.set('sharing')
+              void peer.connectionCode?.().then((c) => {
+                if (c && run === this.run && this.peer === peer) {
+                  this.sas = c
+                  this.state = { ...this.state, sas: c }
+                  this.deps.onChange(this.state)
+                }
+              })
+            }
             else if (s === 'failed') this.fail('peer_failed')
           },
         },

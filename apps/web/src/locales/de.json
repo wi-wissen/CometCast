@@ -15,7 +15,7 @@
   "relay": {
     "label": "Relay-Server",
     "using": "Verwendetes Relay: {host}",
-    "hint": "Das Relay verbindet nur die beiden Geräte (Raumcodes und Verbindungsdaten laufen darüber, niemals Ihr Bildschirm oder Ihre Dateien). Sender und Empfänger müssen dasselbe Relay verwenden.",
+    "hint": "Das Relay verbindet die beiden Geräte: Raumcodes, Verbindungsdaten und Netzwerkadressen laufen darüber. Medien (Bildschirm, Bilder) werden direkt zwischen den Geräten übertragen, verschlüsselt (DTLS-SRTP), aber das Relay vermittelt die Signalisierung und könnte den Schlüsselaustausch grundsätzlich manipulieren. Vergleichen Sie den Verbindungs-Prüfcode auf beiden Geräten. Sender und Empfänger müssen dasselbe Relay verwenden.",
     "defaultTag": "Standard",
     "customTag": "eigenes",
     "inputLabel": "Anderes Relay verwenden",
@@ -33,7 +33,16 @@
       "invalid": "Das ist keine gültige Relay-Adresse.",
       "insecure": "Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwenden Sie wss://.",
       "credentials": "Die Adresse darf keinen Benutzernamen und kein Passwort enthalten.",
-      "path": "Die Adresse darf keinen Pfad, keine Query und kein Fragment enthalten (nur optional /ws)."
+      "path": "Die Adresse darf keinen Pfad, keine Query und kein Fragment enthalten (nur optional /ws).",
+      "mixed": "Eine über https geöffnete Seite kann kein unverschlüsseltes ws://-Relay verwenden (der Browser blockiert das). Bitte verwenden Sie wss://."
+    },
+    "configFailed": "Die Relay-Konfiguration konnte nicht gelesen werden. Es wird das Standard-Relay verwendet.",
+    "confirm": {
+      "title": "Dieses Relay verwenden?",
+      "body": "Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen.",
+      "risk": "Der Betreiber dieses Relays kann sehen, wer sich verbindet, Ihre Raumcodes und Netzwerkadressen, und kann die Verbindung umleiten. Es wird nichts verbunden und kein Bildschirm erfasst, bevor Sie entschieden haben.",
+      "use": "Dieses Relay verwenden",
+      "cancel": "Abbrechen (Standard-Relay verwenden)"
     }
   },
   "home": {
@@ -289,5 +298,9 @@
         "failed": "Das PDF konnte nicht gesendet werden."
       }
     }
+  },
+  "sas": {
+    "label": "Verbindungs-Prüfcode",
+    "explain": "Beide Geräte sollten denselben Code anzeigen. Weichen sie ab, brechen Sie ab: Die Verbindung könnte abgefangen werden. Der Vergleich liegt bei Ihnen, die App erzwingt ihn nicht."
   }
 }
