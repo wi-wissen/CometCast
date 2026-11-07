@@ -64,5 +64,5 @@ export COMETCAST_CARGO_TARGET_DIR="$target"
 xvfb-run -a flutter test "${TEST_FILE:-integration_test/content_e2e_test.dart}" -d linux \
   --dart-define=COMETCAST_TEST_SERVER="127.0.0.1:$port" \
   --dart-define=COMETCAST_CLI="$target/debug/cometcast-cli" \
-  --dart-define=COMETCAST_TEST_PDF="$root/crates/cc-docs/tests/data/classroom.pdf" \
+  --dart-define=COMETCAST_TEST_PDF="$root/crates/cc-docs/tests/data/slides.pdf" \
   --dart-define=COMETCAST_TEST_DOCX="$docx_dir/classnotes.docx"

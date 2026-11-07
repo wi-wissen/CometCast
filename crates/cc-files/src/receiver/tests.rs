@@ -8,7 +8,7 @@ use super::*;
 use crate::outgoing::{Outgoing, cmd_message, document_transfer, image_transfer, link_message};
 
 const MINIMAL: &[u8] = include_bytes!("../../../cc-docs/tests/data/minimal.pdf");
-const CLASSROOM: &[u8] = include_bytes!("../../../cc-docs/tests/data/classroom.pdf");
+const SAMPLE_PDF: &[u8] = include_bytes!("../../../cc-docs/tests/data/slides.pdf");
 const ENCRYPTED: &[u8] = include_bytes!("../../../cc-docs/tests/data/encrypted_password.pdf");
 
 fn rx() -> ContentReceiver {
@@ -349,13 +349,13 @@ fn wrong_mimes_and_junk_are_refused() {
 #[test]
 fn a_pdf_is_opened_rendered_and_driven_by_commands() {
     let mut r = rx();
-    let ev = feed(&mut r, document_transfer("class.pdf", CLASSROOM).unwrap());
+    let ev = feed(&mut r, document_transfer("sample.pdf", SAMPLE_PDF).unwrap());
     assert!(errors(&ev).is_empty(), "{ev:?}");
     let opened = ev.iter().find_map(|e| match e {
         ContentEvent::DocumentOpened { name, pages } => Some((name.clone(), *pages)),
         _ => None,
     });
-    assert_eq!(opened, Some(("class.pdf".into(), 3)));
+    assert_eq!(opened, Some(("sample.pdf".into(), 3)));
     let Some(ContentEvent::PageRendered {
         page,
         width,
@@ -465,7 +465,7 @@ fn a_hostile_pdf_is_rejected_without_panic() {
 #[test]
 fn a_new_document_or_image_replaces_the_shown_one() {
     let mut r = rx();
-    feed(&mut r, document_transfer("a.pdf", CLASSROOM).unwrap());
+    feed(&mut r, document_transfer("a.pdf", SAMPLE_PDF).unwrap());
     assert_eq!(r.document_state(), Some((1, 3)));
     // A bad document closes the old one (nothing stale stays on screen).
     r.handle_text(&doc_start(5));
@@ -539,7 +539,7 @@ fn page_count_limit_comes_from_cc_docs() {
         doc_limits: limits,
         ..ContentOptions::default()
     });
-    let ev = feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    let ev = feed(&mut r, document_transfer("c.pdf", SAMPLE_PDF).unwrap());
     assert_eq!(errors(&ev), [ContentError::DocumentRejected], "{ev:?}");
 }
 
@@ -568,16 +568,16 @@ fn drain(r: &mut ContentReceiver) -> (Vec<ContentEvent>, usize) {
     (out, jobs)
 }
 
-fn open_classroom() -> ContentReceiver {
+fn open_sample() -> ContentReceiver {
     let mut r = rx();
-    let ev = feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    let ev = feed(&mut r, document_transfer("c.pdf", SAMPLE_PDF).unwrap());
     assert!(errors(&ev).is_empty(), "{ev:?}");
     r
 }
 
 #[test]
 fn a_flood_of_page_commands_costs_one_render() {
-    let mut r = open_classroom();
+    let mut r = open_sample();
     let started = Instant::now();
     let mut events = Vec::new();
     for i in 0..1000 {
@@ -610,7 +610,7 @@ fn a_flood_of_page_commands_costs_one_render() {
 
 #[test]
 fn stop_wins_over_a_running_render() {
-    let mut r = open_classroom();
+    let mut r = open_sample();
     r.feed_text(&cmd_message(ControlCmd::NextPage));
     let Next::Work(job) = r.next_action(Instant::now(), false) else {
         panic!("a render is due")
@@ -629,7 +629,7 @@ fn stop_wins_over_a_running_render() {
 #[test]
 fn a_newer_page_while_a_render_runs_is_rendered_after_it() {
     // A fast render is allowed to finish; its picture is still delivered.
-    let mut r = open_classroom();
+    let mut r = open_sample();
     r.feed_text(&cmd_message(ControlCmd::NextPage));
     let Next::Work(job) = r.next_action(Instant::now(), false) else {
         panic!()
@@ -653,7 +653,7 @@ fn a_newer_page_while_a_render_runs_is_rendered_after_it() {
         supersede_after: Duration::ZERO,
         ..ContentOptions::default()
     });
-    feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    feed(&mut r, document_transfer("c.pdf", SAMPLE_PDF).unwrap());
     r.feed_text(&cmd_message(ControlCmd::NextPage));
     let Next::Work(job) = r.next_action(Instant::now(), false) else {
         panic!()
@@ -675,7 +675,7 @@ fn renders_keep_a_minimum_interval() {
         min_render_interval: Duration::from_secs(3600),
         ..ContentOptions::default()
     });
-    feed(&mut r, document_transfer("c.pdf", CLASSROOM).unwrap());
+    feed(&mut r, document_transfer("c.pdf", SAMPLE_PDF).unwrap());
     let t0 = Instant::now();
     r.feed_text(&cmd_message(ControlCmd::NextPage));
     // The first render of the document just ran; the next one has to wait.
@@ -829,7 +829,7 @@ fn opening_documents_is_budgeted() {
 
 #[test]
 fn a_refused_document_clears_the_old_one() {
-    let mut r = open_classroom();
+    let mut r = open_sample();
     assert!(r.document_state().is_some());
     let ev = r.handle_text(&doc_start(MAX_DOCUMENT_BYTES + 1));
     assert_eq!(errors(&ev), [ContentError::DocumentRejected]);
@@ -838,7 +838,7 @@ fn a_refused_document_clears_the_old_one() {
 
 #[test]
 fn a_panicking_job_keeps_the_violation_state() {
-    let mut r = open_classroom();
+    let mut r = open_sample();
     for _ in 0..5 {
         r.handle_text("junk");
     }
@@ -860,7 +860,7 @@ fn a_panicking_job_keeps_the_violation_state() {
 fn page_commands_that_arrive_while_a_document_opens_apply_to_it() {
     let mut r = rx();
     // Feed the whole transfer without running the open.
-    for item in document_transfer("c.pdf", CLASSROOM).unwrap() {
+    for item in document_transfer("c.pdf", SAMPLE_PDF).unwrap() {
         match item {
             Outgoing::Text(t) => assert!(errors(&r.feed_text(&t)).is_empty()),
             Outgoing::Binary(b) => assert!(r.feed_binary(b).is_empty()),
@@ -881,7 +881,7 @@ fn page_commands_that_arrive_while_a_document_opens_apply_to_it() {
         "{ev:?}"
     );
     // Stop while it opens wins: nothing is shown afterwards.
-    for item in document_transfer("c.pdf", CLASSROOM).unwrap() {
+    for item in document_transfer("c.pdf", SAMPLE_PDF).unwrap() {
         match item {
             Outgoing::Text(t) => drop(r.feed_text(&t)),
             Outgoing::Binary(b) => drop(r.feed_binary(b)),

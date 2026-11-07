@@ -42,7 +42,7 @@ const freePort = () =>
 const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await freePort()
 const base = `http://127.0.0.1:${port}`
 const targetDir = process.env.CARGO_TARGET_DIR ?? resolve(repo, 'target')
-const pdfPath = resolve(repo, 'crates/cc-docs/tests/data/classroom.pdf')
+const pdfPath = resolve(repo, 'crates/cc-docs/tests/data/slides.pdf')
 const haveWasm = existsSync(resolve(webDir, 'pdf/cc_docs_wasm_bg.wasm'))
 console.log(haveWasm ? 'web PDF renderer (WASM) found in dist/pdf' : 'no WASM renderer in dist/pdf: expecting the notice')
 const work = mkdtempSync(resolve(tmpdir(), 'cometcast-content-'))
@@ -206,8 +206,8 @@ try {
   assert.equal(linkLine, 'Content: link url=https://example.org/path?x=1 (not opened)')
   assert.ok(!rx.lines.some((l) => l.startsWith('Content: error')), 'no content errors')
   // A PDF from the web sender (same protocol as `cometcast-cli send-file`) opens in the native receiver.
-  await sender.getByTestId('pdf-input').setInputFiles({ name: 'classroom.pdf', mimeType: 'application/pdf', buffer: readFileSync(pdfPath) })
-  await waitFor(() => rx.lines.includes('Content: document name="classroom.pdf" pages=3'), 'document line in CLI output', 30000)
+  await sender.getByTestId('pdf-input').setInputFiles({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: readFileSync(pdfPath) })
+  await waitFor(() => rx.lines.includes('Content: document name="slides.pdf" pages=3'), 'document line in CLI output', 30000)
   await sender.getByTestId('send-next-page').click()
   await waitFor(() => rx.lines.some((l) => l.startsWith('Content: page=2 ')), 'page 2 line in CLI output')
   assert.ok(!rx.lines.some((l) => l.startsWith('Content: error')), 'no content errors after the PDF')
@@ -301,7 +301,7 @@ try {
   assert.equal(await withTimeout(rx2.exited, 30000, 'receive (C) exit'), 0)
   const seen = rx2.lines.filter((l) => l.startsWith('Content: ') && !l.startsWith('Content: transfer'))
   const pages = seen.filter((l) => l.startsWith('Content: page=')).map((l) => Number(/page=(\d+)/.exec(l)[1]))
-  assert.ok(seen.some((l) => l === 'Content: document name="classroom.pdf" pages=3'), `document line in ${seen}`)
+  assert.ok(seen.some((l) => l === 'Content: document name="slides.pdf" pages=3'), `document line in ${seen}`)
   assert.deepEqual(pages, [1, 2, 3, 2], 'pages in order')
   assert.equal(seen.at(-1), 'Content: stopped')
   assert.ok(!seen.some((l) => l.startsWith('Content: error')), 'no errors')

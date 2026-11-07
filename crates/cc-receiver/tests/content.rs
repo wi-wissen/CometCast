@@ -23,7 +23,7 @@ use cc_transport::SessionConfig;
 use tokio::net::TcpListener;
 
 const MINIMAL: &[u8] = include_bytes!("../../cc-docs/tests/data/minimal.pdf");
-const CLASSROOM: &[u8] = include_bytes!("../../cc-docs/tests/data/classroom.pdf");
+const SAMPLE_PDF: &[u8] = include_bytes!("../../cc-docs/tests/data/slides.pdf");
 
 async fn start_server() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -197,11 +197,11 @@ async fn image_link_pdf_commands_and_stop() {
     assert!(ctl.send_document("x.pdf", b"not a pdf").await.is_err());
 
     // PDF: opens, first page rendered at the target width, commands turn pages.
-    ctl.send_document("class.pdf", CLASSROOM).await.unwrap();
+    ctl.send_document("sample.pdf", SAMPLE_PDF).await.unwrap();
     assert_eq!(
         next(&mut rx).await,
         ContentEvent::DocumentOpened {
-            name: "class.pdf".into(),
+            name: "sample.pdf".into(),
             pages: 3
         }
     );
@@ -444,7 +444,7 @@ async fn a_flood_of_page_commands_is_merged_and_stop_is_prompt() {
     let mut rx = start_receiver(&server).await;
     let tx = start_content_sender(&server, &rx).await;
     let ctl = tx.control();
-    ctl.send_document("class.pdf", CLASSROOM).await.unwrap();
+    ctl.send_document("sample.pdf", SAMPLE_PDF).await.unwrap();
     assert!(matches!(
         next(&mut rx).await,
         ContentEvent::DocumentOpened { pages: 3, .. }

@@ -21,13 +21,20 @@ Server: cometcast-server (axum) + coturn (separate process) + optional SFU
 | `cc-proto` | Messages, IDs, capabilities, control commands, protocol versioning. Builds for all targets including WASM |
 | `cc-discovery` | Find servers (MDM, SRV/DNS-SD, code/QR, default list) and LAN discovery |
 | `cc-transport` | WebRTC session, route ladder, ICE configuration, data channel |
+| `cc-codec` | Finds, downloads and verifies Cisco's prebuilt OpenH264 library at run time (never redistributed; see [capture.md](capture.md)) |
 | `cc-media` | Encoder/decoder traits, openh264 fallback |
 | `cc-capture` | `ScreenSource` trait and capture backends per desktop system |
 | `cc-docs` | Render PDF pages, create and validate WebP, notes |
+| `cc-docs-wasm` | PDF page rendering for the web client: `cc-docs` and hayro compiled to WebAssembly with wasm-bindgen ([documents.md](documents.md)) |
 | `cc-office` | Office to PDF on the sender |
 | `cc-files` | File transfer, certificate pinning |
 | `cc-sender` | Sender core, presenter-view state |
 | `cc-receiver` | Accepting content, queue, toolbar, deletion rule |
+| `cc-airplay` | Supervisor for the separate UxPlay AirPlay receiver process ([airplay.md](airplay.md)) |
+| `cc-airplay-sender` | AirPlay sender without FairPlay: discovery, pairing, media links, photos, screen as HLS ([airplay-sender.md](airplay-sender.md)) |
+| `cc-cast` | Chromecast / Google Cast compatible sender, beta, untested on real devices ([cast.md](cast.md)) |
+| `cc-miracast` | Miracast receiving through the Windows MiracastReceiver API, Windows 11 only, built to specification ([miracast.md](miracast.md)) |
+| `cc-miracast-ffi` | Polled C interface of `cc-miracast` for the Flutter app (dart:ffi) |
 | `cc-ffi` | Thin, stable facade: flutter_rust_bridge for Flutter, UniFFI for iOS extensions (not for tvOS: the Apple TV app is native Swift, see [appletv.md](appletv.md)) |
 | `cc-ios` | Small C ABI (`libcc_ios.a`) of the sender for the iOS broadcast extension: only the encoded H.264 path, no OpenH264 ([ios.md](ios.md)). The extension uses this instead of UniFFI |
 | `cc-server` | Signalling, rooms, image storage, security, TURN credentials |

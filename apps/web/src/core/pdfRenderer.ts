@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Main-thread side of the PDF renderer: owns one Web Worker (pdfWorker.ts) with one opened document and
-// renders pages ON REQUEST, one at a time. Limits (all UNCERTAIN, guesses for classroom PDFs, not measured):
+// renders pages ON REQUEST, one at a time. Limits (all UNCERTAIN, guess for typical PDFs, not measured):
 // opening and every render have a wall-clock limit; when it passes, or the worker fails, the worker is
 // terminated and the renderer is dead (the document is closed; the person can ask the sender again).
 // The renderer never runs anything from the PDF and never opens a link.

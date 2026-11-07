@@ -6,7 +6,7 @@ line tool shows the result with `cometcast-cli discover`.
 
 Statements that are not verified are marked **UNCERTAIN**. The weak spots are collected in
 [measurement-points.md](measurement-points.md), assumption A8 (discovery) and measurement
-point 6 (network on site). Nothing here was tried against a real MDM product, a real school
+point 6 (network on site). Nothing here was tried against a real MDM product, a real managed
 network, a real Android or Apple device.
 
 ## The ladder

@@ -74,7 +74,7 @@ sources read:
   says the library should be downloaded from Cisco during installation to be "legal". **Uncertain:** that
   Cisco's patent licence covers only the binary Cisco builds and distributes (a statement from the crate
   documentation and Cisco's FAQ as remembered, not re-read here); whether a source build of an app is
-  covered; whether downloading during installation is enough for a school deployment; what applies to the
+  covered; whether downloading during installation is enough for an offline deployment; what applies to the
   decoder-only use in tests. Do not ship releases built with `h264-source` before this is clarified.
 - **Which build gets which feature.** The workspace dependencies on `cc-media` and `cc-sender` have
   `default-features = false`, so no library crate pulls in the source build by itself. The program crate
@@ -129,7 +129,7 @@ Firefox: it downloads Cisco's library once, after the user agreed, and checks it
    `%LOCALAPPDATA%` (Windows), each plus `CometCast/codecs/openh264-2.6.0/`. On Android the app passes its
    private files directory (`set_codec_dir`, from `lib/codec_setup.dart`). This is where downloads and imports
    end up, and the only place a library is loaded from (besides 1).
-3. `COMETCAST_CODEC_DIR`: a folder that an administrator fills (networks without Internet access, schools). It
+3. `COMETCAST_CODEC_DIR`: a folder that an administrator fills (networks without Internet access). It
    must be an **absolute** path (a relative one is an error shown in the UI). It must contain the file under its
    **exact name** from the table below, either decompressed or exactly as Cisco serves it (name plus `.bz2`).
    **The file is never loaded in place.** `cc-codec` reads it (at most 8 MiB, or 4 MiB for the `.bz2`), checks
@@ -214,7 +214,7 @@ no redirect, are bzip2 (`BZh`), and their decompressed SHA-256 values equal the 
 (`ensure_codec` into a temporary folder, then `find_library`) and `cargo test -p cc-media --no-default-features
 --features h264-libloading` with only `COMETCAST_CODEC_DIR` set (no `COMETCAST_OPENH264_LIB`) pass: the
 encoder and decoder work through the managed library. Not checked: Windows, macOS, Android, Linux aarch64
-(only downloaded and hashed, never loaded), a school network with a TLS-inspecting proxy (webpki roots do not
+(only downloaded and hashed, never loaded), a corporate network with a TLS-inspecting proxy (webpki roots do not
 trust the proxy's CA; the download then fails with a TLS error and the offline hint applies; adding the system
 roots is an open improvement).
 
@@ -340,7 +340,7 @@ with a key frame of about 1 KB; why the browser asks that often was not investig
 - Any other machine, GPU, X server (Xorg, XWayland), desktop environment, or a real compositor.
 - Real content such as slides, code or video, real network conditions (everything ran over loopback UDP),
   latency (no number), image quality beyond the PSNR experiment above.
-- CPU on weak school PCs; the numbers above are from one shared VM.
+- CPU on weak office PCs; the numbers above are from one shared VM.
 - Browsers other than the one Chromium named; Safari and Firefox H.264 behaviour; hardware decoders.
 - The licensing questions above.
 - Whether `h264-libloading` works on Windows/macOS/Android (the crate lists the library names; the download path was only run on Linux x86_64).

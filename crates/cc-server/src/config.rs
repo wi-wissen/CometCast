@@ -159,7 +159,7 @@ pub struct LimitsConfig {
 }
 
 /// UNCERTAIN: factor 10 is a placeholder (the first version used 4, which is probably too
-/// low for a school or company network that owns a whole /48).
+/// low for a large company or campus network that owns a whole /48).
 pub const DEFAULT_WIDE_FAILURE_FACTOR: u32 = 10;
 
 impl LimitsConfig {

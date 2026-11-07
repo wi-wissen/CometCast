@@ -16,9 +16,9 @@ use crate::worker::{Engine, Job};
 /// render worker process, so that a hostile file cannot make the receiver allocate without
 /// bound.
 ///
-/// UNCERTAIN: every default below is a guess for a classroom setting. The memory default is
+/// UNCERTAIN: every default below is a guess for a typical meeting-room setting. The memory default is
 /// derived from measurements on one Linux machine (see `docs/documents.md`); none is derived
-/// from a measurement of real classroom devices (an Apple TV or a weak mini PC may need lower
+/// from a measurement of real devices (an Apple TV or a weak mini PC may need lower
 /// values). They are public fields so the application can set its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {

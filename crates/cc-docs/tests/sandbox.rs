@@ -162,7 +162,7 @@ fn sandbox_only(mem_mib: u64) -> Limits {
 
 /// A good render must still work after a failure.
 fn assert_good_render_works() {
-    let good = Document::open_with_options(data("classroom.pdf"), Limits::default(), worker())
+    let good = Document::open_with_options(data("slides.pdf"), Limits::default(), worker())
         .expect("good document opens");
     let img = good.render_page(0, 640).expect("good render works");
     assert_eq!(img.width, 640);
@@ -323,7 +323,7 @@ fn the_memory_limit_is_real_and_the_lowest_working_value_is_documented() {
         max_worker_memory_bytes: 128 << 20,
         ..Limits::default()
     };
-    let d = Document::open_with_options(data("classroom.pdf"), small, worker()).unwrap();
+    let d = Document::open_with_options(data("slides.pdf"), small, worker()).unwrap();
     assert_eq!(d.render_page(0, 1920).unwrap().width, 1920);
 }
 

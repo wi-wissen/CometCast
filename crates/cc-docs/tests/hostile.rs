@@ -123,7 +123,7 @@ impl Rng {
 
 const FILES: [&str; 5] = [
     "minimal.pdf",
-    "classroom.pdf",
+    "slides.pdf",
     "rotated_pages.pdf",
     "two_pages_one_rotated.pdf",
     "encrypted_empty_user_password.pdf",

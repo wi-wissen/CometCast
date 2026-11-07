@@ -296,7 +296,7 @@ void main() {
     test('the render worker counts the pages of a real PDF', () async {
       const core = RustCoreApi();
       final worker = File('${File(lib!).parent.path}/cc-docs-worker');
-      final pdf = File('../../crates/cc-docs/tests/data/classroom.pdf');
+      final pdf = File('../../crates/cc-docs/tests/data/slides.pdf');
       if (!worker.existsSync() || !pdf.existsSync()) {
         markTestSkipped(
           'cc-docs-worker or the test PDF is missing (cargo build --workspace --bins)',
@@ -316,7 +316,7 @@ void main() {
           .toList();
       final prepared = events.first as ContentSenderUiEvent_Prepared;
       expect(prepared.kind, UiContentKind.pdf);
-      expect(prepared.name, 'classroom.pdf');
+      expect(prepared.name, 'slides.pdf');
       expect(prepared.pages, 3);
       expect(events.last, isA<ContentSenderUiEvent_Error>());
     }, skip: skip);

@@ -398,7 +398,7 @@ mod tests {
             FULL,
             &[
                 ("v", "1"),
-                ("srv", "Relay.School.example:443"),
+                ("srv", "Relay.Example.org:443"),
                 ("tls", "1"),
                 ("name", "Room 1 TV"),
             ],
@@ -408,7 +408,7 @@ mod tests {
         assert_eq!(r.name, "Room 1 TV");
         assert_eq!(
             r.announced_server.as_deref(),
-            Some("wss://relay.school.example:443")
+            Some("wss://relay.example.org:443")
         );
         assert!(r.addresses.len() == 2);
         assert_eq!(r.addresses, [ip("192.168.0.9"), ip("fd00::2")]);
@@ -421,14 +421,11 @@ mod tests {
     fn plain_ws_only_inside_the_local_network() {
         let srv = |txt: &[(&str, &str)]| parts(FULL, txt).unwrap().announced_server;
         // A public name without tls=1 is refused, with tls=1 accepted.
-        assert_eq!(srv(&[("srv", "relay.school.example:443")]), None);
+        assert_eq!(srv(&[("srv", "relay.example.org:443")]), None);
+        assert_eq!(srv(&[("srv", "relay.example.org:443"), ("tls", "0")]), None);
         assert_eq!(
-            srv(&[("srv", "relay.school.example:443"), ("tls", "0")]),
-            None
-        );
-        assert_eq!(
-            srv(&[("srv", "relay.school.example:443"), ("tls", "1")]).as_deref(),
-            Some("wss://relay.school.example:443")
+            srv(&[("srv", "relay.example.org:443"), ("tls", "1")]).as_deref(),
+            Some("wss://relay.example.org:443")
         );
         // .local names and private literals may be plain, and tls=1 is honoured for them too.
         assert_eq!(

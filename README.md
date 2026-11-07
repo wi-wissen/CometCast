@@ -4,7 +4,7 @@
 
 # Comet Cast
 
-Comet Cast is one app that is both sender and receiver. It sends your screen, documents, links and media, and files to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for schools, offices and clubs, where many different devices meet in one room. The idea is similar to LocalSend, but for presenting on a display.
+Comet Cast is one app that is both sender and receiver. It sends your screen, documents, links and media, and files to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for offices, meetings, clubs, workshops and schools, where many different devices meet in one room. The idea is similar to LocalSend, but for presenting on a display.
 
 > **Status: v0.1 beta, in development.**
 > What works today, tested on one machine or one local network:
@@ -13,7 +13,7 @@ Comet Cast is one app that is both sender and receiver. It sends your screen, do
 > - Native Rust peers and a command-line tool that talk to the browser app; a Flutter desktop app (Linux) that uses the Rust core.
 > - A supervisor for AirPlay receiving through UxPlay (tested with the real UxPlay program, not with an iPhone or iPad).
 >
-> What does not work yet: screen capture and video display in the native apps, STUN/TURN across real networks, Apple TV, Miracast, Cast, the iOS broadcast extension. Everything not listed above is a plan. See [docs/architecture.md](docs/architecture.md) for the milestone status and [docs/measurement-points.md](docs/measurement-points.md) for the unverified assumptions.
+> What does not work yet or was never run on a real device: screen capture and video display in the native apps on most systems, STUN/TURN across real networks, Apple TV, Miracast, Cast, the iOS broadcast extension (some of these exist as code written to specification, see the milestone status). Everything not listed above is a plan. See [docs/architecture.md](docs/architecture.md) for the milestone status and [docs/measurement-points.md](docs/measurement-points.md) for the unverified assumptions.
 
 ## Principles
 
@@ -63,10 +63,10 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Area | Choice |
 | --- | --- |
 | Core | Rust workspace of `cc-*` crates: protocol, discovery, WebRTC transport, capture, documents, files, sender and receiver logic |
-| Bindings | flutter_rust_bridge for Flutter (in use). UniFFI for Swift and wasm-bindgen for the web are planned, not built yet |
+| Bindings | flutter_rust_bridge for Flutter (in use). wasm-bindgen is in use for the web app's PDF renderer (`cc-docs-wasm`). UniFFI for Swift is planned, not built yet (the iOS broadcast extension uses the C ABI of `cc-ios`) |
 | Apps | Flutter for Windows, macOS, Linux, Android, iOS, iPadOS and Android TV / Google TV |
 | Apple TV | Native SwiftUI receiver. If Flutter on TV does not hold up in the beta, a native Kotlin receiver is the fallback for Android TV |
-| Web app | Vue 3 + TypeScript + Vite (Rust WASM core planned). Screen sharing is expected only in desktop browsers and needs HTTPS (assumption A17; mobile support is unchecked) |
+| Web app | Vue 3 + TypeScript + Vite (the PDF renderer is Rust compiled to WASM; the rest of the core is not used in the browser). Screen sharing is expected only in desktop browsers and needs HTTPS (assumption A17; mobile support is unchecked) |
 | Server | `cometcast-server` (axum), coturn as a separate process, optional SFU |
 
 Native code is written only where the platform forces it (for example share and broadcast extensions, screen capture on Android).

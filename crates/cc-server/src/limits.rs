@@ -2,7 +2,7 @@
 //! Rate limits, failed-join counting and temporary bans.
 //!
 //! Clients are counted per IPv4 address or per IPv6 /64 network (one home or
-//! school usually owns a whole /64, so counting single IPv6 addresses would be useless).
+//! office usually owns a whole /64, so counting single IPv6 addresses would be useless).
 //! Failures and bans are also counted per IPv6 /48, because an attacker who owns a /48
 //! can otherwise just move to the next /64.
 

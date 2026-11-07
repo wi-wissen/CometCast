@@ -27,7 +27,7 @@ pub const MAX_OUTPUT_PIXELS: u64 = 4096 * 2304;
 /// has less memory to spare. `WebAssembly.Memory` is also capped when the module is linked
 /// (`--max-memory`, see `apps/web/scripts/build-wasm.sh`).
 ///
-/// UNCERTAIN: every value is a guess for classroom PDFs; none is measured on real devices.
+/// UNCERTAIN: every value is a guess for typical PDFs; none is measured on real devices.
 /// The time limits are not used on `wasm32` (no clock there); the page enforces them.
 pub fn web_limits() -> Limits {
     Limits {

@@ -36,7 +36,7 @@ stub!(
     /// Linux/Wayland through the desktop portal and PipeWire.
     ///
     /// UNCERTAIN: the plan names the xdg-desktop-portal ScreenCast interface plus PipeWire as
-    /// the way; how well it works on school-PC desktops (GNOME, KDE, wlroots) is not tested.
+    /// the way; how well it works on typical office PC desktops (GNOME, KDE, wlroots) is not tested.
     WaylandPipeWire,
     "Wayland capture (desktop portal + PipeWire) is not implemented"
 );

@@ -101,7 +101,7 @@ UNCERTAIN: every number is a placeholder.
 | `limits.failed_join_window_secs` | 600 | 600 | The window. |
 | `limits.ban_secs` | `[60, 300, 1800]` | same | 1st, 2nd, 3rd+ ban. The plan says 1, 5, 30 minutes. |
 | `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. |
-| `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because a school may sit behind one NAT address. |
+| `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because an office may sit behind one NAT address. |
 | `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address. |
 | `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. |
 | `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". |
@@ -114,7 +114,7 @@ UNCERTAIN: every number is a placeholder.
 | `limits.max_pending_per_room` | 8 | 8 | Senders that may wait for approval in one room at the same time; more get `rate_limited`. |
 | `limits.max_pending_per_ip` | 3 | 8 | Senders waiting for approval from one client address (all rooms); more get `rate_limited`. |
 | `limits.denied_join_weight` | 2 | 2 | A denied or timed-out join request counts as this many failures toward the address ban (0 = never). UNCERTAIN: placeholder; everybody behind one NAT address shares the budget. |
-| `limits.wide_failure_factor` | 10 | 10 | An IPv6 /48 is banned after `ban_after_failed_joins` times this many failures. UNCERTAIN: placeholder (the first version used 4, which is probably too low for a school or company network that owns a /48). |
+| `limits.wide_failure_factor` | 10 | 10 | An IPv6 /48 is banned after `ban_after_failed_joins` times this many failures. UNCERTAIN: placeholder (the first version used 4, which is probably too low for a large company or campus network that owns a /48). |
 | `altcha.mode` | `always` (forced) | `optional` | See ALTCHA. |
 | `altcha.secret` / `secret_file` | | random at start | HMAC secret for puzzles, at least 16 characters. |
 | `altcha.cost` | 1000 | 1000 | PBKDF2 iterations per attempt. |
@@ -171,7 +171,7 @@ A web app on another origin needs `allowed_origins`, next section.
 ### Web app on another origin
 
 The web app is plain static files. It can be served from any static host (GitHub Pages at
-`https://cometcast.de/app/`, nginx, a school web server) while the relay runs elsewhere (for example
+`https://cometcast.de/app/`, nginx, an existing web server) while the relay runs elsewhere (for example
 `relay.cometcast.de`, or your own Docker container). The Docker image still bundles the web app for a
 one-container setup; there the page and the relay share one origin and nothing below is needed.
 How the web app picks its relay: [apps/web/README.md](../apps/web/README.md#static-hosting-and-relay-selection).
@@ -217,7 +217,7 @@ and the development self-signed certificate. The rest is documentation only:
 | Way | Status |
 | --- | --- |
 | **Certificate and key files** (`tls.cert_file`, `tls.key_file`, PEM, readable by the server user) | Built and tested with a certificate generated at test time. Works with any certificate, for example from Let's Encrypt made by another tool. |
-| **Public domain plus split DNS** (plan: the default for a server in a house): the server has a name such as `cast.school.example`; the school's DNS answers with the LAN address; the certificate is a normal public one (the plan says via DNS-01). | Document only. Getting the certificate is up to the operator for now. |
+| **Public domain plus split DNS** (plan: the default for a server in a house): the server has a name such as `cast.example.org`; the local DNS answers with the LAN address; the certificate is a normal public one (the plan says via DNS-01). | Document only. Getting the certificate is up to the operator for now. |
 | **Own CA, distributed by MDM** (plan: option for houses without internet, managed devices only) | Document only. Use `tls.cert_file` with a certificate from that CA. |
 | **ACME built into the server** (plan: the `instant-acme` crate) | **Out of scope for now, future work.** Nothing is built. |
 | **Self-signed at start** (`tls.self_signed = true` or `--tls-self-signed`) | Built, **development only**. A loud warning is printed at every start. Browsers do not trust it. `tls.self_signed_cert_out` writes the public certificate (never the key). |
@@ -479,7 +479,7 @@ management side of anything (coturn's CLI is switched off).
   discovery is not built yet**, so nothing reads this record today):
 
   ```
-  _cometcast._tcp.school.example.  3600 IN SRV 10 0 443 cast.school.example.
+  _cometcast._tcp.example.org.  3600 IN SRV 10 0 443 cast.example.org.
   ```
 
 ### Key file permissions
@@ -683,7 +683,7 @@ health command were run; the server image was not rebuilt).
 ### Known costs of the stable TURN user name (from the second review, UNCERTAIN)
 
 - **Shared NAT:** all clients behind one IPv4 address or one IPv6 /64 share one TURN user name and
-  therefore one `user-quota` (24 after the review; 6 was too low for an office or a school with
+  therefore one `user-quota` (24 after the review; 6 was too low for an office or a large organisation with
   several users, because a browser can use 2-3 allocations per PeerConnection). Whether 24 suits
   real use is not measured.
 - **Bucket rollover:** the previous user name stays valid until the end of its bucket, so one client
