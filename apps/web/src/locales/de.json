@@ -86,11 +86,13 @@
       "hlsUnsupported": "Dies sieht nach einem HLS-Stream aus, den dieser Browser nicht abspielen kann. Sie können den Link trotzdem öffnen.",
       "error": {
         "aborted": "Die Wiedergabe von {host} wurde abgebrochen.",
-        "network": "{host} ist nicht erreichbar oder erlaubt die Wiedergabe hier nicht (der Zugriff von anderen Ursprüngen muss erlaubt sein).",
+        "network": "{host} ist nicht erreichbar oder hat nicht rechtzeitig geantwortet.",
         "decode": "Die Datei von {host} ist beschädigt oder konnte nicht dekodiert werden.",
-        "unsupported": "Dieser Browser kann die Datei von {host} nicht abspielen.",
-        "blocked": "Der Browser hat die Wiedergabe von {host} blockiert."
-      }
+        "unsupported": "Diese Datei kann hier nicht abgespielt werden: Das Format wird nicht unterstützt, die Datei fehlt oder der Medienserver erlaubt die Wiedergabe von anderen Websites nicht. Mit „Öffnen“ sehen Sie sie in einem neuen Tab. ({host})",
+        "blocked": "Der Browser hat die automatische Wiedergabe blockiert. Klicken Sie auf „Erneut versuchen“, um sie zu starten."
+      },
+      "mixed": "Diese Adresse verwendet http://, diese Seite aber https://, daher würde der Browser die Wiedergabe hier blockieren. Sie können den Link trotzdem öffnen.",
+      "localWarning": "Achtung: Diese Adresse zeigt auf ein Gerät oder einen Namen innerhalb eines Netzwerks (eine IP-Adresse oder ein lokaler Name). Spielen Sie sie nur ab, wenn Sie das erwarten."
     },
     "announce": {
       "image": "Bild empfangen: {name}.",

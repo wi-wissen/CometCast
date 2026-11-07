@@ -139,21 +139,56 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
   also the user activation that the browser's autoplay policy wants; the policy is not overridden). Dismiss
   still has the initial focus.
 - The player is one `<video>` or `<audio>` element (native controls: play/pause, seek, volume, fullscreen for
-  video) plus our **Stop** button and Escape. Attributes: `crossorigin="anonymous"` (no cookies or credentials),
-  `referrerpolicy="no-referrer"`, `controlslist="nodownload noremoteplayback"`, `disablepictureinpicture`;
-  the page also sets `<meta name="referrer" content="same-origin">`, so cross-origin requests carry no referrer
-  (the e2e checks that the media host saw no cookie and no `Referer`). No download button is offered by us;
-  a browser's own context menu is not removed.
-- **One player at a time.** Stop, Dismiss, a `cmd` `stop` from the sender, new content (image, document, another
-  link) or the sender leaving closes the player: the element is paused, its `src` removed, `load()` called and it
-  is taken out of the page, which closes the connection.
-- Errors map `MediaError.code` to translated notices (aborted, network, decode, unsupported) that name only the
-  host, never the path or query. Because of `crossorigin="anonymous"` **a media server that sends no CORS
-  header (`Access-Control-Allow-Origin`) cannot be played** and gives the "network" notice; the link can still be
-  opened with Open. This is a deliberate price of not sending cookies.
+  video) plus our **Stop** button and Escape (inside the player). **Stop, Escape and Dismiss close the whole link
+  card**, not only the player. Attributes: `crossorigin="anonymous"` (no cookies or credentials),
+  `controlslist="nodownload noremoteplayback"` (Chromium-only: other browsers ignore it, so there the native
+  download or remote-playback entry may appear), `disablepictureinpicture`. There is **no `referrerpolicy`
+  attribute** on the element (it is not defined for `<video>` and `<audio>`); the page instead sets
+  `<meta name="referrer" content="same-origin">`, so cross-origin requests carry no `Referer` (the e2e checks
+  that the media host saw none). Cookies: the e2e puts a cookie for the media host into the browser, shows by a
+  control request with credentials that it would be sent, and checks that the player's request does not carry
+  it. No download button is offered by us; a browser's own context menu is not removed.
+  `.ogg` is classified as **audio only**; an Ogg video file with that extension plays as audio at best.
+- **What the media host and the network learn** (the click is the consent; the card says which host):
+  the receiver's **IP address**, its **User-Agent**, and an **`Origin` header with the app's origin** (media
+  requests with `crossorigin="anonymous"` are CORS requests), plus the requested path and `Range` headers.
+  The `Referer` and cookies are not sent. The sender chooses the host, which can be **a private, loopback or LAN
+  address**: one click makes the receiver's browser send a blind GET (with `Range`) from the receiver's network
+  to that address; the response is not readable by the page without CORS, but the request happens. The link
+  card therefore shows a **warning line for IP literals and private-looking names** (`localhost`, single-label
+  names, `.local`, `.lan`, `.internal`, `.home.arpa` and similar; name based only, so a public name that
+  resolves to a private address is not detected). There is no extra confirm step; Play stays. **Redirects are
+  not shown**: the host on the card and in the notices is the one in the link, a redirect can lead the
+  browser to another host. UNCERTAIN: how each browser treats private-network requests from a public page
+  (Private Network Access) was not tested.
+- **Mixed content**: if the app page is `https:` and the media URL is `http:`, the card shows a notice and **no
+  Play button** (the browser would block it); Open still works. Unit-tested (`isMixedContent`); the e2e runs on
+  `http:` only, so the https case is not exercised in a browser.
+- **One player at a time.** Stop, Escape, Dismiss, a `cmd` `stop` from the sender, new content (image, document,
+  another link) or the sender leaving closes the player: the element is paused, its `src` removed, `load()` called
+  and it is taken out of the page, which closes the connection (the e2e counts the requests at the media server
+  and checks they do not grow after Stop, Escape, and replacement by a link, an image or a document, and when the
+  sender leaves).
+- **Errors** map `MediaError.code` to translated notices that name only the host, never the path or query.
+  UNCERTAIN, and observed rather than specified: a media element cannot tell a CORS failure, an HTTP error and a
+  bad format apart. Chrome for Testing 153 reports a missing file (404), a server without
+  `Access-Control-Allow-Origin` and a non-media file all as code 4 (`SRC_NOT_SUPPORTED`), so **there is no
+  separate CORS notice**: code 4 shows one combined notice (unsupported format, missing file, or a media server
+  that does not allow playback from other sites; Open shows it in a new tab). Because of
+  `crossorigin="anonymous"` a server without CORS headers cannot be played; this is the price of sending no
+  cookies. Other browsers were not tested. Other codes: aborted, network (code 2, and the loading timeout),
+  decode (code 3). A rejected `play()` (NotAllowedError, autoplay policy) shows a "blocked" notice and the
+  Try-again button instead of failing silently; the e2e cannot trigger it in Chrome after a click, so that path is
+  not covered by a test. `play()` runs when the player component mounts, a few milliseconds after the click, not
+  inside the click handler itself; Chrome's user activation lasts several seconds so this works there, UNCERTAIN
+  for Safari, which was not tested.
+- **Loading timeout:** if the element has no data after 20 s (UNCERTAIN: a guess), the element is released and the
+  "network" notice is shown (the e2e uses a server that never answers). Tested only with Chrome for Testing 153 on
+  Linux; **Safari and Firefox are untested** for everything here.
 - **HLS (`.m3u8`)**: only where the browser plays it natively (Safari; recent Chrome on some platforms). The
   Play button is offered only if `canPlayType` says so; otherwise the card says that the stream cannot be played
-  here and Open stays. **hls.js is not bundled** (Apache-2.0 would be compatible with GPL-3.0-or-later, but it was
+  here and Open stays. UNCERTAIN: which browsers play HLS natively (Safari; Chrome for Testing 153 on Linux
+  answered "maybe" to `canPlayType`, which is not proof that playback works). **hls.js is not bundled** (Apache-2.0 would be compatible with GPL-3.0-or-later, but it was
   not added in this step: a new runtime dependency, MSE code path, fetching segments from third-party hosts).
   UNCERTAIN: HLS playback itself was not exercised in the e2e (no segments are served; only the Play/no-Play
   decision is checked, which on the test machine's Chrome offered Play).
@@ -185,9 +220,12 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
   to use an installed Chrome instead of Playwright's Chromium (also read by `e2e:m2` and `e2e:content`).
 - Media links: `tests/media.test.ts` (classification, HLS probe, error mapping, player state) and
   `npm run build && npm run e2e:media`: sender sends a link to a generated `.wav` and `.webm` served by a local
-  server; nothing is requested before the click, playing after it with no cookie and no referrer, Stop and the
-  sender's `stop` release the element, a new link replaces a playing one, a broken file and a server without CORS
-  give a notice with the host only, HLS and plain links. Needs `ffmpeg` for the `.webm`; Chrome (Google Chrome
+  server; nothing is requested before the click, playing after it with no cookie (a cookie for the media host is
+  set first and a control request proves it would be sent), no referrer and the app origin as `Origin`, Stop,
+  Escape, the sender's `stop`, a new link, an image, a document and the sender leaving release the element (no new
+  requests afterwards), a broken file, a 404 and a server without CORS give the combined notice with the host
+  only, a server that never answers gives the network notice after the 20 s timeout, the local-address warning,
+  HLS and plain links. Needs `ffmpeg` for the `.webm`; Chrome (Google Chrome
   on Linux) only.
 - End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): image arrives
   (`naturalWidth > 0`), link card appears and nothing opens until the click, pen changes canvas pixels,

@@ -14,6 +14,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import assert from 'node:assert/strict'
 
+const en = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src/locales/en.json'), 'utf8')).receive.media
+
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
 
@@ -53,10 +55,12 @@ let webm = null
 }
 
 /** Local media server on its own port (= its own origin, so media requests are cross-origin). */
-const hits = [] // { path, cookie, referer }
+const hits = [] // { path, cookie, referer, origin }
+const sockets = new Set()
 const mediaServer = createServer((req, res) => {
   const path = new URL(req.url, 'http://x').pathname
-  hits.push({ path, cookie: req.headers.cookie ?? null, referer: req.headers.referer ?? null })
+  hits.push({ path, cookie: req.headers.cookie ?? null, referer: req.headers.referer ?? null, origin: req.headers.origin ?? null })
+  if (path === '/slow.mp4') return // never answers: the loading timeout must release the element
   const cors = path.startsWith('/nocors') ? {} : { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range,content-length,accept-ranges' }
   const file = path.endsWith('.wav') ? wav : path.endsWith('.webm') ? webm : path.endsWith('bad.mp4') ? Buffer.from('this is not a video'.repeat(100)) : null
   if (!file) {
@@ -74,11 +78,33 @@ const mediaServer = createServer((req, res) => {
   res.writeHead(200, { ...cors, 'content-type': type, 'accept-ranges': 'bytes', 'content-length': file.length, 'set-cookie': 'track=1' })
   res.end(file)
 })
+mediaServer.on('connection', (s) => {
+  sockets.add(s)
+  s.on('close', () => sockets.delete(s))
+})
 await new Promise((r) => mediaServer.listen(0, '127.0.0.1', r))
 const mport = mediaServer.address().port
 const mhost = `127.0.0.1:${mport}`
 const media = (p) => `http://${mhost}${p}`
 const hitsFor = (p) => hits.filter((h) => h.path === p).length
+/** The notice text the person should read for a key, for this media host. */
+const notice = (key) => en.error[key].replaceAll('{host}', mhost)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// A tiny PNG and a tiny one-page PDF to replace a playing player with other content.
+const png1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+function tinyPdf() {
+  const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>']
+  let out = '%PDF-1.4\n'
+  const offs = []
+  objs.forEach((o, i) => {
+    offs.push(out.length)
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const x = out.length
+  out += `xref\n0 4\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n${x}\n%%EOF\n`
+  return Buffer.from(out, 'latin1')
+}
 
 function startServer() {
   const build = spawnSync('cargo', ['build', '-p', 'cometcast-server'], { cwd: repo, stdio: 'inherit' })
@@ -125,6 +151,9 @@ try {
     return ctx
   }
   const rctx = await mk()
+  // A cookie for the media host sits in the receiver's browser. A credentialed request would send it; the
+  // player's anonymous request must not (control request below proves the cookie would otherwise be sent).
+  await rctx.addCookies([{ name: 'session', value: 'secret', url: `http://${mhost}/` }])
   const sctx = await mk()
   const receiver = await rctx.newPage()
   await receiver.goto(base)
@@ -152,6 +181,7 @@ try {
   await card.waitFor({ timeout: 10000 })
   const play = receiver.getByTestId('media-play')
   assert.match(await play.innerText(), new RegExp(`Play from ${mhost.replace('.', '\\.')}`))
+  assert.match(await receiver.getByTestId('media-host-warning').innerText(), /Warning/, '127.0.0.1 is an IP literal: warning line')
   await new Promise((r) => setTimeout(r, 1500))
   assert.equal(hits.length, 0, 'no request to the media host before the click')
   assert.equal(await elCount(), 0, 'no media element before the click')
@@ -167,8 +197,16 @@ try {
   await player.waitFor()
   await waitFor(() => receiver.getByTestId('media-element').evaluate((m) => !m.paused && m.currentTime > 0), 'audio playing')
   assert.ok(hitsFor('/a.wav') > 0)
-  assert.ok(hits.every((h) => h.cookie === null), 'no cookie sent')
-  assert.ok(hits.every((h) => h.referer === null), 'no referrer sent')
+  // Control: a credentialed request to the same host DOES carry the cookie, so the absence below is meaningful.
+  await receiver.evaluate((u) => fetch(u, { mode: 'no-cors', credentials: 'include' }).then(() => undefined, () => undefined), media('/ctl.wav'))
+  const ctl = await waitFor(() => hits.find((h) => h.path === '/ctl.wav'), 'control request')
+  assert.match(ctl.cookie ?? '', /session=secret/, 'control: a credentialed request sends the cookie')
+  const playerHits = hits.filter((h) => h.path !== '/ctl.wav')
+  assert.ok(playerHits.length > 0)
+  assert.ok(playerHits.every((h) => h.cookie === null), 'no cookie sent by the player')
+  assert.ok(playerHits.every((h) => h.referer === null), 'no referrer sent (meta referrer, no referrerpolicy attribute)')
+  assert.ok(playerHits.every((h) => h.origin === base), `Origin is the app origin: ${playerHits.map((h) => h.origin)}`)
+  assert.equal(await receiver.getByTestId('media-element').evaluate((m) => m.hasAttribute('referrerpolicy')), false)
   assert.equal(await receiver.getByTestId('media-element').evaluate((m) => m.crossOrigin), 'anonymous')
   assert.equal(await receiver.getByTestId('media-element').evaluate((m) => m.controls), true)
   // Stop releases the element
@@ -178,6 +216,20 @@ try {
   assert.equal(await elCount(), 0)
   assert.equal(await handle.evaluate((m) => m.paused), true, 'released element is paused')
   assert.equal(await handle.evaluate((m) => m.hasAttribute('src')), false)
+  await card.waitFor({ state: 'detached' })
+  await sleep(500)
+  const afterStop = hitsFor('/a.wav')
+  await sleep(2500)
+  assert.equal(hitsFor('/a.wav'), afterStop, 'no new requests after Stop (connection closed)')
+
+  // ---- Escape inside the player closes it, like Stop ------------------------------------------------------
+  await sendLink(media('/a.wav'))
+  await card.waitFor({ timeout: 10000 })
+  await play.click()
+  await player.waitFor()
+  await receiver.keyboard.press('Escape')
+  await player.waitFor({ state: 'detached' })
+  assert.equal(await elCount(), 0, 'Escape releases the element')
   await card.waitFor({ state: 'detached' })
 
   // ---- video (webm) ------------------------------------------------------------------------------
@@ -193,33 +245,68 @@ try {
     assert.equal(await elCount(), 0)
   }
 
-  // ---- one player at a time: a new link replaces a playing one --------------------------------------
-  await sendLink(media('/a.wav'))
+  // ---- one player at a time: a new link, an image or a document replaces a playing one ----------------------
+  const startPlaying = async (path) => {
+    await sendLink(media(path))
+    await card.waitFor({ timeout: 10000 })
+    await play.click()
+    await player.waitFor()
+    await waitFor(() => receiver.getByTestId('media-element').evaluate((m) => !m.paused && m.currentTime > 0), 'audio playing')
+  }
+  const expectQuiet = async (path, what) => {
+    await sleep(500)
+    const n = hitsFor(path)
+    await sleep(2000)
+    assert.equal(hitsFor(path), n, `${what}: no new requests`)
+  }
+  await startPlaying('/r1.wav')
+  await sendLink(media('/a.wav?second=1'))
+  await card.waitFor({ timeout: 10000 })
+  assert.equal(await elCount(), 0, 'new link closes the player')
+  assert.equal(await player.count(), 0)
+  await expectQuiet('/r1.wav', 'after replacement by a link')
+  await receiver.getByTestId('link-dismiss').click()
+
+  await startPlaying('/r2.wav')
+  await cs.getByTestId('image-input').setInputFiles({ name: 't.png', mimeType: 'image/png', buffer: png1 })
+  await receiver.getByTestId('received-image').waitFor({ timeout: 10000 })
+  assert.equal(await elCount(), 0, 'an image closes the player')
+  assert.equal(await player.count(), 0)
+  await expectQuiet('/r2.wav', 'after replacement by an image')
+  await receiver.getByTestId('content-close').click()
+
+  await startPlaying('/r3.wav')
+  await cs.getByTestId('pdf-input').setInputFiles({ name: 't.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  await player.waitFor({ state: 'detached', timeout: 10000 })
+  assert.equal(await elCount(), 0, 'a document closes the player')
+  await expectQuiet('/r3.wav', 'after replacement by a document')
+  await receiver.getByTestId('content-close').click().catch(() => undefined)
+  await cs.getByTestId('stop-showing').click()
+
+  // ---- errors: translated, host only. Chrome reports a bad file, a 404 and a missing CORS header all as ----
+  // MediaError code 4, so all three show the combined "cannot be played here" notice (UNCERTAIN for others).
+  const err = receiver.getByTestId('media-error')
+  for (const [path, label] of [['/bad.mp4?secret=abc', 'bad file'], ['/missing.mp4?secret=abc', '404'], ['/nocors.wav?secret=abc', 'no CORS']]) {
+    await sendLink(media(path))
+    await card.waitFor({ timeout: 10000 })
+    await play.click()
+    await err.waitFor({ timeout: 15000 })
+    const text = (await err.innerText()).replace(/\s+/g, ' ')
+    assert.equal(text, notice('unsupported'), `${label}: notice text`)
+    assert.ok(text.includes(mhost), text)
+    assert.ok(!/secret|bad\.mp4|missing\.mp4|nocors/.test(text), 'no URL details in the notice')
+    assert.equal(await elCount(), 0, `${label}: failed player is released`)
+    await receiver.getByTestId('link-dismiss').click()
+  }
+
+  // ---- loading timeout (20 s): a server that never answers releases the element, network notice ---------
+  await sendLink(media('/slow.mp4'))
   await card.waitFor({ timeout: 10000 })
   await play.click()
   await player.waitFor()
-  await sendLink(media('/a.wav?second=1'))
-  await card.waitFor({ timeout: 10000 })
-  assert.equal(await elCount(), 0, 'new content closes the player')
-  await receiver.getByTestId('link-dismiss').click()
-
-  // ---- errors: translated, host only -----------------------------------------------------------------
-  await sendLink(media('/bad.mp4?secret=abc'))
-  await card.waitFor({ timeout: 10000 })
-  await play.click()
-  const err = receiver.getByTestId('media-error')
-  await err.waitFor({ timeout: 15000 })
-  const text = await err.innerText()
-  assert.ok(text.includes(mhost), text)
-  assert.ok(!/secret|bad\.mp4/.test(text), 'no URL details in the notice')
-  assert.equal(await elCount(), 0, 'failed player is released')
-  await receiver.getByTestId('link-dismiss').click()
-
-  await sendLink(media('/nocors.wav'))
-  await card.waitFor({ timeout: 10000 })
-  await play.click()
-  await err.waitFor({ timeout: 15000 })
-  assert.ok(!/nocors/.test(await err.innerText()))
+  await err.waitFor({ timeout: 30000 })
+  assert.equal((await err.innerText()).replace(/\s+/g, ' '), notice('network'))
+  assert.equal(await elCount(), 0, 'timed out player is released')
   await receiver.getByTestId('link-dismiss').click()
 
   // ---- HLS: native support only (Chromium has none) -----------------------------------------------------
@@ -237,10 +324,18 @@ try {
   assert.equal(await receiver.getByTestId('media-play').count(), 0)
   await receiver.getByTestId('link-dismiss').click()
 
+  // ---- the sender leaves while playing: the player closes ------------------------------------------------
+  await startPlaying('/r4.wav')
+  await cs.close()
+  await player.waitFor({ state: 'detached', timeout: 15000 })
+  assert.equal(await elCount(), 0, 'peer left releases the element')
+  await expectQuiet('/r4.wav', 'after the sender left')
+
   console.log('E2E media OK', webm ? '(audio + video)' : '(audio only, video skipped)', `HLS native: ${hlsNative}`)
 } finally {
   await browser?.close()
   server.kill('SIGTERM')
+  for (const s of sockets) s.destroy()
   mediaServer.close()
   rmSync(tmp, { recursive: true, force: true })
 }

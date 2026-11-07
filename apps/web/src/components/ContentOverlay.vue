@@ -8,7 +8,7 @@ import type { ReceivedContent } from '../core/receiverSession'
 import type { PageBitmap } from '../core/pdfRenderer'
 import DocumentView from './DocumentView.vue'
 import MediaPlayer from './MediaPlayer.vue'
-import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, playerReduce, type MediaErrorCode, type PlayerEvent } from '../core/media'
+import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, isMixedContent, playerReduce, shortHost, urlHostIsLocalOrIp, type MediaErrorCode, type PlayerEvent } from '../core/media'
 
 const props = defineProps<{ content: ReceivedContent | null; renderPage: (page: number, width: number) => Promise<PageBitmap> }>()
 const emit = defineEmits<{ close: []; prev: []; next: [] }>()
@@ -24,7 +24,9 @@ function dispatch(e: PlayerEvent) {
 }
 const mediaKind = computed(() => (props.content?.kind === 'link' ? classifyMediaUrl(props.content.url) : null))
 const hlsOk = computed(() => mediaKind.value !== 'hls' || canPlayHlsNatively())
-const canPlay = computed(() => mediaKind.value !== null && hlsOk.value)
+const mixed = computed(() => props.content?.kind === 'link' && mediaKind.value !== null && isMixedContent(typeof location === 'undefined' ? '' : location.protocol, props.content.url))
+const canPlay = computed(() => mediaKind.value !== null && hlsOk.value && !mixed.value)
+const hostWarn = computed(() => canPlay.value && props.content?.kind === 'link' && urlHostIsLocalOrIp(props.content.url))
 const showPlayer = computed(() => props.content?.kind === 'link' && mediaKind.value !== null && (player.value.phase === 'loading' || player.value.phase === 'playing'))
 const mediaError = computed(() => (player.value.phase === 'error' ? player.value.code : null))
 function onMediaError(code: MediaErrorCode) {
@@ -134,8 +136,10 @@ function onKey(e: KeyboardEvent) {
         <div class="mt-3 text-xs font-semibold uppercase tracking-wider text-muted">{{ t('receive.link.address') }}</div>
         <p data-testid="link-url" class="mt-1 break-all rounded-cc border border-line bg-sunk px-2 py-1.5 font-mono text-sm">{{ content.url }}</p>
         <p v-if="canPlay" data-testid="media-hint" class="mt-3 text-sm text-muted">{{ t('receive.media.hint', { host: content.host }) }}</p>
+        <p v-else-if="mixed" data-testid="media-mixed" class="mt-3 text-sm text-muted">{{ t('receive.media.mixed') }}</p>
         <p v-else-if="mediaKind === 'hls'" data-testid="media-hls-unsupported" class="mt-3 text-sm text-muted">{{ t('receive.media.hlsUnsupported') }}</p>
-        <p v-if="mediaError" data-testid="media-error" role="alert" class="mt-3 text-sm text-err">
+        <p v-if="hostWarn" data-testid="media-host-warning" class="mt-2 text-sm font-medium text-err">{{ t('receive.media.localWarning') }}</p>
+        <p v-if="mediaError" data-testid="media-error" role="alert" class="mt-3 break-words text-sm text-err">
           {{ t(`receive.media.error.${mediaError}`, { host: content.host }) }}
         </p>
         <div class="mt-4 flex flex-wrap gap-3">
@@ -144,10 +148,11 @@ function onKey(e: KeyboardEvent) {
             ref="playBtn"
             type="button"
             data-testid="media-play"
-            class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg"
+            :title="content.host"
+            class="max-w-full break-all rounded-cc bg-accent px-4 py-2 text-left font-medium text-accent-fg"
             @click="dispatch({ type: 'play' })"
           >
-            {{ mediaError ? t('receive.media.retry') : t('receive.media.play', { host: content.host }) }}
+            {{ mediaError ? t('receive.media.retry') : t('receive.media.play', { host: shortHost(content.host) }) }}
           </button>
           <a
             :href="content.url"

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from 'vitest'
-import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, mediaErrorCode, playerReduce } from '../src/core/media'
+import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, isMixedContent, mediaErrorCode, playerReduce, shortHost, urlHostIsLocalOrIp } from '../src/core/media'
 
 describe('classifyMediaUrl', () => {
   it('classifies by extension', () => {
@@ -53,5 +53,36 @@ describe('player state', () => {
     expect(e).toEqual({ phase: 'error', code: 'decode' })
     expect(playerReduce(e, { type: 'play' })).toEqual({ phase: 'loading' })
     for (const s of [e, { phase: 'playing' } as const, { phase: 'loading' } as const]) expect(playerReduce(s, { type: 'stop' })).toEqual(initialPlayer)
+  })
+})
+
+describe('mixed content', () => {
+  it('flags http media on an https page only', () => {
+    expect(isMixedContent('https:', 'http://h.example/a.mp4')).toBe(true)
+    expect(isMixedContent('https:', 'https://h.example/a.mp4')).toBe(false)
+    expect(isMixedContent('http:', 'http://h.example/a.mp4')).toBe(false)
+    expect(isMixedContent('https:', 'not a url')).toBe(false)
+  })
+})
+
+describe('local or IP hosts', () => {
+  it('warns for IP literals and private-looking names', () => {
+    for (const u of ['http://127.0.0.1:8080/a.mp4', 'http://192.168.1.5/a.mp4', 'http://8.8.8.8/a.mp4', 'http://[::1]/a.mp4', 'http://[fd00::1]:81/a.mp4', 'http://localhost/a.mp4', 'http://nas/a.mp4', 'http://printer.local/a.mp4', 'http://a.b.lan/x.mp3', 'http://x.home.arpa/x.mp3', 'http://LOCALHOST./a.mp4'])
+      expect(urlHostIsLocalOrIp(u), u).toBe(true)
+  })
+  it('does not warn for ordinary public names', () => {
+    for (const u of ['https://media.example.org/a.mp4', 'https://cdn.example.com:8443/a.mp3', 'bad'])
+      expect(urlHostIsLocalOrIp(u), u).toBe(false)
+  })
+})
+
+describe('shortHost', () => {
+  it('keeps short hosts and shortens long ones', () => {
+    expect(shortHost('media.example.org')).toBe('media.example.org')
+    const long = `${'a'.repeat(60)}.example.org`
+    const s = shortHost(long)
+    expect(s.length).toBeLessThanOrEqual(40)
+    expect(s.startsWith('aaaa')).toBe(true)
+    expect(s.endsWith('example.org')).toBe(true)
   })
 })

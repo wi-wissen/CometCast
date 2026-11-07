@@ -86,11 +86,13 @@
       "hlsUnsupported": "This looks like an HLS stream, which this browser cannot play. You can still open the link.",
       "error": {
         "aborted": "Playback from {host} was stopped.",
-        "network": "{host} could not be reached or does not allow playback here (it must allow cross-origin access).",
+        "network": "{host} could not be reached or did not answer in time.",
         "decode": "The file from {host} is damaged or could not be decoded.",
-        "unsupported": "This browser cannot play the file from {host}.",
-        "blocked": "The browser blocked playback from {host}."
-      }
+        "unsupported": "This file cannot be played here: the format is not supported, the file is missing, or the media server does not allow playback from other sites. Use Open to view it in a new tab. ({host})",
+        "blocked": "The browser blocked automatic playback. Click \"Try again\" to start it."
+      },
+      "mixed": "This address uses http:// but this page uses https://, so the browser would block playing it here. You can still open the link.",
+      "localWarning": "Warning: this address points to a device or a name inside a network (an IP address or a local name). Only play it if you expect that."
     },
     "announce": {
       "image": "Image received: {name}.",
