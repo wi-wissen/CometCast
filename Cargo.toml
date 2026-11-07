@@ -23,6 +23,7 @@ members = [
     "crates/cc-airplay",
     "crates/cc-airplay-sender",
     "crates/cc-miracast",
+    "crates/cc-miracast-ffi",
     "bins/cometcast-server",
     "bins/cometcast-cli",
     "xtask",

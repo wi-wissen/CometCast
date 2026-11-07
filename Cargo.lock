@@ -938,6 +938,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-miracast-ffi"
+version = "0.1.0"
+dependencies = [
+ "cc-miracast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cc-office"
 version = "0.1.0"
 dependencies = [
