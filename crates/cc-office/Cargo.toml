@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "cc-office"
-description = "Office to PDF conversion"
+description = "Office to PDF conversion on the sender side"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,30 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["engine-rust", "worker-bin"]
+# The pure-Rust engine (`office2pdf`, Apache-2.0, built on Typst). Large dependency tree and
+# bundled fonts; an application that only wants LibreOffice can turn it off.
+engine-rust = ["dep:office2pdf"]
+# Builds the `cc-office-worker` program (the conversion worker process).
+worker-bin = []
+
+[[bin]]
+name = "cc-office-worker"
+path = "src/bin/cc-office-worker.rs"
+required-features = ["worker-bin"]
+
+[dependencies]
+thiserror.workspace = true
+rand.workspace = true
+flate2.workspace = true
+office2pdf = { version = "0.10", optional = true }
+
+# Resource limits and process-group kill on Unix (same crates as cc-docs).
+[target.'cfg(unix)'.dependencies]
+rlimit = "0.11"
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
+# Landlock (TCP deny) for the worker on Linux, best effort. Same crate as cc-docs.
+[target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
+landlock = "0.4"
