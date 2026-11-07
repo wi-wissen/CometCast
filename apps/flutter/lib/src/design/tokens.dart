@@ -53,6 +53,10 @@ class DisplayTokens extends ThemeExtension<DisplayTokens> {
   /// The picture's own background while presenting.
   static const stage = Color(0xFF000000);
 
+  /// Text drawn directly on the black stage (the same in every appearance, decision 57):
+  /// `--onblack`.
+  static const onBlack = Color(0xFFA1A9BA);
+
   static const dark = DisplayTokens(
     bg: Color(0xFF0E1630),
     panel: Color(0xFF17213F),
@@ -254,6 +258,10 @@ class DisplayType {
 
   /// Name tag line 2 (security code): 13 / 400 `--mut`.
   TextStyle get nameTagSub => _ui(13, regular, t.mut, height: 1.3);
+
+  /// The state line on the black stage (`codec.stageHint`, the look of `toolbar.blackHint`):
+  /// 15 / 400 `--onblack`.
+  TextStyle get stageHint => _ui(15, regular, DisplayTokens.onBlack);
 
   /// Section label in dialogs: 14 / 700, uppercase, .08em.
   TextStyle get sectionLabel => _ui(14, bold, t.mut, height: 1.3, em: .08);

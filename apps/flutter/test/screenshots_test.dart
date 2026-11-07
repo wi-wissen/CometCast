@@ -21,8 +21,6 @@ import 'package:cometcast/settings.dart';
 import 'package:cometcast/src/design/icons.dart';
 import 'package:cometcast/src/design/tokens.dart';
 import 'package:cometcast/src/display/display_logic.dart';
-import 'package:cometcast/src/display/kit.dart';
-import 'package:cometcast/src/display/screens.dart';
 import 'package:cometcast/src/presenter/kit.dart';
 import 'package:cometcast/src/presenter/pages.dart';
 
@@ -112,9 +110,13 @@ void main() {
           }
         }
         await k(t, LogicalKeyboardKey.select); // step 1
-        // The custom field emptied again after typing: no chip is selected.
+        // The custom field is reached with the arrow keys and opened with OK (a field that is
+        // not open takes no text), typed in and emptied again: no chip is selected.
+        await k(t, LogicalKeyboardKey.arrowUp);
+        await k(t, LogicalKeyboardKey.select);
         await t.enterText(find.byKey(const Key('wz-room')), 'Studio');
         await t.pump(const Duration(milliseconds: 60));
+        await shot(t, 'display-$p-setup1-name-typed');
         await t.enterText(find.byKey(const Key('wz-room')), '');
         await t.pump(const Duration(milliseconds: 60));
         await shot(t, 'display-$p-setup1-name-empty');
@@ -149,7 +151,10 @@ void main() {
           await k(t, LogicalKeyboardKey.select);
         }
         await shot(t, 'display-$p-setup3-field');
+        // OK opens the field for typing; Done on a bad address shows the error line.
+        await k(t, LogicalKeyboardKey.select);
         await t.enterText(find.byKey(const Key('wz-addr')), 'ws://box.local');
+        await t.pump(const Duration(milliseconds: 60));
         await t.testTextInput.receiveAction(TextInputAction.done);
         await t.pump(const Duration(milliseconds: 100));
         await shot(t, 'display-$p-setup3-field-error');
@@ -230,10 +235,18 @@ void main() {
             start: false,
           );
           h.core.receiverEvents.add(
-            ReceiverUiEvent.error(code: e.value, message: 'x'),
+            ReceiverUiEvent.error(
+              code: e.value,
+              message: 'server error ${e.value}: x',
+            ),
           );
           await t.pump(const Duration(milliseconds: 300));
+          // The box appears when the attempt after 3 s of silence has failed (spec 4.2); the
+          // retry timer has not fired yet.
+          await t.pump(const Duration(seconds: 3));
           await shot(t, 'display-$p-idle-offline-${e.key}');
+          // A fresh display for the next one (the widget tree is kept otherwise).
+          await t.pumpWidget(const SizedBox());
         }
       });
 
@@ -266,44 +279,33 @@ void main() {
       });
 
       shotTest('display $p: in-house box', (t) async {
-        await t.runAsync(loadAppFonts);
-        t.view.physicalSize = size.value;
-        t.view.devicePixelRatio = 1;
-        addTearDown(t.view.reset);
-        final tokens = DisplayTokens.of(look.value, Brightness.dark);
-        await t.pumpWidget(
-          MaterialApp(
-            debugShowCheckedModeBanner: false,
-            locale: const Locale('en'),
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: DisplayScope(
-              tokens: tokens,
-              ringVisible: ValueNotifier(true),
-              reduceMotion: true,
-              child: Theme(
-                data: displayTheme(tokens),
-                child: Material(
-                  color: tokens.bg,
-                  child: DisplayCanvas(
-                    child: IdleScreen(
-                      room: 'Meeting room Elbe',
-                      mode: DisplayJoinMode.open,
-                      code: 'K7QM2W',
-                      dom: 'cometcast.box',
-                      altAddress: '192.168.1.20',
-                      view: ConnectionView.online,
-                      cause: OfflineCause.network,
-                      dimmed: false,
-                      onSettings: () {},
-                    ),
-                  ),
-                ),
+        // Through the app: the server came from a box announcement (a host name and the IPv4
+        // address of the announcement), spec 4.2, N40.
+        final core = FakeCoreApi()
+          ..discovery = const ServerDiscovery(
+            servers: [
+              ServerCandidate(
+                address: 'wss://cometcast.box:443',
+                source: 'display-announcement',
+                ip: '192.168.1.20',
               ),
-            ),
-          ),
+            ],
+            locked: false,
+            announcementsAllowed: true,
+            notices: [],
+            warnings: [],
+          );
+        final settings = AppSettings.fromDefaults(core.serverDefaults());
+        await settings.discover(core);
+        await pumpDisplay(
+          t,
+          tv: tv,
+          size: size.value,
+          appearance: look.value,
+          core: core,
+          settingsOverride: settings,
+          server: 'wss://cometcast.box:443',
         );
-        await t.pump();
         await shot(t, 'display-$p-idle-box');
       });
 
@@ -428,7 +430,9 @@ void main() {
     }
   }
 
-  // The codec dialog of a desktop display (1920 x 1080) in its four states.
+  // The codec dialog of a desktop display (1920 x 1080) in its four states, the stage hint after
+  // "Not now" and the German missing state. Each state is a fresh display: the widget tree is
+  // not kept from one to the next, or all shots show the first one.
   for (final look in looks.entries) {
     shotTest('display desktop-${look.key}: codec dialog', (t) async {
       final states = {
@@ -437,9 +441,13 @@ void main() {
         'failed': const UiCodecState.failed(reason: 'network error'),
         'unsupported': const UiCodecState.unsupported(reason: 'no library'),
       };
-      for (final e in states.entries) {
+      Future<DisplayHarness> open(
+        UiCodecState state, {
+        Locale locale = const Locale('en'),
+      }) async {
+        await t.pumpWidget(const SizedBox());
         final core = FakeCoreApi()
-          ..codecStateResult = e.value
+          ..codecStateResult = state
           ..codecInfoResult = codecInfo;
         final h = await pumpDisplay(
           t,
@@ -447,6 +455,7 @@ void main() {
           size: _tv,
           appearance: look.value,
           core: core,
+          locale: locale,
         );
         h.core.receiverEvents
           ..add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false))
@@ -455,8 +464,44 @@ void main() {
           );
         await t.pump();
         await t.pump(const Duration(milliseconds: 300));
+        return h;
+      }
+
+      for (final e in states.entries) {
+        await open(e.value);
         await shot(t, 'display-desktop-${look.key}-codec-${e.key}');
       }
+      // "Not now": the line on the black stage.
+      await open(states['missing']!);
+      await t.pump(const Duration(milliseconds: 1100));
+      await t.tap(find.byKey(const Key('codec-later')));
+      await t.pump(const Duration(milliseconds: 300));
+      // The input shows the controls above the line; at rest only the line is left.
+      await shot(t, 'display-desktop-${look.key}-codec-later-controls');
+      await t.pump(const Duration(seconds: 6));
+      await shot(t, 'display-desktop-${look.key}-codec-later');
+      // The dialog's appearance does not reveal the controls: a shot well after the last input
+      // shows no name tag and no End under the scrim.
+      await open(states['missing']!);
+      await t.pump(const Duration(seconds: 6));
+      await shot(t, 'display-desktop-${look.key}-codec-missing-at-rest');
+      if (look.key == 'dark') {
+        await open(states['missing']!, locale: const Locale('de'));
+        await shot(t, 'display-desktop-dark-de-codec-missing');
+        await open(states['failed']!, locale: const Locale('de'));
+        await shot(t, 'display-desktop-dark-de-codec-failed');
+        await open(states['downloading']!, locale: const Locale('de'));
+        await shot(t, 'display-desktop-dark-de-codec-downloading');
+        await open(states['unsupported']!, locale: const Locale('de'));
+        await shot(t, 'display-desktop-dark-de-codec-unsupported');
+        await open(states['missing']!, locale: const Locale('de'));
+        await t.pump(const Duration(milliseconds: 1100));
+        await t.tap(find.byKey(const Key('codec-later')));
+        await t.pump(const Duration(seconds: 6));
+        await shot(t, 'display-desktop-dark-de-codec-later');
+      }
+      // The "connected" toast above the scrim: the dialog is open when the sender joins.
+      await t.pumpWidget(const SizedBox());
     });
   }
 
@@ -488,6 +533,8 @@ void main() {
       await shot(t, 'display-${size.key}-dark-de-setup3-address');
       await k(t, LogicalKeyboardKey.select);
       await shot(t, 'display-${size.key}-dark-de-setup4-done');
+      // The setup is done: a fresh display, not the same widget tree with the wizard still in it.
+      await t.pumpWidget(const SizedBox());
       final h = await pumpDisplay(
         t,
         tv: tv,
@@ -670,7 +717,12 @@ void main() {
         );
         await page(
           'presenting-screen',
-          PresentingPage(kind: PresentingKind.screen, onStop: nop),
+          PresentingPage(
+            kind: PresentingKind.screen,
+            room: 'Meeting room Elbe',
+            sas: '123 456',
+            onStop: nop,
+          ),
         );
         await page(
           'presenting-pdf',
@@ -739,6 +791,17 @@ void main() {
           ErrorPage(
             kind: ErrorKind.displayOff,
             relayWhy: true,
+            onAction: (_) {},
+          ),
+        );
+        // No capture backend: the key text of N33, Back to "What to show".
+        await page(
+          'error-capture-unavailable',
+          ErrorPage(
+            kind: ErrorKind.other,
+            otherWhy: lookupAppLocalizations(const Locale('en'))
+                .errorsCaptureUnavailable,
+            useBack: true,
             onAction: (_) {},
           ),
         );

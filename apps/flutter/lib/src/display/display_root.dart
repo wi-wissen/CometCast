@@ -229,7 +229,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     final setup = await widget.store.loadSetup();
     final look = await widget.store.loadAppearance();
     final id = await widget.store.instanceId();
-    await _codec?.init();
+    // Not awaited: with a consent on file `init` downloads the codec (or follows a running
+    // download), which can take minutes, and the display must not stay blank meanwhile.
+    unawaited(_codec?.init());
     if (!mounted) return;
     _instanceId = id;
     setState(() {
@@ -755,6 +757,18 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       settingsAutofocus:
                           !_settingsOpen && head == null && link == null,
                       onSettings: () => setState(() => _settingsOpen = true),
+                    ),
+                  // After "Not now" (also while the download goes on): the state line on the black
+                  // stage, no box, at rest too (spec 4.7, N31). It goes with the picture, the
+                  // presenter or End; input shows the controls above it.
+                  if (presenting && _codecWaiting && _codecLater)
+                    Center(
+                      child: Text(
+                        t.codecStageHint,
+                        key: const Key('codec-stage-hint'),
+                        textAlign: TextAlign.center,
+                        style: DisplayScope.of(context).type.stageHint,
+                      ),
                     ),
                   if (presenting)
                     PresentingControls(

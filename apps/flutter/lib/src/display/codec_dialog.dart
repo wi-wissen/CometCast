@@ -184,6 +184,7 @@ class CodecDialog extends StatelessWidget {
                 explicitChildNodes: true,
                 label: t.codecTitle,
                 child: DCard(
+                  key: const Key('codec-card'),
                   width: 780,
                   shadow: true,
                   children: [DSectionLabel(t.codecTitle), ...children],
@@ -217,7 +218,9 @@ class _Bar extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: FractionallySizedBox(
           widthFactor: fraction.clamp(0.0, 1.0),
+          heightFactor: 1,
           child: DecoratedBox(
+            key: const Key('codec-fill'),
             decoration: BoxDecoration(
               color: t.acc,
               borderRadius: BorderRadius.circular(3),

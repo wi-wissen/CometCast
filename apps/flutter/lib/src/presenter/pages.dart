@@ -261,7 +261,10 @@ class _LinksBlock extends StatelessWidget {
       heightFactor: 1,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
+        // Left-aligned on the laptop, centred on the phone (N37).
+        crossAxisAlignment: alignment == Alignment.centerLeft
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: children,
       ),
     ),

@@ -714,7 +714,15 @@ void main() {
       );
       await settle(t);
       expect(find.text('Something went wrong'), findsOneWidget);
-      await t.tap(find.text('Try again'));
+      // The key text of N33, and Back (still connected) instead of Try again.
+      expect(
+        find.text(
+          'This device cannot share its screen with Comet Cast yet. Show a file or a link instead.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Try again'), findsNothing);
+      await t.tap(find.text('Back'));
       await settle(t);
       expect(find.text('What would you like to show?'), findsOneWidget);
       expect(h.core.startPresenterCalls, 1);
