@@ -3,16 +3,9 @@
 # One-time owner setup: docs/website.md (including "before enabling Pages: fill the imprint").
 name: Pages
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'site/**'
-      - 'apps/web/**'
-      - 'crates/cc-docs-wasm/**'
-      - 'crates/cc-docs/**'
-      - 'Cargo.lock'
-      - 'tools/check-site-links.mjs'
-      - '.github/workflows/pages.yml'
+  # Switched off while the project is under heavy development, to save Actions minutes:
+  # started by hand (Actions tab, Run workflow). Re-enable the push/pull_request triggers
+  # (see git history of this file) before a release.
   workflow_dispatch:
 
 permissions:

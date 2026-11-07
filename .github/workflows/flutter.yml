@@ -1,35 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Flutter
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/flutter/**'
-      - 'crates/cc-ffi/**'
-      - 'crates/cc-receiver/**'
-      - 'crates/cc-sender/**'
-      - 'crates/cc-transport/**'
-      - 'crates/cc-proto/**'
-      - 'crates/cc-files/**'
-      - 'crates/cc-docs/**'
-      - 'crates/cc-capture/**'
-      - 'crates/cc-media/**'
-      - 'crates/cc-discovery/**'
-      - '.github/workflows/flutter.yml'
-  pull_request:
-    paths:
-      - 'apps/flutter/**'
-      - 'crates/cc-ffi/**'
-      - 'crates/cc-receiver/**'
-      - 'crates/cc-sender/**'
-      - 'crates/cc-transport/**'
-      - 'crates/cc-proto/**'
-      - 'crates/cc-files/**'
-      - 'crates/cc-docs/**'
-      - 'crates/cc-capture/**'
-      - 'crates/cc-media/**'
-      - 'crates/cc-discovery/**'
-      - '.github/workflows/flutter.yml'
+  # Switched off while the project is under heavy development, to save Actions minutes:
+  # started by hand (Actions tab, Run workflow). Re-enable the push/pull_request triggers
+  # (see git history of this file) before a release.
+  workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:

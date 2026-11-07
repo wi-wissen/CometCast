@@ -7,18 +7,10 @@
 name: appletv-core
 
 on:
-  push:
-    paths:
-      - 'apps/apple-tv/CometCastCore/**'
-      - 'apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings'
-      - 'tests/fixtures/**'
-      - '.github/workflows/appletv-core.yml'
-  pull_request:
-    paths:
-      - 'apps/apple-tv/CometCastCore/**'
-      - 'apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings'
-      - 'tests/fixtures/**'
-      - '.github/workflows/appletv-core.yml'
+  # Switched off while the project is under heavy development, to save Actions minutes:
+  # started by hand (Actions tab, Run workflow). Re-enable the push/pull_request triggers
+  # (see git history of this file) before a release.
+  workflow_dispatch:
 
 permissions:
   contents: read
