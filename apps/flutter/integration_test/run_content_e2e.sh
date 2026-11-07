@@ -25,7 +25,24 @@ unset COMETCAST_DOCS_WORKER
 
 "$target/debug/cometcast-server" --listen "127.0.0.1:$port" >/dev/null 2>&1 &
 server_pid=$!
-sleep 2
+
+# Wait until the server's port answers (at most 20 s); stop at once if the server died.
+ready=0
+for _ in $(seq 1 100); do
+  if ! kill -0 "$server_pid" 2>/dev/null; then
+    echo "cometcast-server exited before it listened on port $port" >&2
+    exit 1
+  fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    ready=1
+    break
+  fi
+  sleep 0.2
+done
+if [[ "$ready" != 1 ]]; then
+  echo "cometcast-server did not answer on port $port within 20 s" >&2
+  exit 1
+fi
 
 cd "$app"
 export COMETCAST_CARGO_TARGET_DIR="$target"

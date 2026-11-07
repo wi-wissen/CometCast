@@ -518,11 +518,14 @@ class ReceiverController extends ChangeNotifier {
     try {
       do {
         _contentRefetch = false;
-        final epoch = _contentEpoch;
         final frame = await core.takeContentFrame().timeout(fetchTimeout);
         if (_disposed || session != _session) return;
-        // The content it belonged to was replaced meanwhile.
-        if (frame == null || epoch != _contentEpoch) continue;
+        // Read after the take: the core clears its mailbox when content is replaced, so a
+        // frame taken now belongs to the content shown now (the first page of a new
+        // document must not be dropped because the epoch moved while the take ran).
+        // `_showPage` still ignores a page when no document is shown.
+        final epoch = _contentEpoch;
+        if (frame == null) continue;
         switch (frame) {
           case ContentFrame_Image(:final name, :final bytes):
             await _showImage(session, epoch, name, bytes);

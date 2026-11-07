@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
+import 'package:cometcast/content_sender_controller.dart';
 import 'package:cometcast/main.dart';
 
 import 'fake_core.dart';
@@ -469,5 +470,13 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(h.core.stopSenderCalls, greaterThan(before));
+  });
+
+  test('displayName drops control and bidi characters and truncates', () {
+    expect(displayName('a\u202Eb\nc\u0000.pdf'), 'abc.pdf');
+    final long = '${'x' * 200}.pdf';
+    final shown = displayName(long);
+    expect(shown.length, 80);
+    expect(shown.endsWith('...'), isTrue);
   });
 }

@@ -320,16 +320,11 @@ pub(crate) fn set_worker_override(path: Option<PathBuf>) {
 /// 4. `cc-docs`' own discovery (also finds the Cargo test layout).
 pub(crate) fn worker() -> Worker {
     if let Some(p) = lock(&WORKER_OVERRIDE).clone() {
-        return Worker {
-            found: p.is_file(),
-            isolation: Isolation::Process(WorkerSpec::new(p)),
-        };
+        let found = p.is_file();
+        return with_found(Isolation::Process(WorkerSpec::new(p)), found);
     }
     if std::env::var_os(WORKER_ENV).is_some_and(|v| !v.is_empty()) {
-        return Worker {
-            isolation: Isolation::Auto,
-            found: WorkerSpec::discover().is_some(),
-        };
+        return auto_worker();
     }
     if let Some(p) = std::env::current_exe()
         .ok()
@@ -341,9 +336,28 @@ pub(crate) fn worker() -> Worker {
             found: true,
         };
     }
+    auto_worker()
+}
+
+/// `cc-docs`' own discovery, checked (an untrusted `COMETCAST_DOCS_WORKER` counts as not found).
+fn auto_worker() -> Worker {
+    with_found(Isolation::Auto, WorkerSpec::discover_checked().is_ok())
+}
+
+/// A program that does not exist: with no worker, a PDF must fail, never reach the in-process
+/// engine (`cc-docs` maps `Auto` and `InProcess` to in-process on iOS, tvOS and wasm).
+const NO_WORKER_PROGRAM: &str = "/nonexistent/cc-docs-worker-not-found";
+
+/// Build a [`Worker`]; without a worker the isolation is replaced by one that cannot start, so
+/// no caller can render a PDF unsandboxed by accident.
+fn with_found(isolation: Isolation, found: bool) -> Worker {
     Worker {
-        isolation: Isolation::Auto,
-        found: WorkerSpec::discover().is_some(),
+        isolation: if found {
+            isolation
+        } else {
+            Isolation::Process(WorkerSpec::new(PathBuf::from(NO_WORKER_PROGRAM)))
+        },
+        found,
     }
 }
 
@@ -452,6 +466,19 @@ mod tests {
         ] {
             assert!(matches!(check_link(bad), LinkCheck::Invalid), "{bad}");
         }
+    }
+
+    #[test]
+    fn no_worker_never_means_in_process() {
+        for iso in [Isolation::Auto, Isolation::InProcess] {
+            let w = with_found(iso, false);
+            assert!(!w.found);
+            assert!(matches!(w.isolation, Isolation::Process(_)));
+        }
+        assert!(matches!(
+            with_found(Isolation::Auto, true).isolation,
+            Isolation::Auto
+        ));
     }
 
     #[test]

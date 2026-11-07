@@ -137,7 +137,7 @@ class ContentSenderController extends ChangeNotifier {
         :final pages,
         :final host,
       ):
-        this.name = name;
+        this.name = displayName(name);
         this.kind = kind;
         this.size = size.toInt();
         this.pages = pages;
@@ -249,4 +249,22 @@ class ContentSenderController extends ChangeNotifier {
     if (_disposed) return;
     super.notifyListeners();
   }
+}
+
+/// A file name made safe to show in the status line: control and bidirectional-override
+/// characters removed, at most [maxLength] characters (then "..."). Applies to the name in
+/// `Prepared`, which comes from the file system, not from the receiver.
+String displayName(String name, {int maxLength = 80}) {
+  final kept = name.runes.where(
+    (r) =>
+        r >= 0x20 &&
+        !(r >= 0x7f && r <= 0x9f) &&
+        r != 0x200e &&
+        r != 0x200f &&
+        !(r >= 0x202a && r <= 0x202e) &&
+        !(r >= 0x2066 && r <= 0x2069),
+  );
+  final list = kept.toList();
+  if (list.length <= maxLength) return String.fromCharCodes(list);
+  return '${String.fromCharCodes(list.take(maxLength - 3))}...';
 }

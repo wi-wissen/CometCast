@@ -527,33 +527,42 @@ pub async fn start_receiver(
                         }
                         let is_stats = matches!(ev, ReceiverEvent::Stats(_));
                         let left = matches!(ev, ReceiverEvent::PeerLeft);
-                        if left
-                            && let Some(c) = content_events.as_mut()
-                        {
-                            // Content that arrived just before the sender left is still
-                            // queued: hand it to the UI first, then say that the sender left.
-                            let mut alive = true;
-                            while let Ok(Some(cev)) =
-                                tokio::time::timeout(CONTENT_DRAIN, c.next()).await
-                            {
-                                if let Some(ui) = content::map_content_event(content_generation, worker.found, cev)
-                                    && events.add(ui).is_err()
-                                {
-                                    alive = false;
-                                    break;
-                                }
-                            }
-                            if !alive {
-                                core.stop().await;
-                                break;
-                            }
-                        }
                         // If Dart stopped listening, `add` fails: shut down.
                         if events.add(map_receiver_event(ev)).is_err()
                             || (is_stats && events.add(video_stats_event()).is_err())
                         {
                             core.stop().await;
                             break;
+                        }
+                        if left
+                            && let Some(c) = content_events.as_mut()
+                        {
+                            // The UI knows that the sender left. Content that arrived just
+                            // before is still queued: hand it over, but stay stoppable.
+                            let mut alive = true;
+                            let mut stopped = false;
+                            loop {
+                                tokio::select! {
+                                    biased;
+                                    _ = &mut stop_rx => {
+                                        stopped = true;
+                                        break;
+                                    }
+                                    r = tokio::time::timeout(CONTENT_DRAIN, c.next()) => {
+                                        let Ok(Some(cev)) = r else { break };
+                                        if let Some(ui) = content::map_content_event(content_generation, worker.found, cev)
+                                            && events.add(ui).is_err()
+                                        {
+                                            alive = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if stopped || !alive {
+                                core.stop().await;
+                                break;
+                            }
                         }
                     }
                 }

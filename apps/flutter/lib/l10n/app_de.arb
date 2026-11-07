@@ -154,7 +154,7 @@
   "sendPresenterPrev": "Vorherige Seite",
   "sendPresenterNext": "Nächste Seite",
   "sendPresenterPageUnknown": "Seite {page}",
-  "sendPresenterGoto": "Gehe zu Seite",
+  "sendPresenterGoto": "Zu Seite gehen",
   "sendPresenterGo": "Los",
   "sendPresenterGotoInvalid": "Geben Sie eine Seitennummer ab 1 ein.",
   "sendPresenterKeys": "Tasten: Pfeiltasten, Bild auf und Bild ab blättern.",

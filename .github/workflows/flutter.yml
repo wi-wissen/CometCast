@@ -105,6 +105,8 @@ jobs:
         run: |
           cargo build -p cometcast-server -p cometcast-cli
           target/debug/cometcast-server --listen 127.0.0.1:18443 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           sleep 2
           cd apps/flutter
           xvfb-run -a flutter test integration_test/receiver_smoke_test.dart -d linux \
@@ -116,7 +118,6 @@ jobs:
       - name: Screen end-to-end test (app + server + CLI + X11 screen)
         working-directory: .
         run: |
-          pkill cometcast-server || true
           cargo build -p cc-ffi -p cometcast-server -p cometcast-cli
           cd apps/flutter
           integration_test/run_screen_e2e.sh
@@ -126,7 +127,6 @@ jobs:
       - name: Content end-to-end test (app + server + CLI + PDF worker)
         working-directory: .
         run: |
-          pkill cometcast-server || true
           cargo build --workspace --bins
           cd apps/flutter
           integration_test/run_content_e2e.sh

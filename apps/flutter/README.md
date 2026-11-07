@@ -118,6 +118,8 @@ The app reads `COMETCAST_UDP_BIND` for the same purpose; normally leave it unset
 
 ### Content end-to-end test (real server, real CLI, bundled PDF worker, headless)
 
+Results of this test were obtained locally, not on GitHub CI (UNCERTAIN there). The script waits until the server port answers (at most 20 s) before it starts the app, and stops only the server it started.
+
 ```sh
 # from the repository root: the CLI, the server and the PDF worker (cc-docs-worker)
 cargo build --workspace --bins
@@ -237,7 +239,7 @@ Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
   Windows, macOS and iOS need their own packaging (cargokit is the likely route); not tried.
 - Android: no device or emulator was available; see docs/android.md for everything that is untested.
 - Whether the default WebRTC bind address (`0.0.0.0:0`) connects two peers on one machine was not tested.
-- The CI workflow (`.github/workflows/flutter.yml`) has not run on GitHub.
+- The CI workflow (`.github/workflows/flutter.yml`) has not run on GitHub. UNCERTAIN: the xvfb end-to-end tests (smoke, screen, content) were run locally on one machine only, not on GitHub CI.
 - German texts are written by the AI agent in formal "Sie"; a German speaker should review them.
 - `l10n.yaml` writes generated code to `lib/l10n` (`synthetic-package: false`); the code imports
   `package:cometcast/l10n/app_localizations.dart`.
