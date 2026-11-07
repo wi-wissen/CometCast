@@ -228,8 +228,9 @@ class PresenterRootState extends State<PresenterRoot> {
     _session.dispose();
     _releaseCapture();
     _ios?.dispose();
-    if (widget.codec == null)
+    if (widget.codec == null) {
       _codecCtl?.dispose(); // an injected one is not ours
+    }
     widget.settings.cancelDiscovery();
     _code.dispose();
     _name.dispose();

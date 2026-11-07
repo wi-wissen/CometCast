@@ -326,7 +326,7 @@ void main() {
     testWidgets('a tablet in the wide layout still says tablet', (t) async {
       await pumpPage(
         t,
-        WhatPage(
+        const WhatPage(
           device: PresenterDevice.tablet,
           onScreen: nop,
           onFile: nop,
@@ -343,7 +343,7 @@ void main() {
     ) async {
       await pumpPage(
         t,
-        WhatPage(
+        const WhatPage(
           device: PresenterDevice.phone,
           room: 'Meeting room Elbe',
           onScreen: nop,
@@ -369,12 +369,12 @@ void main() {
 
   group('A14 the file page', () {
     testWidgets('desktops name Office files', (t) async {
-      await pumpPage(t, FilePage(onPick: nop, onBack: nop, office: true));
+      await pumpPage(t, const FilePage(onPick: nop, onBack: nop, office: true));
       expect(find.textContaining('Office file'), findsOneWidget);
     });
 
     testWidgets('without conversion the browser text stays', (t) async {
-      await pumpPage(t, FilePage(onPick: nop, onBack: nop));
+      await pumpPage(t, const FilePage(onPick: nop, onBack: nop));
       expect(find.textContaining('Office file'), findsNothing);
     });
 
@@ -383,7 +383,7 @@ void main() {
     ) async {
       await pumpPage(
         t,
-        FilePage(
+        const FilePage(
           onPick: nop,
           onBack: nop,
           office: true,
@@ -397,7 +397,7 @@ void main() {
     testWidgets('sending: name, percent and a bar', (t) async {
       await pumpPage(
         t,
-        FilePage(
+        const FilePage(
           onPick: nop,
           onBack: nop,
           progressName: 'a.pdf',
@@ -442,7 +442,7 @@ void main() {
     ) async {
       await pumpPage(
         t,
-        RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
+        const RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
       );
       expect(
         find.textContaining('A link asks this app to use the relay'),
@@ -464,7 +464,7 @@ void main() {
     testWidgets('the relay page in German is du', (t) async {
       await pumpPage(
         t,
-        RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
+        const RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
         locale: const Locale('de'),
       );
       expect(find.textContaining('Mach nur weiter'), findsOneWidget);

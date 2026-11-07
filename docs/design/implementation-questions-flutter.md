@@ -92,3 +92,40 @@ Questions found while implementing part B of `fix-list-flutter.md` (core, protoc
 - **E7 B9: the iOS deployment target is 15.0, `DataScannerViewController` needs 16.** Below 16 there is no scan button. Raising the target is a product decision (`ios/Config/CometCast.xcconfig`).
 - **E8 B8: links are read by the app, not by Flutter's router.** The app has no routes, and with Flutter's own deep link handling a link would be pushed as a route name. `flutter_deeplinking_enabled` (Android) and `FlutterDeepLinkingEnabled` (iOS) are off; `LinkBridge` (Kotlin, Swift) hands the https link to Dart. The Android path filter is `/......` (six characters), the iOS component `/??????`; a room code with a different length is a browser link.
 - **E9 B2: `keepRoomOnPeerLeft`.** The controller flag `restartOnPeerLeft` of the display is renamed `keepRoomOnPeerLeft` because it no longer restarts anything: the room (code, mode, queue, blocks) stays and the presenter's state is reset. The old receive page (flag off) stops the core on `PeerLeft`, as the core no longer ends by itself.
+
+## F. Questions from the UI round
+
+Questions found while implementing part A of `fix-list-flutter.md` and the wiring of part B. Each has what was found, the options, and what was done meanwhile (the minimal neutral behaviour). None blocks the code that is in.
+
+- **F1 A1: the offline box centre and the QR box centre differ by about 14 ref.**
+  - **Found:** the acceptance line asks for two things that cannot both hold: the box is "vertically centred in the main row like the steps it replaces" and "its vertical centre within 10 ref of the QR box centre". The QR column holds the QR box (212) and, below it, the caption line (kept in the layout so that nothing jumps), so the QR box sits about 14 ref above the row centre. The web has the same geometry.
+  - **Options:** (a) centre the box in the main row (as built), 14 ref from the QR box centre; (b) align the box with the QR box (it then sits 14 ref above the centre of the row); (c) drop the invisible caption while offline (the QR box then moves down 14 ref and the code and QR jump when the connection returns).
+  - **Done meanwhile:** (a). The test allows 16 ref.
+- **F2 B6 and iOS: the broadcast extension joins on its own connection.**
+  - **Found:** the iOS extension (ReplayKit) makes its own signalling connection with the code and the relay that the app hands over. With a presenter session that joined once, a second sender in the same room would be refused (`room_full`) or asked of the host again.
+  - **Options:** (a) the app leaves its session before the extension starts, the extension asks the host again (as built); after the broadcast the person is back at the first page with the same code; (b) the extension joins through the app's session (needs a shared connection or a hand-over of the session, core work); (c) the extension reports into the app, which presents the encoded frames inside the session (a new transport between the two processes).
+  - **Done meanwhile:** (a). The "approve once" promise of N5 does not hold for iOS screen sharing; files and links on iOS use the session as everywhere else.
+- **F3 A8 and B7: the Screen row on desktops still uses the X11 capture.**
+  - **Found:** the system picker (E1 of the core round) is not built, `present_screen(None)` answers `capture_unavailable`.
+  - **Done meanwhile:** the Screen row calls `present_screen` with the existing `ScreenRequest` (X11, whole desktop); on a system without X11 the person gets `error.other`. The codec page of 5.8 comes first when the encoder is missing, then the same call.
+- **F4 4.7: what the display shows while an H.264 presentation waits for the decoder.**
+  - **Found:** the spec places the codec dialog "over Presenting", but without a decoder no picture exists, so nothing makes the display Presenting.
+  - **Done meanwhile:** the display counts as Presenting from the moment a presenter is in the room and its track is H.264 and no decoder is ready: black stage, the controls under the scrim (visible, inert), the wake lock held. After "Not now" it stays in that state (the person can still use the controls and End) until the presenter leaves or the decoder is ready.
+- **F5 4.5: the single-page error box has one trigger only.**
+  - **Found:** `receive.document.pageError.*` has five texts (bad size, failed, memory, page out of range, timeout) but the core reports no per-page error: a page that cannot be taken is `ContentNote.renderFailed` in the controller. The other four have no trigger.
+  - **Done meanwhile:** `receive.document.pageError.failed` is shown in the box when a page of the open document cannot be taken. The other four keys stay in the three files for when the core reports reasons.
+- **F6 5.3: "first launch without a code" for `app.scanAgainBody`.**
+  - **Found:** the spec says "only on the first launch after an install that brought no code". The only durable signal is the install-referrer flag (`referrerRead`), which is written on the first launch on both platforms.
+  - **Done meanwhile:** the line is shown on the first launch (the referrer was not read before) when no link or referrer gave a code, and only where a scanner exists. It does not come back on later launches.
+- **F7 B8: links while the app runs.**
+  - **Found:** `AppLinks.links` (links that arrive while the app is open) had no consumer.
+  - **Done meanwhile:** on the first-run, error and disconnected pages such a link is handled like the one that started the app (chip, or the relay page for an unknown server); while somebody is connected it is ignored.
+- **F8 12 / A8: the in-house box line `idle.altAddress` is not wired.**
+  - **Found:** the idle screen can show the IP address of an in-house box, but nothing tells `DisplayRoot` that the server in use is a box or what its IP address is (the announcement only gives a name and a server).
+  - **Done meanwhile:** the widget takes `altAddress`; the screenshot sets it by hand; the app passes none.
+- **F9 A14: Office conversion is "available" when the worker is found.**
+  - **Done meanwhile:** `file.bodyApp` is used when `officeWorkerPath()` is not null, on every platform that has one; otherwise `file.bodyWeb`.
+- **F10 A9: Windows Miracast page was rebuilt; the pairing choice is three option rows.**
+  - **Found:** the old page used a Material dropdown for the pairing method; the presenter kit has no dropdown.
+  - **Done meanwhile:** three selectable option rows (selected: 2 px `p-primary` border and a tick). The text and the flow are unchanged. A screenshot of both states is in the set.
+- **F11 Strings deleted as unused.** Twenty-six keys that no screen uses any more were deleted from all three files: the web-only texts `bye.body`, `error.outdated.title` and `.now` (the page variants), `error.action.reload`, `error.action.getApp`, `error.action.openDom`, `error.noScreen.nowNoApp`, `file.title`, `file.body`, `receive.link.hint`, `receive.link.address`, `relay.confirm.body`, `relay.errors.mixed`, `setup.address.sourcePage`, `what.screenPhoneBrowser` and `.screenPhoneBrowserNoApp`, `common.or`, `common.cancel`, `idle.offline.bodyOutdated`, and the six `receive.transferError.document*` texts the display never uses (it maps the content errors to the shorter ones). The five `receive.document.pageError.*` texts of the spec were kept (F5). If any other should stay for a later round, restore it from git history.

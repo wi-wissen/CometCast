@@ -13,7 +13,7 @@ Status: milestone M1 on Android and milestone M6 on Android are **complete in co
 | TV receiver-only mode, big room code, auto start, keep-screen-on | `lib/core/android_platform.dart`, `lib/home_page.dart`, `lib/receive_page.dart`, `platform/PlatformBridge.kt` | Widget tests with fakes; never on a TV (next sections) |
 | Receiver video: software and MediaCodec hardware path | `crates/cc-ffi/src/video.rs`, `lib/receiver_controller.dart`, `lib/core/android_video.dart`, `video/*.kt` | Rust unit tests, Dart tests with fakes, Kotlin JVM tests of the parsing helpers; MediaCodec never run |
 | PDF / Office workers as native libraries | `app/build.gradle.kts` (`registerWorkers`), `lib/core/android_platform.dart` (`configureAndroidWorkers`) | Built into the APK (see the commands); never started on a device |
-| D-pad focus in the Flutter screens | `lib/widgets.dart`, `lib/home_page.dart`, `lib/main.dart`, `lib/send_page.dart` | Widget tests with simulated key events; no real remote tried |
+| D-pad focus in the Flutter screens | `lib/src/display/kit.dart` (`RowsPolicy`), `lib/src/presenter/kit.dart`, `lib/main.dart` | Widget tests with simulated key events; no real remote tried |
 | Screen capture (Kotlin) | `android/app/src/main/kotlin/de/cometcast/cometcast/capture/` | **Compiles, never run.** Wired in code to the Rust sender through Dart (next sections) |
 | Dart capture wrapper and feeder | `lib/core/android_capture.dart`, `lib/capture_feeder.dart`, `lib/sender_controller.dart`, `lib/send_page.dart` | Widget and unit tests with fakes; never run on a device |
 | Rust `ExternalH264` input | `crates/cc-sender/src/external.rs`, API in `crates/cc-ffi/src/api.rs` | Tested on Linux with real H.264 end to end; the Android build of the library compiles |
@@ -135,7 +135,7 @@ Banner and icons: `python3 apps/flutter/android/tools/make_android_icons.py` (Pi
 
 D-pad focus: **Flutter's built-in focus system, not the `dpad` package** (named in A2). Reason: the built-in system already binds the arrow keys to directional focus and select / Enter to activate, and the three screens are simple lists and forms; the `dpad` package was not tried, and its resolvability was not checked. What was added:
 
-- one `FocusTraversalGroup` (reading order) per screen (`EscapeToGoBack` in `lib/widgets.dart`, and the home screen);
+- one `FocusTraversalGroup` (reading order) per screen (`RowsPolicy` in `lib/src/display/kit.dart` for the display, the presenter pages by reading order);
 - `FocusRing`: a 3 px frame around the focused home row, and a thick focus border for filled, outlined and icon buttons (theme in `lib/main.dart`; Material's own overlay is faint);
 - the first home row has autofocus;
 - `textFieldFocusNode()`: **a finding from the test**: with the default setup the up and down arrow keys stay inside a single-line text field, so a D-pad user could not leave it. The helper maps up / down to focus movement; left / right still move the caret.

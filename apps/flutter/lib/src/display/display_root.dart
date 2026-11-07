@@ -311,8 +311,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _hadCode = false;
       _lostAt = _t;
     }
-    if (!c.senderJoined)
+    if (!c.senderJoined) {
       _codecLater = false; // the next presentation asks again
+    }
     // Activity: a request, a joiner or a mode change counts as activity (spec 8.6).
     _dim.activity();
     // A join request closes Settings: one dialog at a time (spec 4.3).

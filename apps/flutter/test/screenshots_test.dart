@@ -166,7 +166,7 @@ void main() {
         await k(t, LogicalKeyboardKey.select);
         await shot(t, 'display-$p-settings');
         await k(t, LogicalKeyboardKey.escape);
-        h.core.receiverEvents..add(
+        h.core.receiverEvents.add(
           ReceiverUiEvent.joinRequest(
             id: BigInt.one,
             name: 'Lena Müller',

@@ -132,7 +132,7 @@ iOS: there is no edge-swipe back (pages are not pushed with a back stack the use
 | Menu | MENU (where present) | Play/Pause (`onPlayPauseCommand`) |
 
   Do not bind the remote's Settings, Home, voice or app keys.
-- Flutter: one `FocusTraversalGroup` per row with `OrderedTraversalPolicy`; up/down move between rows to the same column or the last item (custom `DirectionalFocusAction`, see `lib/widgets.dart`, which already maps up/down out of text fields). Initial focus per spec (Yes, Open, Cancel, Settings button, the selected tile …) with `autofocus` on that control only.
+- Flutter: one `FocusTraversalGroup` per row with `OrderedTraversalPolicy`; up/down move between rows to the same column or the last item (custom `DirectionalFocusAction`, see `RowsPolicy` in `lib/src/display/kit.dart` and `DField` in `lib/src/display/fields.dart`, which map up/down out of text fields). Initial focus per spec (Yes, Open, Cancel, Settings button, the selected tile …) with `autofocus` on that control only.
 - SwiftUI (tvOS 17): rows are `HStack`s with `.focusSection()`; initial focus with `.defaultFocus($focus, …)` and `@FocusState`; buttons use a custom `ButtonStyle` that draws the spec ring from `@Environment(\.isFocused)` and `.focusEffectDisabled()` to remove the system effect. The 1 s guard ignores Select in `Button` actions (keep the button focusable, ignore the action).
 - First input only reveals (spec 8.2): while controls are hidden, the key that shows them is consumed (Flutter: return `KeyEventResult.handled`; SwiftUI: handle in `onMoveCommand` / a hidden focusable catcher view and do not forward).
 
