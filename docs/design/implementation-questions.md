@@ -354,3 +354,28 @@ The engineer's list of visible differences, and the review of `/tmp/shots3`, als
 - **Link address colour:** it was correctly `--mut`; it becomes **`--fg`** (18 mono), like the relay host in 7.2: the address is what the host has to judge.
 - **Wizard step 1 card 12 px above the edge when chips wrap:** the card top for steps 1–4 moves from 64 to **40 ref**; every step keeps ≥ 24 ref below the card in EN and DE.
 - **Frozen badge under the toolbar:** while the toolbar is visible the frozen badge is hidden; the Freeze button's selected border shows the state.
+
+## H. Questions from round 5 (web)
+
+### H1. Licence list of the web footer does not exist yet
+- **Found:** the footer link `about.licences` opens `{base}third-party-licenses.txt` (spec 15.9), a file that item C8 (`tools/gen-third-party.mjs`) is to write into `apps/web/public/`. C8 is not part of the web scope, so the file is not in the build yet and the link would 404 until C8 is done.
+- **Options:** (a) wait for C8; (b) generate the file in the web build.
+- **Meanwhile:** (a). The link is built and tested; the file comes with C8.
+
+### H2. `{dom}` when the relay comes from `config.json` (or the build) and is another server than the page
+- **Found:** N85 gives two cases (self-hosted: its host; public relay: `cometcast.de/app`). A static page whose `config.json` names a relay on another host is neither.
+- **Options:** (a) the relay's host; (b) the page's host plus the base path (where the browser finds the web app).
+- **Meanwhile:** (b), by the definition of `{dom}` as the join address. A `?server=` or UI-chosen relay shows that relay's host. The setup wizard's address card (`wz-domain`) shows the same `{dom}`; its "Other address" field still takes a relay address.
+
+### H3. `config.json` with only `privacy_url` / `imprint_url`
+- **Found:** a file without a usable relay counted as "unusable" (hint on the start page).
+- **Options:** (a) keep that; (b) a file that names a valid privacy or imprint page is usable.
+- **Meanwhile:** (b). Only `https:` URLs without credentials are accepted.
+
+### H4. Footer details not in 15.9
+- **Found:** the spec does not say where the footer sits on a tall page, whether it wraps on phones, or whether the source link opens a new tab on the web.
+- **Meanwhile:** directly under the form (no pinning to the bottom), wraps like text, all footer links open in a new tab (`rel="noopener noreferrer"`).
+
+### H5. App-link files: path
+- **Found:** `deploy/well-known/apple-app-site-association` still matches `/??????` (relay host form). The website now stages the files under `https://cometcast.de/.well-known/`, but the paths must become `/app/??????` (item C2, core/platform scope).
+- **Meanwhile:** staged unchanged; C2 edits the files, the workflow already watches `deploy/well-known/**`.

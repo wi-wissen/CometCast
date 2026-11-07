@@ -67,6 +67,18 @@ for (const file of htmls) {
 for (const need of ['404.html', 'CNAME', '.nojekyll', 'sitemap.xml', 'robots.txt']) {
   if (!existsSync(join(root, need))) errors.push(`missing ${need}`);
 }
+// Join links of the web app (/app/{CODE}, /app/display) reach the app through the 404 page of GitHub Pages (docs/website.md),
+// and the app links of the apps are verified by files under /.well-known/ (native-apps.md 21.6).
+if (existsSync(join(root, '404.html')) && !/fetch\('\/app\/index\.html'/.test(readFileSync(join(root, '404.html'), 'utf8'))) {
+  errors.push('404.html does not hand paths under /app/ to the web app');
+}
+if (!withoutApp) {
+  for (const f of ['.well-known/assetlinks.json', '.well-known/apple-app-site-association']) {
+    const p = join(root, f);
+    if (!existsSync(p)) { errors.push(`missing ${f}`); continue; }
+    try { JSON.parse(readFileSync(p, 'utf8')); } catch { errors.push(`${f} is not JSON`); }
+  }
+}
 if (existsSync(join(root, 'sitemap.xml'))) {
   for (const m of readFileSync(join(root, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
     if (!m[1].startsWith(ORIGIN + '/')) errors.push(`sitemap: foreign URL ${m[1]}`);

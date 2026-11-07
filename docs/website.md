@@ -74,9 +74,11 @@ from [architecture.md](architecture.md); update both together.
   [first-run-and-display.md](design/first-run-and-display.md), 7.2). `cometcast-server` does this itself. A static host has to
   be told: on GitHub Pages put a copy of `index.html` named `404.html` next to it (Pages serves `404.html` for every unknown
   path, and the app then picks the page from the address). Under a base path such as `/app/` the same three paths are
-  `/app/display`, `/app/{CODE}` and `/app`. **UNCERTAIN: `pages.yml` does not create such a `404.html` copy yet (the site has
-  its own `site/404.html`), so a QR code of a display opened from `https://cometcast.de/app/display` is not covered by the
-  current workflow.**
+  `/app/display`, `/app/{CODE}` and `/app`. **cometcast.de does this with its own `site/404.html`:** a small script there fetches
+  `/app/index.html` and shows it in place when the path starts with `/app/` (the address stays, the app picks the page from it); every other path
+  keeps the website's 404. `tools/check-site-links.mjs` checks that the script is there. **UNCERTAIN: not tried on the real Pages host.**
+  The join address of the public relay is `cometcast.de/app` (decision N85), so the QR code leads to `https://cometcast.de/app/{CODE}`.
+  `pages.yml` also stages `deploy/well-known/` as `/.well-known/` (app links of the apps).
 - The **Docker image still bundles the web app**, so a self-hoster can run one container (same origin, no internet needed) and does not use Pages.
 
 Relay host operations: [deploy/README.md](../deploy/README.md) and the separate repository

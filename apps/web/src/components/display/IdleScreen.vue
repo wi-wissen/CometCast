@@ -44,6 +44,8 @@ const qrDim = computed(() => locked.value && !qrEmpty.value)
 const bodyKey = computed(() => (props.cause === 'busy' ? 'idle.offline.bodyBusy' : props.cause === 'outdated' ? 'idle.offline.bodyOutdated' : 'idle.offline.body'))
 // The footer names the stores only when at least one link exists (src/config/stores.ts).
 const footKey = anyAppLink() ? 'idle.appLine' : 'idle.appLineWeb'
+// idle.appLine writes `{dom}/app`; where the join address already ends in /app it is shown once (decision N85).
+const footDom = computed(() => props.dom.replace(/\/app$/, ''))
 const settingsBtn = ref<HTMLButtonElement | null>(null)
 defineExpose({ focusSettings: () => settingsBtn.value?.focus() })
 </script>
@@ -93,7 +95,7 @@ defineExpose({ focusSettings: () => settingsBtn.value?.focus() })
     </div>
 
     <div class="cd-ifoot">
-      <span data-testid="idle-foot">{{ t(footKey, { dom }) }}</span>
+      <span data-testid="idle-foot">{{ t(footKey, { dom: footDom }) }}</span>
       <button ref="settingsBtn" type="button" class="cd-menubtn" data-row="0" data-testid="settings-open" @click="emit('settings')">
         <Icon name="gear" />{{ t('settings.open') }}
       </button>

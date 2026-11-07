@@ -17,6 +17,9 @@
 //      Both ends show the same connection check code. A config.json that cannot be used shows a hint.
 //   4) Origin X is rejected: WebSocket refused (translated error) and fetch() is blocked by CORS; a raw WebSocket
 //      with a foreign Origin header and one without Origin behave as documented.
+//   6) GitHub Pages hand-over (round 5, W2): a server like Pages (the website's own 404.html for unknown paths) in front
+//      of the app under /app/: /app/{CODE} and /app/display open the app, other paths keep the 404; the start page footer
+//      has no privacy/imprint links on this host and takes them from config.json.
 //
 // Run: npm run e2e:static  (needs a Rust toolchain; E2E_CHROME=/path/to/chrome selects the browser)
 import { createRequire } from 'node:module'
@@ -151,7 +154,8 @@ try {
   }
 
   /** Display + presenter from the same static origin; both must end up connected through `relay`. */
-  async function connectPair(query, relayHost, { expectConfirm = false }) {
+  // `joinDom`: the address the display shows (decision N85): the relay's host for a ?server= relay, the page's host + base otherwise.
+  async function connectPair(query, relayHost, { expectConfirm = false, joinDom = relayHost }) {
     // The dialog of a relay that came from ?server= (UI only, no URL parameter can skip it).
     const confirmRelay = async (p) => {
       const dlg = p.getByTestId('relay-confirm')
@@ -175,14 +179,16 @@ try {
     await receiver.getByTestId('wz-start').click()
     await receiver.getByTestId('wz-next').click()
     await receiver.getByTestId('wz-next').click()
-    assert.equal((await receiver.getByTestId('wz-domain').innerText()).trim(), relayHost)
+    assert.equal((await receiver.getByTestId('wz-domain').innerText()).trim(), joinDom)
     await receiver.getByTestId('wz-ok').click()
     await receiver.getByTestId('wz-finish').click()
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     const code = (await receiver.getByTestId('room-code').innerText()).replace(/\s+/g, '')
     assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/)
     // The idle screen shows the address of the relay in use
-    assert.equal((await receiver.getByTestId('address').innerText()).trim(), relayHost)
+    assert.equal((await receiver.getByTestId('address').innerText()).trim(), joinDom)
+    // ... and the QR code leads to the same address (N85)
+    assert.equal(await receiver.locator('[data-testid=qr] [data-url]').getAttribute('data-url'), `http://${joinDom}/${code}`)
     // A link-supplied relay is never remembered by the setup
     if (expectConfirm) assert.equal(await receiver.evaluate(() => JSON.parse(localStorage.getItem('cometcast.display.setup')).server), null)
 
@@ -252,7 +258,7 @@ try {
   console.log('2) config.json next to index.html')
   {
     writeFileSync(join(distDir, 'config.json'), JSON.stringify({ relays: [`ws://${R.host}/ws`] }))
-    await connectPair('', R.host, { expectConfirm: false })
+    await connectPair('', R.host, { expectConfirm: false, joinDom: `${S.origin.replace('http://', '')}/app` })
     console.log('   ok: relay from config.json is the default (no dialog)')
     // ?server= still wins over config.json.
     assert.equal(await wizardAddress(`${S.app}display?server=${encodeURIComponent(`ws://${O.host}`)}`), O.host)
@@ -341,6 +347,53 @@ try {
     assert.equal(await upgrade(X.origin), 'http 403', 'unlisted origin')
     assert.equal(await upgrade('null'), 'http 403', 'Origin: null')
     assert.equal(await upgrade(null), 'upgraded', 'no Origin header (native client)')
+    console.log('   ok')
+  }
+
+  console.log('6) Pages-like host: site/404.html hands /app/... to the app')
+  {
+    const siteDir = join(repo, 'site')
+    const pagesPort = await freePort()
+    const pages = createHttp((req, res) => {
+      const u = new URL(req.url, 'http://x').pathname
+      const send = (root, rel, status = 200) => {
+        const f = resolve(root, rel)
+        if (!f.startsWith(root) || !existsSync(f) || !statSync(f).isFile()) return false
+        res.writeHead(status, { 'content-type': TYPES[extname(f)] ?? 'application/octet-stream' }).end(readFileSync(f))
+        return true
+      }
+      // Like Pages: real files only; a directory URL gets its index.html; anything else is the site's 404.html with status 404.
+      if (u.startsWith('/app/')) { if (send(distDir, u.slice(5) || 'index.html')) return }
+      else if (send(siteDir, u.endsWith('/') ? u.slice(1) + 'index.html' : u.slice(1))) return
+      send(siteDir, '404.html', 404)
+    })
+    await new Promise((r) => pages.listen(pagesPort, '127.0.0.1', r))
+    statics.push(pages)
+    const P = `http://127.0.0.1:${pagesPort}`
+    const p = await newPage()
+    await p.goto(`${P}/app/K7QM2W`)
+    await p.getByTestId('start-page').waitFor({ timeout: 10000 })
+    assert.equal((await p.getByTestId('start-code-chip').innerText()).trim(), 'K7Q M2W')
+    assert.equal(new URL(p.url()).pathname, '/app/K7QM2W', 'the address stays')
+    // footer: no privacy / imprint on a host that is not cometcast.de and has no config.json
+    assert.match(await p.getByTestId('start-footer').innerText(), /^Free software \(GPL-3\.0\) · Source code · Licences$/)
+    assert.equal(await p.getByTestId('foot-privacy').count(), 0)
+    assert.equal(await p.getByTestId('foot-licences').getAttribute('target'), '_blank')
+    assert.equal(await p.getByTestId('foot-licences').getAttribute('href'), '/app/third-party-licenses.txt')
+    await p.goto(`${P}/app/display`)
+    await p.getByTestId('setup').waitFor({ timeout: 10000 })
+    await p.goto(`${P}/no-such-page`)
+    await p.getByRole('heading', { name: '404' }).waitFor()
+    assert.equal(await p.getByTestId('start-page').count(), 0, 'other paths keep the website 404')
+    // operator pages from config.json
+    writeFileSync(join(distDir, 'config.json'), JSON.stringify({ privacy_url: 'https://ops.example/privacy', imprint_url: 'https://ops.example/imprint' }))
+    await p.goto(`${P}/app/`)
+    await p.getByTestId('start-footer').waitFor()
+    assert.equal(await p.getByTestId('foot-privacy').getAttribute('href'), 'https://ops.example/privacy')
+    assert.equal(await p.getByTestId('foot-imprint').getAttribute('href'), 'https://ops.example/imprint')
+    assert.match(await p.getByTestId('start-footer').innerText(), /Licences · Privacy · Imprint$/)
+    rmSync(join(distDir, 'config.json'), { force: true })
+    await p.context().close()
     console.log('   ok')
   }
 

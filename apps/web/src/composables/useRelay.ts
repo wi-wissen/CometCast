@@ -6,8 +6,10 @@ import { computed, ref, shallowRef } from 'vue'
 import {
   loadRelayConfig,
   needsRelayConfirmation,
+  joinAddress,
   parseRelay,
   resolveRelay,
+  type LegalUrls,
   type Relay,
   type RelayChoice,
   type RelayErrorCode,
@@ -35,6 +37,7 @@ function writeStored(v: string | null, key = STORAGE_KEY): void {
 
 let configRelays: Relay[] = []
 const configFailed = ref(false)
+const legalUrls = shallowRef<LegalUrls>({})
 let confirmedWs: string | null = null
 interface PendingConfirm {
   relay: Relay
@@ -62,6 +65,7 @@ export async function initRelay(deps: { fetchImpl?: typeof fetch; base?: string 
   const cfg = await loadRelayConfig({ pageProtocol: location.protocol, ...deps })
   configRelays = cfg.relays
   configFailed.value = cfg.failed
+  legalUrls.value = cfg.legal
   confirmedWs = readStored(CONFIRMED_KEY)
   // A `?server=` in the link is explicit and newer than anything remembered.
   userChoice = new URLSearchParams(location.search).has('server') ? null : readStored()
@@ -76,6 +80,7 @@ export function resetRelayState(): void {
   userChoice = null
   ignoreQuery = false
   configFailed.value = false
+  legalUrls.value = {}
   confirmedWs = null
   writeStored(null)
   writeStored(null, CONFIRMED_KEY)
@@ -138,6 +143,10 @@ export function useRelay() {
     default: computed(() => state.value.default),
     choices: computed(() => state.value.choices),
     nonDefault: computed(() => state.value.nonDefault),
+    /** The join address `{dom}` and the scheme of the QR URL (decision N85). */
+    join: computed(() => joinAddress(state.value, location, import.meta.env.BASE_URL)),
+    /** Operator pages from config.json (decision N83). */
+    legal: computed(() => legalUrls.value),
     /** config.json exists but could not be read or used (the start page says so). */
     configFailed: computed(() => configFailed.value),
     ensureTrusted: ensureRelayTrusted,

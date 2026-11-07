@@ -37,7 +37,7 @@ const presPdf = ref(false)
 const platform = currentPlatform()
 const caps = detectCapabilities()
 const relay = useRelay()
-const dom = computed(() => relay.current.value.host)
+const dom = computed(() => relay.join.value.dom)
 const { state, start, stop, sendImage, sendDocument, sendLink, sendCmd, shareScreen, stopScreen } = useSender()
 const cooldown = useDeniedCooldown(state)
 
@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="cp" data-testid="presenter" :data-page="page">
     <p class="sr-only" role="status" aria-live="polite" data-testid="status" :data-phase="state.phase" :data-ready="state.channelOpen">{{ statusText }}</p>
-    <StartPage v-if="page === 'start'" :qr-code="fromQr ? activeCode : null" :dom="dom" :busy="busy" @connect="connect" />
+    <StartPage v-if="page === 'start'" :qr-code="fromQr ? activeCode : null" :dom="dom" :busy="busy" :legal="relay.legal.value" @connect="connect" />
     <WaitingPage v-else-if="page === 'waiting'" :room="room" :check="state.check" :timeout-secs="state.timeoutSecs" @withdraw="withdraw" />
     <WhatPage
       v-else-if="page === 'what'"

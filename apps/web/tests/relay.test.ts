@@ -126,13 +126,13 @@ describe('loadRelayConfig', () => {
     expect(seen!.init?.credentials).toBe('omit')
   })
   it('no file (404, HTML catch-all) is not a failure', async () => {
-    const none = { relays: [], failed: false }
+    const none = { relays: [], legal: {}, failed: false }
     expect(await loadRelayConfig({ fetchImpl: resp('', 404) as unknown as typeof fetch })).toEqual(none)
     const html = (async () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch
     expect(await loadRelayConfig({ fetchImpl: html })).toEqual(none)
   })
   it('timeouts, network errors, server errors and invalid content are failures', async () => {
-    const failed = { relays: [], failed: true }
+    const failed = { relays: [], legal: {}, failed: true }
     expect(await loadRelayConfig({ fetchImpl: (async () => { throw new TypeError('x') }) as unknown as typeof fetch })).toEqual(failed)
     expect(await loadRelayConfig({ fetchImpl: resp('', 500) as unknown as typeof fetch })).toEqual(failed)
     expect(await loadRelayConfig({ fetchImpl: resp('not json') as unknown as typeof fetch })).toEqual(failed)
@@ -151,13 +151,13 @@ describe('loadRelayConfig', () => {
       },
     })
     const fetchImpl = (async () => new Response(body)) as unknown as typeof fetch
-    expect(await loadRelayConfig({ fetchImpl })).toEqual({ relays: [], failed: true })
+    expect(await loadRelayConfig({ fetchImpl })).toEqual({ relays: [], legal: {}, failed: true })
     expect(pulled).toBeLessThanOrEqual(8 * 1024 + 4096) // a few chunks of read-ahead at most, never unbounded
   })
   it('a ws:// relay in config.json is dropped on an https page (mixed content)', async () => {
     const f = resp('{"relays":["ws://192.168.1.5:8443"]}') as unknown as typeof fetch
     expect((await loadRelayConfig({ fetchImpl: f })).relays).toHaveLength(1)
-    expect(await loadRelayConfig({ fetchImpl: f, pageProtocol: 'https:' })).toEqual({ relays: [], failed: true })
+    expect(await loadRelayConfig({ fetchImpl: f, pageProtocol: 'https:' })).toEqual({ relays: [], legal: {}, failed: true })
   })
 })
 
