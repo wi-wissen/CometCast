@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Downloads and status</title>
+<meta name="description" content="Download Comet Cast through GitHub Releases, with an honest status table of what works and what is untested.">
+<link rel="canonical" href="https://cometcast.de/en/downloads/">
+<link rel="alternate" hreflang="de" href="https://cometcast.de/downloads/">
+<link rel="alternate" hreflang="en" href="https://cometcast.de/en/downloads/">
+<link rel="alternate" hreflang="x-default" href="https://cometcast.de/downloads/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#eceef2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site"><div class="wrap">
+<a class="brand" href="/en/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast logo: a comet shaped like a C" width="36" height="36"></picture><span>Comet Cast</span></a>
+<nav class="main" aria-label="Main navigation"><a href="/en/">Home</a><a href="/en/how-it-works/">How it works</a><a href="/en/downloads/" aria-current="page">Downloads</a><a href="/en/privacy/">Privacy & self-hosting</a><a href="/en/open-source/">Open source</a><a href="/en/contact/">Contact</a></nav>
+<div class="lang"><a href="/downloads/" hreflang="de" lang="de" title="Auf Deutsch wechseln">Deutsch</a></div>
+</div></header>
+<main id="main"><div class="wrap">
+<h1>Downloads and status</h1>
+<p class="lead">Comet Cast is a beta (0.1). This page says what works and what does not.</p>
+<h2>Downloads</h2>
+<div class="btns"><a class="btn primary" href="https://github.com/wi-wissen/CometCast/releases/latest">Latest release on GitHub Releases</a><a class="btn" href="/app/">Open web app</a></div>
+<div class="note"><p>When this page was written (2026-11-07) <strong>no release is published</strong> on GitHub yet. The link then leads to an empty or missing page. There are files only once a release appears there. To try it now, build from source (see the <a href="https://github.com/wi-wissen/CometCast#build-and-run">README</a>).</p>
+<p>The web app at <code>/app/</code> is a placeholder: <span class="st">UNCERTAIN</span> whether and when it is there. It consists of static files and can be hosted on this site; it then talks to a relay server over <code>wss</code>. The connection to <code>relay.cometcast.de</code> is not finished, and that server does not exist yet.</p></div>
+<h2 id="status">Status table (as of 2026-11-07)</h2>
+<p>Source: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/architecture.md#milestones">docs/architecture.md</a> and the README. Nothing beyond that is claimed. What is not in the table is a plan.</p>
+<div class="tablewrap"><table><thead><tr><th>Area</th><th>Status</th><th>What is checked</th></tr></thead><tbody><tr><td>Browser: sender and receiver (screen over WebRTC, room code, toolbar, images, links, PDF)</td><td class="st ok">works (limited)</td><td>Works, but checked only on one machine / a local network (PDF and media links only with Chromium on Linux). Screen sharing needs HTTPS and a desktop browser; mobile is unchecked.</td></tr><tr><td>Signalling server (<code>cometcast-server</code>)</td><td class="st part">partly</td><td>Built and tested. First real run on one Linux machine: Docker image, Compose, WSS, coturn with TURN credentials. Not verified: two real devices, NAT, TURN over TLS, IPv6, a real certificate, load, arm64.</td></tr><tr><td>Public relay server <code>relay.cometcast.de</code></td><td class="st no">not working yet</td><td>Does not exist yet.</td></tr><tr><td>Native Rust peers and command line tool (<code>cometcast-cli</code>)</td><td class="st part">partly</td><td>Talk to the browser app; a developer tool. X11 screen capture with H.264 exists on Linux; Wayland, Windows and macOS do not.</td></tr><tr><td>Flutter desktop app (Linux)</td><td class="st part">partly</td><td>Uses the Rust core and has the web receiver's toolbar. Only Linux tested. Screen capture and video display in the native apps are not finished.</td></tr><tr><td>Windows and macOS app</td><td class="st no">not working yet</td><td>Untested. Capture not built there.</td></tr><tr><td>AirPlay receiving (through UxPlay)</td><td class="st part">partly</td><td>The supervisor runs with the real UxPlay on Linux. No test with an iPhone or iPad; not integrated in the app; Windows missing.</td></tr><tr><td>Android and Android TV / Google TV</td><td class="st no">not working yet</td><td>A debug APK builds. Nothing ran on a device.</td></tr><tr><td>Apple TV (receiver)</td><td class="st no">not working yet</td><td>The source is in the repository, but it does not work yet.</td></tr><tr><td>Miracast receiving (Windows 11)</td><td class="st no">not working yet</td><td>Compile-checked only, never run on Windows.</td></tr><tr><td>Google Cast sender</td><td class="st no">not working yet</td><td>Tested only against our own fake receiver on one machine, never against a real Chromecast.</td></tr><tr><td>AirPlay sender (without FairPlay)</td><td class="st part">partly</td><td>Discovery and pairing checked against UxPlay; everything else only against our own fake. Nothing on an Apple TV. Real mirroring is deliberately not built (FairPlay).</td></tr><tr><td>iOS broadcast extension</td><td class="st no">not working yet</td><td>Not started.</td></tr><tr><td>STUN/TURN across real networks</td><td class="st no">not working yet</td><td>Not verified.</td></tr></tbody></table></div>
+<p>The complete list of unverified assumptions: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/measurement-points.md">docs/measurement-points.md</a>.</p>
+</div></main>
+<footer class="site"><div class="wrap"><span>Comet Cast is free software (GPL-3.0-or-later). This site sets no cookies and loads nothing from third parties.</span><a href="/en/imprint/">Imprint</a><a href="https://github.com/wi-wissen/CometCast">GitHub</a></div></footer>
+</body>
+</html>

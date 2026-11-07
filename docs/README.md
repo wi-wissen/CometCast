@@ -6,6 +6,9 @@
 | [architecture.md](architecture.md) | Layers, Rust core crates, platform apps, server, route ladder, decisions, milestones |
 | [protocol.md](protocol.md) | The signalling protocol between sender, receiver and server |
 | [server.md](server.md) | Operating `cometcast-server`: configuration, open and internal mode, TLS, limits, ALTCHA, TURN, deployment |
+| [../bins/cometcast-server/README.md](../bins/cometcast-server/README.md) | Server README: quick start, settings table, modes, hardening checklist, troubleshooting |
+| [../deploy/README.md](../deploy/README.md) | Deployment guide: Docker Compose, reverse proxy (Caddy, nginx), TLS, coturn, firewall, upgrade |
+| [website.md](website.md) | The static website (cometcast.de): layout, GitHub Pages setup the owner does once, DNS, web app and relay hosting |
 | [capture.md](capture.md) | Real screen content from the native sender (X11) as H.264: capture, change detection, encoder, key frames, numbers seen, limits, licensing questions |
 | [transport.md](transport.md) | The native WebRTC path (`cc-transport`, receiver and sender cores, CLI): what works and what does not |
 | [web-m2.md](web-m2.md) | Web app toolbar, image, link and PDF transfer over the control DataChannel (message format, limits, PDF rendering in the browser) |

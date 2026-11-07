@@ -51,6 +51,8 @@ Details: [docs/architecture.md](docs/architecture.md).
 | `apps/web` | Web app (Vue 3, TypeScript, Vite). PDF pages are rendered by `crates/cc-docs-wasm` (hayro as WASM, built separately with `npm run build:wasm`); the rest of the Rust core is not used in the browser yet | yes |
 | `assets/` | Logo and other assets | yes |
 | `docs/` | Documentation, see [docs/README.md](docs/README.md) | yes |
+| `deploy/` | Docker, Compose and coturn files for the server, see [deploy/README.md](deploy/README.md) | yes |
+| `site/` | The static website for cometcast.de, see [docs/website.md](docs/website.md) | yes |
 | `tools/` | Helper scripts, for example the translation check | yes |
 | `xtask/` | Build helpers | yes |
 
@@ -109,6 +111,8 @@ cargo run -p cometcast-cli -- send <CODE> --seconds 10   # sends a built-in VP8 
 
 The browser app interoperates with them: `cd apps/web && npm run build && npm run e2e:native`.
 Details and limits: [docs/transport.md](docs/transport.md).
+
+Running a server: [bins/cometcast-server/README.md](bins/cometcast-server/README.md) (settings, modes, troubleshooting) and [deploy/README.md](deploy/README.md) (Docker Compose, reverse proxy, coturn, firewall).
 
 More commands will be added here when the things they build exist.
 
