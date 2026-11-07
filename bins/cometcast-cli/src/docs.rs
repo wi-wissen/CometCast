@@ -223,12 +223,27 @@ pub fn run(a: DocsArgs) -> ExitCode {
     }
 }
 
+/// The `protections:` line: what the render worker applied to itself ("none" for the
+/// in-process engine).
+fn print_protections(doc: &cc_docs::Document) {
+    let names: Vec<&str> = doc.protections().iter().map(|p| p.name()).collect();
+    println!(
+        "protections: {}",
+        if names.is_empty() {
+            "none".to_string()
+        } else {
+            names.join(", ")
+        }
+    );
+}
+
 fn run_inner(a: DocsArgs) -> Result<(), String> {
     match a {
         DocsArgs::Info { file } => {
             let (doc, size) = open(&file)?;
             println!("file: {} ({size} bytes)", file.display());
             println!("pages: {}", doc.page_count());
+            print_protections(&doc);
             const SHOW: usize = 20;
             for i in 0..doc.page_count().min(SHOW) {
                 if let Ok(s) = doc.page_size(i) {

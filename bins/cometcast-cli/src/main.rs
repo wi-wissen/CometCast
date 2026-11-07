@@ -294,8 +294,30 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
     })
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
+/// Entry point. The hidden `docs-worker` command is decided from argv **before** any tokio
+/// runtime or other thread exists: the render worker restricts itself with seccomp, which
+/// must not meet a runtime's eventfd/epoll/threads (docs/documents.md). Everything else
+/// runs inside a multi-thread runtime as before.
+fn main() -> ExitCode {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == "docs-worker")
+    {
+        return docs::worker();
+    }
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt.block_on(async_main()),
+        Err(e) => {
+            eprintln!("error: cannot start the async runtime: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn async_main() -> ExitCode {
     let cmd = match parse_args(std::env::args().skip(1)) {
         Ok(c) => c,
         Err(e) => {
@@ -318,6 +340,7 @@ async fn main() -> ExitCode {
         }
         Command::Docs(d) => docs::run(d),
         Command::Content(c) => content::run(c).await,
+        // Handled in `main` before the runtime exists; kept so the argument parses.
         Command::DocsWorker => docs::worker(),
         Command::Airplay(a) => airplay(a).await,
         Command::AirplaySend(a) => airplay_send::run(a).await,

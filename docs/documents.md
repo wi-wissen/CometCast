@@ -51,7 +51,12 @@ in the same directory and renamed over the target, so a symbolic link that appea
 the check is replaced as a link and never written through (an existing link is refused up
 front). The program renders by starting itself as `cometcast-cli docs-worker` (hidden command,
 not for users), or the program named in `COMETCAST_DOCS_WORKER` (only if it passes the trust
-check below).
+check below). `main` decides `docs-worker` from argv **before** any tokio runtime or other
+thread exists (`main` is a plain `fn`; the runtime is built only for the other commands): the
+worker's seccomp allowlist does not cover a runtime's eventfd/epoll teardown, and `cc-docs`
+itself depends on no async runtime. `docs info` prints `protections: ...` (what the worker
+applied to itself, `none` for the in-process engine). The test `bins/cometcast-cli/tests/docs_worker.rs`
+runs `docs info` and `docs render` through this path without `COMETCAST_DOCS_WORKER`.
 
 ## Limits and safety
 
