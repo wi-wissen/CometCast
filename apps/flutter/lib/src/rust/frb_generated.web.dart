@@ -66,6 +66,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
+  UiCodecInfo dco_decode_box_autoadd_ui_codec_info(dynamic raw);
+
+  @protected
   UiContentCmd dco_decode_box_autoadd_ui_content_cmd(dynamic raw);
 
   @protected
@@ -91,6 +94,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DiscoveryWarning dco_decode_discovery_warning(dynamic raw);
+
+  @protected
+  double dco_decode_f_64(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -135,6 +141,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
+  UiCodecInfo? dco_decode_opt_box_autoadd_ui_codec_info(dynamic raw);
+
+  @protected
   VideoFrame? dco_decode_opt_box_autoadd_video_frame(dynamic raw);
 
   @protected
@@ -169,6 +178,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int dco_decode_u_8(dynamic raw);
+
+  @protected
+  UiCodecInfo dco_decode_ui_codec_info(dynamic raw);
+
+  @protected
+  UiCodecState dco_decode_ui_codec_state(dynamic raw);
 
   @protected
   UiConnectionState dco_decode_ui_connection_state(dynamic raw);
@@ -242,6 +257,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  UiCodecInfo sse_decode_box_autoadd_ui_codec_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   UiContentCmd sse_decode_box_autoadd_ui_content_cmd(
     SseDeserializer deserializer,
   );
@@ -271,6 +291,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DiscoveryWarning sse_decode_discovery_warning(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -327,6 +350,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  UiCodecInfo? sse_decode_opt_box_autoadd_ui_codec_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   VideoFrame? sse_decode_opt_box_autoadd_video_frame(
     SseDeserializer deserializer,
   );
@@ -363,6 +391,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
+
+  @protected
+  UiCodecInfo sse_decode_ui_codec_info(SseDeserializer deserializer);
+
+  @protected
+  UiCodecState sse_decode_ui_codec_state(SseDeserializer deserializer);
 
   @protected
   UiConnectionState sse_decode_ui_connection_state(
@@ -451,6 +485,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_ui_codec_info(
+    UiCodecInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_ui_content_cmd(
     UiContentCmd self,
     SseSerializer serializer,
@@ -494,6 +534,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     DiscoveryWarning self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -559,6 +602,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_ui_codec_info(
+    UiCodecInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_video_frame(
     VideoFrame? self,
     SseSerializer serializer,
@@ -608,6 +657,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_codec_info(UiCodecInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_codec_state(UiCodecState self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_connection_state(
