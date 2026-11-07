@@ -117,9 +117,9 @@ describe('settings dialog (4.3)', () => {
     expect(w.emitted('close')).toHaveLength(1)
     expect(w.text()).not.toMatch(/save/i)
   })
-  it('German (Sie) texts', async () => {
+  it('German (du) texts', async () => {
     const w = mount(SettingsDialog, { global: { plugins: [createAppI18n('de')] }, props: { mode: 'confirm', appearance: 'auto' } })
-    expect(w.get('[data-testid=settings-mode-desc]').text()).toBe('Sie lassen jede Person einzeln zu.')
+    expect(w.get('[data-testid=settings-mode-desc]').text()).toBe('Du lässt jede Person einzeln zu.')
     expect(w.text()).toContain('Mit Freigabe')
     expect(w.text()).toContain('OLED-Schwarz')
   })

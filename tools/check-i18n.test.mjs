@@ -62,43 +62,50 @@ test('xcstrings key without de fails', () => {
   assert.match(r.stdout, /"de"/);
 });
 
-test('de-du.json: only keys that de.json has, with the same placeholders', () => {
+test('de-sie.json: same keys and placeholders as de.json', () => {
   const ok = run(fixture({
     'apps/web/src/locales/de.json': { a: 'Hallo {name}', b: 'B' },
-    'apps/web/src/locales/de-du.json': { a: 'Hallo {name}' },
+    'apps/web/src/locales/de-sie.json': { a: 'Hallo {name}', b: 'B' },
   }));
   assert.equal(ok.status, 0);
   const extra = run(fixture({
     'apps/web/src/locales/de.json': { a: 'A' },
-    'apps/web/src/locales/de-du.json': { a: 'A', z: 'Z' },
+    'apps/web/src/locales/de-sie.json': { a: 'A', z: 'Z' },
   }));
   assert.equal(extra.status, 1);
-  assert.match(extra.stdout, /"z" is in de-du.json but missing in de.json/);
+  assert.match(extra.stdout, /"z" is in de-sie.json but missing in de.json/);
+  const missing = run(fixture({
+    'apps/web/src/locales/de.json': { a: 'A', y: 'Y' },
+    'apps/web/src/locales/de-sie.json': { a: 'A' },
+  }));
+  assert.equal(missing.status, 1);
+  assert.match(missing.stdout, /"y" is in de.json but missing in de-sie.json/);
   const ph = run(fixture({
     'apps/web/src/locales/de.json': { a: 'Hallo {name}' },
-    'apps/web/src/locales/de-du.json': { a: 'Hallo {room}' },
+    'apps/web/src/locales/de-sie.json': { a: 'Hallo {room}' },
   }));
   assert.equal(ph.status, 1);
   assert.match(ph.stdout, /placeholders differ/);
 });
 
-test('de-du.json: a key whose Sie text addresses the reader must exist in du (spec 11.8)', () => {
-  const missing = run(fixture({
+test('de.json: the loaded German is du, no formal forms (Sie, Ihr..., Ihnen)', () => {
+  const bad = run(fixture({
     'apps/web/src/locales/de.json': { a: 'Bitte geben Sie den Code ein', b: 'Ihr Gerät', c: 'Neutral' },
-    'apps/web/src/locales/de-du.json': { a: 'Bitte gib den Code ein' },
+    'apps/web/src/locales/de-sie.json': { a: 'x', b: 'y', c: 'z' },
   }));
-  assert.equal(missing.status, 1);
-  assert.match(missing.stdout, /"b" addresses the reader/);
-  assert.doesNotMatch(missing.stdout, /"c" addresses/);
+  assert.equal(bad.status, 1);
+  assert.match(bad.stdout, /"a" in de.json contains a formal form/);
+  assert.match(bad.stdout, /"b" in de.json contains a formal form/);
+  assert.doesNotMatch(bad.stdout, /"c" in de.json/);
   const ok = run(fixture({
-    'apps/web/src/locales/de.json': { a: 'Bitte geben Sie den Code ein', b: 'Ihr Gerät', c: 'Neutral' },
-    'apps/web/src/locales/de-du.json': { a: 'Bitte gib den Code ein', b: 'Dein Gerät' },
+    'apps/web/src/locales/de.json': { a: 'Bitte gib den Code ein', b: 'Dein Gerät' },
+    'apps/web/src/locales/de-sie.json': { a: 'Bitte geben Sie den Code ein', b: 'Ihr Gerät' },
   }));
   assert.equal(ok.status, 0);
   // the one known false alarm
   const hint = run(fixture({
     'apps/web/src/locales/de.json': { 'receive.media.hint': 'Sie wird nur geladen' },
-    'apps/web/src/locales/de-du.json': {},
+    'apps/web/src/locales/de-sie.json': { 'receive.media.hint': 'Sie wird nur geladen' },
   }));
   assert.equal(hint.status, 0);
 });

@@ -4,7 +4,7 @@
 // 4.4): real server binary + real Chromium pages (a display and several presenters). Covers: open
 // (the default), approval with the check number and a plain-text name, the 1 s input guard, Yes, No,
 // No and block, keyboard-only answers, Locked and unlocking, a request nobody answers (timeout), withdrawing,
-// the German texts (Sie), End (new code) and that the default mode is kept on the display device.
+// the German texts (du), End (new code) and that the default mode is kept on the display device.
 // Run: npm run build && E2E_CHROME=/usr/bin/google-chrome npm run e2e:join
 //
 // Presenters join without showing anything (no screen capture): the test is about the join.
@@ -154,7 +154,7 @@ try {
   assert.equal(await receiver.getByTestId('request-modal').count(), 0, 'the host is not asked')
   console.log('no and block OK')
 
-  // --- 8. Withdrawing tells the host; German texts on both sides (formal "Sie")
+  // --- 8. Withdrawing tells the host; German texts on both sides (informal "du")
   // (the blocked address cannot ask again in this session, so the rest uses a fresh display)
   const dctx2 = await newContext(browser, { locale: 'de-DE' })
   const d2 = await dctx2.newPage()
@@ -168,7 +168,7 @@ try {
     await presenterStart(g, server2.base, code2, { name: 'Kim' })
     await g.getByTestId('waiting-page').waitFor()
     assert.match(await g.getByTestId('waiting-page').innerText(), /Warten auf Freigabe/)
-    assert.match(await g.getByTestId('waiting-page').innerText(), /Ihre Prüfzahl/)
+    assert.match(await g.getByTestId('waiting-page').innerText(), /Deine Prüfzahl/)
     await d2.getByTestId('request-modal').waitFor()
     assert.match(await d2.getByTestId('request-modal').innerText(), /Anfrage/i)
     assert.match(await d2.getByTestId('request-modal').innerText(), /Nein und sperren/i)

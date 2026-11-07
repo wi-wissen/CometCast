@@ -169,9 +169,9 @@ describe('start page (5.2)', () => {
     expect(i.get('[data-testid=start-app]').text()).toBe('Get the app on the App Store')
     expect(i.get('[data-testid=detected]').text()).toBe('Detected: iPhone, Safari')
   })
-  it('German uses Sie', () => {
+  it('German uses du', () => {
     const w = mount(StartPage, { global: i18n('de'), props: { qrCode: null, dom: 'cometcast.de', busy: false } })
-    expect(w.get('label[for=start-name]').text()).toBe('Ihr Name')
+    expect(w.get('label[for=start-name]').text()).toBe('Dein Name')
     expect(w.text()).toContain('Im Browser weiter')
   })
 })

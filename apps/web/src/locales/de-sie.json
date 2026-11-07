@@ -1,0 +1,543 @@
+{
+  "app": {
+    "name": "Comet Cast",
+    "tagline": "Bildschirm, Dokumente, Links und Dateien teilen.",
+    "welcome": "Willkommen bei Comet Cast",
+    "codeFromLink": "aus dem Link übernommen",
+    "codeScanned": "gescannt",
+    "scanAgainBody": "Scannen Sie den QR-Code auf dem Bildschirm noch einmal, dann geht es weiter.",
+    "scanQr": "QR-Code scannen",
+    "connect": "Verbinden"
+  },
+  "relay": {
+    "errors": {
+      "empty": "Bitte geben Sie eine Adresse ein.",
+      "invalid": "Das ist keine gültige Relay-Adresse.",
+      "insecure": "Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwenden Sie wss://.",
+      "credentials": "Die Adresse darf keinen Benutzernamen und kein Passwort enthalten.",
+      "path": "Die Adresse darf keinen Pfad, keine Query und kein Fragment enthalten (nur optional /ws).",
+      "mixed": "Eine über https geöffnete Seite kann kein unverschlüsseltes ws://-Relay verwenden (der Browser blockiert das). Bitte verwenden Sie wss://."
+    },
+    "confirm": {
+      "title": "Dieses Relay verwenden?",
+      "body": "Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen.",
+      "risk": "Der Betreiber dieses Relays kann sehen, wer sich verbindet, Ihre Raumcodes und Netzwerkadressen, und kann die Verbindung umleiten. Es wird nichts verbunden und kein Bildschirm erfasst, bevor Sie entschieden haben.",
+      "use": "Dieses Relay verwenden",
+      "cancel": "Abbrechen (Standard-Relay verwenden)"
+    }
+  },
+  "receive": {
+    "videoLabel": "Eingehender Bildschirm",
+    "status": {
+      "idle": "Nicht gestartet.",
+      "connecting": "Verbindung zum Server wird aufgebaut …",
+      "checking": "Ihr Browser wird geprüft …",
+      "waiting_sender": "Warten auf einen Absender …",
+      "negotiating": "Ein Absender ist beigetreten. Die Verbindung wird eingerichtet …",
+      "receiving": "Der Bildschirm wird empfangen.",
+      "peer_left": "Der Absender hat die Verbindung verlassen. Sie können diesen Code behalten und auf einen neuen Absender warten.",
+      "error": "Es ist ein Fehler aufgetreten."
+    },
+    "stageLabel": "Empfangene Inhalte",
+    "transfer": "{name} wird empfangen … {percent} %",
+    "transferError": {
+      "bad_message": "Eine Nachricht des Absenders konnte nicht verstanden werden und wurde ignoriert.",
+      "unexpected_chunk": "Unerwartete Bilddaten wurden ignoriert.",
+      "too_large": "Das Bild war größer als angekündigt und wurde verworfen.",
+      "size_mismatch": "Das Bild ist unvollständig angekommen und wurde verworfen.",
+      "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert.",
+      "stalled": "Die Übertragung vom Absender ist ins Stocken geraten und wurde verworfen.",
+      "bad_chunk": "Bilddaten kamen in unerwarteter Form an und wurden verworfen.",
+      "document_unsupported": "Der Absender hat ein PDF-Dokument gesendet. Diese App kann Dokumente noch nicht anzeigen.",
+      "document_invalid": "Das PDF ist beschädigt oder wird nicht unterstützt und kann nicht angezeigt werden.",
+      "document_encrypted": "Das PDF ist passwortgeschützt und kann nicht angezeigt werden.",
+      "document_too_large": "Das PDF ist zu groß, um angezeigt zu werden.",
+      "document_too_many_pages": "Das PDF hat zu viele Seiten, um angezeigt zu werden.",
+      "document_rejected": "Das PDF wurde von der Sicherheitsprüfung abgelehnt und wird nicht angezeigt.",
+      "document_memory": "Das PDF benötigt mehr Speicher als erlaubt und wurde geschlossen.",
+      "document_timeout": "Die Anzeige des PDFs hat zu lange gedauert; es wurde geschlossen.",
+      "document_failed": "Das PDF konnte nicht angezeigt werden."
+    },
+    "content": {
+      "imageAlt": "Bild vom Absender: {name}",
+      "close": "Bild schließen"
+    },
+    "link": {
+      "title": "{host} möchte einen Link öffnen",
+      "hint": "Der Absender bittet Sie, diesen Link zu öffnen. Öffnen Sie ihn nur, wenn Sie ihn erwarten. Er öffnet sich in einem neuen Tab, und nur wenn Sie auf „Öffnen“ klicken.",
+      "address": "Adresse",
+      "open": "Öffnen",
+      "dismiss": "Verwerfen",
+      "hintTv": "Dieser Bildschirm kann keine Webseiten öffnen. Öffnen Sie die Adresse bei Bedarf auf Ihrem eigenen Gerät."
+    },
+    "media": {
+      "hint": "Dieser Link verweist auf eine Mediendatei. Sie wird von {host} nur geladen, wenn Sie auf „Abspielen“ klicken.",
+      "play": "Von {host} abspielen",
+      "retry": "Erneut versuchen",
+      "stop": "Stopp",
+      "label": "Medienwiedergabe, {host}",
+      "from": "Wiedergabe von {host}",
+      "hlsUnsupported": "Dies sieht nach einem HLS-Stream aus, den dieser Browser nicht abspielen kann. Sie können den Link trotzdem öffnen.",
+      "error": {
+        "aborted": "Die Wiedergabe von {host} wurde abgebrochen.",
+        "network": "{host} ist nicht erreichbar oder hat nicht rechtzeitig geantwortet.",
+        "decode": "Die Datei von {host} ist beschädigt oder konnte nicht dekodiert werden.",
+        "unsupported": "Diese Datei kann hier nicht abgespielt werden: Das Format wird nicht unterstützt, die Datei fehlt oder der Medienserver erlaubt die Wiedergabe von anderen Websites nicht. Mit „Öffnen“ sehen Sie sie in einem neuen Tab. ({host})",
+        "blocked": "Der Browser hat die automatische Wiedergabe blockiert. Klicken Sie auf „Erneut versuchen“, um sie zu starten."
+      },
+      "mixed": "Diese Adresse verwendet http://, diese Seite aber https://, daher würde der Browser die Wiedergabe hier blockieren. Sie können den Link trotzdem öffnen.",
+      "localWarning": "Achtung: Diese Adresse zeigt auf ein Gerät oder einen Namen innerhalb eines Netzwerks (eine IP-Adresse oder ein lokaler Name). Spielen Sie sie nur ab, wenn Sie das erwarten."
+    },
+    "announce": {
+      "image": "Bild empfangen: {name}.",
+      "link": "Link-Anfrage von {host}.",
+      "replaced": "Neuer Inhalt ersetzt den vorherigen.",
+      "closed": "Inhalt geschlossen.",
+      "document": "Dokument empfangen: {name}."
+    },
+    "document": {
+      "loading": "{name} wird geöffnet…",
+      "pageOf": "Seite {page} von {pages}",
+      "canvasLabel": "{name}, Seite {page} von {pages}",
+      "controls": "Seitensteuerung",
+      "prev": "Vorherige Seite",
+      "next": "Nächste Seite",
+      "close": "Dokument schließen",
+      "pageError": {
+        "failed": "Diese Seite konnte nicht angezeigt werden.",
+        "page_out_of_range": "Diese Seite existiert nicht.",
+        "bad_size": "Diese Seite hat eine unbrauchbare Größe.",
+        "timeout": "Die Anzeige dieser Seite hat zu lange gedauert.",
+        "memory": "Diese Seite benötigt zu viel Speicher."
+      }
+    }
+  },
+  "send": {
+    "status": {
+      "idle": "Geben Sie den Code des Empfängers ein, um zu beginnen.",
+      "capturing": "Wählen Sie im Browser-Dialog aus, was geteilt werden soll …",
+      "connecting": "Verbindung zum Server wird aufgebaut …",
+      "joining": "Dem Raum wird beigetreten …",
+      "negotiating": "Die Verbindung wird eingerichtet …",
+      "sharing": "Ihr Bildschirm wird geteilt.",
+      "peer_left": "Der Empfänger hat die Verbindung verlassen. Die Freigabe ist beendet.",
+      "stopped": "Freigabe beendet.",
+      "error": "Es ist ein Fehler aufgetreten.",
+      "waiting_approval": "Warten, bis der Gastgeber den Beitritt erlaubt. Bis dahin wird nichts gesendet."
+    }
+  },
+  "errors": {
+    "bad_hello": "Der Server hat den Verbindungsaufbau nicht akzeptiert. Bitte laden Sie die Seite neu.",
+    "proto_mismatch": "Diese Seite und der Server verwenden unterschiedliche Protokollversionen. Bitte laden Sie die Seite neu.",
+    "wrong_role": "Diese Aktion ist für diese Rolle nicht erlaubt.",
+    "room_not_found": "Es gibt keinen Raum mit diesem Code. Prüfen Sie den Code auf dem Empfänger.",
+    "room_full": "Dieser Raum hat bereits einen Absender.",
+    "not_in_room": "Das andere Gerät ist nicht mehr verbunden.",
+    "bad_message": "Der Server konnte eine Nachricht nicht verstehen. Bitte laden Sie die Seite neu.",
+    "altcha_required": "Der Server verlangt eine kurze Browserprüfung, bevor er einen Raum anlegt. Bitte versuchen Sie es erneut.",
+    "altcha_invalid": "Die Browserprüfung wurde nicht akzeptiert (möglicherweise ist sie abgelaufen). Bitte versuchen Sie es erneut.",
+    "altcha_failed": "Die Browserprüfung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+    "altcha_too_hard": "Der Server verlangt eine Browserprüfung, die für dieses Gerät zu aufwendig ist, und sie wurde nicht gestartet. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Betreiber des Servers.",
+    "altcha_expired": "Die Browserprüfung des Servers war bereits abgelaufen. Bitte versuchen Sie es erneut; falls das wiederholt passiert, prüfen Sie Datum und Uhrzeit dieses Geräts.",
+    "rate_limited": "Zu viele Anfragen aus diesem Netzwerk. Bitte warten Sie einen Moment und versuchen Sie es erneut.",
+    "banned": "Dieses Netzwerk ist wegen zu vieler fehlgeschlagener Versuche für kurze Zeit gesperrt. Bitte versuchen Sie es später erneut.",
+    "forbidden": "Dieses Netzwerk darf diesen Server nicht nutzen.",
+    "server_full": "Der Server ist gerade ausgelastet. Bitte versuchen Sie es später erneut.",
+    "connection_lost": "Die Verbindung zum Server ist abgebrochen oder konnte nicht hergestellt werden.",
+    "peer_failed": "Die direkte Verbindung zum anderen Gerät ist fehlgeschlagen. Ohne STUN/TURN-Server funktioniert das nur im selben lokalen Netzwerk.",
+    "capture_denied": "Die Bildschirmfreigabe wurde abgebrochen oder nicht erlaubt.",
+    "capture_failed": "Der Bildschirm konnte von diesem Browser nicht aufgenommen werden.",
+    "unknown": "Ein unbekannter Fehler ist aufgetreten.",
+    "join_pending": "Bitte warten Sie, bis der Gastgeber Ihren Beitritt erlaubt hat.",
+    "join_denied": "Der Gastgeber hat Ihren Beitritt nicht erlaubt.",
+    "room_locked": "Der Raumcode ist richtig, aber der Raum ist gerade gesperrt. Bitten Sie den Gastgeber, ihn zu entsperren.",
+    "room_locked_waiting": "Der Raum wurde gesperrt, während Sie gewartet haben. Der Code war richtig; bitten Sie den Gastgeber, den Raum zu entsperren.",
+    "approval_timeout": "Niemand hat Ihre Anfrage rechtzeitig beantwortet. Sie können erneut anfragen.",
+    "removed_by_host": "Der Gastgeber hat Sie aus dem Raum entfernt.",
+    "open_rooms_disabled": "Dieser Server erlaubt keine offenen Räume.",
+    "no_such_request": "Diese Anfrage wartet nicht mehr.",
+    "no_such_block": "Dieser Blockeintrag existiert nicht mehr.",
+    "block_list_full": "Die Blockliste ist voll. Geben Sie zuerst jemanden frei."
+  },
+  "toolbar": {
+    "label": "Bildschirm-Werkzeuge",
+    "pen": "Stift",
+    "marker": "Textmarker",
+    "eraser": "Radierer",
+    "undo": "Rückgängig",
+    "clear": "Alle Markierungen löschen",
+    "laser": "Laserpointer",
+    "freeze": "Bild einfrieren (der Live-Stream läuft weiter)",
+    "black": "Schwarzer Bildschirm",
+    "fullscreen": "Vollbild",
+    "exitFullscreen": "Vollbild beenden",
+    "size": {
+      "small": "Dünn",
+      "medium": "Mittel",
+      "large": "Dick"
+    },
+    "color": {
+      "red": "Rot",
+      "yellow": "Gelb",
+      "green": "Grün",
+      "blue": "Blau",
+      "white": "Weiß"
+    },
+    "canvasLabel": "Markierungen (nur auf diesem Gerät sichtbar)",
+    "frozenHint": "Eingefroren. Der Live-Stream läuft im Hintergrund weiter.",
+    "blackHint": "Bildschirm ausgeblendet"
+  },
+  "sendContent": {
+    "title": "Datei oder Link senden",
+    "intro": "Geben Sie den Raumcode des Empfängers ein und senden Sie dann ein Bild, ein PDF oder einen Link. Die Inhalte gehen direkt zum Empfänger; der Server hilft nur beim Verbinden.",
+    "connect": "Verbinden",
+    "disconnect": "Trennen",
+    "stopShowing": "Anzeige beim Empfänger beenden",
+    "status": {
+      "idle": "Geben Sie den Code des Empfängers ein, um zu beginnen.",
+      "capturing": "Verbindung wird aufgebaut …",
+      "connecting": "Verbindung zum Server wird aufgebaut …",
+      "joining": "Raum wird betreten …",
+      "negotiating": "Verbindung wird eingerichtet …",
+      "sharing": "Verbunden. Sie können jetzt senden.",
+      "peer_left": "Der Empfänger hat die Verbindung verlassen.",
+      "stopped": "Getrennt.",
+      "error": "Etwas ist schiefgelaufen.",
+      "waiting_approval": "Warten, bis der Gastgeber den Beitritt erlaubt."
+    },
+    "image": {
+      "title": "Bild",
+      "help": "PNG, JPEG, WebP oder GIF, bis zu {max}.",
+      "drop": "Ziehen Sie ein Bild hierher, oder",
+      "choose": "Bild auswählen",
+      "progress": "{name} wird gesendet: {percent} %",
+      "sent": "{name} gesendet. Es wird jetzt beim Empfänger angezeigt.",
+      "error": {
+        "bad_type": "Es können nur PNG-, JPEG-, WebP- und GIF-Bilder gesendet werden.",
+        "too_large": "Dieses Bild ist größer als {max}.",
+        "empty": "Diese Datei ist leer.",
+        "not_open": "Nicht mit dem Empfänger verbunden.",
+        "channel_closed": "Die Verbindung wurde beim Senden geschlossen.",
+        "failed": "Das Bild konnte nicht gesendet werden."
+      }
+    },
+    "link": {
+      "title": "Link",
+      "label": "Webadresse",
+      "hint": "Muss mit http:// oder https:// beginnen. Der Empfänger sieht die Adresse und entscheidet, ob er sie öffnet; nichts öffnet sich automatisch. Einen Link auf eine Video- oder Audiodatei (.mp4, .webm, .ogv, .m3u8, .mp3, .ogg, .wav, .m4a) kann der Empfänger nach einem Klick abspielen.",
+      "send": "Link senden",
+      "invalid": "Bitte geben Sie eine vollständige Webadresse ein, die mit http:// oder https:// beginnt.",
+      "sent": "Link gesendet. Der Empfänger muss bestätigen, bevor er sich öffnet.",
+      "failed": "Der Link konnte nicht gesendet werden."
+    },
+    "later": {
+      "title": "Folgt später",
+      "office": "Office-Dokumente (Word, Excel, PowerPoint)",
+      "note": "Dafür wird der native Kern benötigt; in der Browser-Version sind sie noch nicht verfügbar."
+    },
+    "document": {
+      "title": "PDF-Dokument",
+      "help": "Eine PDF-Datei, bis zu {max}. Der Empfänger zeigt sie seitenweise an; nichts in der Datei wird ausgeführt oder geöffnet.",
+      "drop": "Ziehen Sie ein PDF hierher, oder",
+      "choose": "PDF auswählen",
+      "progress": "{name} wird gesendet: {percent} %",
+      "sent": "{name} gesendet. Der Empfänger zeigt es an, sofern er es anzeigen kann (sonst erscheint dort ein Hinweis).",
+      "prev": "Vorherige Seite",
+      "next": "Nächste Seite",
+      "pagesHelp": "Blättert beim Empfänger um.",
+      "error": {
+        "bad_type": "Hier können nur PDF-Dateien gesendet werden.",
+        "not_pdf": "Diese Datei sieht nicht wie ein PDF aus.",
+        "too_large": "Dieses PDF ist größer als {max}.",
+        "empty": "Diese Datei ist leer.",
+        "not_open": "Nicht mit dem Empfänger verbunden.",
+        "channel_closed": "Die Verbindung wurde beim Senden geschlossen.",
+        "failed": "Das PDF konnte nicht gesendet werden."
+      }
+    }
+  },
+  "common": {
+    "back": "Zurück",
+    "next": "Weiter",
+    "cancel": "Abbrechen",
+    "or": "oder",
+    "noName": "Ohne Namen",
+    "quoted": "„{name}“",
+    "stepOf": "Schritt {n} von 4"
+  },
+  "device": {
+    "phone": "Handy",
+    "android": "Android-Handy",
+    "iphone": "iPhone",
+    "ipad": "iPad",
+    "laptop": "Laptop",
+    "chromebook": "Chromebook"
+  },
+  "mode": {
+    "open": "Offen",
+    "approval": "Mit Freigabe",
+    "locked": "Gesperrt"
+  },
+  "appearance": {
+    "dark": "Dunkel",
+    "light": "Hell",
+    "oled": "OLED-Schwarz",
+    "auto": "Automatisch"
+  },
+  "setup": {
+    "welcome": {
+      "title": "Willkommen! Dieser Bildschirm wird zum Anzeigegerät.",
+      "body": "Danach kann jeder im Raum hier zeigen, was auf seinem Handy oder Laptop ist. Mit einem Code, ohne Konto.",
+      "start": "Einrichten"
+    },
+    "name": {
+      "title": "Wie heißt dieser Raum?",
+      "body": "Der Name steht groß auf dem Bildschirm, damit alle wissen, dass sie richtig sind.",
+      "custom": "Eigener Name",
+      "s1": "Besprechungsraum Elbe",
+      "s2": "Wohnzimmer",
+      "s3": "Vereinsheim",
+      "s4": "Werkstatt",
+      "s5": "Raum 204"
+    },
+    "mode": {
+      "title": "Wer darf sich verbinden?",
+      "fewPeople": "Wenige Leute",
+      "manyPeople": "Viele Leute",
+      "openText": "Wer den Code sieht, ist sofort verbunden. Für kleine Runden, Teams und zu Hause.",
+      "approvalText": "Jede Person erscheint hier als Anfrage, Sie lassen sie herein. Für Räume, die viele nutzen.",
+      "later": "Umschalten und Sperren geht später jederzeit in den Einstellungen."
+    },
+    "address": {
+      "title": "Über welche Adresse kommen die anderen?",
+      "body": "Diese Adresse steht später groß auf dem Bildschirm und steckt im QR-Code.",
+      "sourceDefault": "Standardserver. Nichts einzustellen.",
+      "sourceOwn": "Gefunden über das Firmennetz (DNS-Eintrag).",
+      "sourceBox": "Box im Haus im selben Netz gefunden.",
+      "ok": "Passt",
+      "change": "Andere Adresse",
+      "sourcePage": "Vom Server dieser Seite vorgegeben.",
+      "sourceTyped": "Von Hand eingegeben.",
+      "fieldLabel": "Serveradresse"
+    },
+    "done": {
+      "title": "Fertig.",
+      "bodyRemote": "Die Einstellungen öffnen Sie jederzeit mit der Menü-Taste oder „Einstellungen“: Beitritt und Aussehen.",
+      "bodyPointer": "Die Einstellungen öffnen Sie jederzeit mit „Einstellungen“ unten rechts: Beitritt und Aussehen.",
+      "finish": "Zum Wartebildschirm"
+    }
+  },
+  "idle": {
+    "step1": "Im Browser öffnen",
+    "step2": "Diesen Code eingeben",
+    "altAddress": "oder {ip}",
+    "locked": "Gerade gesperrt.",
+    "qrCaption": "Oder scannen",
+    "qrLocked": "Gesperrt",
+    "appLine": "Kein Download nötig. Lieber als App: App Store · Google Play · {dom}/app",
+    "offline": {
+      "title": "Keine Verbindung zu {dom}",
+      "body": "Dieser Bildschirm ist gerade offline. Sobald das Netz wieder da ist, erscheinen Code und QR-Code von selbst.",
+      "bodyBusy": "Der Server ist gerade ausgelastet. Dieser Bildschirm versucht es von selbst noch einmal.",
+      "bodyOutdated": "Diese Seite ist veraltet. Laden Sie sie neu, um einen Code zu bekommen."
+    },
+    "appLineWeb": "Kein Download nötig."
+  },
+  "settings": {
+    "open": "Einstellungen",
+    "title": "Einstellungen",
+    "close": "Schließen",
+    "closeRemote": "Schließen (Zurück-Taste)",
+    "join": {
+      "label": "Beitritt",
+      "openText": "Jeder mit dem Code ist sofort verbunden.",
+      "approvalText": "Sie lassen jede Person einzeln zu.",
+      "lockedText": "Niemand kommt neu hinzu. Verbundene bleiben."
+    },
+    "appearance": "Aussehen"
+  },
+  "request": {
+    "title": "Anfrage",
+    "queue": "+{n} warten",
+    "subtitle": "möchte sich verbinden",
+    "check": "Prüfzahl",
+    "yes": "Ja",
+    "no": "Nein",
+    "noBlock": "Nein und sperren",
+    "aria": "Anfrage: {name}"
+  },
+  "present": {
+    "byline": "{name} zeigt",
+    "end": "Beenden",
+    "sas": "Sicherheitscode {sas}"
+  },
+  "toast": {
+    "joined": "{name} ist verbunden",
+    "allowed": "{name} zugelassen",
+    "denied": "{name} abgelehnt",
+    "blocked": "{name} abgelehnt und gesperrt",
+    "expired": "Anfrage von {name} verfallen",
+    "withdrawn": "{name} hat die Anfrage zurückgezogen",
+    "left": "{name} hat sich getrennt",
+    "sessionEnded": "Sitzung beendet · neuer Code",
+    "openDisabled": "Dieser Server erlaubt nur „Mit Freigabe“"
+  },
+  "start": {
+    "titleRoom": "Mit „{room}“ verbinden",
+    "titleGeneric": "Mit einem Bildschirm verbinden",
+    "fromQr": "aus dem QR-Code",
+    "codeLabel": "Code vom Bildschirm",
+    "codeEmpty": "Bitte den Code eingeben, der groß auf dem Bildschirm steht.",
+    "nameLabel": "Ihr Name",
+    "browser": "Im Browser weiter",
+    "browserPhone": "Ohne Installation. Fotos, Dateien und Links zeigen.",
+    "browserLaptop": "Ohne Installation. Bildschirm, Fenster, Dateien und Links zeigen.",
+    "or": "oder",
+    "appAndroid": "App bei Google Play holen",
+    "appIos": "App im App Store holen",
+    "appDesktop": "App für {os} herunterladen",
+    "appPhone": "Mit der App teilen Sie auch Ihren ganzen Handy-Bildschirm.",
+    "appLaptop": "Die App findet Bildschirme im selben Netz auch ohne Code. Für jetzt reicht der Browser.",
+    "detected": "Erkannt: {device}, {browser}",
+    "beDisplay": "Soll dieses Gerät selbst der Bildschirm sein? {dom}/display öffnen.",
+    "downloadStarted": "Download gestartet. Bis die App installiert ist, geht alles hier im Browser."
+  },
+  "wait": {
+    "title": "Warten auf Freigabe",
+    "checkLabel": "Ihre Prüfzahl",
+    "checkHint": "Steht auch auf dem Bildschirm.",
+    "expires": "Die Anfrage verfällt in {n} s.",
+    "withdraw": "Anfrage zurückziehen"
+  },
+  "what": {
+    "connectedTo": "Verbunden mit „{room}“",
+    "title": "Was möchten Sie zeigen?",
+    "screen": "Bildschirm teilen",
+    "screenLaptop": "Ganzer Bildschirm oder ein Fenster, live",
+    "screenApp": "Ihr ganzes Handy-Display, live",
+    "screenPhoneBrowser": "Geht auf dem Handy nur mit der App",
+    "file": "Foto oder Datei zeigen",
+    "fileSub": "PDF oder Bild. Sie blättern, der Rest bleibt bei Ihnen",
+    "link": "Link zeigen",
+    "linkSub": "Der Bildschirm fragt, bevor er die Seite öffnet",
+    "disconnect": "Trennen",
+    "connected": "Verbunden",
+    "screenPhoneBrowserNoApp": "Geht im Handy-Browser nicht"
+  },
+  "file": {
+    "title": "Was möchten Sie zeigen?",
+    "body": "Zuletzt auf diesem Gerät. Oder „Andere Datei“ im Systemdialog.",
+    "bodyWeb": "Ein PDF oder ein Bild von diesem Gerät. Es erscheint auf dem Bildschirm, sobald Sie es auswählen.",
+    "pick": "Datei auswählen"
+  },
+  "link": {
+    "label": "Adresse der Seite",
+    "hint": "Der Bildschirm braucht dafür selbst Internet.",
+    "go": "Auf dem Bildschirm öffnen"
+  },
+  "presenting": {
+    "screen": "Sie zeigen Ihren Bildschirm",
+    "file": "Sie zeigen eine Datei",
+    "link": "Der Bildschirm zeigt Ihren Link",
+    "where": "Auf „{room}“.",
+    "stop": "Zeigen beenden",
+    "sas": "Sicherheitscode {sas}. Der Bildschirm zeigt denselben Code unter Ihrem Namen.",
+    "prevPage": "Vorherige Seite",
+    "nextPage": "Nächste Seite",
+    "pageOf": "Seite {n} von {total}"
+  },
+  "bye": {
+    "title": "Getrennt",
+    "body": "Sie sind nicht mehr verbunden. Sie können diesen Tab schließen.",
+    "again": "Neu verbinden"
+  },
+  "error": {
+    "why": "Warum",
+    "now": "Was jetzt",
+    "code": {
+      "title": "Diesen Code gibt es gerade nicht",
+      "why": "Meist ein Tippfehler. Ein Code hat 6 Zeichen und enthält nie O, 0, I oder 1.",
+      "now": "Schauen Sie noch einmal auf den Bildschirm und tippen Sie den Code neu."
+    },
+    "expired": {
+      "title": "Dieser Code gilt nicht mehr",
+      "why": "Der Bildschirm hat inzwischen einen neuen Code. Codes wechseln, wenn das Anzeigegerät neu startet oder eine Sitzung endet.",
+      "now": "Den Code abtippen, der jetzt auf dem Bildschirm steht, oder den QR-Code neu scannen."
+    },
+    "otherServer": {
+      "title": "Dieser Code gehört zu einer anderen Adresse",
+      "why": "Sie sind auf {here}. Der Code passt aber zu einem anderen Server, zum Beispiel dem einer Firma oder eines Vereins.",
+      "now": "Schauen Sie auf den Bildschirm: Dort steht die richtige Adresse. Oder scannen Sie den QR-Code, dann stimmt beides."
+    },
+    "noInternet": {
+      "title": "Kein Internet auf diesem Gerät",
+      "why": "Ihr Gerät ist offline, oder das WLAN lässt nur bestimmte Seiten zu.",
+      "now": "Mobile Daten einschalten oder das WLAN des Raums wählen. Die Seite versucht es dann von selbst noch einmal.",
+      "nowBox": "Für {dom} müssen Sie im selben WLAN sein wie der Bildschirm. Fragen Sie nach dem WLAN des Raums."
+    },
+    "noScreen": {
+      "title": "Bildschirm teilen geht in diesem Browser nicht",
+      "why": "Handy-Browser dürfen Ihren Bildschirm nicht weitergeben. Das liegt am Browser, nicht an Ihnen.",
+      "now": "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link. Oder holen Sie sich die App, dann geht auch der Bildschirm.",
+      "nowNoApp": "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link."
+    },
+    "displayOff": {
+      "title": "Der Bildschirm antwortet nicht",
+      "why": "Das Anzeigegerät ist aus, schläft oder Comet Cast ist dort geschlossen. Ihre Anfrage ist nicht angekommen.",
+      "now": "Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen.",
+      "whyRelay": "Die beiden Geräte haben sich nicht erreicht, und der Server konnte diesmal nicht helfen."
+    },
+    "denied": {
+      "title": "Nicht zugelassen",
+      "why": "Am Bildschirm wurde „Nein“ gewählt.",
+      "now": "Fragen Sie bei Bedarf kurz persönlich nach."
+    },
+    "locked": {
+      "title": "Gerade gesperrt",
+      "why": "Der Code stimmt, aber dieser Bildschirm nimmt gerade niemanden Neues an.",
+      "whyWhile": "Der Gastgeber hat gesperrt, während Sie gewartet haben. Ihre Anfrage wurde verworfen.",
+      "now": "Später noch einmal versuchen oder den Gastgeber ansprechen."
+    },
+    "timeout": {
+      "title": "Keine Antwort",
+      "why": "Niemand hat Ihre Anfrage rechtzeitig beantwortet.",
+      "now": "Noch einmal anfragen und dem Gastgeber Bescheid sagen."
+    },
+    "ended": {
+      "title": "Präsentation beendet",
+      "why": "Am Bildschirm wurde die Sitzung beendet.",
+      "now": "Zum Weitermachen den neuen Code eingeben oder den QR-Code neu scannen."
+    },
+    "action": {
+      "retype": "Code neu eingeben",
+      "rescan": "QR-Code neu scannen",
+      "retry": "Erneut versuchen",
+      "showFile": "Foto oder Datei zeigen",
+      "showLink": "Link zeigen",
+      "getApp": "App holen",
+      "ask": "Erneut anfragen",
+      "askIn": "Erneut anfragen in {n} s",
+      "openDom": "{dom} öffnen",
+      "reload": "Seite neu laden"
+    },
+    "occupied": {
+      "title": "Jemand anderes ist verbunden",
+      "why": "Dieser Bildschirm nimmt immer nur eine Person an.",
+      "now": "Die Person bitten, sich zu trennen, oder den Gastgeber, „Beenden“ zu drücken. Dann noch einmal versuchen."
+    },
+    "busy": {
+      "title": "Der Server ist ausgelastet",
+      "why": "Zu viele Versuche aus diesem Netz oder zu viele Leute gleichzeitig.",
+      "now": "Eine Minute warten, dann noch einmal versuchen."
+    },
+    "outdated": {
+      "title": "Diese Seite ist veraltet",
+      "why": "Der Server wurde inzwischen aktualisiert.",
+      "now": "Die Seite neu laden."
+    },
+    "other": {
+      "title": "Etwas hat nicht geklappt",
+      "now": "Versuchen Sie es noch einmal. Wenn es wieder passiert, sagen Sie dem Gastgeber Bescheid."
+    }
+  }
+}

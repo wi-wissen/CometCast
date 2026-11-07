@@ -7,7 +7,7 @@ import { nextTick } from 'vue'
 import { createAppI18n } from '../src/i18n'
 import en from '../src/locales/en.json'
 import de from '../src/locales/de.json'
-import deDu from '../src/locales/de-du.json'
+import deSie from '../src/locales/de-sie.json'
 import { ringHidden } from '../src/core/focusRing'
 import { codeFieldText, codeFromField, CODE_FIELD_MAX, isValidRoomCode } from '../src/core/roomCode'
 import { splitSlot } from '../src/core/textSlot'
@@ -39,15 +39,15 @@ const render = (l: any, key: string, vars: Record<string, string> = {}) =>
   get(l, key).replace(/\{(\w+)\}/g, (_: string, n: string) => vars[n] ?? `{${n}}`)
 
 describe('the device type is out of the strings (decision 13.3)', () => {
-  it('"wants to connect" and "“Lena” is showing" come from the locale values alone, in EN, DE Sie and DE du', () => {
+  it('"wants to connect" and "“Lena” is showing" come from the locale values alone, in EN, DE du and DE Sie', () => {
     const q = (name: string) => `“${name}”`
     expect(render(en, 'request.subtitle')).toBe('wants to connect')
     expect(render(de, 'request.subtitle')).toBe('möchte sich verbinden')
-    expect(render(deDu, 'request.subtitle')).toBe('möchte sich verbinden')
+    expect(render(deSie, 'request.subtitle')).toBe('möchte sich verbinden')
     expect(render(en, 'present.byline', { name: q('Lena') })).toBe('“Lena” is showing')
     expect(render(de, 'present.byline', { name: '„Lena“' })).toBe('„Lena“ zeigt')
-    expect(render(deDu, 'present.byline', { name: '„Lena“' })).toBe('„Lena“ zeigt')
-    for (const l of [en, de, deDu]) {
+    expect(render(deSie, 'present.byline', { name: '„Lena“' })).toBe('„Lena“ zeigt')
+    for (const l of [en, de, deSie]) {
       expect(get(l, 'request.subtitle')).not.toContain('{device}')
       expect(get(l, 'present.byline')).not.toContain('{device}')
       expect(get(l, 'request.subtitle')).not.toContain('·')

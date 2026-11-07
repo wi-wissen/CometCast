@@ -279,5 +279,4 @@ must follow this rule. UNCERTAIN: the value is unmeasured; see the other limits 
   with the presentation. QR box edge in Light and the empty-box look; text fields get the focus ring without scale; the wizard
   card is fixed at 64 from step 1 on and an emptied name field reselects the earlier chip.
 - Tests: `tests/fixRound2.test.ts` and the changes in `displayRunning`, `displayComponents`, `displaySetup`, `fixRound`,
-  `presenter`, `relayConfirm`, `locales` tests; `tools/check-i18n.mjs` requires a `de-du.json` entry for every `de.json` text that
-  addresses the reader. `npm run e2e:shots` needs `npm run build:wasm` first (PDF shots) and writes the full state set.
+  `presenter`, `relayConfirm`, `locales` tests; `tools/check-i18n.mjs` requires `de.json` (du) to contain no formal forms and `de-sie.json` to have the same keys. `npm run e2e:shots` needs `npm run build:wasm` first (PDF shots) and writes the full state set.
