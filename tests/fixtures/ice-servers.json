@@ -1,0 +1,295 @@
+{
+  "description": "parseIceServers (apps/web/src/core/altchaClient.ts): JSON text of the /ice-servers body in, kept entries out.",
+  "cases": [
+    {
+      "input": "[]",
+      "expect": []
+    },
+    {
+      "input": "{}",
+      "expect": []
+    },
+    {
+      "input": "null",
+      "expect": []
+    },
+    {
+      "input": "x",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"stun:stun.example.org:3478\"}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:stun.example.org:3478"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":[\"stun:a.example\",\"STUNS:b.example\"]}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:a.example",
+            "STUNS:b.example"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"turn:t.example\",\"username\":\"u\",\"credential\":\"c\"}]",
+      "expect": [
+        {
+          "urls": [
+            "turn:t.example"
+          ],
+          "username": "u",
+          "credential": "c"
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"turns:t.example:5349?transport=tcp\",\"username\":\"u\",\"credential\":\"c\"}]",
+      "expect": [
+        {
+          "urls": [
+            "turns:t.example:5349?transport=tcp"
+          ],
+          "username": "u",
+          "credential": "c"
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"turn:t.example\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"turn:t.example\",\"username\":\"u\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"turn:t.example\",\"username\":\"\",\"credential\":\"c\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"http://evil.example\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"stun:ok.example\"},{\"urls\":\"http://x\"},{\"urls\":\"turn:t\",\"username\":\"u\",\"credential\":\"c\"}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:ok.example"
+          ]
+        },
+        {
+          "urls": [
+            "turn:t"
+          ],
+          "username": "u",
+          "credential": "c"
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":[]}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":[1]}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":[\"stun:a\",1]}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":[\"http://x\",\"stun:y\"]}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:y"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":5}]",
+      "expect": []
+    },
+    {
+      "input": "[5, null, \"x\"]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"stun:a\\u0001b\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"stun:a\\u007fb\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"stun:ok\",\"username\":5,\"credential\":6}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:ok"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"stun:ok\",\"username\":\"u\",\"credential\":\"c\",\"extra\":1}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:ok"
+          ],
+          "username": "u",
+          "credential": "c"
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"stun:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"stun:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"turn:t\",\"username\":\"uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu\",\"credential\":\"c\"}]",
+      "expect": [
+        {
+          "urls": [
+            "turn:t"
+          ],
+          "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu",
+          "credential": "c"
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"turn:t\",\"username\":\"uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu\",\"credential\":\"c\"}]",
+      "expect": []
+    },
+    {
+      "input": "[{\"urls\":\"stun:s0.example\"},{\"urls\":\"stun:s1.example\"},{\"urls\":\"stun:s2.example\"},{\"urls\":\"stun:s3.example\"},{\"urls\":\"stun:s4.example\"},{\"urls\":\"stun:s5.example\"},{\"urls\":\"stun:s6.example\"},{\"urls\":\"stun:s7.example\"},{\"urls\":\"stun:s8.example\"},{\"urls\":\"stun:s9.example\"},{\"urls\":\"stun:s10.example\"},{\"urls\":\"stun:s11.example\"},{\"urls\":\"stun:s12.example\"},{\"urls\":\"stun:s13.example\"},{\"urls\":\"stun:s14.example\"},{\"urls\":\"stun:s15.example\"},{\"urls\":\"stun:s16.example\"},{\"urls\":\"stun:s17.example\"},{\"urls\":\"stun:s18.example\"},{\"urls\":\"stun:s19.example\"}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:s0.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s1.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s2.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s3.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s4.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s5.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s6.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s7.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s8.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s9.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s10.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s11.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s12.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s13.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s14.example"
+          ]
+        },
+        {
+          "urls": [
+            "stun:s15.example"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":[\"stun:s0.example\",\"stun:s1.example\",\"stun:s2.example\",\"stun:s3.example\",\"stun:s4.example\",\"stun:s5.example\",\"stun:s6.example\",\"stun:s7.example\",\"stun:s8.example\",\"stun:s9.example\",\"stun:s10.example\",\"stun:s11.example\"]}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:s0.example",
+            "stun:s1.example",
+            "stun:s2.example",
+            "stun:s3.example",
+            "stun:s4.example",
+            "stun:s5.example",
+            "stun:s6.example",
+            "stun:s7.example"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"http://bad\"},{\"urls\":\"stun:late.example\"}]",
+      "expect": []
+    }
+  ]
+}

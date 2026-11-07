@@ -1,0 +1,780 @@
+{
+  "description": "parseControlMessage: text in, normalised message (or null) out. `input` is the text, or `input_parts` (strings and {repeat,count}) concatenated. `expect` is what apps/web/src/core/control.ts returns; `expect_apple_tv` (optional) is a deliberate, documented difference of the Apple TV implementation.",
+  "cases": [
+    {
+      "name": "cmd next_page",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"next_page\"}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": "next_page"
+      }
+    },
+    {
+      "name": "cmd prev_page",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"prev_page\"}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": "prev_page"
+      }
+    },
+    {
+      "name": "cmd stop",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"stop\"}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": "stop"
+      }
+    },
+    {
+      "name": "cmd go_to_page 3",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":3}}}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": {
+          "go_to_page": {
+            "page": 3
+          }
+        }
+      }
+    },
+    {
+      "name": "cmd go_to_page max",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":1000000}}}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": {
+          "go_to_page": {
+            "page": 1000000
+          }
+        }
+      }
+    },
+    {
+      "name": "cmd go_to_page over max",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":1000001}}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page 0",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":0}}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page negative",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":-2}}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page fraction",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":1.5}}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page integral float",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":2.0}}}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": {
+          "go_to_page": {
+            "page": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "cmd go_to_page exponent",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":1e1}}}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": {
+          "go_to_page": {
+            "page": 10
+          }
+        }
+      }
+    },
+    {
+      "name": "cmd go_to_page string",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":\"3\"}}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page bool",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":true}}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page null",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":null}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page array",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":[3]}}",
+      "expect": null
+    },
+    {
+      "name": "cmd go_to_page with extra key",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":2},\"x\":1}}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": {
+          "go_to_page": {
+            "page": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "cmd unknown string",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}",
+      "expect": null
+    },
+    {
+      "name": "cmd missing",
+      "input": "{\"kind\":\"cmd\"}",
+      "expect": null
+    },
+    {
+      "name": "cmd null",
+      "input": "{\"kind\":\"cmd\",\"cmd\":null}",
+      "expect": null
+    },
+    {
+      "name": "cmd array",
+      "input": "{\"kind\":\"cmd\",\"cmd\":[\"stop\"]}",
+      "expect": null
+    },
+    {
+      "name": "cmd number",
+      "input": "{\"kind\":\"cmd\",\"cmd\":3}",
+      "expect": null
+    },
+    {
+      "name": "image png",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":1000}",
+      "expect": {
+        "kind": "image",
+        "name": "a.png",
+        "mime": "image/png",
+        "size": 1000
+      }
+    },
+    {
+      "name": "image jpeg",
+      "input": "{\"kind\":\"image\",\"name\":\"a.jpg\",\"mime\":\"image/jpeg\",\"size\":1}",
+      "expect": {
+        "kind": "image",
+        "name": "a.jpg",
+        "mime": "image/jpeg",
+        "size": 1
+      }
+    },
+    {
+      "name": "image webp",
+      "input": "{\"kind\":\"image\",\"name\":\"a.webp\",\"mime\":\"image/webp\",\"size\":42}",
+      "expect": {
+        "kind": "image",
+        "name": "a.webp",
+        "mime": "image/webp",
+        "size": 42
+      }
+    },
+    {
+      "name": "image gif",
+      "input": "{\"kind\":\"image\",\"name\":\"a.gif\",\"mime\":\"image/gif\",\"size\":42}",
+      "expect": {
+        "kind": "image",
+        "name": "a.gif",
+        "mime": "image/gif",
+        "size": 42
+      }
+    },
+    {
+      "name": "image svg refused",
+      "input": "{\"kind\":\"image\",\"name\":\"a.svg\",\"mime\":\"image/svg+xml\",\"size\":42}",
+      "expect": null
+    },
+    {
+      "name": "image uppercase mime refused",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"IMAGE/PNG\",\"size\":42}",
+      "expect": null
+    },
+    {
+      "name": "image size max",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":10485760}",
+      "expect": {
+        "kind": "image",
+        "name": "a.png",
+        "mime": "image/png",
+        "size": 10485760
+      }
+    },
+    {
+      "name": "image size over max",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":10485761}",
+      "expect": null
+    },
+    {
+      "name": "image size zero",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":0}",
+      "expect": null
+    },
+    {
+      "name": "image size negative",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":-5}",
+      "expect": null
+    },
+    {
+      "name": "image size fraction",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":10.5}",
+      "expect": null
+    },
+    {
+      "name": "image size 1.0",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":1.0}",
+      "expect": {
+        "kind": "image",
+        "name": "a.png",
+        "mime": "image/png",
+        "size": 1
+      }
+    },
+    {
+      "name": "image size exponent",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":1e2}",
+      "expect": {
+        "kind": "image",
+        "name": "a.png",
+        "mime": "image/png",
+        "size": 100
+      }
+    },
+    {
+      "name": "image size string",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":\"5\"}",
+      "expect": null
+    },
+    {
+      "name": "image size huge",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":1e400}",
+      "expect": null
+    },
+    {
+      "name": "image no name",
+      "input": "{\"kind\":\"image\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": null
+    },
+    {
+      "name": "image empty name",
+      "input": "{\"kind\":\"image\",\"name\":\"\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": null
+    },
+    {
+      "name": "image name number",
+      "input": "{\"kind\":\"image\",\"name\":5,\"mime\":\"image/png\",\"size\":5}",
+      "expect": null
+    },
+    {
+      "name": "image name only invisible characters",
+      "input": "{\"kind\":\"image\",\"name\":\"\\u200b\\u202e\\u0007\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": null
+    },
+    {
+      "name": "image name with bidi override",
+      "input": "{\"kind\":\"image\",\"name\":\"evil\\u202etxt.png\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": {
+        "kind": "image",
+        "name": "eviltxt.png",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image name with control and zero width",
+      "input": "{\"kind\":\"image\",\"name\":\"a\\u0000b\\u200bc\\ufeffd\\u00ade\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": {
+        "kind": "image",
+        "name": "abcde",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image name with tag characters",
+      "input": "{\"kind\":\"image\",\"name\":\"x\\udb40\\udc41y\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": {
+        "kind": "image",
+        "name": "xy",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image name with emoji",
+      "input": "{\"kind\":\"image\",\"name\":\"\\ud83d\\ude00.png\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": {
+        "kind": "image",
+        "name": "😀.png",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image name 255 characters",
+      "input_parts": [
+        "{\"kind\":\"image\",\"name\":\"",
+        {
+          "repeat": "a",
+          "count": 255
+        },
+        "\",\"mime\":\"image/png\",\"size\":5}"
+      ],
+      "expect": {
+        "kind": "image",
+        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image name 256 characters",
+      "input_parts": [
+        "{\"kind\":\"image\",\"name\":\"",
+        {
+          "repeat": "a",
+          "count": 256
+        },
+        "\",\"mime\":\"image/png\",\"size\":5}"
+      ],
+      "expect": null
+    },
+    {
+      "name": "image name 255 emoji",
+      "input_parts": [
+        "{\"kind\":\"image\",\"name\":\"",
+        {
+          "repeat": "\\ud83d\\ude00",
+          "count": 255
+        },
+        "\",\"mime\":\"image/png\",\"size\":5}"
+      ],
+      "expect": {
+        "kind": "image",
+        "name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image name 256 emoji",
+      "input_parts": [
+        "{\"kind\":\"image\",\"name\":\"",
+        {
+          "repeat": "\\ud83d\\ude00",
+          "count": 256
+        },
+        "\",\"mime\":\"image/png\",\"size\":5}"
+      ],
+      "expect": null
+    },
+    {
+      "name": "image name with combining and braille blank",
+      "input": "{\"kind\":\"image\",\"name\":\"a\\u2800b\\u3164c\\u0301\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": {
+        "kind": "image",
+        "name": "abć",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image with extra fields",
+      "input": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":5,\"extra\":[1,2,{\"a\":null}]}",
+      "expect": {
+        "kind": "image",
+        "name": "a.png",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "image_end",
+      "input": "{\"kind\":\"image_end\"}",
+      "expect": {
+        "kind": "image_end"
+      }
+    },
+    {
+      "name": "image_end with fields",
+      "input": "{\"kind\":\"image_end\",\"x\":1}",
+      "expect": {
+        "kind": "image_end"
+      }
+    },
+    {
+      "name": "document ok",
+      "input": "{\"kind\":\"document\",\"name\":\"slides.pdf\",\"mime\":\"application/pdf\",\"size\":123456}",
+      "expect": {
+        "kind": "document",
+        "name": "slides.pdf",
+        "mime": "application/pdf",
+        "size": 123456
+      }
+    },
+    {
+      "name": "document wrong mime",
+      "input": "{\"kind\":\"document\",\"name\":\"slides.pdf\",\"mime\":\"image/png\",\"size\":123456}",
+      "expect": null
+    },
+    {
+      "name": "document mime with parameter",
+      "input": "{\"kind\":\"document\",\"name\":\"slides.pdf\",\"mime\":\"application/pdf; charset=x\",\"size\":123456}",
+      "expect": null
+    },
+    {
+      "name": "document size max",
+      "input": "{\"kind\":\"document\",\"name\":\"s.pdf\",\"mime\":\"application/pdf\",\"size\":67108864}",
+      "expect": {
+        "kind": "document",
+        "name": "s.pdf",
+        "mime": "application/pdf",
+        "size": 67108864
+      }
+    },
+    {
+      "name": "document size over max",
+      "input": "{\"kind\":\"document\",\"name\":\"s.pdf\",\"mime\":\"application/pdf\",\"size\":67108865}",
+      "expect": null
+    },
+    {
+      "name": "document size zero",
+      "input": "{\"kind\":\"document\",\"name\":\"s.pdf\",\"mime\":\"application/pdf\",\"size\":0}",
+      "expect": null
+    },
+    {
+      "name": "document_end",
+      "input": "{\"kind\":\"document_end\"}",
+      "expect": {
+        "kind": "document_end"
+      }
+    },
+    {
+      "name": "link https",
+      "input": "{\"kind\":\"link\",\"url\":\"https://example.com/path?q=1#frag\"}",
+      "expect": {
+        "kind": "link",
+        "url": "https://example.com/path?q=1#frag"
+      }
+    },
+    {
+      "name": "link http with port",
+      "input": "{\"kind\":\"link\",\"url\":\"http://example.com:8080/a\"}",
+      "expect": {
+        "kind": "link",
+        "url": "http://example.com:8080/a"
+      }
+    },
+    {
+      "name": "link normalised",
+      "input": "{\"kind\":\"link\",\"url\":\"HTTPS://Example.COM:443/a/../b/./c\"}",
+      "expect": {
+        "kind": "link",
+        "url": "https://example.com/b/c"
+      }
+    },
+    {
+      "name": "link ftp refused",
+      "input": "{\"kind\":\"link\",\"url\":\"ftp://example.com/\"}",
+      "expect": null
+    },
+    {
+      "name": "link javascript refused",
+      "input": "{\"kind\":\"link\",\"url\":\"javascript:alert(1)\"}",
+      "expect": null
+    },
+    {
+      "name": "link data refused",
+      "input": "{\"kind\":\"link\",\"url\":\"data:text/html,hi\"}",
+      "expect": null
+    },
+    {
+      "name": "link credentials refused",
+      "input": "{\"kind\":\"link\",\"url\":\"https://user:pw@example.com/\"}",
+      "expect": null
+    },
+    {
+      "name": "link with space refused",
+      "input": "{\"kind\":\"link\",\"url\":\"https://example.com/a b\"}",
+      "expect": null
+    },
+    {
+      "name": "link with newline refused",
+      "input": "{\"kind\":\"link\",\"url\":\"https://example.com/a\\nb\"}",
+      "expect": null
+    },
+    {
+      "name": "link with tab refused",
+      "input": "{\"kind\":\"link\",\"url\":\"https://exa\\tmple.com/\"}",
+      "expect": null
+    },
+    {
+      "name": "link surrounded by spaces",
+      "input": "{\"kind\":\"link\",\"url\":\"  https://example.com/  \"}",
+      "expect": {
+        "kind": "link",
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "name": "link not a string",
+      "input": "{\"kind\":\"link\",\"url\":5}",
+      "expect": null
+    },
+    {
+      "name": "link missing",
+      "input": "{\"kind\":\"link\"}",
+      "expect": null
+    },
+    {
+      "name": "link empty",
+      "input": "{\"kind\":\"link\",\"url\":\"\"}",
+      "expect": null
+    },
+    {
+      "name": "link url 2048 characters",
+      "input_parts": [
+        "{\"kind\":\"link\",\"url\":\"https://example.com/",
+        {
+          "repeat": "a",
+          "count": 2028
+        },
+        "\"}"
+      ],
+      "expect": {
+        "kind": "link",
+        "url": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "link url 2049 characters",
+      "input_parts": [
+        "{\"kind\":\"link\",\"url\":\"https://example.com/",
+        {
+          "repeat": "a",
+          "count": 2029
+        },
+        "\"}"
+      ],
+      "expect": null
+    },
+    {
+      "name": "unknown kind",
+      "input": "{\"kind\":\"video\"}",
+      "expect": null
+    },
+    {
+      "name": "kind not a string",
+      "input": "{\"kind\":5}",
+      "expect": null
+    },
+    {
+      "name": "kind missing",
+      "input": "{\"cmd\":\"stop\"}",
+      "expect": null
+    },
+    {
+      "name": "empty object",
+      "input": "{}",
+      "expect": null
+    },
+    {
+      "name": "array",
+      "input": "[]",
+      "expect": null
+    },
+    {
+      "name": "array of message",
+      "input": "[{\"kind\":\"image_end\"}]",
+      "expect": null
+    },
+    {
+      "name": "string",
+      "input": "\"image_end\"",
+      "expect": null
+    },
+    {
+      "name": "number",
+      "input": "5",
+      "expect": null
+    },
+    {
+      "name": "null",
+      "input": "null",
+      "expect": null
+    },
+    {
+      "name": "true",
+      "input": "true",
+      "expect": null
+    },
+    {
+      "name": "empty text",
+      "input": "",
+      "expect": null
+    },
+    {
+      "name": "only spaces",
+      "input": "   ",
+      "expect": null
+    },
+    {
+      "name": "truncated json",
+      "input": "{\"kind\":\"image_end\"",
+      "expect": null
+    },
+    {
+      "name": "trailing comma",
+      "input": "{\"kind\":\"image_end\",}",
+      "expect": null
+    },
+    {
+      "name": "trailing garbage",
+      "input": "{\"kind\":\"image_end\"} x",
+      "expect": null
+    },
+    {
+      "name": "single quotes",
+      "input": "{'kind':'image_end'}",
+      "expect": null
+    },
+    {
+      "name": "leading zero number",
+      "input": "{\"kind\":\"image\",\"name\":\"a\",\"mime\":\"image/png\",\"size\":05}",
+      "expect": null
+    },
+    {
+      "name": "plus number",
+      "input": "{\"kind\":\"image\",\"name\":\"a\",\"mime\":\"image/png\",\"size\":+5}",
+      "expect": null
+    },
+    {
+      "name": "hex number",
+      "input": "{\"kind\":\"image\",\"name\":\"a\",\"mime\":\"image/png\",\"size\":0x5}",
+      "expect": null
+    },
+    {
+      "name": "NaN",
+      "input": "{\"kind\":\"image\",\"name\":\"a\",\"mime\":\"image/png\",\"size\":NaN}",
+      "expect": null
+    },
+    {
+      "name": "raw control character in string",
+      "input": "{\"kind\":\"image\",\"name\":\"a\tb\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": null
+    },
+    {
+      "name": "bad escape",
+      "input": "{\"kind\":\"image\",\"name\":\"a\\qb\",\"mime\":\"image/png\",\"size\":5}",
+      "expect": null
+    },
+    {
+      "name": "whitespace around",
+      "input": " \n\t{ \"kind\" : \"image_end\" }\r\n ",
+      "expect": {
+        "kind": "image_end"
+      }
+    },
+    {
+      "name": "duplicate key, last wins",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"stop\",\"kind\":\"image_end\"}",
+      "expect": {
+        "kind": "image_end"
+      }
+    },
+    {
+      "name": "duplicate size, last wins",
+      "input": "{\"kind\":\"image\",\"name\":\"a\",\"mime\":\"image/png\",\"size\":0,\"size\":7}",
+      "expect": {
+        "kind": "image",
+        "name": "a",
+        "mime": "image/png",
+        "size": 7
+      }
+    },
+    {
+      "name": "byte order mark",
+      "input": "﻿{\"kind\":\"image_end\"}",
+      "expect": null
+    },
+    {
+      "name": "slash escape",
+      "input": "{\"kind\":\"image\",\"name\":\"a\\/b\",\"mime\":\"image\\/png\",\"size\":5}",
+      "expect": {
+        "kind": "image",
+        "name": "a/b",
+        "mime": "image/png",
+        "size": 5
+      }
+    },
+    {
+      "name": "text of 8192 characters",
+      "input_parts": [
+        "{\"kind\":\"image_end\",\"pad\":\"",
+        {
+          "repeat": "x",
+          "count": 8163
+        },
+        "\"}"
+      ],
+      "expect": {
+        "kind": "image_end"
+      }
+    },
+    {
+      "name": "text of 8193 characters",
+      "input_parts": [
+        "{\"kind\":\"image_end\",\"pad\":\"",
+        {
+          "repeat": "x",
+          "count": 8164
+        },
+        "\"}"
+      ],
+      "expect": null
+    },
+    {
+      "name": "text of 8192 UTF-16 units with astral characters",
+      "input_parts": [
+        "{\"kind\":\"image_end\",\"pad\":\"",
+        {
+          "repeat": "😀",
+          "count": 4081.5
+        },
+        "\"}"
+      ],
+      "expect": {
+        "kind": "image_end"
+      }
+    },
+    {
+      "name": "text of 8194 UTF-16 units with astral characters",
+      "input_parts": [
+        "{\"kind\":\"image_end\",\"pad\":\"",
+        {
+          "repeat": "😀",
+          "count": 4082.5
+        },
+        "\"}"
+      ],
+      "expect": null
+    },
+    {
+      "name": "nested junk",
+      "input": "{\"kind\":\"image_end\",\"a\":[[[[[[[[[[{\"b\":[1,2,3,{\"c\":\"d\"}]}]]]]]]]]]]}",
+      "expect": {
+        "kind": "image_end"
+      }
+    }
+  ]
+}
