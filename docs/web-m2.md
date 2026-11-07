@@ -11,7 +11,9 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
   screen. Pointer events (mouse, touch, pen); the toolbar is a keyboard-operable `role="toolbar"`
   (Tab enters, Left/Right/Home/End move, Escape collapses, arrow keys on the grip move it).
 - **Annotations are local.** They are drawn on a canvas on the receiver and stored only in that tab.
-  Nothing is sent back to the sender or to the server. They are lost on reload.
+  Nothing is sent back to the sender or to the server. They are lost on reload. There is no annotation message
+  in the `control` channel below; the Flutter receiver has the same toolbar and the same local behaviour
+  ([flutter-bridge.md](flutter-bridge.md#toolbar-over-the-received-screen)).
 - **Freeze** paints the current video frame to a canvas shown above the video. The `<video>` element
   keeps playing the live stream underneath, so unfreezing continues at the live position.
 - **Send file or link** view on the sender: image and PDF (picker or drag and drop) and http(s) link, all over

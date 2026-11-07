@@ -7,7 +7,7 @@ Status: PDF part implemented and tested on generated files only. Rendering runs 
 seccomp where the kernel allows it (since the security reviews, see "Limits and safety"). It is
 **not a sandbox in the full sense**: read "What this protects and what it does not" before
 relying on it.
-Office conversion on the **sender** is implemented in `cc-office` and the command line, see [Office documents](#office-documents-sender-side-cc-office); it is not in the Flutter app or the web client. Speaker notes are **not** done. The WASM build exists (`crates/cc-docs-wasm`) and is used by the web receiver, see [In the web client](#in-the-web-client). The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
+Office conversion on the **sender** is implemented in `cc-office`, the command line and the Linux Flutter app, see [Office documents](#office-documents-sender-side-cc-office); it is not in the web client. Speaker notes are **not** done. The WASM build exists (`crates/cc-docs-wasm`) and is used by the web receiver, see [In the web client](#in-the-web-client). The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
 
 ## Idea (from the plan)
 
@@ -466,7 +466,8 @@ end to end under `xvfb` with the real server and `cometcast-cli`
 (`apps/flutter/integration_test/content_e2e_test.dart`). Everything below is a decision of the app,
 not of `cc-docs`; the bridge is described in [flutter-bridge.md](flutter-bridge.md).
 
-**Sending ("Send file or link").** The person chooses an image (PNG, JPEG, WebP, GIF) or a PDF with the file
+**Sending ("Send file or link").** The person chooses an image (PNG, JPEG, WebP, GIF), a PDF or an Office file
+(`.docx .pptx .xlsx`, see [Office files in the Flutter app](#office-files-in-the-flutter-app)) with the file
 dialog (`file_selector`), or types a link, and enters the receiver's room code like for screen sharing.
 Rust checks everything (type by extension and bytes, size, `%PDF-` header, link rules; Dart does not
 repeat the rules) and counts the PDF's pages in the render worker, then the file goes over the control
@@ -475,6 +476,13 @@ showing, and the keys arrow right/down/Page Down (next) and arrow left/up/Page U
 `ControlCmd` (`NextPage`, `PrevPage`, `GoToPage`, `Stop`). The sender draws nothing: the page number it shows is the
 one it asked for (the receiver does not report back), clamped to the page count when that is known. The sender must
 stay on the screen while the receiver shows the content; leaving it disconnects.
+
+**Toolbar on the receiver.** Over the live picture, a received image and a received PDF page the receive view
+has a toolbar like the web receiver's (pen, highlighter, eraser, laser pointer, undo, clear, freeze; five colours,
+three sizes). It is **local to the receiving device**: nothing is sent to the sender (the control channel has no
+annotation message, see [flutter-bridge.md](flutter-bridge.md#toolbar-over-the-received-screen)). Marks are dropped
+when the picture ends or the image or page underneath changes (a page turn included). Freeze is only for the live
+picture. A link card has no toolbar.
 
 **Receiving.** The receive view shows what the sender pushes, instead of the live screen (the latest content
 wins; closing returns to the live screen or to waiting):
@@ -660,13 +668,39 @@ provide the worker (`WorkerSpec::discover()` finds `cc-office-worker` next to th
 `WorkerSpec::current_exe_with_arg("office-worker")`). Unlike `cc-docs` there is **no environment variable
 that replaces the worker program**.
 
-### Why not in `cc-ffi` / Flutter yet
+### Office files in the Flutter app
 
-The Flutter send dialog rejects by type through the generated `UiSendRejection` enum and shows
-the page count after a "prepared" step. Accepting Office files there needs a new rejection
-reason, a conversion step and progress UI (a conversion takes seconds). That means changing
-generated bridge code and the Dart screens, which was judged not low-risk for this change and was
-not done. The worker would also have to be packaged next to the app (as `cc-docs-worker` is on Linux).
+The Linux Flutter app converts `.docx .pptx .xlsx` on the sender through `cc-office`; the receiver gets
+a PDF named `<file name without extension>.pdf` and nothing in the protocol changed. Where it lives:
+`crates/cc-ffi/src/office.rs` (worker lookup, error mapping, conversion), the Office branch of
+`content_sender.rs::prepare`, and `start_content_sender` in `api.rs`.
+
+- **Picker.** The file dialog lists the three extensions (and their MIME types and UTIs) next to images and
+  PDF. OpenDocument (`.odt .odp .ods`) and legacy files are not offered and are refused as
+  `UnsupportedType`: the app never starts LibreOffice, because of the linked-file risk above.
+- **Engine.** Always the pure-Rust engine (`Engine::Rust`). A build without it, or without the worker program,
+  refuses Office files with `OfficeUnavailable`. `cc-ffi` depends on `cc-office` with its default features
+  (the parent process must know that the engine exists, the conversion itself runs in `cc-office-worker`).
+- **Where the work runs.** Blocking, on `spawn_blocking`, together with the other checks of `prepare`. The
+  worker is a resource-limited child process, **not a sandbox** (see the section above); the protections that
+  were in effect are not shown in the app (the CLI prints them). UNCERTAIN: the app shows no warning when a
+  protection is missing (old kernel without Landlock).
+- **Progress state.** The new event `Converting { name }` comes first (only for Office files), then `Prepared`
+  (kind PDF, converted name, converted size, page count from the render worker when there is one), then the
+  usual `Joined`, `Connected`, `Progress`, `Sent`. The screen shows an indeterminate bar and "Converting ..."
+  (a conversion takes seconds; the limit is 120 s). There is no percentage: the engine reports none.
+  Stopping during the conversion is noticed when it ends (the child runs to its end or deadline and the result
+  is dropped). UNCERTAIN: not measured how long a large file takes.
+- **Refusals** (`UiSendRejection`, all translated, no engine text reaches the UI): `OfficeUnavailable` (worker
+  program or engine missing), `OfficeEncrypted` (old binary or password-protected file), `OfficeFailed` (damaged,
+  refused by the container checks or the size-after-unpacking limits, engine failure, timeout, bad output);
+  and the existing `TooLarge` (50 MiB input, or a converted PDF over 64 MiB), `Unreadable`, `NotARegularFile`.
+  A converted PDF is also checked like a picked one (`document_transfer`, page count in the render worker;
+  a PDF that no receiver could show is `DocumentUnusable`).
+- **Worker lookup.** `set_office_worker(path)` (tests), else a file `cc-office-worker` next to the running
+  executable (or one directory up from a Cargo `deps` directory); no environment variable, no `PATH`.
+  `office_worker_path()` tells which. The Linux CMake step builds it with `-p cc-office` and installs it next
+  to the executable like `cc-docs-worker`. Other platforms: not done (see flutter-bridge.md).
 
 ### Tests (what was run)
 
@@ -712,7 +746,7 @@ not done. The worker would also have to be packaged next to the app (as `cc-docs
   call, which costs a few milliseconds per page); a job object on Windows.
 - A page cache (every page change renders again); a local preview or thumbnail on the presenter's
   side (the Flutter sender only knows the page count); a receiver that turns pages itself.
-- Office to PDF in the Flutter app (`cc-ffi`) and the web client; notes from PPTX; fidelity and speed of Office conversion on real files (see the Office section).
+- Office to PDF in the web client and on non-Linux Flutter builds (the worker is bundled for Linux only); notes from PPTX; fidelity and speed of Office conversion on real files (see the Office section).
 - Annotations (`lopdf` in the plan).
 
 The generated test files and their provenance are in

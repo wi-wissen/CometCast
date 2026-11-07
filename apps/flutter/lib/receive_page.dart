@@ -6,6 +6,7 @@
 
 import 'dart:io' show Platform;
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
 
+import 'annotations.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
 import 'receiver_controller.dart';
@@ -71,6 +73,13 @@ class _ReceivePageState extends State<ReceivePage> {
   );
   bool _serverEmpty = false;
 
+  /// Pen, highlighter, eraser, laser, undo, clear and freeze over the picture or page. Local
+  /// to this device (nothing is sent), dropped when the picture or page underneath changes.
+  final AnnotationController _annotations = AnnotationController();
+
+  /// What the annotations belong to (see [_syncAnnotations]).
+  Object? _annotationKey;
+
   /// The name under which this receiver is announced now, or null.
   String? _advertisedAs;
 
@@ -104,7 +113,24 @@ class _ReceivePageState extends State<ReceivePage> {
         .run(() => widget.core.stopAdvertising())
         .catchError((Object _) {});
     _controller.dispose();
+    _annotations.dispose();
     super.dispose();
+  }
+
+  /// Drop the annotations when what they were drawn on is gone: the live picture ended, or
+  /// another image or page (a page turn included) is shown. Called while building, so the
+  /// reset does not notify.
+  void _syncAnnotations(ReceiverController c) {
+    final shown = c.shown;
+    final Object? key = switch (shown) {
+      ReceivedImage() || ReceivedDocument() => shown,
+      ReceivedLink() => null,
+      null => c.image != null ? 'video' : null,
+    };
+    if (key != _annotationKey) {
+      _annotationKey = key;
+      _annotations.reset(notify: false);
+    }
   }
 
   /// A policy forbids announcing (also one that is learned late, from the network search).
@@ -197,11 +223,14 @@ class _ReceivePageState extends State<ReceivePage> {
         },
         child: ListenableBuilder(
           listenable: _controller,
-          builder: (context, _) => _controller.shown != null
-              ? _buildContent(context)
-              : _controller.image != null
-              ? _buildVideo(context)
-              : _buildForm(context),
+          builder: (context, _) {
+            _syncAnnotations(_controller);
+            return _controller.shown != null
+                ? _buildContent(context)
+                : _controller.image != null
+                ? _buildVideo(context)
+                : _buildForm(context);
+          },
         ),
       ),
     );
@@ -212,7 +241,6 @@ class _ReceivePageState extends State<ReceivePage> {
   Widget _buildVideo(BuildContext context) {
     final t = AppLocalizations.of(context);
     final c = _controller;
-    final image = c.image!;
     return CallbackShortcuts(
       bindings: {const SingleActivator(LogicalKeyboardKey.keyI): c.toggleStats},
       child: Focus(
@@ -223,31 +251,44 @@ class _ReceivePageState extends State<ReceivePage> {
           body: Stack(
             fit: StackFit.expand,
             children: [
-              LayoutBuilder(
-                builder: (context, box) {
-                  final dpr = MediaQuery.devicePixelRatioOf(context);
-                  final w = (box.maxWidth * dpr).round();
-                  final h = (box.maxHeight * dpr).round();
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => c.reportViewSize(w, h),
-                  );
-                  return Center(
-                    child: AspectRatio(
-                      aspectRatio: image.width / image.height,
-                      // The boundary is exactly the picture (tests read its pixels).
-                      child: Semantics(
-                        image: true,
-                        label: t.videoViewLabel,
-                        child: RepaintBoundary(
-                          key: const Key('videoView'),
-                          child: RawImage(
-                            image: image,
-                            fit: BoxFit.fill,
-                            filterQuality: FilterQuality.low,
+              ListenableBuilder(
+                listenable: _annotations,
+                builder: (context, _) {
+                  // Frozen: the picture of the moment; the live stream keeps being decoded.
+                  final image = _annotations.frozenImage ?? c.image!;
+                  return LayoutBuilder(
+                    builder: (context, box) {
+                      final dpr = MediaQuery.devicePixelRatioOf(context);
+                      final w = (box.maxWidth * dpr).round();
+                      final h = (box.maxHeight * dpr).round();
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => c.reportViewSize(w, h),
+                      );
+                      return Center(
+                        child: AspectRatio(
+                          aspectRatio: image.width / image.height,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              // The boundary is exactly the picture (tests read its pixels).
+                              Semantics(
+                                image: true,
+                                label: t.videoViewLabel,
+                                child: RepaintBoundary(
+                                  key: const Key('videoView'),
+                                  child: RawImage(
+                                    image: image,
+                                    fit: BoxFit.fill,
+                                    filterQuality: FilterQuality.low,
+                                  ),
+                                ),
+                              ),
+                              AnnotationLayer(controller: _annotations),
+                            ],
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               ),
@@ -255,6 +296,18 @@ class _ReceivePageState extends State<ReceivePage> {
                 top: 8,
                 right: 8,
                 child: _VideoToolbar(controller: c, onStop: c.stop),
+              ),
+              _annotationToolbar(freezeSource: () => c.image),
+              ListenableBuilder(
+                listenable: _annotations,
+                builder: (context, _) => _annotations.frozen
+                    ? const Positioned(
+                        top: 56,
+                        left: 0,
+                        right: 0,
+                        child: Center(child: FrozenHint()),
+                      )
+                    : const SizedBox.shrink(),
               ),
               ..._contentOverlays(c, t),
               if (c.showStats)
@@ -269,6 +322,22 @@ class _ReceivePageState extends State<ReceivePage> {
       ),
     );
   }
+
+  /// The toolbar, bottom left. UNCERTAIN: fixed in place (the web toolbar can be dragged);
+  /// on a very narrow window it scrolls sideways.
+  Widget _annotationToolbar({ui.Image? Function()? freezeSource}) => Positioned(
+    left: 8,
+    bottom: 8,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: math.max(48, MediaQuery.sizeOf(context).width - 16),
+      ),
+      child: AnnotationToolbar(
+        controller: _annotations,
+        freezeSource: freezeSource,
+      ),
+    ),
+  );
 
   // --- received content (image, PDF page, link) -----------------------------------------
 
@@ -316,11 +385,16 @@ class _ReceivePageState extends State<ReceivePage> {
           fit: StackFit.expand,
           children: [
             switch (shown) {
-              ReceivedImage() => _ImageContent(image: shown, t: t),
+              ReceivedImage() => _ImageContent(
+                image: shown,
+                t: t,
+                overlay: AnnotationLayer(controller: _annotations),
+              ),
               ReceivedDocument() => _DocumentContent(
                 doc: shown,
                 controller: c,
                 t: t,
+                overlay: AnnotationLayer(controller: _annotations),
               ),
               ReceivedLink() => _LinkCard(
                 link: shown,
@@ -334,6 +408,7 @@ class _ReceivePageState extends State<ReceivePage> {
               right: 8,
               child: _ContentToolbar(controller: c, onStop: c.stop),
             ),
+            if (shown is! ReceivedLink) _annotationToolbar(),
             ..._contentOverlays(c, t),
           ],
         ),
@@ -740,10 +815,13 @@ class _ContentNote extends StatelessWidget {
 
 /// A received image, fitted into the window.
 class _ImageContent extends StatelessWidget {
-  const _ImageContent({required this.image, required this.t});
+  const _ImageContent({required this.image, required this.t, this.overlay});
 
   final ReceivedImage image;
   final AppLocalizations t;
+
+  /// The drawing layer; it covers exactly the picture.
+  final Widget? overlay;
 
   /// Larger pictures are decoded at this size at most (memory).
   /// UNCERTAIN: 4096 is a guess; a PNG may still be decoded in full by the engine first.
@@ -753,23 +831,30 @@ class _ImageContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final big = math.max(image.width, image.height) > _maxDecodeSide;
     final wide = image.width >= image.height;
+    final picture = Image.memory(
+      image.bytes,
+      key: const Key('contentImage'),
+      fit: BoxFit.contain,
+      cacheWidth: big && wide ? _maxDecodeSide : null,
+      cacheHeight: big && !wide ? _maxDecodeSide : null,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (context, error, stack) => Text(
+        t.contentImageUndecodable,
+        key: const Key('contentImageError'),
+        style: const TextStyle(color: Colors.white),
+      ),
+    );
+    final o = overlay;
     return Center(
       child: Semantics(
         image: true,
         label: t.contentImageLabel,
-        child: Image.memory(
-          image.bytes,
-          key: const Key('contentImage'),
-          fit: BoxFit.contain,
-          cacheWidth: big && wide ? _maxDecodeSide : null,
-          cacheHeight: big && !wide ? _maxDecodeSide : null,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (context, error, stack) => Text(
-            t.contentImageUndecodable,
-            key: const Key('contentImageError'),
-            style: const TextStyle(color: Colors.white),
-          ),
-        ),
+        child: (o == null || image.width <= 0 || image.height <= 0)
+            ? picture
+            : AspectRatio(
+                aspectRatio: image.width / image.height,
+                child: Stack(fit: StackFit.expand, children: [picture, o]),
+              ),
       ),
     );
   }
@@ -782,7 +867,11 @@ class _DocumentContent extends StatelessWidget {
     required this.doc,
     required this.controller,
     required this.t,
+    this.overlay,
   });
+
+  /// The drawing layer; it covers exactly the page.
+  final Widget? overlay;
 
   final ReceivedDocument doc;
   final ReceiverController controller;
@@ -815,18 +904,24 @@ class _DocumentContent extends StatelessWidget {
             Center(
               child: AspectRatio(
                 aspectRatio: img.width / img.height,
-                child: Semantics(
-                  image: true,
-                  label: t.contentPageLabel,
-                  child: RepaintBoundary(
-                    // The boundary is exactly the page (tests read its pixels).
-                    key: const Key('pageView'),
-                    child: RawImage(
-                      image: img,
-                      fit: BoxFit.fill,
-                      filterQuality: FilterQuality.medium,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Semantics(
+                      image: true,
+                      label: t.contentPageLabel,
+                      child: RepaintBoundary(
+                        // The boundary is exactly the page (tests read its pixels).
+                        key: const Key('pageView'),
+                        child: RawImage(
+                          image: img,
+                          fit: BoxFit.fill,
+                          filterQuality: FilterQuality.medium,
+                        ),
+                      ),
                     ),
-                  ),
+                    ?overlay,
+                  ],
                 ),
               ),
             ),

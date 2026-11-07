@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cometcast/annotations.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/main.dart';
 import 'package:cometcast/receiver_controller.dart';
@@ -254,6 +255,85 @@ void main() {
       expect(find.byKey(const Key('pageIndicator')), findsNothing);
     },
   );
+
+  group('toolbar over content', () {
+    testWidgets('a page can be marked; a page turn clears the marks, and '
+        'there is no freeze for a page', (tester) async {
+      final h = await startReceiving(tester);
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.contentDocumentOpened(name: 'talk.pdf', pages: 3),
+      );
+      await flush(tester);
+      await showPage(tester, h.core, 1, [255, 0, 0]);
+      expect(find.byKey(const Key('annotationToolbar')), findsOneWidget);
+      // Freezing a still page makes no sense: the button is off.
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('toolFreeze')))
+            .onPressed,
+        isNull,
+      );
+      final ann = tester
+          .widget<AnnotationLayer>(find.byType(AnnotationLayer))
+          .controller;
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.pump();
+      final box = tester.getRect(find.byKey(const Key('pageView')));
+      final g = await tester.startGesture(box.center);
+      await g.moveBy(const Offset(30, 10));
+      await g.moveBy(const Offset(30, 10));
+      await g.up();
+      await tester.pump();
+      expect(ann.strokes, hasLength(1));
+      // The drawing sits on the page: the layer has exactly the size of the page.
+      expect(
+        tester.getSize(find.byType(AnnotationLayer)),
+        tester.getSize(find.byKey(const Key('pageView'))),
+      );
+
+      // The sender turns the page: the marks belonged to page 1.
+      await showPage(tester, h.core, 2, [0, 0, 255]);
+      final ann2 = tester
+          .widget<AnnotationLayer>(find.byType(AnnotationLayer))
+          .controller;
+      expect(ann2.strokes, isEmpty);
+      // The tool stays selected for the next page.
+      expect(ann2.tool, AnnotationTool.pen);
+    });
+
+    testWidgets('an image can be marked; a link card has no toolbar', (
+      tester,
+    ) async {
+      final h = await startReceiving(tester);
+      h.core.contentFrames.add(
+        ContentFrame.image(
+          name: 'photo.png',
+          mime: 'image/png',
+          bytes: makePng(20, 10, [255, 0, 0]),
+        ),
+      );
+      h.core.receiverEvents.add(const ReceiverUiEvent.contentFrameReady());
+      expect(
+        await pumpUntilFound(tester, find.byKey(const Key('contentImage'))),
+        isTrue,
+      );
+      expect(find.byKey(const Key('annotationToolbar')), findsOneWidget);
+      expect(find.byType(AnnotationLayer), findsOneWidget);
+      // 20 x 10 picture: the layer keeps that aspect ratio.
+      final size = tester.getSize(find.byType(AnnotationLayer));
+      expect(size.width / size.height, closeTo(2, 0.01));
+
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.contentLink(
+          url: 'https://example.org/',
+          host: 'example.org',
+        ),
+      );
+      await flush(tester);
+      expect(find.byKey(const Key('annotationToolbar')), findsNothing);
+      expect(find.byType(AnnotationLayer), findsNothing);
+    });
+  });
 
   group('links', () {
     testWidgets('a link is only a card: nothing opens without a click', (

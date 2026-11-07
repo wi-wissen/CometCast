@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Widget tests for the receive screen with a fake core.
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cometcast/annotations.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/main.dart';
 import 'package:cometcast/settings.dart';
@@ -37,6 +39,7 @@ String textOf(WidgetTester tester, String key) =>
 
 void main() {
   videoTests();
+  annotationTests();
   testWidgets('server field has the default and the notice is shown', (
     tester,
   ) async {
@@ -462,4 +465,268 @@ void videoTests() {
       ]);
     },
   );
+}
+
+// --- the toolbar over the picture (pen, highlighter, eraser, laser, undo, clear, freeze) ---
+
+/// The running picture with its toolbar; returns the core and the annotation state.
+Future<(FakeCoreApi, AnnotationController)> videoWithToolbar(
+  WidgetTester tester, {
+  String locale = 'en',
+}) async {
+  final core = locale == 'en'
+      ? await startAndConnect(tester)
+      : await openReceive(tester, locale: locale);
+  if (locale != 'en') {
+    await tester.tap(find.byKey(const Key('startButton')));
+    await tester.pump();
+    core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
+    core.receiverEvents.add(const ReceiverUiEvent.peerJoined());
+    await tester.pump();
+  }
+  core.receiverEvents.add(
+    const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
+  );
+  await deliverFrame(tester, core, solidFrame(8, 6, [255, 0, 0]));
+  final layer = tester.widget<AnnotationLayer>(find.byType(AnnotationLayer));
+  return (core, layer.controller);
+}
+
+Future<void> draw(WidgetTester tester, Offset from, Offset by) async {
+  final g = await tester.startGesture(from);
+  await g.moveBy(by ~/ 2);
+  await g.moveBy(by - by ~/ 2);
+  await g.up();
+  await tester.pump();
+}
+
+void annotationTests() {
+  group('toolbar over the picture', () {
+    testWidgets('the pen draws a stroke in the chosen colour and size', (
+      tester,
+    ) async {
+      final (_, ann) = await videoWithToolbar(tester);
+      expect(find.byKey(const Key('annotationToolbar')), findsOneWidget);
+      // Without a tool the picture does not react.
+      final box = tester.getRect(find.byKey(const Key('videoView')));
+      await draw(tester, box.center, const Offset(60, 0));
+      expect(ann.strokes, isEmpty);
+
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.tap(find.byKey(const Key('color_blue')));
+      await tester.tap(find.byKey(const Key('size_2')));
+      await tester.pump();
+      await draw(tester, box.center, const Offset(80, 40));
+      expect(ann.strokes, hasLength(1));
+      final s = ann.strokes.single;
+      expect(s.marker, isFalse);
+      expect(s.color, AnnotationColor.blue.color);
+      expect(s.width, 8);
+      expect(s.points.length, greaterThanOrEqualTo(2));
+      // Points are normalised to the picture (0..1).
+      for (final p in s.points) {
+        expect(p.dx, inInclusiveRange(0, 1));
+        expect(p.dy, inInclusiveRange(0, 1));
+      }
+      expect(s.points.first.dx, closeTo(0.5, 0.01));
+      expect(s.points.first.dy, closeTo(0.5, 0.01));
+    });
+
+    testWidgets(
+      'the highlighter is wider, and picking a colour selects the pen',
+      (tester) async {
+        final (_, ann) = await videoWithToolbar(tester);
+        // A colour with no tool switches to the pen.
+        await tester.tap(find.byKey(const Key('color_green')));
+        await tester.pump();
+        expect(ann.tool, AnnotationTool.pen);
+        await tester.tap(find.byKey(const Key('toolMarker')));
+        await tester.pump();
+        final box = tester.getRect(find.byKey(const Key('videoView')));
+        await draw(tester, box.center, const Offset(50, 0));
+        final s = ann.strokes.single;
+        expect(s.marker, isTrue);
+        expect(s.width, 20); // medium highlighter
+        expect(s.color, AnnotationColor.green.color);
+        // Choosing the active tool again goes back to plain viewing.
+        await tester.tap(find.byKey(const Key('toolMarker')));
+        await tester.pump();
+        expect(ann.tool, isNull);
+      },
+    );
+
+    testWidgets('undo, clear and the eraser', (tester) async {
+      final (_, ann) = await videoWithToolbar(tester);
+      final box = tester.getRect(find.byKey(const Key('videoView')));
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.pump();
+      await draw(
+        tester,
+        box.topLeft + const Offset(100, 100),
+        const Offset(100, 0),
+      );
+      await draw(
+        tester,
+        box.topLeft + const Offset(100, 300),
+        const Offset(100, 0),
+      );
+      expect(ann.strokes, hasLength(2));
+
+      await tester.tap(find.byKey(const Key('toolUndo')));
+      await tester.pump();
+      expect(ann.strokes, hasLength(1));
+
+      // The eraser removes the stroke it crosses.
+      await tester.tap(find.byKey(const Key('toolEraser')));
+      await tester.pump();
+      await draw(
+        tester,
+        box.topLeft + const Offset(150, 80),
+        const Offset(0, 40),
+      );
+      expect(ann.strokes, isEmpty);
+      // ... and that is one undo step.
+      await tester.tap(find.byKey(const Key('toolUndo')));
+      await tester.pump();
+      expect(ann.strokes, hasLength(1));
+
+      await tester.tap(find.byKey(const Key('toolClear')));
+      await tester.pump();
+      expect(ann.strokes, isEmpty);
+      // Clear can be undone, and is disabled when there is nothing to clear.
+      expect(
+        tester.widget<IconButton>(find.byKey(const Key('toolClear'))).onPressed,
+        isNull,
+      );
+      await tester.tap(find.byKey(const Key('toolUndo')));
+      await tester.pump();
+      expect(ann.strokes, hasLength(1));
+    });
+
+    testWidgets('the laser pointer follows a mouse and is not stored', (
+      tester,
+    ) async {
+      final (_, ann) = await videoWithToolbar(tester);
+      await tester.tap(find.byKey(const Key('toolLaser')));
+      await tester.pump();
+      expect(find.byKey(const Key('laserDot')), findsNothing);
+      final box = tester.getRect(find.byKey(const Key('videoView')));
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(box.center);
+      await tester.pump();
+      expect(find.byKey(const Key('laserDot')), findsOneWidget);
+      final dot = tester.getCenter(find.byKey(const Key('laserDot')));
+      expect((dot - box.center).distance, lessThan(1));
+      await mouse.moveTo(box.center + const Offset(100, 20));
+      await tester.pump();
+      expect(
+        (tester.getCenter(find.byKey(const Key('laserDot'))) - box.center).dx,
+        closeTo(100, 1),
+      );
+      // Leaving the picture hides the dot; nothing was drawn.
+      await mouse.moveTo(const Offset(5, 5));
+      await tester.pump();
+      expect(find.byKey(const Key('laserDot')), findsNothing);
+      expect(ann.strokes, isEmpty);
+    });
+
+    testWidgets('freeze keeps the picture while the stream goes on', (
+      tester,
+    ) async {
+      final (core, ann) = await videoWithToolbar(tester);
+      await tester.tap(find.byKey(const Key('toolFreeze')));
+      await tester.pump();
+      expect(ann.frozen, isTrue);
+      expect(find.byKey(const Key('frozenHint')), findsOneWidget);
+      expect(
+        find.text('Frozen. The live stream keeps running in the background.'),
+        findsOneWidget,
+      );
+
+      // A new, differently sized picture arrives: the old one stays.
+      core.frames.add(solidFrame(4, 2, [0, 0, 255], seq: 2));
+      core.receiverEvents.add(const ReceiverUiEvent.frameReady());
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump();
+      }
+      var raw = tester.widget<RawImage>(find.byType(RawImage));
+      expect((raw.image!.width, raw.image!.height), (8, 6));
+      // Strokes can be added while frozen.
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.pump();
+      final box = tester.getRect(find.byKey(const Key('videoView')));
+      await draw(tester, box.center, const Offset(40, 0));
+      expect(ann.strokes, hasLength(1));
+
+      // Unfreezing continues at the live picture.
+      await tester.tap(find.byKey(const Key('toolFreeze')));
+      await tester.pump();
+      expect(ann.frozen, isFalse);
+      expect(find.byKey(const Key('frozenHint')), findsNothing);
+      raw = tester.widget<RawImage>(find.byType(RawImage));
+      expect((raw.image!.width, raw.image!.height), (4, 2));
+      expect(ann.strokes, hasLength(1));
+    });
+
+    testWidgets('the toolbar collapses and comes back', (tester) async {
+      final (_, ann) = await videoWithToolbar(tester);
+      await tester.tap(find.byKey(const Key('toolbarCollapse')));
+      await tester.pump();
+      expect(find.byKey(const Key('annotationToolbar')), findsNothing);
+      expect(find.byKey(const Key('toolbarExpand')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('toolbarExpand')));
+      await tester.pump();
+      expect(find.byKey(const Key('annotationToolbar')), findsOneWidget);
+      expect(ann.expanded, isTrue);
+    });
+
+    testWidgets('annotations end with the picture', (tester) async {
+      final (core, ann) = await videoWithToolbar(tester);
+      await tester.tap(find.byKey(const Key('toolPen')));
+      await tester.pump();
+      final box = tester.getRect(find.byKey(const Key('videoView')));
+      await draw(tester, box.center, const Offset(40, 0));
+      await tester.tap(find.byKey(const Key('toolFreeze')));
+      await tester.pump();
+      expect(ann.strokes, hasLength(1));
+      expect(ann.frozen, isTrue);
+      // The sender leaves: the picture goes, and so do strokes and the frozen picture.
+      core.receiverEvents.add(const ReceiverUiEvent.peerLeft());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('videoView')), findsNothing);
+      expect(ann.strokes, isEmpty);
+      expect(ann.frozen, isFalse);
+    });
+
+    testWidgets('German labels and screen reader texts', (tester) async {
+      final handle = tester.ensureSemantics();
+      await videoWithToolbar(tester, locale: 'de');
+      for (final tip in [
+        'Stift',
+        'Textmarker',
+        'Radierer',
+        'Laserpointer',
+        'Rückgängig',
+        'Alle Markierungen löschen',
+        'Bild einfrieren (der Live-Stream läuft weiter)',
+        'Werkzeugleiste einklappen',
+        'Rot',
+        'Dünn',
+      ]) {
+        expect(find.byTooltip(tip), findsOneWidget, reason: tip);
+      }
+      expect(
+        find.bySemanticsLabel('Markierungen (nur auf diesem Gerät sichtbar)'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('Bildschirm-Werkzeuge'), findsOneWidget);
+      handle.dispose();
+    });
+  });
 }
