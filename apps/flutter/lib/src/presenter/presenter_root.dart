@@ -78,6 +78,17 @@ String errorsText(AppLocalizations t, String code) => switch (code) {
   _ => t.errorsUnknown,
 };
 
+/// The structured code of a failed iOS broadcast (the extension reports its own names).
+String iosErrorCode(IosBroadcastError? e) => switch (e) {
+  IosBroadcastError.roomNotFound ||
+  IosBroadcastError.invalidRoomCode => 'room_not_found',
+  IosBroadcastError.peerLeft => 'display_left',
+  IosBroadcastError.serverUnreachable ||
+  IosBroadcastError.connectionLost ||
+  IosBroadcastError.invalidRelay => 'connection_lost',
+  _ => 'capture_failed',
+};
+
 class PresenterRoot extends StatefulWidget {
   const PresenterRoot({
     super.key,
@@ -217,7 +228,8 @@ class PresenterRootState extends State<PresenterRoot> {
     _session.dispose();
     _releaseCapture();
     _ios?.dispose();
-    _codecCtl?.dispose();
+    if (widget.codec == null)
+      _codecCtl?.dispose(); // an injected one is not ours
     widget.settings.cancelDiscovery();
     _code.dispose();
     _name.dispose();
@@ -577,7 +589,7 @@ class PresenterRootState extends State<PresenterRoot> {
           _errorKeepsSession = false;
           _go(PresenterPage.error);
         } else if (c.broadcastError != null || c.error != null) {
-          _showError('capture_failed');
+          _showError(iosErrorCode(c.broadcastError));
         } else if (_page != PresenterPage.error) {
           _go(PresenterPage.firstRun);
         }
