@@ -442,7 +442,11 @@ void main() {
     ) async {
       await pumpPage(
         t,
-        const RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
+        const RelayConfirmPage(
+          host: 'relay.example.org',
+          onCancel: nop,
+          onUse: nop,
+        ),
       );
       expect(
         find.textContaining('A link asks this app to use the relay'),
@@ -464,7 +468,11 @@ void main() {
     testWidgets('the relay page in German is du', (t) async {
       await pumpPage(
         t,
-        const RelayConfirmPage(host: 'relay.example.org', onCancel: nop, onUse: nop),
+        const RelayConfirmPage(
+          host: 'relay.example.org',
+          onCancel: nop,
+          onUse: nop,
+        ),
         locale: const Locale('de'),
       );
       expect(find.textContaining('Mach nur weiter'), findsOneWidget);

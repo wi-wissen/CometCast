@@ -22,6 +22,7 @@ import 'package:cometcast/l10n/app_localizations.dart';
 import 'core/miracast.dart';
 import 'miracast_controller.dart';
 import 'src/design/icons.dart';
+import 'src/design/spans.dart';
 import 'src/presenter/kit.dart';
 
 /// Longest receiver name Windows accepts, as far as we know (crates/cc-miracast policy.rs).
@@ -234,11 +235,18 @@ class _MiracastPageState extends State<MiracastPage> {
             key: const Key('miracastConsentBody'),
             style: s.type.body,
           ),
+          // Body text; only the digits are mono 700 (like `presenting.sas`, N39).
           if (pin != null && pin.isNotEmpty)
-            Text(
-              t.miracastConsentPin(pin),
+            Text.rich(
+              TextSpan(
+                children: valueSpans(
+                  t.miracastConsentPin(spanMarker),
+                  pin,
+                  s.type.host.copyWith(fontSize: 15),
+                ),
+              ),
               key: const Key('miracastConsentPin'),
-              style: s.type.host,
+              style: s.type.body,
             ),
           Text(t.miracastConsentTimeout, style: s.type.small),
         ],
@@ -257,7 +265,11 @@ class _MiracastPageState extends State<MiracastPage> {
     final issue = _c.issue;
     final busy =
         phase == MiracastPhase.starting || phase == MiracastPhase.stopping;
+    // Phone: the content scrolls, the actions stay at the bottom; laptop: one row under the
+    // content, 24 below the last note (N39, spec 7.4).
     return PPage(
+      actionsRow: true,
+      pinActions: true,
       actions: [
         if (!running && !busy)
           PPrimaryButton(

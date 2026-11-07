@@ -1537,10 +1537,15 @@ class ServerCandidate {
   /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
   final String source;
 
-  const ServerCandidate({required this.address, required this.source});
+  /// For `display-announcement`: the IPv4 address the announcement resolved to, as text. The
+  /// display shows it as `idle.altAddress` (and the QR code uses it) when the announced
+  /// server is a host name (the in-house box, decision N40).
+  final String? ip;
+
+  const ServerCandidate({required this.address, required this.source, this.ip});
 
   @override
-  int get hashCode => address.hashCode ^ source.hashCode;
+  int get hashCode => address.hashCode ^ source.hashCode ^ ip.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1548,7 +1553,8 @@ class ServerCandidate {
       other is ServerCandidate &&
           runtimeType == other.runtimeType &&
           address == other.address &&
-          source == other.source;
+          source == other.source &&
+          ip == other.ip;
 }
 
 /// Server addresses the UI offers when the person has not chosen one yet.

@@ -172,8 +172,7 @@ void main() {
     });
   });
 
-  group('television profile', () {
-  });
+  group('television profile', () {});
 
   group('hardware decoder path', () {
     test('controller: stop releases decoder and texture', () async {

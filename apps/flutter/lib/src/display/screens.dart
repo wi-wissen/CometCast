@@ -87,7 +87,8 @@ class IdleScreen extends StatelessWidget {
     final online = view == ConnectionView.online && code != null;
     // Empty QR box while connecting or offline: an old code must never be scannable.
     final qrEmpty = !online;
-    final url = online ? joinUrl(dom, code!) : '';
+    // The QR code uses the IP when the box is shown with both (N40).
+    final url = online ? joinUrl(altAddress ?? dom, code!) : '';
     final host = displayHost(dom);
     return Stack(
       fit: StackFit.expand,
@@ -1120,26 +1121,112 @@ class PresentingControls extends StatelessWidget {
   }
 }
 
-/// Transfer progress pill (spec 3.5): name-tag look, bottom centre.
+/// Transfer progress pill (spec 3.5): name-tag look, centred, content width, at most 340 wide,
+/// bottom 12, one line. A long file name is shortened in the middle; the percentage is never
+/// cut.
 class TransferPill extends StatelessWidget {
-  const TransferPill({super.key, required this.text});
-  final String text;
+  const TransferPill({
+    super.key,
+    required this.name,
+    required this.percent,
+    required this.format,
+  });
+
+  /// The file name as received (cleaned already).
+  final String name;
+  final String percent;
+
+  /// The line for a (possibly shortened) name and the percentage (`receive.transfer`).
+  final String Function(String name, String percent) format;
+
+  /// The widest the pill gets (ref px).
+  static const maxWidth = 340.0;
+
+  /// Border 2 on both sides plus padding 14 on both sides.
+  static const _chrome = 2 * 2 + 2 * 14.0;
+
+  /// The line with [name] shortened in the middle (`start…end`) until it fits [width].
+  static String fit({
+    required String name,
+    required String percent,
+    required String Function(String name, String percent) format,
+    required TextStyle style,
+    required double width,
+  }) {
+    bool fits(String n) {
+      final p = TextPainter(
+        text: TextSpan(text: format(n, percent), style: style),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      final ok = p.width <= width;
+      p.dispose();
+      return ok;
+    }
+
+    if (fits(name)) return format(name, percent);
+    final runes = name.runes.toList();
+    String cut(int keep) {
+      // `keep` characters stay: the start gets one more than the end (the end carries the
+      // extension).
+      final head = (keep + 1) ~/ 2;
+      final tail = keep - head;
+      return '${String.fromCharCodes(runes.take(head))}…'
+          '${String.fromCharCodes(runes.skip(runes.length - tail))}';
+    }
+
+    var lo = 0;
+    var hi = runes.length;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) ~/ 2;
+      if (fits(cut(mid))) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return format(cut(lo), percent);
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = DisplayScope.of(context);
+    final style = s.type.nameTag;
+    final line = fit(
+      name: name,
+      percent: percent,
+      format: format,
+      style: style,
+      width: maxWidth - _chrome,
+    );
     return Positioned(
       bottom: 12,
       left: 0,
       right: 0,
-      child: Center(
-        child: Container(
-          key: const Key('transfer-pill'),
-          constraints: const BoxConstraints(minHeight: 46),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          alignment: Alignment.center,
-          decoration: overlayDecoration(s.tokens),
-          child: Text(text, style: s.type.nameTag),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 46, maxWidth: maxWidth),
+          child: DecoratedBox(
+            key: const Key('transfer-pill'),
+            decoration: overlayDecoration(s.tokens),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  line,
+                  key: const Key('transfer-pill-text'),
+                  style: style,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.clip,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

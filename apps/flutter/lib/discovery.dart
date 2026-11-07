@@ -70,22 +70,27 @@ SerialQueue serialQueueFor(CoreApi core, String purpose) =>
 /// One suggested server: the address and where it came from.
 @immutable
 class ServerSuggestion {
-  const ServerSuggestion(this.address, this.kind);
+  const ServerSuggestion(this.address, this.kind, {this.ip});
 
   ServerSuggestion.fromCandidate(ServerCandidate c)
-    : this(c.address, ServerSourceKind.fromRust(c.source));
+    : this(c.address, ServerSourceKind.fromRust(c.source), ip: c.ip);
 
   final String address;
   final ServerSourceKind kind;
+
+  /// The IPv4 address an announcement resolved to (announced servers only): the in-house box
+  /// is shown by name and by this address (spec 4.2, N40).
+  final String? ip;
 
   @override
   bool operator ==(Object other) =>
       other is ServerSuggestion &&
       other.address == address &&
-      other.kind == kind;
+      other.kind == kind &&
+      other.ip == ip;
 
   @override
-  int get hashCode => Object.hash(address, kind);
+  int get hashCode => Object.hash(address, kind, ip);
 
   @override
   String toString() => 'ServerSuggestion($address, ${kind.name})';

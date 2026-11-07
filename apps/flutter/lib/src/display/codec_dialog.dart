@@ -62,7 +62,7 @@ class CodecDialog extends StatelessWidget {
                   ? t.codecOffline(info!.fileName, info.adminDir!)
                   : t.codecOfflineNoDir(info?.fileName ?? 'libopenh264'),
               key: const Key('codec-offline'),
-              style: s.type.description.copyWith(fontSize: 14),
+              style: s.type.description.copyWith(fontSize: 14, height: 1.4),
             );
             Widget later(int col, {bool autofocus = false}) => DButton(
               key: const Key('codec-later'),
@@ -72,14 +72,18 @@ class CodecDialog extends StatelessWidget {
               autofocus: autofocus,
               onPressed: () => guarded(onLater),
             );
+            Widget explain() => Text(
+              t.codecExplain,
+              key: const Key('codec-explain'),
+              style: s.type.cardText,
+            );
+            // Spec 4.7: the states differ in the line and the row; the body (explain, source,
+            // admin note) stays in missing, downloading and failed. Heights at 1080p: missing
+            // 626 px, downloading 730, failed 702, unsupported 400.
             final children = switch (state) {
               UiCodecState_Ready() => <Widget>[],
               UiCodecState_Missing() => [
-                Text(
-                  t.codecExplain,
-                  key: const Key('codec-explain'),
-                  style: s.type.cardText,
-                ),
+                explain(),
                 source(),
                 offline(),
                 Row(
@@ -99,29 +103,42 @@ class CodecDialog extends StatelessWidget {
                 ),
               ],
               UiCodecState_Downloading(:final progress) => [
-                Text(
-                  '${t.codecDownloading} '
-                  '${t.codecProgress((progress * 100).round().toString())}',
-                  key: const Key('codec-downloading'),
-                  style: s.type.label17Bold.copyWith(fontSize: 16),
+                explain(),
+                source(),
+                offline(),
+                // One line, then the bar 8 below it (the card's gap of 16 is 8 less here).
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '${t.codecDownloading} '
+                      '${t.codecProgress((progress * 100).round().toString())}',
+                      key: const Key('codec-downloading'),
+                      style: s.type.label17Bold.copyWith(fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    _Bar(fraction: progress),
+                  ],
                 ),
-                _Bar(fraction: progress),
                 Row(children: [later(0, autofocus: true)]),
               ],
-              UiCodecState_Failed(:final reason) => [
+              UiCodecState_Failed() => [
+                explain(),
+                // `info` 20 in `--acc` and the key's text, no red (4.5 warning lines, N46).
                 Row(
                   children: [
                     CcIcon(CcIconName.info, color: s.tokens.acc, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        t.codecFailed(reason),
+                        t.codecFailed,
                         key: const Key('codec-failed'),
                         style: s.type.label17Bold.copyWith(fontSize: 16),
                       ),
                     ),
                   ],
                 ),
+                source(),
                 offline(),
                 Row(
                   children: [
@@ -139,9 +156,9 @@ class CodecDialog extends StatelessWidget {
                   ],
                 ),
               ],
-              UiCodecState_Unsupported(:final reason) => [
+              UiCodecState_Unsupported() => [
                 Text(
-                  t.codecUnsupported(reason),
+                  t.codecUnsupported,
                   key: const Key('codec-unsupported'),
                   style: s.type.cardText,
                 ),
@@ -167,7 +184,7 @@ class CodecDialog extends StatelessWidget {
                 explicitChildNodes: true,
                 label: t.codecTitle,
                 child: DCard(
-                  width: 600,
+                  width: 780,
                   shadow: true,
                   children: [DSectionLabel(t.codecTitle), ...children],
                 ),

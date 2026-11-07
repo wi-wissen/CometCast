@@ -81,6 +81,12 @@ String displayHost(String server) {
   return v.endsWith(':443') ? v.substring(0, v.length - 4) : v;
 }
 
+/// Is [host] (from [displayHost]) an IP address, not a name? IPv4 with an optional port, or an
+/// IPv6 literal in brackets.
+bool isIpHost(String host) =>
+    RegExp(r'^\d{1,3}(\.\d{1,3}){3}(:\d+)?$').hasMatch(host) ||
+    host.startsWith('[');
+
 /// What the QR code encodes: `https://{dom}/{CODE}` (spec 4.2), `{dom}` without port 443.
 String joinUrl(String dom, String code) =>
     'https://${displayHost(dom)}/${code.replaceAll(RegExp(r'\s+'), '')}';

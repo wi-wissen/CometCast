@@ -294,14 +294,9 @@
   "@codecRetry": {
     "description": "Button after a failed download."
   },
-  "codecFailed": "The video codec could not be downloaded: {reason}",
+  "codecFailed": "The video codec could not be downloaded.",
   "@codecFailed": {
-    "description": "The download failed; reason is technical English text.",
-    "placeholders": {
-      "reason": {
-        "type": "String"
-      }
-    }
+    "description": "The download failed. The key's text only; the technical reason goes to the log (N46)."
   },
   "codecOffline": "No Internet access? Ask your administrator to copy the file {file} (as downloaded from Cisco, with or without the ending .bz2) into the folder {dir}, or to set the variable COMETCAST_CODEC_DIR to a folder that contains it.",
   "@codecOffline": {
@@ -324,14 +319,13 @@
       }
     }
   },
-  "codecUnsupported": "This system has no video codec to download: {reason}",
+  "codecUnsupported": "This system cannot use the video codec, so shared screens cannot be shown or sent here.",
   "@codecUnsupported": {
-    "description": "This platform has no codec download.",
-    "placeholders": {
-      "reason": {
-        "type": "String"
-      }
-    }
+    "description": "This platform has no usable video codec. The key's text only (N46)."
+  },
+  "codecStageHint": "No picture yet: this screen needs the video codec.",
+  "@codecStageHint": {
+    "description": "Spec key codec.stageHint: the line on the black stage after \"Not now\" in the video codec dialog (N31)."
   },
   "miracastTitle": "Miracast receiver",
   "@miracastTitle": {
@@ -870,6 +864,10 @@
   "errorsBlockListFull": "The block list is full. Unblock somebody first.",
   "@errorsBlockListFull": {
     "description": "Spec key errors.block_list_full"
+  },
+  "errorsCaptureUnavailable": "This device cannot share its screen with Comet Cast yet. Show a file or a link instead.",
+  "@errorsCaptureUnavailable": {
+    "description": "Spec key errors.capture_unavailable: the \"why\" of the other-error page when no capture backend exists (N33)."
   },
   "errorsCaptureDenied": "Screen sharing was cancelled or not allowed.",
   "@errorsCaptureDenied": {

@@ -466,7 +466,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
               focusNode: _okNode,
               onPressed: c.showField ? () => c.applyField() : c.next,
             ),
-          ], left: true),
+          ]),
         ];
       default:
         return [

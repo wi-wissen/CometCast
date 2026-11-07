@@ -383,6 +383,23 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     if (w != null) w.updateOptions(_addressOptions());
   }
 
+  /// The IPv4 address of the in-house box (spec 4.2, N40): the server of this display came from
+  /// a box announcement (`sourceBox`) and its address is a host name; the announcement's IPv4
+  /// address then is a second way in (`idle.altAddress`) and the QR code uses it. Null
+  /// otherwise (the IP is never shown next to an IP, nor for any other source).
+  String? get _boxIp {
+    final server = _server;
+    for (final x in widget.settings.serverSuggestions) {
+      if (x.address.trim() != server || x.kind != ServerSourceKind.announced) {
+        continue;
+      }
+      final ip = x.ip;
+      if (ip == null || ip.isEmpty) return null;
+      return isIpHost(displayHost(server)) ? null : ip;
+    }
+    return null;
+  }
+
   List<AddressOption> _addressOptions() {
     final s = widget.settings;
     AddressSource source(ServerSourceKind k) => switch (k) {
@@ -704,12 +721,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
             final shown = c.shown;
             final link = shown is ReceivedLink ? shown : null;
             final hidePointer = presenting && !_controlsShown;
-            final transferPill = presenting && c.receiving != null
-                ? t.receiveTransfer(
-                    c.receiving!.name,
-                    '${c.receiving!.percent}',
-                  )
-                : null;
+            final receiving = presenting ? c.receiving : null;
             final errorToast = c.noteError == null
                 ? null
                 : _contentToast(t, c.noteError!);
@@ -733,6 +745,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       mode: fromCoreMode(c.joinMode),
                       code: c.roomCode,
                       dom: _server,
+                      altAddress: _boxIp,
                       view: _view,
                       cause: _cause,
                       dimmed: _dimmed,
@@ -748,7 +761,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       name: c.peerName ?? '',
                       sas: c.connectionCode,
                       inert: _codecDialog,
-                      shown: _controlsShown || _codecDialog,
+                      // The dialog's appearance does not reveal the controls (N31): they stay
+                      // under the scrim and fade on their normal timer.
+                      shown: _controlsShown,
                       endFocus: _endNode,
                       onEnd: () {
                         _c.endRoom();
@@ -759,7 +774,12 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       shown is ReceivedDocument &&
                       c.note == ContentNote.renderFailed)
                     PageErrorBox(text: t.receiveDocumentPageErrorFailed),
-                  if (transferPill != null) TransferPill(text: transferPill),
+                  if (receiving != null)
+                    TransferPill(
+                      name: receiving.name,
+                      percent: '${receiving.percent}',
+                      format: t.receiveTransfer,
+                    ),
                   if (_settingsOpen && !presenting && head == null)
                     SettingsDialog(
                       mode: fromCoreMode(c.joinMode),

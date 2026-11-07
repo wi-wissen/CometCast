@@ -74,36 +74,45 @@ class FirstRunPage extends StatelessWidget {
     final s = PresenterScope.of(context);
     final p = s.tokens;
     final t = AppLocalizations.of(context);
+    // Spec 5.3, N37: each link is one line of 15 `p-primary`, underlined, in a tap area 44 high
+    // with the text centred in it; the two areas touch, so the lines are 44 apart. Laptop:
+    // left-aligned, the first area starts 12 below Connect; phone: centred, 8 below Connect.
     Widget link(String label, Key key, VoidCallback onTap) => PTap(
       onPressed: onTap,
       radius: 4,
-      builder: (_) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Text(
-          label,
-          key: key,
-          style: s.type.body.copyWith(
-            fontSize: 15,
-            color: p.primary,
-            decoration: TextDecoration.underline,
+      builder: (_) => SizedBox(
+        height: 44,
+        child: Center(
+          widthFactor: 1,
+          child: Text(
+            label,
+            key: key,
+            style: s.type.body.copyWith(
+              fontSize: 15,
+              color: p.primary,
+              decoration: TextDecoration.underline,
+            ),
           ),
         ),
       ),
     );
+    final links = <Widget>[
+      if (onBeDisplay != null)
+        link(t.appBeDisplay, const Key('be-display'), onBeDisplay!),
+      if (onMiracast != null)
+        link(t.appMiracast, const Key('miracast-link'), onMiracast!),
+    ];
     final actions = <Widget>[
       PPrimaryButton(
         label: t.appConnect,
         onPressed: canConnect ? onConnect : null,
       ),
-      if (onBeDisplay != null)
-        Align(
+      if (links.isNotEmpty)
+        _LinksBlock(
+          // The stacked action area leaves 8 above; the laptop wants 12.
+          top: s.laptop ? 4 : 0,
           alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
-          child: link(t.appBeDisplay, const Key('be-display'), onBeDisplay!),
-        ),
-      if (onMiracast != null)
-        Align(
-          alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
-          child: link(t.appMiracast, const Key('miracast-link'), onMiracast!),
+          children: links,
         ),
     ];
     final brand = <Widget>[
@@ -195,7 +204,8 @@ class FirstRunPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(height: 14),
+            // The links start 12 below Connect (N37), everything else 14 apart.
+            if (i > 0) SizedBox(height: items[i] is _LinksBlock ? 12 : 14),
             // Buttons are as wide as their content on the laptop (spec 7.4).
             if (items[i] is PPrimaryButton || items[i] is PSecondaryButton)
               Align(alignment: Alignment.centerLeft, child: items[i])
@@ -229,6 +239,33 @@ class FirstRunPage extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The text links under Connect (`app.beDisplay`, on Windows `app.miracast`): tap areas of 44
+/// that touch each other (N37), as one block so that nothing is added between them.
+class _LinksBlock extends StatelessWidget {
+  const _LinksBlock({
+    required this.children,
+    required this.alignment,
+    this.top = 0,
+  });
+  final List<Widget> children;
+  final Alignment alignment;
+  final double top;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(top: top),
+    child: Align(
+      alignment: alignment,
+      heightFactor: 1,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: children,
+      ),
+    ),
+  );
 }
 
 /// Brand row: logo 28 + "Comet Cast" (spec 5.2), the logo file that fits the device's
@@ -684,7 +721,7 @@ enum ErrorKind {
   other,
 }
 
-enum ErrorAction { retype, rescan, retry, showFile, showLink, ask }
+enum ErrorAction { retype, rescan, retry, showFile, showLink, ask, back }
 
 class ErrorPage extends StatelessWidget {
   const ErrorPage({
@@ -698,9 +735,15 @@ class ErrorPage extends StatelessWidget {
     this.relayWhy = false,
     this.boxNow = false,
     this.dom = '',
+    this.useBack = false,
   });
   final ErrorKind kind;
   final void Function(ErrorAction) onAction;
+
+  /// The action is `common.back` to "What to show" (the person stays connected) instead of
+  /// Try again: Try again would only fail again (spec 6, N33, N46: the unsupported codec page
+  /// and `capture_unavailable`).
+  final bool useBack;
   final bool lockedWhile;
   final int cooldown;
 
@@ -822,6 +865,11 @@ class ErrorPage extends StatelessWidget {
           key: const Key('error-ask'),
           label: t.errorActionAsk,
           onPressed: () => onAction(ErrorAction.ask),
+        ),
+        _ when useBack => PPrimaryButton(
+          key: const Key('error-back'),
+          label: t.commonBack,
+          onPressed: () => onAction(ErrorAction.back),
         ),
         _ => PPrimaryButton(
           key: const Key('error-retry'),
@@ -967,7 +1015,8 @@ class CodecPage extends StatelessWidget {
           // `error.other` with the codec text as its "why" (spec 5.8).
           return ErrorPage(
             kind: ErrorKind.other,
-            otherWhy: t.codecUnsupported(state.reason),
+            otherWhy: t.codecUnsupported,
+            useBack: true,
             onAction: (_) => onBack(),
           );
         }
@@ -1048,7 +1097,7 @@ class CodecPage extends StatelessWidget {
               Semantics(
                 liveRegion: true,
                 child: Text(
-                  t.codecFailed(state.reason),
+                  t.codecFailed,
                   key: const Key('codec-failed'),
                   style: s.type.errorText,
                 ),

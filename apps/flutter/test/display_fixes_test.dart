@@ -456,7 +456,9 @@ void main() {
 
     testWidgets('no code reported: no second line', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
+      );
       await t.pump();
       await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
       await key(t, LogicalKeyboardKey.select);
@@ -465,7 +467,9 @@ void main() {
 
     testWidgets('the pill counts the received percent', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
+      );
       await t.pump();
       await deliverFrame(t, h.core, solidFrame(16, 9, [0, 0, 255]));
       h.core.receiverEvents.add(

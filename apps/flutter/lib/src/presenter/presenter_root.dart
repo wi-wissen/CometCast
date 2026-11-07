@@ -69,6 +69,7 @@ String errorsText(AppLocalizations t, String code) => switch (code) {
   'peer_failed' => t.errorsPeerFailed,
   'capture_denied' => t.errorsCaptureDenied,
   'capture_failed' => t.errorsCaptureFailed,
+  'capture_unavailable' => t.errorsCaptureUnavailable,
   'join_pending' => t.errorsJoinPending,
   'join_denied' => t.errorsJoinDenied,
   'room_locked' => t.errorsRoomLocked,
@@ -577,6 +578,9 @@ class PresenterRootState extends State<PresenterRoot>
         } else {
           _go(PresenterPage.firstRun);
         }
+      case ErrorAction.back:
+        // Still connected: "What to show" (the join was kept); without a session the start page.
+        _go(_session.isJoined ? PresenterPage.what : PresenterPage.firstRun);
       case ErrorAction.showFile:
         _go(PresenterPage.file);
       case ErrorAction.showLink:
@@ -1019,6 +1023,8 @@ class PresenterRootState extends State<PresenterRoot>
           lockedWhile: _lockedWhile,
           cooldown: _error == ErrorKind.denied ? _cooldown : 0,
           otherWhy: _errorCode == null ? null : errorsText(t, _errorCode!),
+          // No capture backend: Back to "What to show", never Try again (N33).
+          useBack: _errorCode == 'capture_unavailable',
           relayWhy: _relayWhy,
           canRescan: widget.scanQr != null && !_desktop,
           onAction: _errorAction,

@@ -2590,11 +2590,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ServerCandidate dco_decode_server_candidate(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
     return ServerCandidate(
       address: dco_decode_String(arr[0]),
       source: dco_decode_String(arr[1]),
+      ip: dco_decode_opt_String(arr[2]),
     );
   }
 
@@ -3726,7 +3727,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_address = sse_decode_String(deserializer);
     var var_source = sse_decode_String(deserializer);
-    return ServerCandidate(address: var_address, source: var_source);
+    var var_ip = sse_decode_opt_String(deserializer);
+    return ServerCandidate(
+      address: var_address,
+      source: var_source,
+      ip: var_ip,
+    );
   }
 
   @protected
@@ -4896,6 +4902,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.address, serializer);
     sse_encode_String(self.source, serializer);
+    sse_encode_opt_String(self.ip, serializer);
   }
 
   @protected

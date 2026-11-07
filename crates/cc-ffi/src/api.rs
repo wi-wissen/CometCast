@@ -1535,6 +1535,10 @@ pub struct ServerCandidate {
     pub address: String,
     /// Where it came from: `mdm`, `dns-srv`, `display-announcement` or `default-list`.
     pub source: String,
+    /// For `display-announcement`: the IPv4 address the announcement resolved to, as text. The
+    /// display shows it as `idle.altAddress` (and the QR code uses it) when the announced
+    /// server is a host name (the in-house box, decision N40).
+    pub ip: Option<String>,
 }
 
 /// What went wrong while looking for servers, as a code. The UI shows a translated sentence
@@ -1603,6 +1607,7 @@ fn candidates(report: &cc_discovery::DiscoveryReport) -> Vec<ServerCandidate> {
         .map(|s| ServerCandidate {
             address: s.address.clone(),
             source: s.source.as_str().to_owned(),
+            ip: s.ip.map(|ip| ip.to_string()),
         })
         .collect()
 }

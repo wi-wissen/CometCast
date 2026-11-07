@@ -134,7 +134,9 @@ void main() {
 
     testWidgets('a stopped presentation is Idle without a toast', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
+      );
       await two(t);
       await t.pump(const Duration(seconds: 4));
       await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
@@ -224,7 +226,9 @@ void main() {
 
     testWidgets('a join without a request (Open) says "connected"', (t) async {
       final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false));
+      h.core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Lena', handover: false),
+      );
       await two(t);
       expect(find.text('“Lena” connected'), findsOneWidget);
     });

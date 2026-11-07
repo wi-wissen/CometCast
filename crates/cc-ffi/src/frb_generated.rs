@@ -3126,9 +3126,11 @@ impl SseDecode for crate::api::ServerCandidate {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_address = <String>::sse_decode(deserializer);
         let mut var_source = <String>::sse_decode(deserializer);
+        let mut var_ip = <Option<String>>::sse_decode(deserializer);
         return crate::api::ServerCandidate {
             address: var_address,
             source: var_source,
+            ip: var_ip,
         };
     }
 }
@@ -4254,6 +4256,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::ServerCandidate {
         [
             self.address.into_into_dart().into_dart(),
             self.source.into_into_dart().into_dart(),
+            self.ip.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5489,6 +5492,7 @@ impl SseEncode for crate::api::ServerCandidate {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.address, serializer);
         <String>::sse_encode(self.source, serializer);
+        <Option<String>>::sse_encode(self.ip, serializer);
     }
 }
 

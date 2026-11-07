@@ -59,16 +59,13 @@ Future<DisplayHarness> pumpDisplay(
   UrlOpener? openUrl,
   bool canOpen = false,
   AppSettings? settingsOverride,
+  String server = 'cast.example.org',
 }) async {
   await tester.runAsync(loadAppFonts);
   final c = core ?? FakeCoreApi();
   final store = MemoryDisplayStore(
     setup: setupDone
-        ? DisplaySetup(
-            room: 'Meeting room Elbe',
-            mode: mode,
-            server: 'cast.example.org',
-          )
+        ? DisplaySetup(room: 'Meeting room Elbe', mode: mode, server: server)
         : null,
     appearance: appearance,
   );
