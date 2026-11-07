@@ -863,7 +863,20 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                         println!("Denied everybody who waited.");
                     }
                     Some(approval::TermCmd::SetMode(m)) => core.set_join_mode(m),
-                    Some(approval::TermCmd::Kick) => core.remove_peer(),
+                    Some(approval::TermCmd::Kick) => core.remove_peer(false),
+                    Some(approval::TermCmd::KickBlock) => core.remove_peer(true),
+                    Some(approval::TermCmd::DenyBlock) => {
+                        if let Some(w) = queue.first().cloned() {
+                            core.deny_and_block_join(w.id);
+                            queue.remove(w.id);
+                            println!("Denied and blocked \"{}\".", w.name);
+                            ask_next(&queue);
+                        } else {
+                            println!("Nobody is waiting.");
+                        }
+                    }
+                    Some(approval::TermCmd::End) => core.end_room(),
+                    Some(approval::TermCmd::Unblock(id)) => core.unblock(id),
                     Some(approval::TermCmd::Help) | None => println!("{}", approval::HELP),
                 },
                 // stdin ended: nobody can answer any more.
@@ -897,6 +910,15 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                     }
                 }
                 Some(ReceiverEvent::JoinModeChanged(m)) => println!("Join mode: {m}"),
+                Some(ReceiverEvent::Blocked { id, name }) => {
+                    println!("Blocked \"{name}\" for this room session (unblock {id} undoes it).");
+                }
+                Some(ReceiverEvent::Unblocked { id }) => println!("Unblocked entry {id}."),
+                Some(ReceiverEvent::RoomEnded) => {
+                    println!("Room session ended.");
+                    core.stop().await;
+                    return ExitCode::SUCCESS;
+                }
                 Some(ReceiverEvent::PeerJoined { name }) => println!("Sender joined: \"{name}\"."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
                 Some(ReceiverEvent::VideoTrack { mime, .. }) => {

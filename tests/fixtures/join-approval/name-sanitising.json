@@ -1,0 +1,66 @@
+{
+  "description": "Display name cleaning (cc_proto::sanitize_display_name). The server applies it to join_room.name; clients may apply it too but must not rely on it for safety: show every received name as plain text.",
+  "max_chars": 40,
+  "vectors": [
+    {
+      "input": "  Ana   Maria ",
+      "guest_number": 1,
+      "expected": "Ana Maria",
+      "note": "white space is collapsed and trimmed"
+    },
+    {
+      "input": null,
+      "guest_number": 4,
+      "expected": "Guest 4",
+      "note": "no name"
+    },
+    {
+      "input": "   ",
+      "guest_number": 2,
+      "expected": "Guest 2",
+      "note": "only white space"
+    },
+    {
+      "input": "A\u202eb\u200bc\nd\u0000e\u2066f\ufeff",
+      "guest_number": 1,
+      "expected": "Abc de f",
+      "note": "bidi override/isolate, zero width, BOM and control characters are removed; the line break counts as white space"
+    },
+    {
+      "input": "\u202e\u202d",
+      "guest_number": 9,
+      "expected": "Guest 9",
+      "note": "nothing is left"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "guest_number": 1,
+      "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "note": "cut at 40 characters"
+    },
+    {
+      "input": "\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4",
+      "guest_number": 1,
+      "expected": "\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4\u00e4",
+      "note": "40 characters, not 40 bytes"
+    },
+    {
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x",
+      "guest_number": 1,
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "note": "a trailing space after the cut is dropped"
+    },
+    {
+      "input": "<b>Ana</b>",
+      "guest_number": 1,
+      "expected": "<b>Ana</b>",
+      "note": "markup is NOT removed: clients must show names as plain text"
+    },
+    {
+      "input": "A\ue000B",
+      "guest_number": 1,
+      "expected": "AB",
+      "note": "private use characters are removed"
+    }
+  ]
+}

@@ -124,18 +124,21 @@ async fn confirm_allow_flow_relays_only_after_approval() {
     let (mut r, code) = room(addr, Some("confirm")).await;
     let mut s = sender(addr).await;
     join(&mut s, &code, Some("Ana")).await;
-    assert_eq!(
-        recv(&mut s).await,
-        json!({"type":"join_pending","timeout_secs":60})
-    );
+    let pending = recv(&mut s).await;
+    assert_eq!(pending["type"], "join_pending");
+    assert_eq!(pending["timeout_secs"], 60);
     let req = recv(&mut r).await;
     assert_eq!(req["type"], "join_request");
     assert_eq!(req["name"], "Ana");
     assert_eq!(
         req.as_object().unwrap().len(),
-        3,
-        "only type, id, name: {req}"
+        4,
+        "only type, id, name, check: {req}"
     );
+    // Both sides see the same two-digit check number.
+    let check = req["check"].as_u64().unwrap();
+    assert!((10..=99).contains(&check));
+    assert_eq!(pending["check"].as_u64().unwrap(), check);
 
     // Nothing from a waiting joiner reaches the owner.
     for m in [
@@ -588,4 +591,176 @@ async fn check_numbers_are_unique_among_waiting_requests() {
         );
         senders.push(s);
     }
+}
+
+#[tokio::test]
+async fn no_and_block_blocks_the_address_for_this_room_only() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut s = sender(addr).await;
+    let id = request(&mut r, &mut s, &code, "Pest").await;
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":id,"allow":false,"block":true}),
+    )
+    .await;
+    // The sender hears the same thing as for a plain denial.
+    assert_eq!(code_of(&recv(&mut s).await), "join_denied");
+    let b = recv(&mut r).await;
+    assert_eq!(b["type"], "blocked");
+    assert_eq!(b["name"], "Pest");
+    let block_id = b["id"].as_u64().unwrap();
+
+    // Asking again: denied at once, and the host hears nothing.
+    join(&mut s, &code, Some("Pest again")).await;
+    assert_eq!(code_of(&recv(&mut s).await), "join_denied");
+    silent(&mut r).await;
+    // A new connection from the same address: same answer, also in open mode.
+    send(&mut r, json!({"type":"set_join_mode","join_mode":"open"})).await;
+    assert_eq!(recv(&mut r).await["type"], "join_mode_changed");
+    let mut t = sender(addr).await;
+    join(&mut t, &code, Some("Other name")).await;
+    assert_eq!(code_of(&recv(&mut t).await), "join_denied");
+    silent(&mut r).await;
+    // Another room is not affected.
+    let (mut r2, code2) = room(addr, Some("open")).await;
+    join(&mut t, &code2, None).await;
+    assert_eq!(recv(&mut t).await["type"], "joined");
+    assert_eq!(recv(&mut r2).await["type"], "peer_joined");
+
+    // Unblock: joining works again.
+    send(&mut r, json!({"type":"unblock","id":block_id})).await;
+    assert_eq!(
+        recv(&mut r).await,
+        json!({"type":"unblocked","id":block_id})
+    );
+    join(&mut s, &code, Some("Pest")).await;
+    assert_eq!(recv(&mut s).await["type"], "joined");
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
+    // Unknown entry.
+    send(&mut r, json!({"type":"unblock","id":block_id})).await;
+    assert_eq!(code_of(&recv(&mut r).await), "no_such_block");
+}
+
+#[tokio::test]
+async fn blocked_joiners_are_slowed_by_the_cooldown_like_denials() {
+    let mut cfg = ServerConfig::default();
+    cfg.limits.ban_after_failed_joins = 4;
+    cfg.limits.denied_join_weight = 2;
+    let addr = start(cfg).await;
+    let (mut r, code) = room(addr, Some("open")).await;
+    let mut s = sender(addr).await;
+    // Put the address on the block list through a kicked sender.
+    join(&mut s, &code, Some("Pest")).await;
+    assert_eq!(recv(&mut s).await["type"], "joined");
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
+    send(&mut r, json!({"type":"remove_peer","block":true})).await;
+    assert_eq!(code_of(&recv(&mut s).await), "removed_by_host");
+    assert_eq!(recv(&mut r).await["type"], "peer_left");
+    assert_eq!(recv(&mut r).await["type"], "blocked");
+    join(&mut s, &code, None).await;
+    assert_eq!(code_of(&recv(&mut s).await), "join_denied");
+    join(&mut s, &code, None).await;
+    assert_eq!(code_of(&recv(&mut s).await), "join_denied");
+    assert_eq!(code_of(&recv(&mut s).await), "banned");
+}
+
+#[tokio::test]
+async fn invalid_block_requests_are_refused_and_senders_cannot_unblock_or_end() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut s = sender(addr).await;
+    let id = request(&mut r, &mut s, &code, "Eve").await;
+    // block with allow, or without an id, is a bad message and decides nothing
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":id,"allow":true,"block":true}),
+    )
+    .await;
+    assert_eq!(code_of(&recv(&mut r).await), "bad_message");
+    send(
+        &mut r,
+        json!({"type":"join_decision","allow":false,"block":true}),
+    )
+    .await;
+    assert_eq!(code_of(&recv(&mut r).await), "bad_message");
+    // a sender cannot use the owner's new messages
+    for m in [
+        json!({"type":"unblock","id":1}),
+        json!({"type":"end_room"}),
+        json!({"type":"remove_peer","block":true}),
+        json!({"type":"join_decision","id":id,"allow":false,"block":true}),
+    ] {
+        send(&mut s, m).await;
+        assert_eq!(code_of(&recv(&mut s).await), "wrong_role");
+    }
+    // another receiver has no room to end
+    let mut other = connect(addr).await;
+    hello(&mut other, "receiver").await;
+    send(&mut other, json!({"type":"end_room"})).await;
+    assert_eq!(code_of(&recv(&mut other).await), "not_in_room");
+    send(&mut other, json!({"type":"unblock","id":1})).await;
+    assert_eq!(code_of(&recv(&mut other).await), "not_in_room");
+    // the request is still waiting and the host can still decide
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":id,"allow":false}),
+    )
+    .await;
+    assert_eq!(code_of(&recv(&mut s).await), "join_denied");
+}
+
+#[tokio::test]
+async fn end_room_drops_everybody_and_the_owner_can_start_a_new_room() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut a = sender(addr).await;
+    let ida = request(&mut r, &mut a, &code, "A").await;
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":ida,"allow":true}),
+    )
+    .await;
+    assert_eq!(recv(&mut a).await["type"], "joined");
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
+    // A request that waits at the same time cannot (one sender per room), so it gets room_full;
+    // use a second room state: lock-free path, a waiting sender in the same room
+    let mut b = sender(addr).await;
+    join(&mut b, &code, None).await;
+    assert_eq!(code_of(&recv(&mut b).await), "room_full");
+
+    send(&mut r, json!({"type":"remove_peer"})).await;
+    assert_eq!(code_of(&recv(&mut a).await), "removed_by_host");
+    assert_eq!(recv(&mut r).await["type"], "peer_left");
+    let mut w = sender(addr).await;
+    request(&mut r, &mut w, &code, "W").await;
+
+    send(&mut r, json!({"type":"end_room"})).await;
+    assert_eq!(recv(&mut r).await, json!({"type":"room_ended"}));
+    assert_eq!(code_of(&recv(&mut w).await), "room_not_found");
+    // The code is gone.
+    let mut late = sender(addr).await;
+    join(&mut late, &code, None).await;
+    assert_eq!(code_of(&recv(&mut late).await), "room_not_found");
+    // The same connection makes a new room with a new code.
+    send(&mut r, json!({"type":"create_room","join_mode":"open"})).await;
+    let created = recv(&mut r).await;
+    assert_eq!(created["type"], "room_created");
+    assert_ne!(created["code"].as_str().unwrap(), code);
+}
+
+#[tokio::test]
+async fn end_room_tells_the_connected_sender() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("open")).await;
+    let mut a = sender(addr).await;
+    join(&mut a, &code, None).await;
+    assert_eq!(recv(&mut a).await["type"], "joined");
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
+    send(&mut r, json!({"type":"end_room"})).await;
+    assert_eq!(recv(&mut a).await["type"], "peer_left");
+    assert_eq!(recv(&mut r).await["type"], "room_ended");
+    // The sender is out: its relay attempts fail.
+    send(&mut a, json!({"type":"offer","sdp":"v=0"})).await;
+    assert_eq!(code_of(&recv(&mut a).await), "not_in_room");
 }

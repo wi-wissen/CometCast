@@ -217,7 +217,9 @@
     "approval_timeout": "Nobody answered your request in time. You can ask again.",
     "removed_by_host": "The host removed you from the room.",
     "open_rooms_disabled": "This server does not allow open rooms.",
-    "no_such_request": "That request is no longer waiting."
+    "no_such_request": "That request is no longer waiting.",
+    "no_such_block": "That block entry no longer exists.",
+    "block_list_full": "The block list is full. Unblock somebody first."
   },
   "toolbar": {
     "label": "Screen tools",
@@ -347,11 +349,8 @@
     "nameBoxLabel": "Name entered by the sender (not checked)",
     "check": "Check number {check}",
     "checkHelp": "The same number is shown on the sender's screen.",
-    "allow": "Allow",
-    "allowHint": "Press and hold to allow.",
-    "allowHolding": "Keep holding…",
-    "allowHelp": "Hold {key} or the button for about a second to allow. A short press only shows a hint.",
-    "deny": "Deny",
+    "allow": "Yes",
+    "deny": "No",
     "denyAll": "Deny all",
     "more": "+{n} more waiting",
     "secondsLeft": "{s} s left",
@@ -368,7 +367,19 @@
     "notice": {
       "locked_discarded": "Room locked. {count} waiting request(s) were discarded.",
       "open_disabled": "This server does not allow open rooms. \"Ask first\" is used instead."
-    }
+    },
+    "denyBlock": "No and block",
+    "later": "Later",
+    "takeoverTitle": "Someone wants to join",
+    "endPresentation": "End presentation",
+    "endAndBlock": "End and block",
+    "blockedTitle": "Blocked for this session",
+    "noneBlocked": "Nobody is blocked.",
+    "unblock": "Unblock",
+    "blockedHelp": "A blocked sender cannot join this room again until you unblock it or end the session. It is blocked by network address, so people on the same address are affected too.",
+    "endSession": "End session",
+    "endSessionConfirm": "Press again to end the session",
+    "endSessionHelp": "Removes everybody and creates a new room with a new code."
   },
   "displayName": {
     "label": "Your name (shown to the host)",

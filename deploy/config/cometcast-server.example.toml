@@ -12,6 +12,14 @@ mode = "internal"
 # origins: list the origin your users open, including this relay's own address if it serves the
 # web app too. Public (open) relays should always set this. "*" = any origin, internal mode only.
 # allowed_origins = ["https://cometcast.de"]
+
+# Join approval: the display device decides who may join a room (docs/protocol.md). Clients choose
+# the mode of their room themselves ("open" unless the person picked another); this is the mode for
+# rooms whose creator names none. To make every room ask first, uncomment both lines: clients that
+# ask for an open room are refused and the web and Flutter apps fall back to "confirm".
+# default_join_mode = "confirm"
+# allow_open_rooms = false
+# join_approval_secs = 60   # a join request waits this long for the display device
 # In a container the listen address comes from COMETCAST_LISTEN (see the Dockerfile).
 
 [tls]

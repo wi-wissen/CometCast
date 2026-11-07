@@ -68,14 +68,21 @@ try {
   console.log('room code:', code)
 
   const checked = (page, mode) => page.getByTestId(`mode-${mode}`).getAttribute('aria-checked')
-  const setMode = async (mode) => {
-    // While somebody presents the panel is a chip; open it first.
-    if (await receiver.getByTestId('join-chip').isVisible().catch(() => false)) {
+  // While somebody presents the join menu is a chip that appears when the mouse moves.
+  const openMenu = async () => {
+    if (await receiver.getByTestId('join-chip-row').count()) {
+      await receiver.mouse.move(300 + Math.floor(Math.random() * 50), 300)
+      await receiver.locator('[data-testid=join-chip-row][data-visible=true]').waitFor({ timeout: 3000 })
       await receiver.getByTestId('join-chip').click()
     }
+  }
+  const setMode = async (mode) => {
+    await openMenu()
     await receiver.getByTestId(`mode-${mode}`).click()
     await receiver.locator(`[data-testid=mode-${mode}][aria-checked=true]`).waitFor({ timeout: 5000 })
   }
+  // The takeover buttons ignore input for a moment after a request appears.
+  const armed = () => receiver.waitForTimeout(900)
   const newSender = async (name, locale = 'en-US') => {
     const ctx = await browser.newContext({ locale, viewport: { width: 1000, height: 800 } })
     ctx.on('page', (p) => p.on('pageerror', (e) => console.error('pageerror:', e.message)))
@@ -101,9 +108,9 @@ try {
   await connect(s1)
   await phase(s1, 'sharing', 15000)
   await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 15000 })
-  await receiver.getByTestId('join-chip').click()
+  await openMenu()
   assert.match(await receiver.getByTestId('peer-name').innerText(), /Ana/)
-  await receiver.getByTestId('remove-peer').click()
+  await receiver.getByTestId('remove-peer').click() // "End presentation"
   await phase(s1, 'error')
   assert.match(await s1.getByTestId('status').innerText(), /The host removed you from the room/)
   await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
@@ -117,72 +124,68 @@ try {
   const check = (await s2.getByTestId('waiting-check').innerText()).trim()
   assert.match(check, /^[1-9][0-9]$/)
   assert.match(await s2.getByTestId('join-waiting').innerText(), /Nothing is sent from your device until then/)
-  await receiver.getByTestId('join-request').waitFor({ timeout: 5000 })
+  // The request takes over the display: a large dialog on the code page, "No" focused (not "Yes").
+  await receiver.getByTestId('join-takeover').waitFor({ timeout: 5000 })
+  assert.equal(await receiver.getByTestId('join-takeover').getAttribute('role'), 'alertdialog')
   assert.equal((await receiver.getByTestId('request-check').innerText()).trim(), check, 'same check number on both sides')
   assert.equal(await receiver.locator('[data-testid=join-request] img, [data-testid=join-request] b').count(), 0, 'the name is plain text')
   assert.match(await receiver.getByTestId('request-name').innerText(), /Bo <b>x<\/b>/)
-  // Nothing took the focus when the request arrived.
-  assert.equal(await receiver.evaluate(() => document.activeElement?.hasAttribute('data-allow') ?? false), false)
-  const allow = receiver.locator('[data-allow]').first()
-  // A short click only shows a hint.
-  await allow.click()
-  await receiver.getByTestId('hold-hint').waitFor({ timeout: 3000 })
-  assert.equal(await s2.getByTestId('status').getAttribute('data-phase'), 'waiting_approval', 'still waiting after a short press')
-  // Hold with the mouse.
-  const box = await allow.boundingBox()
-  await receiver.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await receiver.mouse.down()
-  await receiver.waitForTimeout(1300)
-  await receiver.mouse.up()
+  assert.equal(await receiver.evaluate(() => document.activeElement?.hasAttribute('data-deny') ?? false), true, 'No has the focus')
+  assert.equal(await receiver.evaluate(() => document.activeElement?.hasAttribute('data-allow') ?? true), false)
+  await armed()
+  await receiver.getByTestId('allow').click()
   await phase(s2, 'sharing', 15000)
-  console.log('confirm + allow (mouse hold) OK')
+  await receiver.getByTestId('join-takeover').waitFor({ state: 'detached', timeout: 5000 })
+  console.log('confirm + takeover + allow OK')
 
-  // --- 4. Deny (one press): the sender is told, and has to wait before asking again
-  await receiver.getByTestId('join-chip').click().catch(() => {})
+  // --- 4. "End presentation", then No (one press): the sender is told and has to wait before asking again
+  await openMenu()
   await receiver.getByTestId('remove-peer').click()
   await phase(s2, 'error')
   await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
   const s3 = await newSender('Cy')
   await connect(s3)
   await phase(s3, 'waiting_approval')
-  await receiver.getByTestId('request-name').waitFor()
-  await receiver.getByTestId('deny').first().click()
+  await receiver.getByTestId('join-takeover').waitFor()
+  await armed()
+  await receiver.getByTestId('deny').click()
   await phase(s3, 'error')
   assert.match(await s3.getByTestId('status').innerText(), /The host did not allow you to join/)
   await s3.getByTestId('denied-cooldown').waitFor({ timeout: 3000 })
   assert.equal(await s3.locator('form').first().locator('button[type=submit]').isDisabled(), true, 'cannot ask again at once')
-  assert.equal(await receiver.getByTestId('join-request').count(), 0)
+  assert.equal(await receiver.getByTestId('join-takeover').count(), 0)
   console.log('deny OK')
 
-  // --- 5. Keyboard: Deny gets the focus after a decision, Allow works with Enter held
+  // --- 5. Keyboard only: Enter on the focused "No"; Tab to "Yes" and Enter after the guard
   const s4 = await newSender('Di')
   await connect(s4)
   await phase(s4, 'waiting_approval')
-  await receiver.getByTestId('join-request').waitFor()
-  await receiver.getByTestId('mode-confirm').focus()
-  await receiver.getByTestId('deny').first().focus()
-  await receiver.keyboard.down('Enter')
-  await receiver.waitForTimeout(150)
-  await receiver.keyboard.up('Enter') // Enter on "Deny" is one press
+  await receiver.getByTestId('join-takeover').waitFor()
+  await armed()
+  await receiver.keyboard.press('Enter') // the focus is on "No"
   await phase(s4, 'error')
   const s5 = await newSender('Ed')
   await connect(s5)
   await phase(s5, 'waiting_approval')
-  await receiver.getByTestId('join-request').waitFor()
-  await receiver.locator('[data-allow]').first().focus()
-  await receiver.keyboard.down('Enter')
-  await receiver.waitForTimeout(1300)
-  await receiver.keyboard.up('Enter')
+  await receiver.getByTestId('join-takeover').waitFor()
+  await armed()
+  await receiver.keyboard.press('Tab') // No -> Yes
+  assert.equal(await receiver.evaluate(() => document.activeElement?.hasAttribute('data-allow')), true)
+  await receiver.keyboard.press('Enter')
   await phase(s5, 'sharing', 15000)
   console.log('keyboard OK')
 
   // --- 6. Lock: a waiting request is discarded with a message; later joins hear "locked"
-  await receiver.getByTestId('join-chip').click().catch(() => {})
+  await openMenu()
   await receiver.getByTestId('remove-peer').click()
   await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
   const s6 = await newSender('Flo')
   await connect(s6)
   await phase(s6, 'waiting_approval')
+  await receiver.getByTestId('join-takeover').waitFor()
+  // "Later" hides the takeover; the request stays in the menu; lock it from there.
+  await receiver.getByTestId('later').click()
+  await receiver.getByTestId('join-takeover').waitFor({ state: 'detached', timeout: 3000 })
   await receiver.getByTestId('join-request').waitFor()
   await receiver.getByTestId('lock-now').click()
   await receiver.locator('[data-testid=mode-locked][aria-checked=true]').waitFor({ timeout: 5000 })
@@ -193,38 +196,84 @@ try {
   await connect(s7)
   await phase(s7, 'error')
   assert.match(await s7.getByTestId('status').innerText(), /room code is correct, but the room is locked/)
-  // Unlock (open): joining works again.
   await setMode('open')
   await connect(s7)
   await phase(s7, 'sharing', 15000)
   console.log('lock + unlock OK')
-  await receiver.getByTestId('join-chip').click().catch(() => {})
-  await receiver.getByTestId('remove-peer').click()
-  await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
 
-  // --- 7. Timeout: nobody decides, the sender is told, the request leaves the list
-  await setMode('confirm')
+  // --- 7. "End and block": the sender is blocked for this session; a blocked sender hears "denied"
+  await openMenu()
+  await receiver.getByTestId('remove-block').click()
+  await phase(s7, 'error')
+  await receiver.getByTestId('blocked-entry').waitFor({ timeout: 5000 })
+  assert.match(await receiver.getByTestId('blocked-entry').innerText(), /Gus/)
+  await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
   const s8 = await newSender('Hal')
   await connect(s8)
-  await phase(s8, 'waiting_approval')
-  await receiver.getByTestId('join-request').waitFor()
-  await phase(s8, 'error', (APPROVAL_SECS + 8) * 1000)
-  assert.match(await s8.getByTestId('status').innerText(), /Nobody answered your request in time/)
-  await receiver.locator('[data-testid=join-request]').waitFor({ state: 'detached', timeout: 5000 })
-  console.log('timeout OK')
+  await phase(s8, 'error')
+  assert.match(await s8.getByTestId('status').innerText(), /The host did not allow you to join/, 'a blocked sender is told "denied", nothing more')
+  assert.equal(await receiver.getByTestId('join-takeover').count(), 0, 'the host is not asked')
+  // Unblock: joining works again (the room is open).
+  await receiver.getByTestId('unblock').click()
+  await receiver.getByTestId('blocked-entry').waitFor({ state: 'detached', timeout: 5000 })
+  console.log('block + unblock OK')
 
-  // --- 8. Cancel while waiting tells the host; German texts (formal "Sie")
-  const s9 = await newSender('Ida', 'de-DE')
+  // --- 8. "No and block" from the takeover
+  await setMode('confirm')
+  const s9 = await newSender('Ida')
   await connect(s9)
   await phase(s9, 'waiting_approval')
-  assert.match(await s9.getByTestId('join-waiting').innerText(), /Warten auf den Gastgeber/)
-  assert.match(await s9.getByTestId('join-waiting').innerText(), /Ihren Beitritt/)
-  await receiver.getByTestId('join-request').waitFor()
-  await s9.getByTestId('cancel-join').click()
-  await receiver.locator('[data-testid=join-request]').waitFor({ state: 'detached', timeout: 5000 })
+  await receiver.getByTestId('join-takeover').waitFor()
+  await armed()
+  await receiver.getByTestId('deny-block').click()
+  await phase(s9, 'error')
+  assert.match(await s9.getByTestId('status').innerText(), /The host did not allow you to join/)
+  await receiver.getByTestId('blocked-entry').waitFor({ timeout: 5000 })
+  await receiver.getByTestId('unblock').click()
+  console.log('no and block OK')
+
+  // --- 9. Timeout: nobody decides, the sender is told, the request leaves the screen
+  const s10 = await newSender('Jo')
+  await connect(s10)
+  await phase(s10, 'waiting_approval')
+  await receiver.getByTestId('join-takeover').waitFor()
+  await phase(s10, 'error', (APPROVAL_SECS + 8) * 1000)
+  assert.match(await s10.getByTestId('status').innerText(), /Nobody answered your request in time/)
+  await receiver.getByTestId('join-takeover').waitFor({ state: 'detached', timeout: 5000 })
+  console.log('timeout OK')
+
+  // --- 10. Cancel while waiting tells the host; German texts (formal "Sie")
+  const s11 = await newSender('Kim', 'de-DE')
+  await connect(s11)
+  await phase(s11, 'waiting_approval')
+  assert.match(await s11.getByTestId('join-waiting').innerText(), /Warten auf den Gastgeber/)
+  assert.match(await s11.getByTestId('join-waiting').innerText(), /Ihren Beitritt/)
+  await receiver.getByTestId('join-takeover').waitFor()
+  await s11.getByTestId('cancel-join').click()
+  await receiver.getByTestId('join-takeover').waitFor({ state: 'detached', timeout: 5000 })
   console.log('cancel + de OK')
 
-  // --- 9. The chosen mode is remembered in this browser for the next room
+  // --- 11. End session: everybody is dropped and the page shows a new code
+  const oldCode = (await receiver.getByTestId('room-code').innerText()).trim()
+  const s12 = await newSender('Lou')
+  await connect(s12)
+  await phase(s12, 'waiting_approval')
+  await receiver.getByTestId('join-takeover').waitFor()
+  await armed()
+  await receiver.getByTestId('allow').click()
+  await phase(s12, 'sharing', 15000)
+  await openMenu()
+  await receiver.getByTestId('end-session').click() // first press only asks
+  assert.match(await receiver.getByTestId('end-session').innerText(), /Press again/)
+  await receiver.getByTestId('end-session').click()
+  await phase(s12, 'peer_left')
+  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
+  const newCode = (await receiver.getByTestId('room-code').innerText()).trim()
+  assert.match(newCode, /^[A-HJ-NP-Z2-9]{6}$/)
+  assert.notEqual(newCode, oldCode, 'a new room has a new code')
+  console.log('end session OK')
+
+  // --- 12. The chosen mode is remembered in this browser for the next room
   const remembered = await receiver.evaluate(() => localStorage.getItem('cometcast.joinMode'))
   assert.equal(remembered, 'confirm')
 

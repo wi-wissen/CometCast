@@ -126,6 +126,21 @@ pub enum ReceiverEvent {
     },
     /// The join mode now in force (confirmed by the server after `set_join_mode`).
     JoinModeChanged(JoinMode),
+    /// An entry was added to the room's block list (docs/protocol.md, "Join approval").
+    Blocked {
+        /// Block id for [`ReceiverCore::unblock`].
+        id: u64,
+        /// Cleaned display name of the blocked sender (for the list only).
+        name: String,
+    },
+    /// An entry left the block list.
+    Unblocked {
+        /// Block id.
+        id: u64,
+    },
+    /// The room session was ended with [`ReceiverCore::end_room`]. The core stops after this
+    /// event; start a new core for a new room (a new code).
+    RoomEnded,
     /// WebRTC connection state changed.
     State(ConnectionState),
     /// The sender's video track arrived.
@@ -294,7 +309,29 @@ impl ReceiverCore {
         let _ = self.commands.send(ClientMsg::JoinDecision {
             id: Some(id),
             allow,
+            block: false,
         });
+    }
+
+    /// Deny a waiting request and block the sender's address bucket for the rest of this room
+    /// session (it then gets `join_denied` at once, and the host is not asked again).
+    pub fn deny_and_block_join(&self, id: u64) {
+        let _ = self.commands.send(ClientMsg::JoinDecision {
+            id: Some(id),
+            allow: false,
+            block: true,
+        });
+    }
+
+    /// Take an entry off the block list (`id` from [`ReceiverEvent::Blocked`]).
+    pub fn unblock(&self, id: u64) {
+        let _ = self.commands.send(ClientMsg::Unblock { id });
+    }
+
+    /// End the room session: everybody is dropped and the code is gone. The core then stops
+    /// ([`ReceiverEvent::RoomEnded`]); the app starts a new core for a new room.
+    pub fn end_room(&self) {
+        let _ = self.commands.send(ClientMsg::EndRoom);
     }
 
     /// Deny everybody who waits.
@@ -302,13 +339,15 @@ impl ReceiverCore {
         let _ = self.commands.send(ClientMsg::JoinDecision {
             id: None,
             allow: false,
+            block: false,
         });
     }
 
-    /// Remove the connected sender. UNCERTAIN: one sender per core in this version, so the
-    /// core ends with `PeerLeft` afterwards and a new room (new code) has to be started.
-    pub fn remove_peer(&self) {
-        let _ = self.commands.send(ClientMsg::RemovePeer);
+    /// Remove the connected sender (end its presentation); with `block` also block its address
+    /// bucket for the rest of this room session. UNCERTAIN: one sender per core in this version,
+    /// so the core ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+    pub fn remove_peer(&self, block: bool) {
+        let _ = self.commands.send(ClientMsg::RemovePeer { block });
     }
 
     /// Ask the sender for a new key frame (picture loss indication), for example after a
@@ -412,6 +451,12 @@ async fn run(
                 }
                 Some(ServerMsg::JoinModeChanged { join_mode }) => {
                     emit(ReceiverEvent::JoinModeChanged(join_mode))
+                }
+                Some(ServerMsg::Blocked { id, name }) => emit(ReceiverEvent::Blocked { id, name }),
+                Some(ServerMsg::Unblocked { id }) => emit(ReceiverEvent::Unblocked { id }),
+                Some(ServerMsg::RoomEnded) => {
+                    emit(ReceiverEvent::RoomEnded);
+                    break;
                 }
                 Some(ServerMsg::Offer { sdp }) => {
                     offer_at.get_or_insert_with(tokio::time::Instant::now);

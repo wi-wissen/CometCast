@@ -18,8 +18,11 @@ export type ClientMessage =
   | { type: 'join_room'; code: string; name?: string }
   | { type: 'set_join_mode'; join_mode: JoinMode }
   // id absent + allow false = deny all waiting requests
-  | { type: 'join_decision'; id?: number; allow: boolean }
-  | { type: 'remove_peer' }
+  // block: with allow false and an id, also block the sender's address bucket for this room session
+  | { type: 'join_decision'; id?: number; allow: boolean; block?: boolean }
+  | { type: 'remove_peer'; block?: boolean }
+  | { type: 'unblock'; id: number }
+  | { type: 'end_room' }
   | { type: 'cancel_join' }
   | { type: 'offer'; sdp: string }
   | { type: 'answer'; sdp: string }
@@ -36,6 +39,9 @@ export type ServerMessage =
   | { type: 'join_request'; id: number; name: string; check: number }
   | { type: 'join_request_cancelled'; id: number; reason: string }
   | { type: 'join_mode_changed'; join_mode: JoinMode }
+  | { type: 'blocked'; id: number; name: string }
+  | { type: 'unblocked'; id: number }
+  | { type: 'room_ended' }
   | { type: 'offer'; sdp: string }
   | { type: 'answer'; sdp: string }
   | { type: 'ice_candidate'; candidate: string }
@@ -60,6 +66,8 @@ export const SERVER_ERROR_CODES = [
   'removed_by_host',
   'open_rooms_disabled',
   'no_such_request',
+  'no_such_block',
+  'block_list_full',
   // Added with the server's M8 (docs/protocol.md). HTTP-side refusals of /altcha/challenge use
   // the same words (see altchaClient.ts), plus 'forbidden', 'server_full' and 'altcha_failed'.
   'altcha_required',
@@ -98,7 +106,12 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
       return isStr(o.code) && isJoinMode(o.join_mode) ? { type: 'room_created', code: o.code, join_mode: o.join_mode } : null
     case 'joined':
     case 'peer_left':
+    case 'room_ended':
       return { type: o.type }
+    case 'blocked':
+      return isNum(o.id) && isStr(o.name) ? { type: 'blocked', id: o.id, name: o.name } : null
+    case 'unblocked':
+      return isNum(o.id) ? { type: 'unblocked', id: o.id } : null
     case 'peer_joined':
       return isStr(o.name) ? { type: 'peer_joined', name: o.name } : null
     case 'join_pending':

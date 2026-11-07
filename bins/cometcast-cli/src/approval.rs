@@ -22,8 +22,16 @@ pub enum TermCmd {
     Deny,
     DenyAll,
     SetMode(JoinMode),
-    /// Remove the connected sender.
+    /// Deny the oldest waiting request and block the sender for this room session.
+    DenyBlock,
+    /// Remove the connected sender (end its presentation).
     Kick,
+    /// Remove the connected sender and block it for this room session.
+    KickBlock,
+    /// End the room session (the program exits; start it again for a new code).
+    End,
+    /// Take block list entry N off the list.
+    Unblock(u64),
     Help,
 }
 
@@ -37,6 +45,12 @@ pub fn parse_line(line: &str) -> Option<TermCmd> {
         "open" | "unlock" => Some(TermCmd::SetMode(JoinMode::Open)),
         "confirm" => Some(TermCmd::SetMode(JoinMode::Confirm)),
         "kick" | "remove" => Some(TermCmd::Kick),
+        "kick-block" | "kb" => Some(TermCmd::KickBlock),
+        "block" | "nb" => Some(TermCmd::DenyBlock),
+        "end" | "end-room" => Some(TermCmd::End),
+        other if other.starts_with("unblock ") => {
+            other[8..].trim().parse().ok().map(TermCmd::Unblock)
+        }
         "?" | "h" | "help" => Some(TermCmd::Help),
         _ => None,
     }
@@ -44,7 +58,8 @@ pub fn parse_line(line: &str) -> Option<TermCmd> {
 
 pub const HELP: &str = "Commands: y = allow the oldest request, n = deny it, deny-all, \
 lock (nobody can join), confirm (every join asks), open (anybody with the code joins), \
-kick (remove the connected sender), help";
+kick (remove the connected sender), kick-block (remove and block it), block (deny the oldest request and block \
+the sender), unblock N, end (end the room session), help";
 
 /// The question for the oldest waiting request.
 pub fn question(w: &Waiting, more: usize) -> String {
@@ -95,6 +110,11 @@ mod tests {
         assert_eq!(parse_line("lock"), Some(TermCmd::SetMode(JoinMode::Locked)));
         assert_eq!(parse_line("unlock"), Some(TermCmd::SetMode(JoinMode::Open)));
         assert_eq!(parse_line("kick"), Some(TermCmd::Kick));
+        assert_eq!(parse_line("kick-block"), Some(TermCmd::KickBlock));
+        assert_eq!(parse_line("block"), Some(TermCmd::DenyBlock));
+        assert_eq!(parse_line("end"), Some(TermCmd::End));
+        assert_eq!(parse_line("unblock 3"), Some(TermCmd::Unblock(3)));
+        assert_eq!(parse_line("unblock x"), None);
         assert_eq!(parse_line("maybe"), None);
         assert_eq!(parse_line(""), None);
     }

@@ -603,6 +603,19 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                             "this room is locked: nobody can join right now",
                         );
                     }
+                    Err(JoinError::Blocked) => {
+                        // Looks like any other denial. The host is not asked; nothing is
+                        // said about a block. Counts toward the cooldown like a denial.
+                        conn.error(error_codes::JOIN_DENIED, "the host denied your request");
+                        if let Some(len) = penalize(state, conn.ip) {
+                            conn.error(
+                                error_codes::BANNED,
+                                &format!("too many refused joins; banned for {} s", len.as_secs()),
+                            );
+                            conn.tx.send(Outgoing::Close("banned"));
+                            return Step::Close;
+                        }
+                    }
                     Err(JoinError::RoomPendingFull | JoinError::IpPendingFull) => {
                         conn.error(
                             error_codes::RATE_LIMITED,
@@ -665,7 +678,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 Err(_) => conn.error("not_in_room", "you do not own this room"),
             }
         }
-        ClientMsg::JoinDecision { id, allow } => {
+        ClientMsg::JoinDecision { id, allow, block } => {
             if role != Role::Receiver {
                 return strike(
                     conn,
@@ -678,9 +691,19 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 conn.error("not_in_room", "you have no room");
                 return Step::Continue;
             };
-            let decided = lock(state).decide(&code, conn.id, id, allow);
+            if block && (allow || id.is_none()) {
+                conn.error(
+                    "bad_message",
+                    "block needs allow = false and the id of one request",
+                );
+                return Step::Continue;
+            }
+            let decided = lock(state).decide(&code, conn.id, id, allow, block);
             match decided {
                 Ok(d) => {
+                    if let Some((bid, name)) = d.blocked {
+                        conn.send(ServerMsg::Blocked { id: bid, name });
+                    }
                     if let Some((joiner, owner, name)) = d.approved {
                         joiner.send(Outgoing::Msg(ServerMsg::Joined));
                         owner.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
@@ -694,6 +717,12 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                                 "the room already has a sender".into()
                             },
                         }));
+                        if reason == "blocked" {
+                            conn.send(ServerMsg::JoinRequestCancelled {
+                                id: req,
+                                reason: reason.into(),
+                            });
+                        }
                         if code == error_codes::JOIN_DENIED {
                             // Counts toward a cooldown of the joiner's address; the
                             // ban closes the joiner's connection, not the owner's.
@@ -718,10 +747,16 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 Err(OwnerError::NoSuchRequest) => {
                     conn.error(error_codes::NO_SUCH_REQUEST, "no such waiting request");
                 }
+                Err(OwnerError::BlockFull) => {
+                    conn.error(error_codes::BLOCK_LIST_FULL, "the block list is full");
+                }
+                Err(OwnerError::NoSuchBlock) => {
+                    conn.error(error_codes::NO_SUCH_BLOCK, "no such block entry");
+                }
                 Err(OwnerError::NotOwner) => conn.error("not_in_room", "you do not own this room"),
             }
         }
-        ClientMsg::RemovePeer => {
+        ClientMsg::RemovePeer { block } => {
             if role != Role::Receiver {
                 return strike(
                     conn,
@@ -734,15 +769,71 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 conn.error("not_in_room", "you have no room");
                 return Step::Continue;
             };
-            match lock(state).remove_peer(&code, conn.id) {
-                Ok(Some(tx)) => {
+            let removed = lock(state).remove_peer(&code, conn.id, block);
+            match removed {
+                Ok(Some((tx, entry))) => {
                     tx.send(Outgoing::Msg(ServerMsg::Error {
                         code: error_codes::REMOVED_BY_HOST.into(),
                         message: "the host removed you from the room".into(),
                     }));
                     conn.send(ServerMsg::PeerLeft);
+                    if let Some((id, name)) = entry {
+                        conn.send(ServerMsg::Blocked { id, name });
+                    }
                 }
                 Ok(None) => conn.error("not_in_room", "nobody is connected"),
+                Err(OwnerError::BlockFull) => {
+                    conn.error(error_codes::BLOCK_LIST_FULL, "the block list is full");
+                }
+                Err(_) => conn.error("not_in_room", "you do not own this room"),
+            }
+        }
+        ClientMsg::Unblock { id } => {
+            if role != Role::Receiver {
+                return strike(conn, state, "wrong_role", "only the receiver can unblock");
+            }
+            let Some(code) = conn.room.clone() else {
+                conn.error("not_in_room", "you have no room");
+                return Step::Continue;
+            };
+            let result = lock(state).unblock(&code, conn.id, id);
+            match result {
+                Ok(()) => conn.send(ServerMsg::Unblocked { id }),
+                Err(OwnerError::NoSuchBlock) => {
+                    conn.error(error_codes::NO_SUCH_BLOCK, "no such block entry");
+                }
+                Err(_) => conn.error("not_in_room", "you do not own this room"),
+            }
+        }
+        ClientMsg::EndRoom => {
+            if role != Role::Receiver {
+                return strike(
+                    conn,
+                    state,
+                    "wrong_role",
+                    "only the receiver can end the room",
+                );
+            }
+            let Some(code) = conn.room.clone() else {
+                conn.error("not_in_room", "you have no room");
+                return Step::Continue;
+            };
+            let ended = lock(state).end_room(&code, conn.id);
+            match ended {
+                Ok(left) => {
+                    if let Some(peer) = left.peer {
+                        peer.send(Outgoing::Msg(ServerMsg::PeerLeft));
+                    }
+                    for tx in left.orphaned {
+                        tx.send(Outgoing::Msg(ServerMsg::Error {
+                            code: "room_not_found".into(),
+                            message: "the room was closed".into(),
+                        }));
+                    }
+                    // The connection stays and may create a new room (a new code).
+                    conn.room = None;
+                    conn.send(ServerMsg::RoomEnded);
+                }
                 Err(_) => conn.error("not_in_room", "you do not own this room"),
             }
         }

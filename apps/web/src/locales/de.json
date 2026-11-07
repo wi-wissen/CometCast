@@ -217,7 +217,9 @@
     "approval_timeout": "Niemand hat Ihre Anfrage rechtzeitig beantwortet. Sie können erneut anfragen.",
     "removed_by_host": "Der Gastgeber hat Sie aus dem Raum entfernt.",
     "open_rooms_disabled": "Dieser Server erlaubt keine offenen Räume.",
-    "no_such_request": "Diese Anfrage wartet nicht mehr."
+    "no_such_request": "Diese Anfrage wartet nicht mehr.",
+    "no_such_block": "Dieser Blockeintrag existiert nicht mehr.",
+    "block_list_full": "Die Blockliste ist voll. Geben Sie zuerst jemanden frei."
   },
   "toolbar": {
     "label": "Bildschirm-Werkzeuge",
@@ -347,11 +349,8 @@
     "nameBoxLabel": "Vom Sender eingegebener Name (nicht geprüft)",
     "check": "Prüfnummer {check}",
     "checkHelp": "Dieselbe Nummer steht auf dem Bildschirm des Senders.",
-    "allow": "Erlauben",
-    "allowHint": "Zum Erlauben gedrückt halten.",
-    "allowHolding": "Weiter halten…",
-    "allowHelp": "Halten Sie {key} oder die Schaltfläche etwa eine Sekunde lang, um zu erlauben. Ein kurzer Druck zeigt nur einen Hinweis.",
-    "deny": "Ablehnen",
+    "allow": "Ja",
+    "deny": "Nein",
     "denyAll": "Alle ablehnen",
     "more": "+{n} weitere warten",
     "secondsLeft": "noch {s} s",
@@ -368,7 +367,19 @@
     "notice": {
       "locked_discarded": "Raum gesperrt. {count} wartende Anfrage(n) wurden verworfen.",
       "open_disabled": "Dieser Server erlaubt keine offenen Räume. Stattdessen wird „Erst fragen“ verwendet."
-    }
+    },
+    "denyBlock": "Nein und blockieren",
+    "later": "Später",
+    "takeoverTitle": "Jemand möchte beitreten",
+    "endPresentation": "Präsentation beenden",
+    "endAndBlock": "Beenden und blockieren",
+    "blockedTitle": "Für diese Sitzung blockiert",
+    "noneBlocked": "Niemand ist blockiert.",
+    "unblock": "Freigeben",
+    "blockedHelp": "Ein blockierter Sender kann diesem Raum nicht erneut beitreten, bis Sie ihn freigeben oder die Sitzung beenden. Blockiert wird nach Netzwerkadresse, daher sind auch Personen mit derselben Adresse betroffen.",
+    "endSession": "Sitzung beenden",
+    "endSessionConfirm": "Zum Beenden erneut drücken",
+    "endSessionHelp": "Entfernt alle und erstellt einen neuen Raum mit neuem Code."
   },
   "displayName": {
     "label": "Ihr Name (wird dem Gastgeber angezeigt)",

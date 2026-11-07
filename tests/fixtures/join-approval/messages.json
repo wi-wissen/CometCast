@@ -1,0 +1,234 @@
+{
+  "description": "Exact JSON of every message that join approval added or changed (protocol version 2). `message` is the whole text frame. The messages of the other kinds (offer, answer, ice_candidate, control, peer_left) did not change. The 'message' fields of errors are English text for logs; clients must key on `code`. crates/cc-proto checks these.",
+  "messages": [
+    {
+      "id": "hello_v2",
+      "direction": "client_to_server",
+      "message": {
+        "type": "hello",
+        "proto_version": 2,
+        "role": "receiver"
+      }
+    },
+    {
+      "id": "hello_ok",
+      "direction": "server_to_client",
+      "message": {
+        "type": "hello",
+        "proto_version": 2
+      }
+    },
+    {
+      "id": "create_room_confirm",
+      "direction": "client_to_server",
+      "message": {
+        "type": "create_room",
+        "join_mode": "confirm"
+      }
+    },
+    {
+      "id": "create_room_default_mode",
+      "direction": "client_to_server",
+      "message": {
+        "type": "create_room"
+      }
+    },
+    {
+      "id": "create_room_with_altcha",
+      "direction": "client_to_server",
+      "message": {
+        "type": "create_room",
+        "altcha": "e30=",
+        "join_mode": "open"
+      }
+    },
+    {
+      "id": "room_created",
+      "direction": "server_to_client",
+      "message": {
+        "type": "room_created",
+        "code": "K7M2QX",
+        "join_mode": "confirm"
+      }
+    },
+    {
+      "id": "join_room_with_name",
+      "direction": "client_to_server",
+      "message": {
+        "type": "join_room",
+        "code": "K7M2QX",
+        "name": "Ana"
+      }
+    },
+    {
+      "id": "join_room_without_name",
+      "direction": "client_to_server",
+      "message": {
+        "type": "join_room",
+        "code": "K7M2QX"
+      }
+    },
+    {
+      "id": "join_pending",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_pending",
+        "timeout_secs": 60,
+        "check": 42
+      }
+    },
+    {
+      "id": "join_request",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_request",
+        "id": 1,
+        "name": "Ana",
+        "check": 42
+      }
+    },
+    {
+      "id": "join_decision_allow",
+      "direction": "client_to_server",
+      "message": {
+        "type": "join_decision",
+        "id": 1,
+        "allow": true
+      }
+    },
+    {
+      "id": "join_decision_deny",
+      "direction": "client_to_server",
+      "message": {
+        "type": "join_decision",
+        "id": 1,
+        "allow": false
+      }
+    },
+    {
+      "id": "join_decision_deny_all",
+      "direction": "client_to_server",
+      "message": {
+        "type": "join_decision",
+        "allow": false
+      }
+    },
+    {
+      "id": "joined",
+      "direction": "server_to_client",
+      "message": {
+        "type": "joined"
+      }
+    },
+    {
+      "id": "peer_joined",
+      "direction": "server_to_client",
+      "message": {
+        "type": "peer_joined",
+        "name": "Ana"
+      }
+    },
+    {
+      "id": "join_request_cancelled_timeout",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_request_cancelled",
+        "id": 1,
+        "reason": "timeout"
+      }
+    },
+    {
+      "id": "join_request_cancelled_locked",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_request_cancelled",
+        "id": 2,
+        "reason": "locked"
+      }
+    },
+    {
+      "id": "set_join_mode_locked",
+      "direction": "client_to_server",
+      "message": {
+        "type": "set_join_mode",
+        "join_mode": "locked"
+      }
+    },
+    {
+      "id": "join_mode_changed",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_mode_changed",
+        "join_mode": "locked"
+      }
+    },
+    {
+      "id": "remove_peer",
+      "direction": "client_to_server",
+      "message": {
+        "type": "remove_peer"
+      }
+    },
+    {
+      "id": "cancel_join",
+      "direction": "client_to_server",
+      "message": {
+        "type": "cancel_join"
+      }
+    },
+    {
+      "id": "error_join_denied",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "join_denied",
+        "message": "the host denied your request"
+      }
+    },
+    {
+      "id": "error_room_locked",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "room_locked",
+        "message": "this room is locked: nobody can join right now"
+      }
+    },
+    {
+      "id": "error_approval_timeout",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "approval_timeout",
+        "message": "nobody decided on your request in time"
+      }
+    },
+    {
+      "id": "error_join_pending",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "join_pending",
+        "message": "wait until the host has allowed you to join"
+      }
+    },
+    {
+      "id": "error_removed_by_host",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "removed_by_host",
+        "message": "the host removed you from the room"
+      }
+    },
+    {
+      "id": "error_open_rooms_disabled",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "open_rooms_disabled",
+        "message": "this server does not allow rooms that anybody can join"
+      }
+    }
+  ]
+}

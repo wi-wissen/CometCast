@@ -3,102 +3,152 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, nextTick, ref } from 'vue'
 import { createAppI18n } from '../src/i18n'
-import HoldButton from '../src/components/HoldButton.vue'
 import JoinPanel from '../src/components/JoinPanel.vue'
+import JoinRequestCard from '../src/components/JoinRequestCard.vue'
+import JoinTakeover from '../src/components/JoinTakeover.vue'
+import { REQUEST_GUARD_MS } from '../src/core/joinGuard'
 import { cleanName, JOIN_MODE_KEY, loadJoinMode, saveJoinMode, shortName } from '../src/core/joinPrefs'
 import type { JoinRequest } from '../src/core/receiverSession'
 
 const i18n = createAppI18n('en')
-const req = (id: number, name = `Person ${id}`): JoinRequest => ({ id, name, check: 10 + id, receivedAt: Date.now() })
+const req = (id: number, name = `Person ${id}`, receivedAt = Date.now() - 5000): JoinRequest => ({ id, name, check: 10 + id, receivedAt })
 
-function panel(props: Partial<InstanceType<typeof JoinPanel>['$props']> = {}) {
+function panel(props: Record<string, unknown> = {}) {
   return mount(JoinPanel, {
     attachTo: document.body,
     global: { plugins: [i18n] },
-    props: { mode: 'confirm', requests: [], peerName: null, notice: null, compact: false, ...props },
+    props: { mode: 'confirm', requests: [], peerName: null, blocks: [], notice: null, compact: false, ...props },
   })
 }
 
-beforeEach(() => vi.useFakeTimers())
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] }))
 afterEach(() => {
   vi.useRealTimers()
   document.body.innerHTML = ''
 })
 
-describe('HoldButton', () => {
-  const mk = () => mount(HoldButton, { attachTo: document.body, global: { plugins: [i18n] }, props: { label: 'Allow', holdMs: 1000 } })
+describe('JoinRequestCard', () => {
+  const mk = (receivedAt: number, now: number) =>
+    mount(JoinRequestCard, { global: { plugins: [i18n] }, props: { request: req(1, 'Ana', receivedAt), now } })
 
-  it('acts only after the button was held', async () => {
-    const w = mk()
-    const b = w.get('button')
-    await b.trigger('pointerdown')
-    vi.advanceTimersByTime(500)
-    await b.trigger('pointerup')
-    expect(w.emitted('confirm')).toBeUndefined()
+  it('ignores presses right after the request appeared, then reacts', async () => {
+    const t0 = 1_000_000
+    const early = mk(t0, t0 + REQUEST_GUARD_MS - 100)
+    await early.get('[data-testid=allow]').trigger('click')
+    await early.get('[data-testid=deny]').trigger('click')
+    await early.get('[data-testid=deny-block]').trigger('click')
+    expect(early.emitted('allow')).toBeUndefined()
+    expect(early.emitted('deny')).toBeUndefined()
+    expect(early.emitted('block')).toBeUndefined()
+    expect(early.get('[data-testid=allow]').attributes('aria-disabled')).toBe('true')
+    const late = mk(t0, t0 + REQUEST_GUARD_MS + 10)
+    await late.get('[data-testid=allow]').trigger('click')
+    await late.get('[data-testid=deny]').trigger('click')
+    await late.get('[data-testid=deny-block]').trigger('click')
+    expect(late.emitted('allow')).toHaveLength(1)
+    expect(late.emitted('deny')).toHaveLength(1)
+    expect(late.emitted('block')).toHaveLength(1)
+  })
+
+  it('shows the name in quotes as plain text, cut at 18 characters, and the check number', () => {
+    const w = mount(JoinRequestCard, {
+      global: { plugins: [i18n] },
+      props: { request: req(1, '<img src=x onerror=alert(1)>'), now: Date.now() },
+    })
+    expect(w.find('img').exists()).toBe(false)
+    expect(w.get('[data-testid=request-name]').text()).toContain('<img src=x one')
+    expect(w.get('[data-testid=request-name]').text()).not.toContain('alert')
+    expect(w.get('[data-testid=request-name]').attributes('title')).toContain('alert(1)')
+    expect(w.get('[data-testid=request-check]').text()).toBe('11')
+  })
+
+  it('has No first in the DOM (and so in the focus order)', () => {
+    const w = mk(0, 10_000)
+    const ids = w.findAll('button').map((b) => b.attributes('data-testid'))
+    expect(ids).toEqual(['deny', 'allow', 'deny-block'])
+  })
+})
+
+describe('JoinTakeover', () => {
+  const mk = (props: Record<string, unknown> = {}) =>
+    mount(JoinTakeover, {
+      attachTo: document.body,
+      global: { plugins: [i18n] },
+      props: { request: req(1, 'Ana'), more: 0, banner: false, ...props },
+    })
+
+  it('is a dialog on the code page and a banner while somebody presents', () => {
+    expect(mk().get('[data-testid=join-takeover]').attributes('role')).toBe('alertdialog')
+    document.body.innerHTML = ''
+    const b = mk({ banner: true })
+    expect(b.get('[data-testid=join-takeover]').attributes('role')).toBe('alert')
+    expect(b.get('[data-testid=join-takeover]').attributes('data-banner')).toBe('true')
+  })
+
+  it('shows nothing without a request', () => {
+    expect(mk({ request: null }).find('[data-testid=join-takeover]').exists()).toBe(false)
+  })
+
+  it('puts the focus on No, never on Yes, and gives it back when it goes away', async () => {
+    const before = document.createElement('button')
+    document.body.appendChild(before)
+    before.focus()
+    const w = mk({ request: null })
+    await w.setProps({ request: req(1, 'Ana') })
     await nextTick()
-    expect(w.find('[data-testid=hold-hint]').exists()).toBe(true) // a short press only shows a hint
-    await b.trigger('pointerdown')
-    vi.advanceTimersByTime(1100)
-    expect(w.emitted('confirm')).toHaveLength(1)
-    await b.trigger('pointerup')
-    expect(w.emitted('confirm')).toHaveLength(1)
+    const active = document.activeElement as HTMLElement
+    expect(active.hasAttribute('data-deny')).toBe(true)
+    expect(active.hasAttribute('data-allow')).toBe(false)
+    await w.setProps({ request: null })
+    await nextTick()
+    expect(document.activeElement).toBe(before)
   })
 
-  it('works with Enter held on a keyboard or remote, not with a tap or a click', async () => {
+  it('moves the focus to No of the next request after a decision', async () => {
     const w = mk()
-    const b = w.get('button')
-    await b.trigger('click')
-    expect(w.emitted('confirm')).toBeUndefined()
-    await b.trigger('keydown', { key: 'Enter' })
-    vi.advanceTimersByTime(400)
-    await b.trigger('keyup', { key: 'Enter' })
-    expect(w.emitted('confirm')).toBeUndefined()
-    await b.trigger('keydown', { key: 'Enter' })
-    await b.trigger('keydown', { key: 'Enter', repeat: true }) // key repeat does not restart the hold
-    vi.advanceTimersByTime(1100)
-    expect(w.emitted('confirm')).toHaveLength(1)
+    await w.setProps({ request: req(2, 'Ben') })
+    await nextTick()
+    expect((document.activeElement as HTMLElement).hasAttribute('data-deny')).toBe(true)
+    expect(w.get('[data-testid=request-name]').text()).toContain('Ben')
   })
 
-  it('leaving the button or losing the focus cancels the hold', async () => {
+  it('Escape and Later hide it without deciding', async () => {
     const w = mk()
-    const b = w.get('button')
-    await b.trigger('pointerdown')
-    vi.advanceTimersByTime(600)
-    await b.trigger('pointerleave')
-    vi.advanceTimersByTime(1000)
-    expect(w.emitted('confirm')).toBeUndefined()
+    await w.get('[data-testid=join-takeover]').trigger('keydown', { key: 'Escape' })
+    await w.get('[data-testid=later]').trigger('click')
+    expect(w.emitted('later')).toHaveLength(2)
+    expect(w.emitted('allow')).toBeUndefined()
+    expect(w.emitted('deny')).toBeUndefined()
+  })
+
+  it('counts the others and offers Deny all', async () => {
+    const w = mk({ more: 2 })
+    expect(w.get('[data-testid=takeover-more]').text()).toBe('+2 more waiting')
+    await w.get('[data-testid=deny-all]').trigger('click')
+    expect(w.emitted('denyAll')).toHaveLength(1)
+    expect(mk({ more: 0 }).find('[data-testid=deny-all]').exists()).toBe(false)
   })
 })
 
 describe('JoinPanel', () => {
-  it('shows at most three requests and counts the rest; names stay plain text', () => {
-    const w = panel({ requests: [1, 2, 3, 4, 5].map((i) => req(i, i === 1 ? '<img src=x onerror=alert(1)>' : undefined)) })
+  it('lists requests that are not on the takeover, with a count of the rest', () => {
+    const w = panel({ requests: [1, 2, 3, 4, 5, 6].map((i) => req(i)), takeoverId: 1 })
     expect(w.findAll('[data-testid=join-request]')).toHaveLength(3)
     expect(w.get('[data-testid=join-more]').text()).toBe('+2 more waiting')
-    expect(w.find('img').exists()).toBe(false)
-    expect(w.get('[data-testid=request-name]').text()).toContain('<img src=x one') // cut at 18 characters
-    expect(w.get('[data-testid=request-name]').text()).not.toContain('alert')
-    expect(w.get('[data-testid=request-name]').attributes('title')).toContain('alert(1)')
+    expect(w.text()).not.toContain('Person 1')
   })
 
-  it('shows the check number on every request', () => {
-    const w = panel({ requests: [req(1), req(2)] })
-    expect(w.findAll('[data-testid=request-check]').map((e) => e.text())).toEqual(['11', '12'])
+  it('answers requests from the list with Yes, No and No and block', async () => {
+    const w = panel({ requests: [req(7)] })
+    await w.get('[data-testid=allow]').trigger('click')
+    await w.get('[data-testid=deny]').trigger('click')
+    await w.get('[data-testid=deny-block]').trigger('click')
+    expect(w.emitted('allow')).toEqual([[7]])
+    expect(w.emitted('deny')).toEqual([[7]])
+    expect(w.emitted('block')).toEqual([[7]])
   })
 
-  it('a new request never takes the focus', async () => {
-    const w = panel({ requests: [req(1)] })
-    const radio = w.get('[data-testid=mode-confirm]').element as HTMLElement
-    radio.focus()
-    expect(document.activeElement).toBe(radio)
-    await w.setProps({ requests: [req(1), req(2)] })
-    expect(document.activeElement).toBe(radio)
-    expect(document.activeElement?.hasAttribute('data-allow')).toBe(false)
-    expect(w.get('[data-testid=join-announce]').text()).toContain('Person 2')
-  })
-
-  it('after a decision the focus goes to the next request\'s Deny, never to Allow', async () => {
-    // A parent that behaves like the receive view: the request leaves the list at once.
+  it('after a decision the focus goes to the next No, never to Yes', async () => {
     const Host = defineComponent({
       components: { JoinPanel },
       setup() {
@@ -106,25 +156,16 @@ describe('JoinPanel', () => {
         const drop = (id: number) => (requests.value = requests.value.filter((r) => r.id !== id))
         return { requests, drop }
       },
-      template: '<JoinPanel mode="confirm" :requests="requests" :peer-name="null" :notice="null" :compact="false" @deny="drop" @allow="drop" />',
+      template: '<JoinPanel mode="confirm" :requests="requests" :peer-name="null" :blocks="[]" :notice="null" :compact="false" @deny="drop" @allow="drop" />',
     })
     const w = mount(Host, { attachTo: document.body, global: { plugins: [i18n] } })
     await w.findAll('[data-testid=deny]')[0].trigger('click')
     await nextTick()
     const active = document.activeElement as HTMLElement
     expect(active.hasAttribute('data-deny')).toBe(true)
-    expect(active.hasAttribute('data-allow')).toBe(false)
-    expect(w.findAll('[data-testid=join-request]')).toHaveLength(1)
-    // Last one decided: the focus returns to the mode switch.
     await w.get('[data-testid=deny]').trigger('click')
     await nextTick()
     expect((document.activeElement as HTMLElement).getAttribute('role')).toBe('radio')
-  })
-
-  it('has Deny all from two requests on', () => {
-    expect(panel({ requests: [req(1)] }).find('[data-testid=deny-all]').exists()).toBe(false)
-    const w = panel({ requests: [req(1), req(2)] })
-    expect(w.find('[data-testid=deny-all]').exists()).toBe(true)
   })
 
   it('switches the mode with one press and locks with the quick action', async () => {
@@ -146,19 +187,47 @@ describe('JoinPanel', () => {
     expect(w.emitted('mode')).toBeUndefined()
   })
 
-  it('lists the connected sender with a Remove button', async () => {
+  it('ends the presentation with or without blocking', async () => {
     const w = panel({ peerName: 'Ana' })
     expect(w.get('[data-testid=peer-name]').text()).toContain('Ana')
     await w.get('[data-testid=remove-peer]').trigger('click')
-    expect(w.emitted('remove')).toHaveLength(1)
+    await w.get('[data-testid=remove-block]').trigger('click')
+    expect(w.emitted('remove')).toEqual([[false], [true]])
   })
 
-  it('shrinks to a chip and a pill while somebody presents, and opens on demand', async () => {
-    const w = panel({ compact: true, requests: [req(1), req(2)] })
+  it('lists blocked senders and unblocks them', async () => {
+    const w = panel({ blocks: [{ id: 3, name: 'Pest' }] })
+    expect(w.get('[data-testid=blocked-entry]').text()).toContain('Pest')
+    await w.get('[data-testid=unblock]').trigger('click')
+    expect(w.emitted('unblock')).toEqual([[3]])
+  })
+
+  it('End session needs a second press', async () => {
+    const w = panel()
+    await w.get('[data-testid=end-session]').trigger('click')
+    expect(w.emitted('endSession')).toBeUndefined()
+    expect(w.get('[data-testid=end-session]').text()).toBe('Press again to end the session')
+    await w.get('[data-testid=end-session]').trigger('click')
+    expect(w.emitted('endSession')).toHaveLength(1)
+    // The confirmation lapses.
+    await w.get('[data-testid=end-session]').trigger('click')
+    vi.advanceTimersByTime(5000)
+    await nextTick()
+    await w.get('[data-testid=end-session]').trigger('click')
+    expect(w.emitted('endSession')).toHaveLength(1)
+  })
+
+  it('compact: a chip that fades out, opens on demand, and closes with Escape', async () => {
+    const w = panel({ compact: true, chipVisible: true, requests: [req(1), req(2)] })
     expect(w.find('[data-testid=mode-open]').exists()).toBe(false)
-    expect(w.get('[data-testid=join-pill]').text()).toBe('2 waiting')
-    expect(w.get('[data-testid=join-chip]').text()).toBe('Join: Ask first')
-    await w.get('[data-testid=join-pill]').trigger('click')
+    expect(w.get('[data-testid=join-chip]').text()).toContain('Join: Ask first')
+    expect(w.get('[data-testid=join-chip]').text()).toContain('2 waiting')
+    expect(w.get('[data-testid=join-chip-row]').attributes('data-visible')).toBe('true')
+    await w.setProps({ chipVisible: false })
+    expect(w.get('[data-testid=join-chip-row]').classes()).toContain('opacity-0')
+    expect(w.get('[data-testid=join-chip-row]').attributes('inert')).toBeDefined()
+    await w.setProps({ chipVisible: true })
+    await w.get('[data-testid=join-chip]').trigger('click')
     expect(w.find('[data-testid=mode-open]').exists()).toBe(true)
     await w.get('section').trigger('keydown', { key: 'Escape' })
     expect(w.find('[data-testid=mode-open]').exists()).toBe(false)

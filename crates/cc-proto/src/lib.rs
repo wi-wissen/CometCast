@@ -140,6 +140,10 @@ pub mod error_codes {
     pub const OPEN_ROOMS_DISABLED: &str = "open_rooms_disabled";
     /// `join_decision` named a request that is not (or no longer) waiting.
     pub const NO_SUCH_REQUEST: &str = "no_such_request";
+    /// `unblock` named an entry that is not on the room's block list.
+    pub const NO_SUCH_BLOCK: &str = "no_such_block";
+    /// The room's block list is full; unblock somebody first.
+    pub const BLOCK_LIST_FULL: &str = "block_list_full";
 }
 
 /// Longest display name (in characters) that the server relays to the display device.
@@ -285,9 +289,28 @@ pub enum ClientMsg {
         id: Option<u64>,
         /// Allow or deny.
         allow: bool,
+        /// With `allow: false` and an `id`: also block the sender's address bucket for the
+        /// rest of this room session. A blocked sender gets the same `join_denied` as any
+        /// denied sender, at once, and the host is not asked again.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        block: bool,
     },
-    /// Receiver (room owner) only: remove the connected sender from the room.
-    RemovePeer,
+    /// Receiver (room owner) only: remove the connected sender from the room (end its
+    /// presentation). The room stays.
+    RemovePeer {
+        /// Also block the sender's address bucket for the rest of this room session.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        block: bool,
+    },
+    /// Receiver (room owner) only: take an entry off the room's block list.
+    Unblock {
+        /// Block id from `blocked`.
+        id: u64,
+    },
+    /// Receiver (room owner) only: end the room session. The connected sender is told
+    /// `peer_left`, waiting senders `room_not_found`, the room and its code are gone and the
+    /// owner gets `room_ended`; it may then create a new room on the same connection.
+    EndRoom,
     /// Sender only: stop waiting for approval.
     CancelJoin,
     /// WebRTC offer (SDP text).
@@ -362,6 +385,20 @@ pub enum ServerMsg {
         /// `left`, `cancelled`, `timeout` or `locked`.
         reason: String,
     },
+    /// Sent to the receiver: an entry was added to the room's block list.
+    Blocked {
+        /// Block id for `unblock`. Unique within the room.
+        id: u64,
+        /// Sanitised display name of the blocked sender (for the list only).
+        name: String,
+    },
+    /// Sent to the receiver: an entry left the block list.
+    Unblocked {
+        /// Block id.
+        id: u64,
+    },
+    /// Sent to the receiver after `end_room`: the room is gone.
+    RoomEnded,
     /// Sent to the receiver: the join mode of the room (after `create_room` and after
     /// every `set_join_mode`).
     JoinModeChanged {
@@ -465,12 +502,22 @@ mod tests {
             ClientMsg::JoinDecision {
                 id: Some(3),
                 allow: true,
+                block: false,
             },
             ClientMsg::JoinDecision {
                 id: None,
                 allow: false,
+                block: false,
             },
-            ClientMsg::RemovePeer,
+            ClientMsg::JoinDecision {
+                id: Some(3),
+                allow: false,
+                block: true,
+            },
+            ClientMsg::RemovePeer { block: false },
+            ClientMsg::RemovePeer { block: true },
+            ClientMsg::Unblock { id: 2 },
+            ClientMsg::EndRoom,
             ClientMsg::CancelJoin,
             ClientMsg::Offer { sdp: "v=0".into() },
             ClientMsg::Answer { sdp: "v=0".into() },
@@ -516,6 +563,12 @@ mod tests {
             ServerMsg::JoinModeChanged {
                 join_mode: JoinMode::Open,
             },
+            ServerMsg::Blocked {
+                id: 1,
+                name: "Ana".into(),
+            },
+            ServerMsg::Unblocked { id: 1 },
+            ServerMsg::RoomEnded,
             ServerMsg::PeerLeft,
             ServerMsg::Control {
                 cmd: ControlCmd::NextPage,
@@ -580,18 +633,40 @@ mod tests {
         assert_eq!(
             j(&ClientMsg::JoinDecision {
                 id: Some(2),
-                allow: true
+                allow: true,
+                block: false
             }),
             r#"{"type":"join_decision","id":2,"allow":true}"#
         );
         assert_eq!(
             j(&ClientMsg::JoinDecision {
                 id: None,
-                allow: false
+                allow: false,
+                block: false
             }),
             r#"{"type":"join_decision","allow":false}"#
         );
-        assert_eq!(j(&ClientMsg::RemovePeer), r#"{"type":"remove_peer"}"#);
+        assert_eq!(
+            j(&ClientMsg::JoinDecision {
+                id: Some(2),
+                allow: false,
+                block: true
+            }),
+            r#"{"type":"join_decision","id":2,"allow":false,"block":true}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::RemovePeer { block: false }),
+            r#"{"type":"remove_peer"}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::RemovePeer { block: true }),
+            r#"{"type":"remove_peer","block":true}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::Unblock { id: 4 }),
+            r#"{"type":"unblock","id":4}"#
+        );
+        assert_eq!(j(&ClientMsg::EndRoom), r#"{"type":"end_room"}"#);
         assert_eq!(j(&ClientMsg::CancelJoin), r#"{"type":"cancel_join"}"#);
         let s = |m: &ServerMsg| serde_json::to_string(m).unwrap();
         assert_eq!(
@@ -615,6 +690,18 @@ mod tests {
             }),
             r#"{"type":"join_mode_changed","join_mode":"open"}"#
         );
+        assert_eq!(
+            s(&ServerMsg::Blocked {
+                id: 3,
+                name: "Ana".into()
+            }),
+            r#"{"type":"blocked","id":3,"name":"Ana"}"#
+        );
+        assert_eq!(
+            s(&ServerMsg::Unblocked { id: 3 }),
+            r#"{"type":"unblocked","id":3}"#
+        );
+        assert_eq!(s(&ServerMsg::RoomEnded), r#"{"type":"room_ended"}"#);
         assert_eq!(
             s(&ServerMsg::PeerJoined { name: "Ana".into() }),
             r#"{"type":"peer_joined","name":"Ana"}"#

@@ -1,0 +1,50 @@
+{
+  "description": "Error codes added or used by join approval. `closes` = the server closes the connection.",
+  "codes": [
+    {
+      "code": "join_pending",
+      "closes": false,
+      "meaning": "a waiting sender tried to relay"
+    },
+    {
+      "code": "join_denied",
+      "closes": false,
+      "meaning": "the host denied the request"
+    },
+    {
+      "code": "room_locked",
+      "closes": false,
+      "meaning": "mode is locked (also to waiting senders when the host locks)"
+    },
+    {
+      "code": "approval_timeout",
+      "closes": false,
+      "meaning": "nobody decided in time"
+    },
+    {
+      "code": "removed_by_host",
+      "closes": false,
+      "meaning": "the host removed this sender"
+    },
+    {
+      "code": "open_rooms_disabled",
+      "closes": false,
+      "meaning": "server forbids mode open"
+    },
+    {
+      "code": "no_such_request",
+      "closes": false,
+      "meaning": "join_decision for a request that is not waiting"
+    },
+    {
+      "code": "rate_limited",
+      "closes": false,
+      "meaning": "too many waiting senders (per room or per address)"
+    },
+    {
+      "code": "banned",
+      "closes": true,
+      "meaning": "too many failed, denied or unanswered joins"
+    }
+  ]
+}

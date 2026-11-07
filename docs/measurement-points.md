@@ -8,7 +8,7 @@ This file is the single list of those assumptions, the beta observations that wi
 
 ## How to use and extend this file
 
-- Keep the numbering. Assumptions are `A1` to `A18`; new ones get the next free number. Never renumber, so links stay valid.
+- Keep the numbering. Assumptions are `A1` to `A19`; new ones get the next free number. Never renumber, so links stay valid.
 - To add an assumption, add one row to the table in section 1 with all columns filled: assumption, basis, what we observe in the beta, fallback, status.
 - **Status** uses only these words:
   - **sourced**: backed by a source (documentation, source code, vendor statement) that was read.
@@ -18,7 +18,7 @@ This file is the single list of those assumptions, the beta observations that wi
 - Effort figures are estimates in person-weeks (PW). Thresholds in the spikes are proposals, not measurements.
 - A row with status "no label in source" had no certainty label in the planning document; treat it as an assumption until someone adds a source.
 
-## 1. Beta assumptions A1 to A18
+## 1. Beta assumptions A1 to A19
 
 | # | Assumption | Basis | What we observe in the beta | Fallback if it does not work | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -40,6 +40,7 @@ This file is the single list of those assumptions, the beta observations that wi
 | A16 | AirPlay-1-style mirroring to current tvOS | AirParrot and AirServer announce themselves as `AppleTV3,2`; doubletake uses the newer path through port 7000 | Current tvOS refuses | Follow the flow of doubletake (port 7000, type 110) and pyatv | unchecked |
 | A17 | A browser client is enough as the app-free path on the desktop | `getDisplayMedia` in desktop browsers; see the web app | Latency in the browser, behaviour on Chromebook and smart-TV browsers | Offer only the receiver in the browser; send through the app | sourced |
 | A18 | The connection check code (hash of both DTLS fingerprints, shown on sender and receiver) reveals a relay that swapped fingerprints, and people compare it | Standard short-authentication-string idea (ZRTP); relay carries the signalling | Whether the code ever differs for honest connections (bug), whether people compare it at all | Stronger: a commitment step in the protocol, or fingerprints given out of band (QR) | unchecked: tested with fake peers and an honest relay only; a swapping relay was never built; 6 digits can in principle be ground |
+| A19 | Join approval protects a shared room code: a host can tell the person in front of them from a stranger by the name and the two-digit check number, a hold of about a second on "Allow" prevents accidental approvals on a mouse, touch screen and TV remote, and a room code seen on a photo or screen is no longer enough to present | Protocol version 2 (`docs/protocol.md`, "Join approval"); server-enforced pending state; check number shown on both screens | Whether people compare the check number, whether a remote's OK key can be held (some send only on release), whether hosts find the flow too slow, whether a name that people type is misleading (it is untrusted text) | Longer hold or a second confirmation step; a PIN that is shown on the display and typed on the sender (not built); a rotating room code (not built) | unchecked: widget, unit, server and browser tests only; never tried with real people or on a TV |
 
 ## 2. The ten measurement points
 

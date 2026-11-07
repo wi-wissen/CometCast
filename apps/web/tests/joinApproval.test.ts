@@ -132,6 +132,49 @@ describe('ReceiverSession join approval', () => {
   })
 })
 
+describe('ReceiverSession block, end presentation, end session', () => {
+  it('"No and block" sends the block flag only with a denial and lists the entry when the server confirms', () => {
+    const r = receiver('confirm')
+    r.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'confirm' })
+    r.sock.recv({ type: 'join_request', id: 1, name: 'Pest', check: 11 })
+    r.sock.recv({ type: 'join_request', id: 2, name: 'Ana', check: 12 })
+    r.s.decide(1, false, true)
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'join_decision', id: 1, allow: false, block: true })
+    r.s.decide(2, true, true) // block is ignored for an allow
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'join_decision', id: 2, allow: true })
+    r.sock.recv({ type: 'blocked', id: 5, name: 'Pest' })
+    r.sock.recv({ type: 'blocked', id: 5, name: 'Pest' })
+    expect(r.s.snapshot.blocks).toEqual([{ id: 5, name: 'Pest' }])
+    r.s.unblock(5)
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'unblock', id: 5 })
+    r.sock.recv({ type: 'unblocked', id: 5 })
+    expect(r.s.snapshot.blocks).toEqual([])
+  })
+
+  it('ends the presentation (kick), with or without blocking', () => {
+    const r = receiver()
+    r.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    r.s.removePeer()
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'remove_peer' })
+    r.s.removePeer(true)
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'remove_peer', block: true })
+  })
+
+  it('ending the session creates a new room with a new code on the same connection', () => {
+    const r = receiver('confirm')
+    r.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'confirm' })
+    r.sock.recv({ type: 'join_request', id: 1, name: 'A', check: 11 })
+    r.sock.recv({ type: 'blocked', id: 1, name: 'B' })
+    r.s.endRoom()
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'end_room' })
+    r.sock.recv({ type: 'room_ended' })
+    expect(r.s.snapshot).toMatchObject({ phase: 'connecting', code: null, requests: [], blocks: [], peerName: null })
+    expect(r.sock.sent.at(-1)).toEqual({ type: 'create_room', join_mode: 'confirm' })
+    r.sock.recv({ type: 'room_created', code: 'XYZ789', join_mode: 'confirm' })
+    expect(r.s.snapshot).toMatchObject({ phase: 'waiting_sender', code: 'XYZ789' })
+  })
+})
+
 describe('SenderSession join approval', () => {
   it('sends the name, waits with the check number, and goes on after joined', async () => {
     const { s, sock } = sender('Ana')

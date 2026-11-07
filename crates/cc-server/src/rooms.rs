@@ -70,8 +70,22 @@ struct Pending {
     name: String,
 }
 
+/// An entry of a room's block list: blocked for the rest of the room session.
+struct Block {
+    id: u64,
+    /// The address bucket (IPv4 address or IPv6 /64) that may not join this room any more.
+    bucket: IpAddr,
+}
+
+/// Most entries on one room's block list.
+const MAX_BLOCKS: usize = 32;
+
 struct Room {
     mode: JoinMode,
+    blocks: Vec<Block>,
+    next_block: u64,
+    /// Address bucket and name of the sender who is in the room (for "remove and block").
+    sender_info: Option<(IpAddr, String)>,
     pending: Vec<Pending>,
     /// Next request id (room-local, starts at 1).
     next_req: u64,
@@ -123,6 +137,8 @@ pub(crate) enum JoinError {
     RoomPendingFull,
     /// Too many requests wait from this address.
     IpPendingFull,
+    /// This address bucket is on the room's block list.
+    Blocked,
 }
 
 /// A successful join.
@@ -153,12 +169,18 @@ pub(crate) enum OwnerError {
     NotOwner,
     /// No such waiting request.
     NoSuchRequest,
+    /// No such block list entry.
+    NoSuchBlock,
+    /// The block list is full.
+    BlockFull,
 }
 
 /// Result of `decide`.
 pub(crate) struct Decided {
     /// The approved sender: (its channel, owner's channel, name).
     pub(crate) approved: Option<(Tx, Tx, String)>,
+    /// A block list entry that was added: (id, name).
+    pub(crate) blocked: Option<(u64, String)>,
     /// Requests that ended without joining: (joiner's channel, request id, error code to the
     /// joiner, reason for the owner).
     pub(crate) dropped: Vec<(Tx, u64, &'static str, &'static str, IpAddr)>,
@@ -241,6 +263,9 @@ impl Rooms {
                 code.clone(),
                 Room {
                     mode,
+                    blocks: Vec::new(),
+                    next_block: 1,
+                    sender_info: None,
                     pending: Vec::new(),
                     next_req: 1,
                     guests: 0,
@@ -280,9 +305,11 @@ impl Rooms {
         }
         match room.mode {
             JoinMode::Locked => return Err(JoinError::Locked),
+            _ if room.blocks.iter().any(|b| b.bucket == ip) => return Err(JoinError::Blocked),
             JoinMode::Open => {
                 room.guests += 1;
                 let name = sanitize_display_name(raw_name, room.guests);
+                room.sender_info = Some((ip, name.clone()));
                 room.sender = Some((id, tx));
                 room.empty_since = None;
                 room.last_activity = Instant::now();
@@ -354,12 +381,14 @@ impl Rooms {
         owner_id: u64,
         req: Option<u64>,
         allow: bool,
+        block: bool,
     ) -> Result<Decided, OwnerError> {
         let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
         if room.receiver_id != owner_id {
             return Err(OwnerError::NotOwner);
         }
         let mut out = Decided {
+            blocked: None,
             approved: None,
             dropped: Vec::new(),
         };
@@ -379,6 +408,35 @@ impl Rooms {
             Self::dec(&mut self.pending_per_ip, p.ip);
         }
         let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
+        // "No and block": the denied request's address bucket is blocked, and every other
+        // request of the same bucket ends with it.
+        if block && !allow {
+            if let Some(p) = taken.first() {
+                let (ip, name) = (p.ip, p.name.clone());
+                match Self::add_block(room, ip, &name) {
+                    Ok(b) => out.blocked = b,
+                    Err(e) => {
+                        // Not decided: put the request back so the host can decide again.
+                        let mut back = taken;
+                        back.append(&mut room.pending);
+                        room.pending = back;
+                        for q in &room.pending {
+                            *self.pending_per_ip.entry(q.ip).or_insert(0) += 1;
+                        }
+                        return Err(e);
+                    }
+                }
+                let (same, rest): (Vec<Pending>, Vec<Pending>) = std::mem::take(&mut room.pending)
+                    .into_iter()
+                    .partition(|q| q.ip == ip);
+                room.pending = rest;
+                for q in same {
+                    Self::dec(&mut self.pending_per_ip, q.ip);
+                    out.dropped
+                        .push((q.tx, q.req, error_codes::JOIN_DENIED, "blocked", q.ip));
+                }
+            }
+        }
         for p in taken {
             if !allow {
                 out.dropped
@@ -388,6 +446,7 @@ impl Rooms {
                     .push((p.tx, p.req, "room_full", "room_full", p.ip));
             } else {
                 room.sender = Some((p.conn_id, p.tx.clone()));
+                room.sender_info = Some((p.ip, p.name.clone()));
                 room.empty_since = None;
                 room.last_activity = Instant::now();
                 out.approved = Some((p.tx, room.receiver.clone(), p.name));
@@ -427,21 +486,78 @@ impl Rooms {
         Ok(dropped)
     }
 
-    /// Owner removes the connected sender. Returns the sender's channel.
+    /// Add a block list entry for `bucket` (not twice). Returns the new entry's id and name,
+    /// or `None` if the bucket was blocked already.
+    fn add_block(
+        room: &mut Room,
+        bucket: IpAddr,
+        name: &str,
+    ) -> Result<Option<(u64, String)>, OwnerError> {
+        if room.blocks.iter().any(|b| b.bucket == bucket) {
+            return Ok(None);
+        }
+        if room.blocks.len() >= MAX_BLOCKS {
+            return Err(OwnerError::BlockFull);
+        }
+        let id = room.next_block;
+        room.next_block += 1;
+        room.blocks.push(Block { id, bucket });
+        Ok(Some((id, name.to_string())))
+    }
+
+    /// Owner removes the connected sender, optionally blocking its address bucket. Returns the
+    /// sender's channel and the new block list entry.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn remove_peer(
         &mut self,
         code: &RoomCode,
         owner_id: u64,
-    ) -> Result<Option<Tx>, OwnerError> {
+        block: bool,
+    ) -> Result<Option<(Tx, Option<(u64, String)>)>, OwnerError> {
         let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
         if room.receiver_id != owner_id {
             return Err(OwnerError::NotOwner);
         }
-        let removed = room.sender.take().map(|(_, tx)| tx);
-        if removed.is_some() {
-            room.empty_since = Some(Instant::now());
+        if room.sender.is_none() {
+            return Ok(None);
         }
-        Ok(removed)
+        let mut entry = None;
+        if block && let Some((bucket, name)) = room.sender_info.clone() {
+            entry = Self::add_block(room, bucket, &name)?;
+        }
+        let removed = room.sender.take().map(|(_, tx)| tx);
+        room.sender_info = None;
+        room.empty_since = Some(Instant::now());
+        Ok(removed.map(|tx| (tx, entry)))
+    }
+
+    /// Owner takes an entry off the block list.
+    pub(crate) fn unblock(
+        &mut self,
+        code: &RoomCode,
+        owner_id: u64,
+        id: u64,
+    ) -> Result<(), OwnerError> {
+        let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
+        if room.receiver_id != owner_id {
+            return Err(OwnerError::NotOwner);
+        }
+        let at = room
+            .blocks
+            .iter()
+            .position(|b| b.id == id)
+            .ok_or(OwnerError::NoSuchBlock)?;
+        room.blocks.remove(at);
+        Ok(())
+    }
+
+    /// Owner ends the room session: the room is removed. Returns who is left to be told.
+    pub(crate) fn end_room(&mut self, code: &RoomCode, owner_id: u64) -> Result<Left, OwnerError> {
+        let room = self.map.get(code).ok_or(OwnerError::NotOwner)?;
+        if room.receiver_id != owner_id {
+            return Err(OwnerError::NotOwner);
+        }
+        Ok(self.leave(code, owner_id))
     }
 
     /// When the room was made and when something was last relayed.
@@ -501,6 +617,7 @@ impl Rooms {
             }
         } else if room.sender.as_ref().is_some_and(|(sid, _)| *sid == id) {
             room.sender = None;
+            room.sender_info = None;
             room.empty_since = Some(Instant::now());
             Left {
                 peer: Some(room.receiver.clone()),

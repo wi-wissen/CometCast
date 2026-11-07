@@ -14,6 +14,7 @@ export function useReceiver() {
     joinMode: 'open',
     requests: [],
     peerName: null,
+    blocks: [],
     notice: null,
     errorCode: null,
     stream: null,
@@ -48,9 +49,11 @@ export function useReceiver() {
       saveJoinMode(mode)
       session.setJoinMode(mode)
     },
-    decide: (id: number, allow: boolean) => session.decide(id, allow),
+    decide: (id: number, allow: boolean, block = false) => session.decide(id, allow, block),
     denyAll: () => session.denyAll(),
-    removePeer: () => session.removePeer(),
+    removePeer: (block = false) => session.removePeer(block),
+    unblock: (id: number) => session.unblock(id),
+    endRoom: () => session.endRoom(),
     dismissNotice: () => session.dismissNotice(),
     nextPage: () => session.nextPage(),
     prevPage: () => session.prevPage(),

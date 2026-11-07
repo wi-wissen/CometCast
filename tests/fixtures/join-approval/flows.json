@@ -1,0 +1,401 @@
+{
+  "description": "Message sequences of join approval. Messages with message \"...\" have English text that clients must ignore. 'from' and 'to' name the endpoints; the server relays nothing from a waiting sender to the receiver.",
+  "flows": [
+    {
+      "id": "open_join",
+      "description": "Default mode: the sender is a peer at once.",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "create_room",
+            "join_mode": "open"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "room_created",
+            "code": "K7M2QX",
+            "join_mode": "open"
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "join_room",
+            "code": "K7M2QX",
+            "name": "Ana"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "joined"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "peer_joined",
+            "name": "Ana"
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "offer",
+            "sdp": "v=0"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "offer",
+            "sdp": "v=0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "confirm_allow",
+      "description": "The sender waits; nothing it sends reaches the receiver until it is allowed.",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "create_room",
+            "join_mode": "confirm"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "room_created",
+            "code": "K7M2QX",
+            "join_mode": "confirm"
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "join_room",
+            "code": "K7M2QX",
+            "name": "Ana"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "join_pending",
+            "timeout_secs": 60,
+            "check": 42
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "join_request",
+            "id": 1,
+            "name": "Ana",
+            "check": 42
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "offer",
+            "sdp": "v=0"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "join_pending",
+            "message": "..."
+          }
+        },
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "join_decision",
+            "id": 1,
+            "allow": true
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "joined"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "peer_joined",
+            "name": "Ana"
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "offer",
+            "sdp": "v=0"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "offer",
+            "sdp": "v=0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "confirm_deny",
+      "description": "Denied: the sender may ask again on the same connection.",
+      "steps": [
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "join_room",
+            "code": "K7M2QX"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "join_pending",
+            "timeout_secs": 60,
+            "check": 17
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "join_request",
+            "id": 3,
+            "name": "Guest 3",
+            "check": 17
+          }
+        },
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "join_decision",
+            "id": 3,
+            "allow": false
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "join_denied",
+            "message": "..."
+          }
+        }
+      ]
+    },
+    {
+      "id": "lock_discards_waiting",
+      "description": "Locking ends all waiting requests; the one who is in stays.",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "set_join_mode",
+            "join_mode": "locked"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "room_locked",
+            "message": "..."
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "join_request_cancelled",
+            "id": 4,
+            "reason": "locked"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "join_mode_changed",
+            "join_mode": "locked"
+          }
+        }
+      ]
+    },
+    {
+      "id": "timeout",
+      "description": "Nobody decided within join_approval_secs.",
+      "steps": [
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "approval_timeout",
+            "message": "..."
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "join_request_cancelled",
+            "id": 5,
+            "reason": "timeout"
+          }
+        }
+      ]
+    },
+    {
+      "id": "kick",
+      "description": "The owner removes the connected sender; the room stays (the native receiver core ends its session).",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "remove_peer"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "removed_by_host",
+            "message": "..."
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "peer_left"
+          }
+        }
+      ]
+    },
+    {
+      "id": "spoof_attempts_by_a_sender",
+      "description": "A sender (waiting or in) may not use the owner's messages. Each gets wrong_role and counts as a bad message.",
+      "steps": [
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "join_decision",
+            "id": 1,
+            "allow": true
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "wrong_role",
+            "message": "..."
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "set_join_mode",
+            "join_mode": "open"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "wrong_role",
+            "message": "..."
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "remove_peer"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "wrong_role",
+            "message": "..."
+          }
+        }
+      ]
+    },
+    {
+      "id": "old_client",
+      "description": "There is no compatibility with version 1.",
+      "steps": [
+        {
+          "from": "client",
+          "to": "server",
+          "message": {
+            "type": "hello",
+            "proto_version": 1,
+            "role": "sender"
+          }
+        },
+        {
+          "from": "server",
+          "to": "client",
+          "message": {
+            "type": "error",
+            "code": "proto_mismatch",
+            "message": "..."
+          }
+        }
+      ]
+    }
+  ]
+}

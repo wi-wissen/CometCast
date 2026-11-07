@@ -146,6 +146,11 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `limits.ban_memory_secs` | 3600 | | A ban history is forgotten after this |
 | `limits.max_connections_per_ip` | 500 | 20 | Open connections per address (IPv6: /64) |
 | `limits.max_rooms_per_ip` | 100 | 5 | Rooms owned by one address |
+| `default_join_mode` | `open` | `open` | Join mode of rooms whose creator names none (`open` or `confirm`) |
+| `allow_open_rooms` | `true` | `true` | `false` refuses rooms that anybody with the code can join (needs `default_join_mode = "confirm"`) |
+| `join_approval_secs` | 60 | 60 | How long a join request waits for the display device |
+| `limits.max_pending_per_room` / `max_pending_per_ip` | 8 / 8 | 8 / 3 | Senders waiting for approval per room / per address |
+| `limits.denied_join_weight` | 2 | 2 | Failures counted toward a ban for a denied or timed-out join request |
 | `limits.ping_interval_secs` | 20 | | Server pings this often |
 | `limits.pong_timeout_secs` | 20 | | No sign of life for interval + timeout closes the connection |
 | `limits.paired_idle_secs` | 14400 | 3600 | Idle and not answering pings: closed |

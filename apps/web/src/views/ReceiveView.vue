@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import AnnotationLayer from '../components/AnnotationLayer.vue'
 import ContentOverlay from '../components/ContentOverlay.vue'
 import JoinPanel from '../components/JoinPanel.vue'
+import JoinTakeover from '../components/JoinTakeover.vue'
 import ReceiverToolbar from '../components/ReceiverToolbar.vue'
 import { AnnotationModel } from '../core/annotations'
 import {
@@ -24,7 +25,7 @@ import {
 import { useReceiver } from '../composables/useReceiver'
 
 const { t, te } = useI18n()
-const { state, start, clearContent, nextPage, prevPage, renderPage, setJoinMode, decide, denyAll, removePeer, dismissNotice } = useReceiver()
+const { state, start, clearContent, nextPage, prevPage, renderPage, setJoinMode, decide, denyAll, removePeer, unblock, endRoom, dismissNotice } = useReceiver()
 const video = ref<HTMLVideoElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const freezeCanvas = ref<HTMLCanvasElement | null>(null)
@@ -55,6 +56,33 @@ const immersive = computed(() => state.value.content !== null)
 // Join settings are a column next to the code; while somebody presents they shrink to a corner chip.
 const joinAvailable = computed(() => state.value.code !== null && state.value.phase !== 'error' && state.value.phase !== 'idle')
 const joinCompact = computed(() => showStage.value || state.value.phase === 'negotiating')
+
+// An incoming request takes over the display (a dialog on the code page, a banner while somebody
+// presents). "Later" hides it; it then stays in the join menu.
+const snoozed = ref<number[]>([])
+const takeoverRequests = computed(() => state.value.requests.filter((r) => !snoozed.value.includes(r.id)))
+const takeover = computed(() => takeoverRequests.value[0] ?? null)
+const takeoverMore = computed(() => Math.max(0, takeoverRequests.value.length - 1))
+watch(
+  () => state.value.requests.map((r) => r.id),
+  (ids) => (snoozed.value = snoozed.value.filter((id) => ids.includes(id))),
+)
+
+// The join menu chip appears when something moves (pointer, touch, any key) and fades out.
+const menuActive = ref(false)
+let menuTimer: ReturnType<typeof setTimeout> | null = null
+function onActivity() {
+  menuActive.value = true
+  if (menuTimer) clearTimeout(menuTimer)
+  menuTimer = setTimeout(() => (menuActive.value = false), 6000)
+}
+onMounted(() => {
+  for (const ev of ['pointermove', 'pointerdown', 'keydown'] as const) window.addEventListener(ev, onActivity, { passive: true })
+})
+onBeforeUnmount(() => {
+  for (const ev of ['pointermove', 'pointerdown', 'keydown'] as const) window.removeEventListener(ev, onActivity)
+  if (menuTimer) clearTimeout(menuTimer)
+})
 
 // --- Toolbar, annotations (local only), freeze, black screen, fullscreen -------------------------
 const toolbar = ref(initialToolbar())
@@ -165,14 +193,30 @@ const contentErrorText = computed(() => {
       :mode="state.joinMode"
       :requests="state.requests"
       :peer-name="state.peerName"
+      :blocks="state.blocks"
       :notice="state.notice"
       :compact="joinCompact"
+      :takeover-id="takeover?.id ?? null"
+      :chip-visible="menuActive"
       @mode="setJoinMode"
       @allow="(id: number) => decide(id, true)"
       @deny="(id: number) => decide(id, false)"
-      @deny-all="denyAll"
+      @block="(id: number) => decide(id, false, true)"
       @remove="removePeer"
+      @unblock="unblock"
+      @end-session="endRoom"
       @dismiss="dismissNotice"
+    />
+    <JoinTakeover
+      v-if="joinAvailable"
+      :request="takeover"
+      :more="takeoverMore"
+      :banner="joinCompact"
+      @allow="takeover && decide(takeover.id, true)"
+      @deny="takeover && decide(takeover.id, false)"
+      @block="takeover && decide(takeover.id, false, true)"
+      @deny-all="denyAll"
+      @later="takeover && snoozed.push(takeover.id)"
     />
     </div>
 

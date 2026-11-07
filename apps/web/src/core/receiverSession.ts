@@ -42,6 +42,13 @@ export type JoinNotice =
 /** How long the server lets a request wait (its default). UNCERTAIN: an operator can change it; the server decides. */
 export const JOIN_REQUEST_SECS = 60
 
+/** An entry of the room's block list (blocked for the rest of this room session). */
+export interface BlockedEntry {
+  id: number
+  /** Cleaned name, for the list only. */
+  name: string
+}
+
 export interface ReceiverState {
   phase: ReceiverPhase
   code: string | null
@@ -51,6 +58,8 @@ export interface ReceiverState {
   requests: JoinRequest[]
   /** Name of the connected sender, or null. */
   peerName: string | null
+  /** Blocked senders (the host can unblock them). */
+  blocks: BlockedEntry[]
   notice: JoinNotice | null
   /** Server error code or a local one (connection_lost, peer_failed, altcha_failed). Set when phase is 'error'. */
   errorCode: string | null
@@ -114,6 +123,7 @@ const EMPTY: ReceiverState = {
   joinMode: 'open',
   requests: [],
   peerName: null,
+  blocks: [],
   notice: null,
   errorCode: null,
   stream: null,
@@ -296,10 +306,13 @@ export class ReceiverSession {
     if (this.state.code !== null) this.client?.send({ type: 'set_join_mode', join_mode: mode })
   }
 
-  /** Allows (`true`) or denies a waiting request. The request leaves the list at once. */
-  decide(id: number, allow: boolean): void {
+  /**
+   * Allows (`true`) or denies a waiting request. The request leaves the list at once. `block`
+   * (only with a denial) also blocks the sender's address for the rest of this room session.
+   */
+  decide(id: number, allow: boolean, block = false): void {
     if (!this.state.requests.some((r) => r.id === id)) return
-    this.client?.send({ type: 'join_decision', id, allow })
+    this.client?.send({ type: 'join_decision', id, allow, ...(block && !allow ? { block: true } : {}) })
     this.set({ requests: this.state.requests.filter((r) => r.id !== id) })
   }
 
@@ -310,9 +323,19 @@ export class ReceiverSession {
     this.set({ requests: [] })
   }
 
-  /** Removes the connected sender from the room (it has to ask again). */
-  removePeer(): void {
-    this.client?.send({ type: 'remove_peer' })
+  /** Ends the presenter's session: removes the connected sender (it has to ask again); `block` also blocks it. */
+  removePeer(block = false): void {
+    this.client?.send({ type: 'remove_peer', ...(block ? { block: true } : {}) })
+  }
+
+  /** Takes an entry off the block list. */
+  unblock(id: number): void {
+    this.client?.send({ type: 'unblock', id })
+  }
+
+  /** Ends the room session: everybody is dropped and a new room with a new code is created. */
+  endRoom(): void {
+    this.client?.send({ type: 'end_room' })
   }
 
   dismissNotice(): void {
@@ -432,6 +455,23 @@ export class ReceiverSession {
           joinMode: m.join_mode,
           notice: m.join_mode === 'locked' ? this.state.notice : null,
         })
+        break
+      case 'blocked':
+        if (this.state.blocks.every((b) => b.id !== m.id)) this.set({ blocks: [...this.state.blocks, { id: m.id, name: m.name }] })
+        break
+      case 'unblocked':
+        this.set({ blocks: this.state.blocks.filter((b) => b.id !== m.id) })
+        break
+      case 'room_ended':
+        // The room and its code are gone; the connection stays, so ask for a new room at once.
+        this.peer?.close()
+        this.peer = null
+        this.clearContent()
+        this.control.reset()
+        this.altchaPayload = undefined
+        this.altchaTried = false
+        this.set({ phase: 'connecting', code: null, stream: null, sas: undefined, peerName: null, requests: [], blocks: [] })
+        this.sendCreateRoom()
         break
       case 'peer_joined':
         this.newPeer()

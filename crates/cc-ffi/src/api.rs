@@ -210,6 +210,21 @@ pub enum ReceiverUiEvent {
         /// The mode.
         mode: UiJoinMode,
     },
+    /// A sender was added to the room's block list ("No and block", or "Remove and block").
+    Blocked {
+        /// Block id for [`unblock`].
+        id: u64,
+        /// Cleaned display name (for the list only).
+        name: String,
+    },
+    /// An entry left the block list.
+    Unblocked {
+        /// Block id.
+        id: u64,
+    },
+    /// The room session was ended by [`end_room`]. The stream ends after this; start a new
+    /// receiver for a new room (a new code).
+    RoomEnded,
     /// The WebRTC connection state changed.
     ConnectionState {
         /// New state.
@@ -396,6 +411,9 @@ fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
             ReceiverUiEvent::JoinRequestCancelled { id, reason }
         }
         ReceiverEvent::JoinModeChanged(m) => ReceiverUiEvent::JoinModeChanged { mode: m.into() },
+        ReceiverEvent::Blocked { id, name } => ReceiverUiEvent::Blocked { id, name },
+        ReceiverEvent::Unblocked { id } => ReceiverUiEvent::Unblocked { id },
+        ReceiverEvent::RoomEnded => ReceiverUiEvent::RoomEnded,
         ReceiverEvent::State(s) => ReceiverUiEvent::ConnectionState { state: s.into() },
         ReceiverEvent::VideoTrack { mime, codec } => ReceiverUiEvent::VideoTrack {
             mime,
@@ -462,7 +480,10 @@ impl Slot {
 enum ReceiverCmd {
     SetMode(JoinMode),
     Decide { id: Option<u64>, allow: bool },
-    RemovePeer,
+    DenyAndBlock(u64),
+    Unblock(u64),
+    EndRoom,
+    RemovePeer { block: bool },
 }
 
 /// The command channel of the running receiver (replaced at every start).
@@ -616,7 +637,10 @@ pub async fn start_receiver(
                         ReceiverCmd::SetMode(m) => core.set_join_mode(m),
                         ReceiverCmd::Decide { id: Some(id), allow } => core.decide_join(id, allow),
                         ReceiverCmd::Decide { id: None, .. } => core.deny_all_joins(),
-                        ReceiverCmd::RemovePeer => core.remove_peer(),
+                        ReceiverCmd::DenyAndBlock(id) => core.deny_and_block_join(id),
+                        ReceiverCmd::Unblock(id) => core.unblock(id),
+                        ReceiverCmd::EndRoom => core.end_room(),
+                        ReceiverCmd::RemovePeer { block } => core.remove_peer(block),
                     },
                     _ = keyframe_tick.tick() => {
                         if VIDEO.take_keyframe_request() {
@@ -712,12 +736,36 @@ pub fn decide_join(id: Option<u64>, allow: bool) -> bool {
     send_receiver_cmd(ReceiverCmd::Decide { id, allow })
 }
 
-/// Remove the connected sender. UNCERTAIN: one sender per receiver in this version, so the
-/// receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+/// Remove the connected sender (end its presentation); with `block` also block its address
+/// bucket for the rest of this room session. UNCERTAIN: one sender per receiver in this version,
+/// so the receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
 /// Returns `false` if no receiver runs.
 #[frb(sync)]
-pub fn remove_peer() -> bool {
-    send_receiver_cmd(ReceiverCmd::RemovePeer)
+pub fn remove_peer(block: bool) -> bool {
+    send_receiver_cmd(ReceiverCmd::RemovePeer { block })
+}
+
+/// Deny the waiting request `id` and block the sender's address bucket for the rest of this room
+/// session: it gets the same `join_denied` as any denied sender and is not asked again; the
+/// host sees [`ReceiverUiEvent::Blocked`]. Returns `false` if no receiver runs.
+#[frb(sync)]
+pub fn deny_and_block_join(id: u64) -> bool {
+    send_receiver_cmd(ReceiverCmd::DenyAndBlock(id))
+}
+
+/// Take an entry off the block list (`id` from [`ReceiverUiEvent::Blocked`]). Returns `false`
+/// if no receiver runs.
+#[frb(sync)]
+pub fn unblock(id: u64) -> bool {
+    send_receiver_cmd(ReceiverCmd::Unblock(id))
+}
+
+/// End the room session: the connected sender and everybody who waits are dropped, the code is
+/// gone and the stream ends with [`ReceiverUiEvent::RoomEnded`]. Start a new receiver for a new
+/// room. Returns `false` if no receiver runs.
+#[frb(sync)]
+pub fn end_room() -> bool {
+    send_receiver_cmd(ReceiverCmd::EndRoom)
 }
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows

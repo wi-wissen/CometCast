@@ -132,7 +132,7 @@ async fn locked_room_refuses_native_sender_and_kick_ends_the_session() {
         _ => None,
     })
     .await;
-    rx.remove_peer();
+    rx.remove_peer(false);
     let ev = tokio::time::timeout(Duration::from_secs(15), async {
         loop {
             match sender.next_event().await {
@@ -145,5 +145,50 @@ async fn locked_room_refuses_native_sender_and_kick_ends_the_session() {
     .await
     .expect("timeout");
     assert!(ev, "sender must learn that it was removed");
+    rx.stop().await;
+}
+
+#[tokio::test]
+async fn block_unblock_and_end_room_with_native_cores() {
+    let server = start(ServerConfig::default()).await;
+    let mut rx = receiver(&server, JoinMode::Confirm).await;
+    let code = rx.room_code().clone();
+    let mut o = SenderOptions::new(&server, code.clone());
+    o.session = local_session();
+    o.name = Some("Pest".into());
+    let first = tokio::spawn(SenderCore::start(o));
+    let id = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinRequest { id, .. } => Some(id),
+        _ => None,
+    })
+    .await;
+    rx.deny_and_block_join(id);
+    let err = first.await.unwrap().err().expect("denied");
+    assert!(err.to_string().contains("join_denied"), "{err}");
+    let block_id = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::Blocked { id, name } => {
+            assert_eq!(name, "Pest");
+            Some(id)
+        }
+        _ => None,
+    })
+    .await;
+    // Blocked: denied at once, the host sees no request.
+    let mut o = SenderOptions::new(&server, code.clone());
+    o.session = local_session();
+    let err = SenderCore::start(o).await.err().expect("blocked");
+    assert!(err.to_string().contains("join_denied"), "{err}");
+    rx.unblock(block_id);
+    next_matching(&mut rx, |e| match e {
+        ReceiverEvent::Unblocked { id } if id == block_id => Some(()),
+        _ => None,
+    })
+    .await;
+    rx.end_room();
+    next_matching(&mut rx, |e| match e {
+        ReceiverEvent::RoomEnded => Some(()),
+        _ => None,
+    })
+    .await;
     rx.stop().await;
 }
