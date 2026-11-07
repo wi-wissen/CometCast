@@ -921,6 +921,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-ios"
+version = "0.1.0"
+dependencies = [
+ "cc-proto",
+ "cc-receiver",
+ "cc-sender",
+ "cc-server",
+ "cc-transport",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "cc-media"
 version = "0.1.0"
 dependencies = [
@@ -935,6 +948,15 @@ version = "0.1.0"
 dependencies = [
  "thiserror 2.0.21",
  "windows",
+]
+
+[[package]]
+name = "cc-miracast-ffi"
+version = "0.1.0"
+dependencies = [
+ "cc-miracast",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3483,9 +3505,9 @@ checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "libc"
-version = "0.2.191"
+version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libfuzzer-sys"

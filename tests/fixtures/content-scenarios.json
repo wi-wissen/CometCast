@@ -1,0 +1,495 @@
+{
+  "description": "ControlReceiver event sequences. Ops: {t (ms), text} a text message, {t, bin: n} a binary chunk of n bytes (byte i = (i*31+7) mod 251), {t, tick: true} a point in time to look at (the web client has timers, the Swift one is polled with tick(nowMs) before every op). Events: cmd:<json>, progress:<name>:<received>:<size>|null, image:<name>:<bytes>, document:<name>:<bytes>:<sum mod 65521>, link:<url>, error:<code>. The image event counts bytes only.",
+  "fill": "byte i = (i*31+7) mod 251",
+  "scenarios": [
+    {
+      "name": "image in three chunks",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":32868}"
+        },
+        {
+          "t": 1010,
+          "bin": 16384
+        },
+        {
+          "t": 1020,
+          "bin": 16384
+        },
+        {
+          "t": 1200,
+          "bin": 100
+        },
+        {
+          "t": 1210,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:32868",
+        "progress:a.png:32868:32868",
+        "progress:null",
+        "image:a.png:32868"
+      ]
+    },
+    {
+      "name": "pdf in two chunks",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"document\",\"name\":\"d.pdf\",\"mime\":\"application/pdf\",\"size\":16389}"
+        },
+        {
+          "t": 1500,
+          "bin": 16384
+        },
+        {
+          "t": 1700,
+          "bin": 5
+        },
+        {
+          "t": 1710,
+          "text": "{\"kind\":\"document_end\"}"
+        }
+      ],
+      "events": [
+        "progress:d.pdf:0:16389",
+        "progress:d.pdf:16384:16389",
+        "progress:d.pdf:16389:16389",
+        "progress:null",
+        "document:d.pdf:16389:17020"
+      ]
+    },
+    {
+      "name": "chunk without a transfer",
+      "ops": [
+        {
+          "t": 1000,
+          "bin": 16384
+        }
+      ],
+      "events": [
+        "progress:null",
+        "error:unexpected_chunk"
+      ]
+    },
+    {
+      "name": "chunk larger than announced",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 200
+        }
+      ],
+      "events": [
+        "progress:a.png:0:100",
+        "progress:null",
+        "error:too_large"
+      ]
+    },
+    {
+      "name": "short chunk before the end (bad chunk)",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":40000}"
+        },
+        {
+          "t": 1010,
+          "bin": 1000
+        }
+      ],
+      "events": [
+        "progress:a.png:0:40000",
+        "progress:null",
+        "error:bad_chunk"
+      ]
+    },
+    {
+      "name": "transfer after a failed one",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 200
+        },
+        {
+          "t": 1020,
+          "bin": 10
+        }
+      ],
+      "events": [
+        "progress:a.png:0:100",
+        "progress:null",
+        "error:too_large",
+        "progress:null",
+        "error:unexpected_chunk"
+      ]
+    },
+    {
+      "name": "end with missing bytes",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 50
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:100",
+        "progress:null",
+        "error:bad_chunk",
+        "progress:null",
+        "error:no_transfer"
+      ]
+    },
+    {
+      "name": "end without a transfer",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image_end\"}"
+        },
+        {
+          "t": 1010,
+          "text": "{\"kind\":\"document_end\"}"
+        }
+      ],
+      "events": [
+        "progress:null",
+        "error:no_transfer",
+        "progress:null",
+        "error:no_transfer"
+      ]
+    },
+    {
+      "name": "image_end during a pdf transfer",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"document\",\"name\":\"d.pdf\",\"mime\":\"application/pdf\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 100
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"image_end\"}"
+        },
+        {
+          "t": 1030,
+          "text": "{\"kind\":\"document_end\"}"
+        }
+      ],
+      "events": [
+        "progress:d.pdf:0:100",
+        "progress:null",
+        "error:no_transfer",
+        "progress:null",
+        "error:no_transfer"
+      ]
+    },
+    {
+      "name": "document_end during an image transfer",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 100
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"document_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:100",
+        "progress:null",
+        "error:no_transfer"
+      ]
+    },
+    {
+      "name": "new transfer drops the old one",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 50
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"image\",\"name\":\"b.png\",\"mime\":\"image/png\",\"size\":10}"
+        },
+        {
+          "t": 1030,
+          "bin": 10
+        },
+        {
+          "t": 1040,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:100",
+        "progress:null",
+        "error:bad_chunk",
+        "progress:b.png:0:10",
+        "progress:null",
+        "image:b.png:10"
+      ]
+    },
+    {
+      "name": "stop drops the transfer",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":100}"
+        },
+        {
+          "t": 1010,
+          "bin": 50
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"stop\"}"
+        },
+        {
+          "t": 1030,
+          "bin": 50
+        }
+      ],
+      "events": [
+        "progress:a.png:0:100",
+        "progress:null",
+        "error:bad_chunk",
+        "cmd:\"stop\"",
+        "progress:null",
+        "error:unexpected_chunk"
+      ]
+    },
+    {
+      "name": "commands are passed on",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"next_page\"}"
+        },
+        {
+          "t": 1010,
+          "text": "{\"kind\":\"cmd\",\"cmd\":{\"go_to_page\":{\"page\":7}}}"
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"prev_page\"}"
+        }
+      ],
+      "events": [
+        "cmd:\"next_page\"",
+        "cmd:{\"go_to_page\":{\"page\":7}}",
+        "cmd:\"prev_page\""
+      ]
+    },
+    {
+      "name": "link and bad messages",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"link\",\"url\":\"https://example.com/a\"}"
+        },
+        {
+          "t": 1010,
+          "text": "{\"kind\":\"link\",\"url\":\"javascript:x\"}"
+        },
+        {
+          "t": 1020,
+          "text": "junk"
+        },
+        {
+          "t": 1030,
+          "text": "{\"kind\":\"image\",\"name\":\"a\",\"mime\":\"image/svg+xml\",\"size\":5}"
+        }
+      ],
+      "events": [
+        "link:https://example.com/a",
+        "error:bad_message",
+        "error:bad_message",
+        "error:bad_message"
+      ]
+    },
+    {
+      "name": "stall after 30 s without a chunk",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":40000}"
+        },
+        {
+          "t": 1100,
+          "bin": 16384
+        },
+        {
+          "t": 31099,
+          "tick": true
+        },
+        {
+          "t": 31100,
+          "tick": true
+        },
+        {
+          "t": 31200,
+          "bin": 16384
+        }
+      ],
+      "events": [
+        "progress:a.png:0:40000",
+        "progress:a.png:16384:40000",
+        "progress:null",
+        "error:stalled",
+        "progress:null",
+        "error:unexpected_chunk"
+      ]
+    },
+    {
+      "name": "activity resets the stall timer",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":49152}"
+        },
+        {
+          "t": 20000,
+          "bin": 16384
+        },
+        {
+          "t": 40000,
+          "bin": 16384
+        },
+        {
+          "t": 60000,
+          "tick": true
+        },
+        {
+          "t": 70000,
+          "bin": 16384
+        },
+        {
+          "t": 70010,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:49152",
+        "progress:a.png:16384:49152",
+        "progress:a.png:32768:49152",
+        "progress:null",
+        "error:stalled",
+        "progress:null",
+        "error:unexpected_chunk",
+        "progress:null",
+        "error:no_transfer"
+      ]
+    },
+    {
+      "name": "progress is throttled to 100 ms",
+      "ops": [
+        {
+          "t": 5000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":81920}"
+        },
+        {
+          "t": 5050,
+          "bin": 16384
+        },
+        {
+          "t": 5099,
+          "bin": 16384
+        },
+        {
+          "t": 5100,
+          "bin": 16384
+        },
+        {
+          "t": 5150,
+          "bin": 16384
+        },
+        {
+          "t": 5200,
+          "bin": 16384
+        },
+        {
+          "t": 5201,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:81920",
+        "progress:a.png:49152:81920",
+        "progress:a.png:81920:81920",
+        "progress:null",
+        "image:a.png:81920"
+      ]
+    },
+    {
+      "name": "exactly one full chunk is a complete image",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":16384}"
+        },
+        {
+          "t": 1010,
+          "bin": 16384
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:16384",
+        "progress:null",
+        "image:a.png:16384"
+      ]
+    },
+    {
+      "name": "tiny chunks are refused",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":40000}"
+        },
+        {
+          "t": 1010,
+          "bin": 1
+        }
+      ],
+      "events": [
+        "progress:a.png:0:40000",
+        "progress:null",
+        "error:bad_chunk"
+      ]
+    }
+  ]
+}

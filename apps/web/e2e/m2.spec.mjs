@@ -174,7 +174,11 @@ try {
   assert.equal(await canvas.getAttribute('data-tool'), 'pen')
   const box = await canvas.boundingBox()
   const cx = box.x + box.width / 2
-  const cy = box.y + box.height * 0.55
+  // Only the visible part of the canvas can be drawn on: with the relay line and the connection
+  // check code above the stage, the canvas reaches below a 800 px high window.
+  const viewportHeight = await receiver.evaluate(() => window.innerHeight)
+  const visibleHeight = Math.min(box.height, viewportHeight - box.y)
+  const cy = box.y + visibleHeight * 0.55
   await receiver.mouse.move(cx - 200, cy)
   await receiver.mouse.down()
   await receiver.mouse.move(cx, cy + 60, { steps: 12 })

@@ -606,6 +606,15 @@ class _ReceivePageState extends State<ReceivePage> {
               ),
             ),
           CodecNotice(controller: _codec),
+          if (_profile.hardwareDecoderOnly)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                t.codecNotNeededDevice,
+                key: const Key('codecNotNeeded'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
           if (_serverEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -696,6 +705,10 @@ class _ReceivePageState extends State<ReceivePage> {
     final c = _controller;
     if (c.phase != ReceiverPhase.running) return null;
     if (c.codecNotShown) return t.videoCodecNotShown(c.codec!);
+    // iOS: the decoder of the device is the only one; without a fallback say what happened.
+    if (_profile.hardwareDecoderOnly && c.hardwareError != null) {
+      return t.videoDecoderFailedNoFallback;
+    }
     if (c.senderJoined || c.connectionState != null) return t.videoWaiting;
     return null;
   }

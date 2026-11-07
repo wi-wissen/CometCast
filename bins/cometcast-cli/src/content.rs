@@ -22,12 +22,11 @@ use cc_sender::{ContentSender, ContentSenderOptions, SenderEvent};
 use cc_transport::TlsTrust;
 
 pub const USAGE: &str = "\
-  cometcast-cli send-file <CODE> <FILE> [--then CMDS] [--office-engine auto|rust|soffice] [--seconds N] [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
+  cometcast-cli send-file <CODE> <FILE> [--then CMDS] [--seconds N] [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
   cometcast-cli send-link <CODE> <URL> [--seconds N] [--server HOST:PORT] [--bind ADDR] [--ca-file PEM]
 
 send-file sends an image (.png .jpg .jpeg .webp .gif, at most 10 MiB) or a PDF (.pdf, at most
-64 MiB) to the receiver with that room code. An Office document (.docx .pptx .xlsx, and .odt .odp .ods
-if LibreOffice is installed) is first converted to PDF on this machine, in a child process with limits, and
+64 MiB) to the receiver with that room code. An Office document (.docx .pptx .xlsx) is first converted to PDF on this machine, in a child process with limits, and
 the PDF is sent: the receiver never gets an Office file (see `office --help`, docs/documents.md). --then takes commands separated by commas, sent
 after the file: next, prev, go:N (N from 1 to 1000000), stop (e.g. --then next,go:3,stop). The program stays
 connected until Ctrl-C, because receivers drop the content when the sender leaves; --seconds N
@@ -36,11 +35,7 @@ arrives as 'Content:' lines; a link is printed and never opened. See docs/web-m2
 
 /// What to send.
 pub enum What {
-    File {
-        path: String,
-        then: Vec<ControlCmd>,
-        office_engine: cc_office::Engine,
-    },
+    File { path: String, then: Vec<ControlCmd> },
     Link(String),
 }
 
@@ -60,7 +55,6 @@ pub fn parse(link: bool, mut args: impl Iterator<Item = String>) -> Result<Cmd, 
     let mut ca_file = None;
     let mut then = Vec::new();
     let mut stay = None;
-    let mut office_engine = cc_office::Engine::Auto;
     let mut positional = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -73,11 +67,6 @@ pub fn parse(link: bool, mut args: impl Iterator<Item = String>) -> Result<Cmd, 
                     v.parse::<u64>()
                         .map_err(|_| format!("bad --seconds value {v:?}"))?,
                 );
-            }
-            "--office-engine" if !link => {
-                office_engine = crate::office::parse_engine(
-                    &args.next().ok_or("--office-engine needs a value")?,
-                )?;
             }
             "--then" if !link => then = parse_then(&args.next().ok_or("--then needs a value")?)?,
             s if s.starts_with("--") => return Err(format!("unknown option {s:?}")),
@@ -99,7 +88,6 @@ pub fn parse(link: bool, mut args: impl Iterator<Item = String>) -> Result<Cmd, 
         What::File {
             path: target.clone(),
             then,
-            office_engine,
         }
     };
     Ok(Cmd {
@@ -211,7 +199,7 @@ fn read_file(path: &str) -> Result<(String, FileKind, Vec<u8>), String> {
     } else if let Some(mime) = ImageMime::from_extension(&name) {
         (FileKind::Image(mime), cc_files::MAX_IMAGE_BYTES)
     } else {
-        return Err("only .png .jpg .jpeg .webp .gif, .pdf and Office files (.docx .pptx .xlsx .odt .odp .ods) can be sent".into());
+        return Err("only .png .jpg .jpeg .webp .gif, .pdf and Office files (.docx .pptx .xlsx) can be sent".into());
     };
     // `metadata` follows symbolic links, so a link to a device is seen as a device.
     let meta = std::fs::metadata(path).map_err(|e| format!("cannot read {path}: {e}"))?;
@@ -261,15 +249,11 @@ async fn send(cmd: Cmd) -> Result<(), String> {
     }
     let payload = match &cmd.what {
         What::Link(u) => Payload::Link(u.clone()),
-        What::File {
-            path,
-            office_engine,
-            ..
-        } if crate::office::is_office(path) => {
+        What::File { path, .. } if crate::office::is_office(path) => {
             // Conversion starts a child process and can take a while: not on an async thread.
-            let (p, e) = (std::path::PathBuf::from(path), *office_engine);
+            let p = std::path::PathBuf::from(path);
             let (name, bytes) =
-                tokio::task::spawn_blocking(move || crate::office::convert_for_send(&p, e))
+                tokio::task::spawn_blocking(move || crate::office::convert_for_send(&p))
                     .await
                     .map_err(|e| format!("conversion task failed: {e}"))??;
             Payload::Pdf(name, bytes)

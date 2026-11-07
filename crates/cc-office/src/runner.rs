@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use crate::engine::{Concrete, Engine, find_soffice, rust_engine_compiled};
 use crate::error::{Limits, OfficeError};
 use crate::format::OfficeFormat;
 use crate::worker::OUTPUT_NAME;
@@ -76,19 +75,10 @@ impl WorkerSpec {
 /// What to convert with.
 #[derive(Debug, Clone, Default)]
 pub struct Options {
-    /// Engine choice.
-    pub engine: Engine,
     /// Limits.
     pub limits: Limits,
     /// How to start the worker; `None` = [`WorkerSpec::discover`].
     pub worker: Option<WorkerSpec>,
-    /// LibreOffice program; `None` = [`find_soffice`] with no explicit path.
-    pub soffice: Option<PathBuf>,
-    /// The worker program has the pure-Rust engine even though this build does not (a
-    /// parent that is built with `default-features = false` so that the engine's large
-    /// dependency tree is not linked into it, and runs a worker that has it). Without this
-    /// the parent refuses [`Engine::Rust`] with `NoEngine` before it starts the worker.
-    pub rust_engine_in_worker: bool,
 }
 
 /// A converted document.
@@ -96,9 +86,7 @@ pub struct Options {
 pub struct Converted {
     /// The PDF.
     pub pdf: Vec<u8>,
-    /// The engine that produced it.
-    pub engine: Concrete,
-    /// Warnings the engine reported (the pure-Rust engine lists what it left out).
+    /// Warnings the engine reported (it lists what it left out).
     pub warnings: Vec<String>,
     /// Protections the worker reported as in effect (`rlimit-*`, `landlock-no-tcp`).
     pub protections: Vec<String>,
@@ -234,23 +222,6 @@ pub fn convert_bytes(
     }
     zipcheck::check(bytes, format, limits)?;
 
-    let soffice = if opts.engine == Engine::Rust {
-        None
-    } else {
-        find_soffice(opts.soffice.as_deref())
-    };
-    let order = opts.engine.order(
-        format,
-        soffice.is_some(),
-        rust_engine_compiled() || opts.rust_engine_in_worker,
-    );
-    let Some(engine) = order.first().copied() else {
-        return Err(OfficeError::NoEngine(no_engine_reason(
-            opts.engine,
-            format,
-            soffice.is_some(),
-        )));
-    };
     let worker = match &opts.worker {
         Some(w) => w.clone(),
         None => WorkerSpec::discover().ok_or_else(|| {
@@ -259,22 +230,7 @@ pub fn convert_bytes(
             )
         })?,
     };
-    run_worker(bytes, format, engine, soffice.as_deref(), &worker, limits)
-}
-
-fn no_engine_reason(engine: Engine, format: OfficeFormat, have_soffice: bool) -> String {
-    match engine {
-        Engine::Soffice => "LibreOffice (soffice) was not found; install it or set COMETCAST_SOFFICE to its full path".into(),
-        Engine::Rust if !format.rust_engine_supports() => {
-            format!("the pure-Rust engine cannot convert .{} files; use LibreOffice", format.extension())
-        }
-        Engine::Rust => "the pure-Rust engine is not compiled into this build".into(),
-        Engine::Auto if !format.rust_engine_supports() && !have_soffice => format!(
-            ".{} files need LibreOffice, which was not found; install it or set COMETCAST_SOFFICE",
-            format.extension()
-        ),
-        Engine::Auto => "neither LibreOffice nor the pure-Rust engine is available".into(),
-    }
+    run_worker(bytes, format, &worker, limits)
 }
 
 /// A private directory, removed again when dropped.
@@ -397,8 +353,6 @@ fn kill_group(_pid: u32) {}
 fn run_worker(
     bytes: &[u8],
     format: OfficeFormat,
-    engine: Concrete,
-    soffice: Option<&Path>,
     worker: &WorkerSpec,
     limits: &Limits,
 ) -> Result<Converted, OfficeError> {
@@ -412,14 +366,8 @@ fn run_worker(
         .join(format!("input.{}", format.extension()));
     std::fs::write(&input, bytes).map_err(|e| OfficeError::Io(e.to_string()))?;
 
-    let mem = match engine {
-        Concrete::Rust => limits.rust_engine_memory_bytes,
-        Concrete::Soffice => limits.soffice_memory_bytes,
-    };
     let mut c = Command::new(&worker.program);
     c.args(&worker.args)
-        .arg("--engine")
-        .arg(engine.name())
         .arg("--format")
         .arg(format.extension())
         .arg("--work")
@@ -427,12 +375,9 @@ fn run_worker(
         .arg("--timeout")
         .arg(limits.timeout.as_secs().max(1).to_string())
         .arg("--mem")
-        .arg(mem.to_string())
+        .arg(limits.memory_bytes.to_string())
         .arg("--fsize")
         .arg(limits.max_output_bytes.to_string());
-    if let Some(s) = soffice.filter(|_| engine == Concrete::Soffice) {
-        c.arg("--soffice").arg(s);
-    }
     c.env_clear()
         .current_dir(&work.0)
         .stdin(Stdio::null())
@@ -476,7 +421,7 @@ fn run_worker(
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    // Anything the worker left behind (LibreOffice helper processes) dies with the group.
+    // Anything the worker left behind dies with the group.
     kill_group(pid);
     let grab = |rx: Option<mpsc::Receiver<Vec<u8>>>| {
         rx.and_then(|r| r.recv_timeout(Duration::from_secs(2)).ok())
@@ -516,7 +461,6 @@ fn run_worker(
     let pdf = read_output(&work.0.join("out").join(OUTPUT_NAME), limits)?;
     Ok(Converted {
         pdf,
-        engine,
         warnings,
         protections,
         elapsed: start.elapsed(),
@@ -784,7 +728,6 @@ mod tests {
     fn missing_protections_are_listed() {
         let mk = |p: &[&str]| Converted {
             pdf: Vec::new(),
-            engine: Concrete::Rust,
             warnings: Vec::new(),
             protections: p.iter().map(|s| (*s).to_string()).collect(),
             elapsed: Duration::ZERO,

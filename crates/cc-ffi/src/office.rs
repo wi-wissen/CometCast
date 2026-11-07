@@ -13,18 +13,17 @@
 //! by group or others, in a directory not writable by others; Unix only, UNCERTAIN: no
 //! ownership check on Windows); otherwise there is no worker.
 //!
-//! The app always asks for the pure-Rust engine ([`Engine::Rust`]): it never starts LibreOffice
-//! behind the person's back, because LibreOffice can read any file the user can read when a
-//! document links it (docs/documents.md). `cc-ffi` links `cc-office` *without* its engine (so
-//! Typst is not in `libcc_ffi.so`) and says through `rust_engine_in_worker` that the worker has
-//! it; a missing worker reports [`UiSendRejection::OfficeUnavailable`].
+//! `cc-ffi` links `cc-office` *without* its engine (so Typst is not in `libcc_ffi.so`); the
+//! worker program has it. OpenDocument and legacy binary files are refused as
+//! [`UiSendRejection::UnsupportedType`]; a missing worker reports
+//! [`UiSendRejection::OfficeUnavailable`].
 //!
 //! At most one conversion runs at a time ([`Gate`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use cc_office::{Engine, OfficeError, OfficeFormat, Options, WorkerSpec};
+use cc_office::{OfficeError, OfficeFormat, Options, WorkerSpec};
 
 use crate::api::UiSendRejection;
 
@@ -85,22 +84,16 @@ pub(crate) fn worker_path() -> Option<String> {
 /// exist, so the conversion fails with `WorkerUnavailable` (never by searching elsewhere).
 pub(crate) fn options() -> Options {
     Options {
-        engine: Engine::Rust,
         worker: Some(spec().unwrap_or_else(|| WorkerSpec::new(NO_WORKER_PROGRAM))),
-        rust_engine_in_worker: true,
         ..Options::default()
     }
 }
 
 const NO_WORKER_PROGRAM: &str = "/nonexistent/cc-office-worker-not-found";
 
-/// `true` for the file types the app converts: `.docx .pptx .xlsx` (the OpenDocument formats
-/// need LibreOffice, which the app does not start).
+/// `true` for the file types the app converts: `.docx .pptx .xlsx`.
 pub(crate) fn is_office_name(name: &str) -> bool {
-    matches!(
-        OfficeFormat::from_name(name),
-        Some(OfficeFormat::Docx | OfficeFormat::Pptx | OfficeFormat::Xlsx)
-    )
+    OfficeFormat::from_name(name).is_some()
 }
 
 /// The UI reason for a failed conversion. Text of the engine never reaches the UI.
@@ -111,9 +104,7 @@ pub(crate) fn map_error(e: &OfficeError) -> UiSendRejection {
         OfficeError::Io(_) => UiSendRejection::Unreadable,
         OfficeError::InputTooLarge { .. } => UiSendRejection::TooLarge,
         OfficeError::NotRegularFile => UiSendRejection::NotARegularFile,
-        OfficeError::NoEngine(_) | OfficeError::WorkerUnavailable(_) => {
-            UiSendRejection::OfficeUnavailable
-        }
+        OfficeError::WorkerUnavailable(_) => UiSendRejection::OfficeUnavailable,
         OfficeError::BadContainer(_)
         | OfficeError::TooMuchData(_)
         | OfficeError::ConversionFailed(_)
@@ -159,8 +150,7 @@ mod tests {
         for n in ["a.docx", "A.PPTX", "b.c.xlsx"] {
             assert!(is_office_name(n), "{n}");
         }
-        // OpenDocument needs LibreOffice, legacy formats are not accepted, a bare name is
-        // no format.
+        // OpenDocument and legacy formats are not accepted, a bare name is no format.
         for n in [
             "a.odt", "a.odp", "a.ods", "a.doc", "a.xls", "a.ppt", "docx", "a.pdf", "",
         ] {
@@ -179,7 +169,6 @@ mod tests {
             (OfficeError::NotRegularFile, R::NotARegularFile),
             (OfficeError::BadContainer("x".into()), R::OfficeFailed),
             (OfficeError::TooMuchData("x".into()), R::OfficeFailed),
-            (OfficeError::NoEngine("x".into()), R::OfficeUnavailable),
             (
                 OfficeError::WorkerUnavailable("x".into()),
                 R::OfficeUnavailable,
@@ -210,9 +199,7 @@ mod tests {
 
     fn opts_with(worker: &Path) -> Options {
         Options {
-            engine: Engine::Rust,
             worker: Some(WorkerSpec::new(worker)),
-            rust_engine_in_worker: true,
             ..Options::default()
         }
     }

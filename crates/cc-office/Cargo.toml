@@ -15,7 +15,8 @@ workspace = true
 [features]
 default = ["engine-rust", "worker-bin"]
 # The pure-Rust engine (`office2pdf`, Apache-2.0, built on Typst). Large dependency tree and
-# bundled fonts; an application that only wants LibreOffice can turn it off.
+# bundled fonts. It is the only engine; a parent process that only needs the checks and types
+# (and starts a worker that has the engine) can turn it off.
 engine-rust = ["dep:office2pdf"]
 # Builds the `cc-office-worker` program (the conversion worker process).
 worker-bin = []

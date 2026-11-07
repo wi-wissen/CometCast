@@ -1349,9 +1349,37 @@ fn android_capture_info() -> CaptureInfo {
     }
 }
 
+/// The id of the single entry in the monitor list on iOS and iPadOS: the screen that the
+/// ReplayKit broadcast picker records. The Rust core cannot capture there; the Broadcast Upload
+/// Extension (`apps/flutter/ios/BroadcastExtension`, docs/ios.md) does.
+pub const IOS_BROADCAST_ID: &str = "ios-broadcast";
+
+/// What [`capture_info`] answers on iOS. Compiled everywhere so a test can check it.
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+fn ios_capture_info() -> CaptureInfo {
+    CaptureInfo {
+        support: CaptureSupport::Supported,
+        display: None,
+        monitors: vec![CaptureMonitor {
+            id: IOS_BROADCAST_ID.to_owned(),
+            name: "Screen".to_owned(),
+            x: 0,
+            y: 0,
+            // Unknown here: decided by the broadcast extension.
+            width: 0,
+            height: 0,
+        }],
+    }
+}
+
 #[cfg(target_os = "android")]
 fn capture_info_blocking(_display: Option<String>) -> CaptureInfo {
     android_capture_info()
+}
+
+#[cfg(target_os = "ios")]
+fn capture_info_blocking(_display: Option<String>) -> CaptureInfo {
+    ios_capture_info()
 }
 
 #[cfg(target_os = "linux")]
@@ -1401,7 +1429,7 @@ fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "ios")))]
 fn capture_info_blocking(display: Option<String>) -> CaptureInfo {
     CaptureInfo {
         support: CaptureSupport::UnsupportedOs,
@@ -2651,6 +2679,16 @@ mod tests {
         assert_eq!(info.monitors[0].id, ANDROID_PROJECTION_ID);
         // The Dart side (lib/core/android_capture.dart) compares with this literal.
         assert_eq!(ANDROID_PROJECTION_ID, "android-projection");
+    }
+
+    #[test]
+    fn ios_capture_info_lists_the_broadcast_only() {
+        let info = ios_capture_info();
+        assert_eq!(info.support, CaptureSupport::Supported);
+        assert_eq!(info.monitors.len(), 1);
+        assert_eq!(info.monitors[0].id, IOS_BROADCAST_ID);
+        // The Dart side (lib/core/ios_broadcast.dart) compares with this literal.
+        assert_eq!(IOS_BROADCAST_ID, "ios-broadcast");
     }
 
     #[test]

@@ -1,0 +1,95 @@
+{
+  "description": "normalizeRoomCode / isValidRoomCode (apps/web/src/core/roomCode.ts).",
+  "cases": [
+    {
+      "input": "abc234",
+      "normalized": "ABC234",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "ABC234",
+      "normalized": "ABC234",
+      "valid_input": true,
+      "valid_normalized": true
+    },
+    {
+      "input": " a b c 2 3 4 ",
+      "normalized": "ABC234",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "ABC2345",
+      "normalized": "ABC234",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "ABC23",
+      "normalized": "ABC23",
+      "valid_input": false,
+      "valid_normalized": false
+    },
+    {
+      "input": "AB0O1I",
+      "normalized": "AB",
+      "valid_input": false,
+      "valid_normalized": false
+    },
+    {
+      "input": "ABCDEFGH",
+      "normalized": "ABCDEF",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "",
+      "normalized": "",
+      "valid_input": false,
+      "valid_normalized": false
+    },
+    {
+      "input": "äbc234",
+      "normalized": "BC234",
+      "valid_input": false,
+      "valid_normalized": false
+    },
+    {
+      "input": "abc-234",
+      "normalized": "ABC234",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "ABC 234",
+      "normalized": "ABC234",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "zzzzzz",
+      "normalized": "ZZZZZZ",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "Z2Z2Z2",
+      "normalized": "Z2Z2Z2",
+      "valid_input": true,
+      "valid_normalized": true
+    },
+    {
+      "input": "😀ABC234",
+      "normalized": "ABC234",
+      "valid_input": false,
+      "valid_normalized": true
+    },
+    {
+      "input": "ß",
+      "normalized": "SS",
+      "valid_input": false,
+      "valid_normalized": false
+    }
+  ]
+}

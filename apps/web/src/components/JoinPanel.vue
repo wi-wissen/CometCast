@@ -113,7 +113,7 @@ const ring = 'focus-visible:outline-4 focus-visible:outline-offset-2 focus-visib
     <!-- Compact: a chip that appears on activity and fades out -->
     <div
       v-if="compact && !expanded"
-      class="fixed right-3 top-3 z-[45] flex items-center gap-2 transition-opacity duration-500"
+      class="fixed left-1/2 top-3 z-[45] -translate-x-1/2 flex items-center gap-2 transition-opacity duration-500"
       :class="chipVisible ? 'opacity-100' : 'pointer-events-none opacity-0'"
       :inert="!chipVisible"
       data-testid="join-chip-row"

@@ -21,7 +21,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 #[test]
-fn converts_docx_with_the_rust_engine_and_the_pdf_opens_in_the_receiver_renderer() {
+fn converts_docx_and_the_pdf_opens_in_the_receiver_renderer() {
     let d = scratch("ok");
     let input = d.join("Arbeitsblatt.docx");
     std::fs::write(&input, zipwriter::docx("Hello")).unwrap();
@@ -31,7 +31,6 @@ fn converts_docx_with_the_rust_engine_and_the_pdf_opens_in_the_receiver_renderer
         .arg(&input)
         .arg("--out")
         .arg(&out)
-        .args(["--engine", "rust"])
         .output()
         .unwrap();
     assert!(
@@ -49,7 +48,6 @@ fn converts_docx_with_the_rust_engine_and_the_pdf_opens_in_the_receiver_renderer
         .arg(&input)
         .arg("--out")
         .arg(&out)
-        .args(["--engine", "rust"])
         .output()
         .unwrap();
     assert!(!again.status.success());
@@ -95,6 +93,7 @@ fn hostile_and_wrong_files_fail_with_a_message_and_write_nothing() {
             ]),
         ),
         ("wrongext.pdf", zipwriter::docx("x")),
+        ("opendocument.odt", zipwriter::docx("x")),
     ];
     for (name, bytes) in cases {
         let f = d.join(name);

@@ -13,6 +13,11 @@ pub enum PairingPolicy {
     /// `ConfirmConnection`). Default.
     #[default]
     ConfirmConnection,
+    /// Like [`PairingPolicy::ConfirmConnection`], and a PIN is shown at the receiver when
+    /// the sender asks for one (Windows value `PinDisplayIfRequested`).
+    // UNCERTAIN: what "if requested" means in practice (which senders request a PIN) was not
+    // observed; checklist item F2 of docs/miracast-device-test-plan.md.
+    PinIfRequested,
     /// Like [`PairingPolicy::ConfirmConnection`], and a PIN must be shown at the receiver
     /// and typed on the sending device (Windows value `PinDisplayRequired`).
     // UNCERTAIN: which side draws the PIN on screen (Windows UI or our app) is exactly

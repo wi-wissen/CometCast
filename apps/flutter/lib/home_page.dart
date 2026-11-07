@@ -8,6 +8,9 @@ import 'package:cometcast/l10n/app_localizations.dart';
 import 'core/android_capture.dart';
 import 'core/android_platform.dart';
 import 'core/core_api.dart';
+import 'core/ios_broadcast.dart';
+import 'core/miracast.dart';
+import 'miracast_page.dart';
 import 'receive_page.dart';
 import 'receiver_controller.dart' show UrlOpener;
 import 'send_content_page.dart';
@@ -21,19 +24,29 @@ class HomePage extends StatelessWidget {
     required this.core,
     required this.settings,
     this.androidCapture,
+    this.iosBroadcast,
     this.pickFile = pickImageOrPdf,
     this.openUrl = launchInBrowser,
+    this.miracast,
   });
 
   final CoreApi core;
   final AppSettings settings;
   final AndroidCapture? androidCapture;
 
+  /// The iOS broadcast hand-over (a fake in tests); null on other platforms.
+  final IosBroadcast? iosBroadcast;
+
   /// The file dialog of "Send file or link" (replaced in tests).
   final PickFile pickFile;
 
   /// How a received link is opened after the person chose "Open" (replaced in tests).
   final UrlOpener openUrl;
+
+  /// The Miracast receiver. Null on every platform except Windows: the row
+  /// "Receive via Miracast (Windows)" exists only when this is given (main.dart passes it on
+  /// Windows only), so other platforms can never show or open it.
+  final MiracastCore? miracast;
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +129,7 @@ class HomePage extends StatelessWidget {
                               core: core,
                               settings: settings,
                               androidCapture: androidCapture,
+                              iosBroadcast: iosBroadcast,
                             ),
                           ),
                         ),
@@ -142,6 +156,16 @@ class HomePage extends StatelessWidget {
                           onTap: openReceive,
                         ),
                       ),
+                      if (miracast != null)
+                        FocusRing(
+                          child: ListTile(
+                            key: const Key('miracastTile'),
+                            leading: const Icon(Icons.cast_connected),
+                            title: Text(t.homeMiracast),
+                            subtitle: Text(t.homeMiracastHint),
+                            onTap: () => open(MiracastPage(core: miracast!)),
+                          ),
+                        ),
                     ],
                   ],
                 ),

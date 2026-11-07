@@ -1,0 +1,686 @@
+{
+  "description": "ALTCHA (apps/web/src/core/altcha.ts). `puzzles`: solve from counter 0 -> expect_solution; the payload (base64 JSON decoded) must equal expect_payload except solution.time. `limits`: checkChallengeLimits at now_seconds. `solve_errors`: the reason solveChallenge throws. `http`: httpErrorCode.",
+  "puzzles": [
+    {
+      "name": "sha-256 cost 10",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 10,
+          "keyLength": 16,
+          "keyPrefix": "1ddf5c",
+          "nonce": "141b222930373e454c535a61686f767d",
+          "salt": "05121f2c394653606d7a8794a1aebbc8",
+          "expiresAt": 4102444800
+        },
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect_solution": {
+        "counter": 20,
+        "derivedKey": "1ddf5c3ff6e252f40ed15c49f7306501"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "PBKDF2/SHA-256",
+            "cost": 10,
+            "keyLength": 16,
+            "keyPrefix": "1ddf5c",
+            "nonce": "141b222930373e454c535a61686f767d",
+            "salt": "05121f2c394653606d7a8794a1aebbc8",
+            "expiresAt": 4102444800
+          },
+          "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "solution": {
+          "counter": 20,
+          "derivedKey": "1ddf5c3ff6e252f40ed15c49f7306501",
+          "time": 0
+        }
+      }
+    },
+    {
+      "name": "sha-256 cost 1 key 4",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1,
+          "keyLength": 4,
+          "keyPrefix": "597f3f",
+          "nonce": "2c333a41484f565d646b727980878e95",
+          "salt": "05121f2c394653606d7a8794a1aebbc8",
+          "expiresAt": 4102444800
+        },
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect_solution": {
+        "counter": 300,
+        "derivedKey": "597f3f61"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "PBKDF2/SHA-256",
+            "cost": 1,
+            "keyLength": 4,
+            "keyPrefix": "597f3f",
+            "nonce": "2c333a41484f565d646b727980878e95",
+            "salt": "05121f2c394653606d7a8794a1aebbc8",
+            "expiresAt": 4102444800
+          },
+          "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "solution": {
+          "counter": 300,
+          "derivedKey": "597f3f61",
+          "time": 0
+        }
+      }
+    },
+    {
+      "name": "sha-384 cost 7",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-384",
+          "cost": 7,
+          "keyLength": 24,
+          "keyPrefix": "1c69c2",
+          "nonce": "282f363d444b525960676e757c838a91",
+          "salt": "05121f2c394653606d7a8794a1aebbc8",
+          "expiresAt": 4102444800
+        },
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect_solution": {
+        "counter": 40,
+        "derivedKey": "1c69c2061bd43594853fa12a6fb1c362ed87627483ea802d"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "PBKDF2/SHA-384",
+            "cost": 7,
+            "keyLength": 24,
+            "keyPrefix": "1c69c2",
+            "nonce": "282f363d444b525960676e757c838a91",
+            "salt": "05121f2c394653606d7a8794a1aebbc8",
+            "expiresAt": 4102444800
+          },
+          "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "solution": {
+          "counter": 40,
+          "derivedKey": "1c69c2061bd43594853fa12a6fb1c362ed87627483ea802d",
+          "time": 0
+        }
+      }
+    },
+    {
+      "name": "sha-512 cost 5 key 64",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-512",
+          "cost": 5,
+          "keyLength": 64,
+          "keyPrefix": "23892f",
+          "nonce": "3c434a51585f666d747b828990979ea5",
+          "salt": "05121f2c394653606d7a8794a1aebbc8",
+          "expiresAt": 4102444800
+        },
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect_solution": {
+        "counter": 60,
+        "derivedKey": "23892faf0b59f9f81fa1e72fb4d821c02cff955ffc922037cb69b2601ba230cdefc005d6536e8df569758bbb7f373b51dcb2b82c2fad9db3f02be3391e6985bd"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "PBKDF2/SHA-512",
+            "cost": 5,
+            "keyLength": 64,
+            "keyPrefix": "23892f",
+            "nonce": "3c434a51585f666d747b828990979ea5",
+            "salt": "05121f2c394653606d7a8794a1aebbc8",
+            "expiresAt": 4102444800
+          },
+          "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "solution": {
+          "counter": 60,
+          "derivedKey": "23892faf0b59f9f81fa1e72fb4d821c02cff955ffc922037cb69b2601ba230cdefc005d6536e8df569758bbb7f373b51dcb2b82c2fad9db3f02be3391e6985bd",
+          "time": 0
+        }
+      }
+    },
+    {
+      "name": "lower case algorithm name",
+      "challenge": {
+        "parameters": {
+          "algorithm": "pbkdf2/sha-256",
+          "cost": 3,
+          "keyLength": 8,
+          "keyPrefix": "e1a8b0",
+          "nonce": "0f161d242b323940474e555c636a7178",
+          "salt": "05121f2c394653606d7a8794a1aebbc8",
+          "expiresAt": 4102444800
+        },
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect_solution": {
+        "counter": 15,
+        "derivedKey": "e1a8b00116cbe79c"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "pbkdf2/sha-256",
+            "cost": 3,
+            "keyLength": 8,
+            "keyPrefix": "e1a8b0",
+            "nonce": "0f161d242b323940474e555c636a7178",
+            "salt": "05121f2c394653606d7a8794a1aebbc8",
+            "expiresAt": 4102444800
+          },
+          "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "solution": {
+          "counter": 15,
+          "derivedKey": "e1a8b00116cbe79c",
+          "time": 0
+        }
+      }
+    },
+    {
+      "name": "unknown fields are kept in the payload",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 3,
+          "keyLength": 8,
+          "keyPrefix": "fb29b2",
+          "nonce": "0910171e252c333a41484f565d646b72",
+          "salt": "05121f2c394653606d7a8794a1aebbc8",
+          "expiresAt": 4102444800,
+          "future": {
+            "a": [
+              1,
+              "x",
+              null,
+              true
+            ]
+          },
+          "keySignature": "bb"
+        },
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect_solution": {
+        "counter": 9,
+        "derivedKey": "fb29b2f4ca068271"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "PBKDF2/SHA-256",
+            "cost": 3,
+            "keyLength": 8,
+            "keyPrefix": "fb29b2",
+            "nonce": "0910171e252c333a41484f565d646b72",
+            "salt": "05121f2c394653606d7a8794a1aebbc8",
+            "expiresAt": 4102444800,
+            "future": {
+              "a": [
+                1,
+                "x",
+                null,
+                true
+              ]
+            },
+            "keySignature": "bb"
+          },
+          "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "solution": {
+          "counter": 9,
+          "derivedKey": "fb29b2f4ca068271",
+          "time": 0
+        }
+      }
+    },
+    {
+      "name": "the server-made puzzle of crates/cc-transport/testdata (counter 777, cost 1000)",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "expiresAt": 4102444800,
+          "keyLength": 32,
+          "keyPrefix": "fdf7b2e5a7a69b9cef1841083a6766d2",
+          "keySignature": "72110798d7d357120e1201c744f94da0f2ffe90fa4ecbb040fc7a4a505495c20",
+          "nonce": "207dc692113e91b1df2b3f7b73f123a8",
+          "salt": "304be02c2e8411148cb15d5fca3345d3"
+        },
+        "signature": "732fc613d7d529366a0f816e70baf8f91e4b22fb578b9a15365d7ba5b7e6d7b7"
+      },
+      "expect_solution": {
+        "counter": 777,
+        "derivedKey": "fdf7b2e5a7a69b9cef1841083a6766d25b17caa2ce2144bfa71a4bee43e17d36"
+      },
+      "expect_payload": {
+        "challenge": {
+          "parameters": {
+            "algorithm": "PBKDF2/SHA-256",
+            "cost": 1000,
+            "expiresAt": 4102444800,
+            "keyLength": 32,
+            "keyPrefix": "fdf7b2e5a7a69b9cef1841083a6766d2",
+            "keySignature": "72110798d7d357120e1201c744f94da0f2ffe90fa4ecbb040fc7a4a505495c20",
+            "nonce": "207dc692113e91b1df2b3f7b73f123a8",
+            "salt": "304be02c2e8411148cb15d5fca3345d3"
+          },
+          "signature": "732fc613d7d529366a0f816e70baf8f91e4b22fb578b9a15365d7ba5b7e6d7b7"
+        },
+        "solution": {
+          "counter": 777,
+          "derivedKey": "fdf7b2e5a7a69b9cef1841083a6766d25b17caa2ce2144bfa71a4bee43e17d36",
+          "time": 0
+        }
+      }
+    }
+  ],
+  "limits": [
+    {
+      "name": "ok",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost at maximum",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 10000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost over maximum",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 10001,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "too_hard",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "key length at maximum",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 64,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "key length over maximum",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 65,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "too_hard",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost zero",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 0,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost fraction",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 10.5,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost integral float",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost string",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": "1000",
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "cost missing",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "key length zero",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 0,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "key prefix longer than the key",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 2,
+          "keyPrefix": "abcde",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "key prefix exactly as long as the key",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 2,
+          "keyPrefix": "abcd",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "expired",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb",
+          "expiresAt": 1699999999
+        }
+      },
+      "expect": "expired",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "expires exactly now",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb",
+          "expiresAt": 1700000000
+        }
+      },
+      "expect": "expired",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "expires later",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb",
+          "expiresAt": 1700000001
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "expiresAt null is ignored",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb",
+          "expiresAt": null
+        }
+      },
+      "expect": "ok",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "expiresAt string",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb",
+          "expiresAt": "4102444800"
+        }
+      },
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    },
+    {
+      "name": "no parameters",
+      "challenge": {},
+      "expect": "bad_challenge",
+      "now_seconds": 1700000000
+    }
+  ],
+  "solve_errors": [
+    {
+      "name": "unsupported algorithm",
+      "challenge": {
+        "parameters": {
+          "algorithm": "SCRYPT",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "unsupported_algorithm"
+    },
+    {
+      "name": "key prefix not hex",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "zz",
+          "nonce": "aa",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge"
+    },
+    {
+      "name": "nonce not hex",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "xyz",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge"
+    },
+    {
+      "name": "salt odd length",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1000,
+          "keyLength": 32,
+          "keyPrefix": "ab",
+          "nonce": "aa",
+          "salt": "abc"
+        }
+      },
+      "expect": "bad_challenge"
+    },
+    {
+      "name": "missing nonce",
+      "challenge": {
+        "parameters": {
+          "algorithm": "PBKDF2/SHA-256",
+          "cost": 1,
+          "keyLength": 8,
+          "keyPrefix": "ab",
+          "salt": "bb"
+        }
+      },
+      "expect": "bad_challenge"
+    }
+  ],
+  "http": [
+    {
+      "status": 429,
+      "retry_after": null,
+      "expect": "rate_limited"
+    },
+    {
+      "status": 403,
+      "retry_after": "30",
+      "expect": "banned"
+    },
+    {
+      "status": 403,
+      "retry_after": null,
+      "expect": "forbidden"
+    },
+    {
+      "status": 503,
+      "retry_after": null,
+      "expect": "server_full"
+    },
+    {
+      "status": 500,
+      "retry_after": null,
+      "expect": "altcha_failed"
+    },
+    {
+      "status": 404,
+      "retry_after": null,
+      "expect": "altcha_failed"
+    },
+    {
+      "status": 200,
+      "retry_after": null,
+      "expect": "altcha_failed"
+    },
+    {
+      "status": 418,
+      "retry_after": "5",
+      "expect": "altcha_failed"
+    }
+  ]
+}

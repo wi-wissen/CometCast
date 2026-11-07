@@ -2,19 +2,17 @@
 //! The worker side: runs in the child process that the parent (`runner`) starts.
 //!
 //! The worker lowers its own resource limits first (they are inherited by anything it
-//! starts), then either runs the pure-Rust engine in-process or **supervises LibreOffice** as
-//! its own child. It prints `protection:<name>` lines for what really took effect and
+//! starts), then runs the pure-Rust engine in-process. It prints `protection:<name>` lines for what really took effect and
 //! `warning:<text>` lines for conversion warnings; the parent trusts only the output file,
 //! after checking it.
 //!
 //! Command line (all values are produced by the parent, nothing here is a user interface):
-//! `--engine rust|soffice --format EXT --work DIR --timeout SECS --mem BYTES --fsize BYTES
-//! [--soffice PATH]`. Input is `DIR/in/input.EXT`; output goes to `DIR/out/`.
+//! `--format EXT --work DIR --timeout SECS --mem BYTES --fsize BYTES`. Input is `DIR/in/input.EXT`; output goes to `DIR/out/`.
 
 use std::ffi::OsString;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::format::OfficeFormat;
 
@@ -22,24 +20,21 @@ use crate::format::OfficeFormat;
 pub(crate) const OUTPUT_NAME: &str = "input.pdf";
 
 struct Args {
-    engine: String,
     format: OfficeFormat,
     work: PathBuf,
     timeout: Duration,
     mem: u64,
     fsize: u64,
-    soffice: Option<PathBuf>,
 }
 
 fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
     let mut it = args;
-    let (mut engine, mut format, mut work) = (None, None, None);
-    let (mut timeout, mut mem, mut fsize, mut soffice) = (None, None, None, None);
+    let (mut format, mut work) = (None, None);
+    let (mut timeout, mut mem, mut fsize) = (None, None, None);
     while let Some(a) = it.next() {
         let a = a.to_string_lossy().into_owned();
         let mut val = || it.next().ok_or_else(|| format!("{a} needs a value"));
         match a.as_str() {
-            "--engine" => engine = Some(val()?.to_string_lossy().into_owned()),
             "--format" => {
                 format = OfficeFormat::from_extension(&val()?.to_string_lossy());
                 if format.is_none() {
@@ -50,18 +45,15 @@ fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
             "--timeout" => timeout = val()?.to_string_lossy().parse::<u64>().ok(),
             "--mem" => mem = val()?.to_string_lossy().parse::<u64>().ok(),
             "--fsize" => fsize = val()?.to_string_lossy().parse::<u64>().ok(),
-            "--soffice" => soffice = Some(PathBuf::from(val()?)),
             other => return Err(format!("unknown argument {other}")),
         }
     }
     Ok(Args {
-        engine: engine.ok_or("--engine missing")?,
         format: format.ok_or("--format missing")?,
         work: work.ok_or("--work missing")?,
         timeout: Duration::from_secs(timeout.ok_or("--timeout missing")?),
         mem: mem.ok_or("--mem missing")?,
         fsize: fsize.ok_or("--fsize missing")?,
-        soffice,
     })
 }
 
@@ -93,26 +85,17 @@ fn lower(res: rlimit::Resource, want: u64) -> Result<(), String> {
 fn harden(a: &Args) -> Result<Vec<&'static str>, String> {
     use rlimit::Resource;
     let mut got = Vec::new();
-    // CPU time of this process and, by inheritance, of LibreOffice and its helpers.
+    // CPU time of this process.
     lower(Resource::CPU, a.timeout.as_secs() + 2).map_err(|e| format!("CPU limit: {e}"))?;
     got.push("rlimit-cpu");
     lower(Resource::CORE, 0).map_err(|e| format!("core limit: {e}"))?;
     got.push("rlimit-core");
-    // Largest file any of them may write: the output cap (also caps LibreOffice's profile).
-    // Like AS and CPU this is **per process**, not a total for the process tree.
+    // Largest file this process may write: the output cap.
     lower(Resource::FSIZE, a.fsize).map_err(|e| format!("file size limit: {e}"))?;
     got.push("rlimit-fsize");
-    // Best effort, not fail closed: open files (never raised, see `lower`) and, for the
-    // LibreOffice supervisor only, processes. RLIMIT_NPROC counts every process and thread of
-    // the *user*, not of this tree, so a low value would also stop the pure-Rust engine's
-    // threads and a busy desktop session; 8192 is a fork-bomb brake, not a precise cap.
-    // UNCERTAIN: neither value was tuned against real LibreOffice runs beyond the tiny
-    // fixtures; the root user and CAP_SYS_RESOURCE are exempt from NPROC.
+    // Best effort, not fail closed: open files (never raised, see `lower`).
     if lower(Resource::NOFILE, 2048).is_ok() {
         got.push("rlimit-nofile");
-    }
-    if a.engine == "soffice" && lower(Resource::NPROC, 8192).is_ok() {
-        got.push("rlimit-nproc");
     }
     // RLIMIT_AS is not enforced by the kernel on macOS; setting it may fail there. On Linux
     // it is mandatory. UNCERTAIN: the macOS behaviour was not run.
@@ -185,11 +168,7 @@ pub fn worker_main_args(args: impl Iterator<Item = OsString>) -> i32 {
             return 70;
         }
     }
-    let r = match a.engine.as_str() {
-        "rust" => run_rust(&a),
-        "soffice" => run_soffice(&a),
-        other => Err(format!("unknown engine {other}")),
-    };
+    let r = run_rust(&a);
     match r {
         Ok(()) => 0,
         Err(e) => {
@@ -211,7 +190,6 @@ fn run_rust(a: &Args) -> Result<(), String> {
         OfficeFormat::Docx => Format::Docx,
         OfficeFormat::Pptx => Format::Pptx,
         OfficeFormat::Xlsx => Format::Xlsx,
-        _ => return Err("the pure-Rust engine cannot convert this format".into()),
     };
     let input = a
         .work
@@ -230,116 +208,6 @@ fn run_rust(a: &Args) -> Result<(), String> {
 #[cfg(not(feature = "engine-rust"))]
 fn run_rust(_a: &Args) -> Result<(), String> {
     Err("the pure-Rust engine is not compiled into this build".into())
-}
-
-/// A minimal LibreOffice profile: macros off at the highest security level, no updating of
-/// external links in Calc, Writer, Impress and Draw. UNCERTAIN: the option paths and values
-/// are from LibreOffice's configuration schema as remembered, and were not each tested for
-/// effect; the Impress and Draw `Content/Update/Link` keys in particular may not exist (an
-/// unknown key is ignored, which would mean *no* protection there); headless conversion
-/// does not run document macros by default either. This profile does **not** stop
-/// LibreOffice from reading local files that a document links or includes (images, text
-/// sections, OLE links) and printing their content into the PDF; see docs/documents.md.
-const PROFILE_XCU: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-<item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item>
-<item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item>
-<item oor:path="/org.openoffice.Office.Calc/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
-<item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
-<item oor:path="/org.openoffice.Office.Impress/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
-<item oor:path="/org.openoffice.Office.Draw/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
-</oor:items>
-"#;
-
-fn file_url(p: &Path) -> String {
-    // The path is ours (`runner::WorkDir`), but the temp directory above it can contain
-    // spaces; percent-encode everything but the unreserved characters and `/`.
-    // UNCERTAIN: Windows drive paths (`C:\...`) would need `file:///C:/...`; not run.
-    let mut s = String::from("file://");
-    for b in p.to_string_lossy().bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~') {
-            s.push(char::from(b));
-        } else {
-            s.push_str(&format!("%{b:02X}"));
-        }
-    }
-    s
-}
-
-fn run_soffice(a: &Args) -> Result<(), String> {
-    use std::process::{Command, Stdio};
-    let soffice = a
-        .soffice
-        .as_ref()
-        .ok_or("--soffice missing for the soffice engine")?;
-    let home = a.work.join("home");
-    let tmp = a.work.join("tmp");
-    let profile = a.work.join("profile");
-    for d in [&home, &tmp, &profile.join("user")] {
-        std::fs::create_dir_all(d).map_err(|e| format!("cannot create {}: {e}", d.display()))?;
-    }
-    std::fs::write(
-        profile.join("user").join("registrymodifications.xcu"),
-        PROFILE_XCU,
-    )
-    .map_err(|e| format!("cannot write the profile: {e}"))?;
-    let input = a
-        .work
-        .join("in")
-        .join(format!("input.{}", a.format.extension()));
-    let outdir = a.work.join("out");
-
-    let mut c = Command::new(soffice);
-    c.env_clear()
-        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
-        .env("HOME", &home)
-        .env("TMPDIR", &tmp)
-        .env("LANG", "C.UTF-8")
-        .env("SAL_USE_VCLPLUGIN", "svp")
-        .current_dir(&a.work)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .arg("--headless")
-        .arg("--invisible")
-        .arg("--norestore")
-        .arg("--nologo")
-        .arg("--nodefault")
-        .arg("--nolockcheck")
-        .arg("--nofirststartwizard")
-        .arg(format!("-env:UserInstallation={}", file_url(&profile)))
-        .arg("--convert-to")
-        .arg("pdf")
-        .arg("--outdir")
-        .arg(&outdir)
-        .arg(&input);
-    #[cfg(windows)]
-    if let Some(root) = std::env::var_os("SystemRoot") {
-        c.env("SystemRoot", root);
-    }
-    let mut child = c
-        .spawn()
-        .map_err(|e| format!("cannot start LibreOffice: {e}"))?;
-    let start = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(st)) => {
-                return if st.success() {
-                    Ok(())
-                } else {
-                    Err(format!("LibreOffice exited with {st}"))
-                };
-            }
-            Ok(None) => {}
-            Err(e) => return Err(format!("waiting for LibreOffice: {e}")),
-        }
-        if start.elapsed() > a.timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("LibreOffice did not finish in time".into());
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
 }
 
 #[cfg(all(test, unix))]

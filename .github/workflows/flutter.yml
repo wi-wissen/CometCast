@@ -92,10 +92,12 @@ jobs:
           cargo test -p cc-ffi
       - run: flutter analyze
       # The real-library tests in test/rust_core_test.dart need libcc_ffi.so first, and the one
-      # that counts PDF pages needs the render worker (cc-docs-worker) next to it.
+      # that counts PDF pages needs the render worker (cc-docs-worker) next to it. The Miracast
+      # binding test (test/miracast_ffi_test.dart) needs libcc_miracast_ffi.so (on Linux the
+      # receiver reports "unsupported"; it checks the Dart binding only).
       - name: Build the Rust core for the tests
         working-directory: .
-        run: cargo build -p cc-ffi -p cc-docs
+        run: cargo build -p cc-ffi -p cc-docs -p cc-miracast-ffi
       - run: flutter test
       # Builds the Rust core through CMake and bundles it (see docs/flutter-bridge.md).
       - run: flutter build linux --debug

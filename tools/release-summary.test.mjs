@@ -36,9 +36,9 @@ test('passes with one platform artefact', () => {
   assert.equal(run(['LICENSE', 'cometcast-web-1.0.0.zip']).status, 0);
 });
 
-test('lists NO-CORE and UNSIGNED files as not shippable', () => {
-  const r = run(['cometcast-ios-1.0.0-NO-CORE.ipa', 'cometcast-ios-1.0.0-UNSIGNED-NO-CORE.xcarchive.zip', 'cometcast-web-1.0.0.zip']);
+test('lists UNVERIFIED and UNSIGNED files as not shippable', () => {
+  const r = run(['cometcast-ios-1.0.0-UNVERIFIED.ipa', 'cometcast-ios-1.0.0-UNSIGNED-UNVERIFIED.xcarchive.zip', 'cometcast-web-1.0.0.zip']);
   assert.equal(r.status, 0);
-  assert.match(r.notes, /`cometcast-ios-1\.0\.0-NO-CORE\.ipa`/);
+  assert.match(r.notes, /`cometcast-ios-1\.0\.0-UNVERIFIED\.ipa`/);
   assert.doesNotMatch(r.notes, /- `cometcast-web/);
 });

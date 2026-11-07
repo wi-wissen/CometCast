@@ -1017,6 +1017,308 @@
   "@codecRemembered": {
     "description": "Note that consent is stored."
   },
+  "sendShareScreenHintIos": "iOS asks you to start the broadcast in a list. Sending continues in the background until you stop it here or with the red bar at the top of the screen.",
+  "@sendShareScreenHintIos": {
+    "description": "Subtitle of the \"Share this screen\" switch on iPhone and iPad."
+  },
+  "iosBroadcastWaitingForStart": "Waiting for you to start the broadcast …",
+  "@iosBroadcastWaitingForStart": {
+    "description": "Status text on iOS while the system broadcast list is open and nothing has started yet."
+  },
+  "iosBroadcastInstructions": "In the list, choose \"Comet Cast\" and tap \"Start Broadcast\". If no list appeared: open Control Center, press and hold the record button, choose \"Comet Cast\" and start.",
+  "@iosBroadcastInstructions": {
+    "description": "Instructions shown on iOS while waiting for the person to start the broadcast. The quoted names are the names iOS shows."
+  },
+  "iosBroadcastPickerFailed": "The broadcast list could not be opened from the app. Open Control Center, press and hold the record button, choose \"Comet Cast\" and start. The room code is already handed over.",
+  "@iosBroadcastPickerFailed": {
+    "description": "Shown on iOS when the system list could not be opened by the app."
+  },
+  "iosBroadcastNotStarted": "The broadcast was not started. Nothing is sent.",
+  "@iosBroadcastNotStarted": {
+    "description": "Status text on iOS when nobody started the broadcast within the time limit."
+  },
+  "iosBroadcastWaitingForReceiver": "Connected to the server. Waiting for the receiver …",
+  "@iosBroadcastWaitingForReceiver": {
+    "description": "Status text on iOS: the broadcast extension joined the room and negotiates with the receiver."
+  },
+  "iosBroadcastReconnecting": "The connection was lost. Trying to reconnect …",
+  "@iosBroadcastReconnecting": {
+    "description": "Status text on iOS while the connection to the receiver is temporarily lost."
+  },
+  "iosBroadcastPaused": "The broadcast is paused, for example because of a call.",
+  "@iosBroadcastPaused": {
+    "description": "Status text on iOS while the system has paused the broadcast."
+  },
+  "iosErrorNoConfig": "The broadcast was started without a room code. Start it from the \"Send screen\" page of Comet Cast.",
+  "@iosErrorNoConfig": {
+    "description": "Error on iOS: the extension found no room code (started from Control Center)."
+  },
+  "iosErrorConfigExpired": "The broadcast was not started in time. Start it again.",
+  "@iosErrorConfigExpired": {
+    "description": "Error on iOS: the hand-over of the room code was too old."
+  },
+  "iosErrorInvalidRoomCode": "The room code is not valid.",
+  "@iosErrorInvalidRoomCode": {
+    "description": "Error on iOS: the extension rejected the room code."
+  },
+  "iosErrorInvalidRelay": "The server address is not valid.",
+  "@iosErrorInvalidRelay": {
+    "description": "Error on iOS: the extension rejected the server address."
+  },
+  "iosErrorRoomNotFound": "No receiver with this room code was found. Check the code on the receiving screen.",
+  "@iosErrorRoomNotFound": {
+    "description": "Error on iOS: the server knows no room with this code."
+  },
+  "iosErrorServerUnreachable": "The server cannot be reached. Check your network connection.",
+  "@iosErrorServerUnreachable": {
+    "description": "Error on iOS: the broadcast extension cannot reach the server."
+  },
+  "iosErrorConnectionLost": "The connection to the receiver was lost.",
+  "@iosErrorConnectionLost": {
+    "description": "Error on iOS: the connection failed or was closed."
+  },
+  "iosErrorEncoderFailed": "The screen could not be encoded on this device.",
+  "@iosErrorEncoderFailed": {
+    "description": "Error on iOS: the hardware video encoder failed."
+  },
+  "iosErrorMemory": "The broadcast was stopped because the device ran low on memory.",
+  "@iosErrorMemory": {
+    "description": "Error on iOS: the extension reached its memory limit."
+  },
+  "iosErrorInternal": "The broadcast ended because of an unexpected problem, or the system stopped it.",
+  "@iosErrorInternal": {
+    "description": "Error on iOS: unexpected failure, or the extension stopped reporting."
+  },
+  "codecNotNeededDevice": "The video is decoded by your device. No extra video codec is needed.",
+  "@codecNotNeededDevice": {
+    "description": "Shown in the receiver on iOS instead of the codec download card."
+  },
+  "videoDecoderFailedNoFallback": "This device could not decode the video. There is no other decoder on this system.",
+  "@videoDecoderFailedNoFallback": {
+    "description": "Shown in the receiver on iOS when the device decoder failed (no software fallback exists)."
+  },
+  "homeMiracast": "Receive via Miracast (Windows)",
+  "@homeMiracast": {
+    "description": "Home list row (Windows only): receive a screen from a phone or PC through Miracast."
+  },
+  "homeMiracastHint": "Show the screen of a phone or PC without an app",
+  "@homeMiracastHint": {
+    "description": "Subtitle of the Miracast row."
+  },
+  "miracastTitle": "Miracast receiver",
+  "@miracastTitle": {
+    "description": "Title of the Miracast screen."
+  },
+  "miracastIntro": "This PC can show the screen of an Android phone (\"Cast\" or \"Smart View\") or of a Windows PC (Windows key + K) without any app on the sender.",
+  "@miracastIntro": {
+    "description": "Explanation at the top of the Miracast screen."
+  },
+  "miracastNameLabel": "Name shown to senders",
+  "@miracastNameLabel": {
+    "description": "Label of the text field with the receiver name."
+  },
+  "miracastPairingLabel": "Pairing",
+  "@miracastPairingLabel": {
+    "description": "Label of the pairing drop-down."
+  },
+  "miracastPairingConfirm": "Ask me for every connection",
+  "@miracastPairingConfirm": {
+    "description": "Pairing option: confirmation only."
+  },
+  "miracastPairingPinIfRequested": "Ask me, and show a PIN if the sender asks for one",
+  "@miracastPairingPinIfRequested": {
+    "description": "Pairing option: confirmation, plus a PIN when the sender requests it."
+  },
+  "miracastPairingPinRequired": "Ask me, and always require a PIN",
+  "@miracastPairingPinRequired": {
+    "description": "Pairing option: confirmation plus a PIN that must be typed on the sender."
+  },
+  "miracastStart": "Start receiving",
+  "@miracastStart": {
+    "description": "Button: start the Miracast receiver."
+  },
+  "miracastStop": "Stop receiving",
+  "@miracastStop": {
+    "description": "Button: stop the Miracast receiver."
+  },
+  "miracastDisconnect": "Disconnect",
+  "@miracastDisconnect": {
+    "description": "Button: end the connection to the sender and keep waiting."
+  },
+  "miracastMute": "Mute",
+  "@miracastMute": {
+    "description": "Button: mute the audio of the received screen."
+  },
+  "miracastUnmute": "Unmute",
+  "@miracastUnmute": {
+    "description": "Button: unmute the audio of the received screen."
+  },
+  "miracastStatusOff": "Not started.",
+  "@miracastStatusOff": {
+    "description": "Status text of the Miracast receiver."
+  },
+  "miracastStatusStarting": "Starting …",
+  "@miracastStatusStarting": {
+    "description": "Status text of the Miracast receiver."
+  },
+  "miracastStatusStopping": "Stopping …",
+  "@miracastStatusStopping": {
+    "description": "Status text of the Miracast receiver."
+  },
+  "miracastStatusListening": "Waiting for a sender. On the sending device, choose \"{name}\" in the list of wireless displays.",
+  "@miracastStatusListening": {
+    "description": "Status text while waiting. {name} is the receiver name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "miracastStatusConsent": "A device wants to show its screen. Please answer the question.",
+  "@miracastStatusConsent": {
+    "description": "Status text while the consent dialog is open."
+  },
+  "miracastStatusConnected": "Receiving the screen of \"{device}\".",
+  "@miracastStatusConnected": {
+    "description": "Status text while connected. {device} is the sender name.",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "miracastStatusProblem": "Receiving is not possible right now.",
+  "@miracastStatusProblem": {
+    "description": "Status text when something prevents receiving."
+  },
+  "miracastConsentTitle": "Allow screen sharing?",
+  "@miracastConsentTitle": {
+    "description": "Title of the consent dialog."
+  },
+  "miracastConsentBody": "\"{device}\" wants to show its screen on this display. Only allow this if you know the device and expect it. Nothing is shown before you allow it.",
+  "@miracastConsentBody": {
+    "description": "Body of the consent dialog. {device} is the sender name (cleaned).",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "miracastConsentPin": "PIN: {pin}. Enter it on the sending device if it asks for it.",
+  "@miracastConsentPin": {
+    "description": "Shown in the consent dialog when Windows gives a PIN.",
+    "placeholders": {
+      "pin": {
+        "type": "String"
+      }
+    }
+  },
+  "miracastConsentTimeout": "Without an answer, the request is declined after 30 seconds.",
+  "@miracastConsentTimeout": {
+    "description": "Note in the consent dialog."
+  },
+  "miracastConsentAllow": "Allow",
+  "@miracastConsentAllow": {
+    "description": "Consent dialog button."
+  },
+  "miracastConsentDeny": "Decline",
+  "@miracastConsentDeny": {
+    "description": "Consent dialog button."
+  },
+  "miracastPrivacyNote": "The sender cannot control this PC: keyboard and mouse input from the sender is not enabled.",
+  "@miracastPrivacyNote": {
+    "description": "Privacy note on the Miracast screen."
+  },
+  "miracastFirewallNote": "Windows may ask whether Comet Cast may use the network. Allow it for private networks, otherwise senders cannot connect.",
+  "@miracastFirewallNote": {
+    "description": "Firewall note on the Miracast screen."
+  },
+  "miracastLimitsNote": "Protected content (for example copy-protected video) may appear black. Picture quality and delay depend on the Wi-Fi adapter and have not been measured yet.",
+  "@miracastLimitsNote": {
+    "description": "Limits note on the Miracast screen."
+  },
+  "miracastRejected": "Another device tried to connect and was turned away (times: {count}).",
+  "@miracastRejected": {
+    "description": "Note when a second sender was rejected because one session is already in use.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "miracastLastMessage": "Last message: {message}",
+  "@miracastLastMessage": {
+    "description": "Technical message from the receiver; the text itself is English.",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "miracastPictureStats": "Picture: {width} x {height}, {skipped} skipped",
+  "@miracastPictureStats": {
+    "description": "Statistics line of the received picture.",
+    "placeholders": {
+      "width": {
+        "type": "int"
+      },
+      "height": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "miracastVideoLabel": "Received screen of {device}",
+  "@miracastVideoLabel": {
+    "description": "Screen reader label of the received picture.",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "miracastHintNotWindows": "Miracast receiving only works on Windows 10 or 11.",
+  "@miracastHintNotWindows": {
+    "description": "Hint: not Windows."
+  },
+  "miracastHintFeatureMissing": "Windows could not provide the Miracast receiver. The optional feature \"Wireless Display\" may be missing: open Settings, System, Optional features, Add an optional feature, and install \"Wireless Display\". (Command line, as administrator: DISM /Online /Add-Capability /CapabilityName:App.WirelessDisplay.Connect~~~~0.0.1.0.) Then restart this app.",
+  "@miracastHintFeatureMissing": {
+    "description": "Hint with the Settings path and the DISM capability name. UNCERTAIN: the menu path and the capability name were written from memory of the Microsoft documentation and not checked on a Windows machine."
+  },
+  "miracastHintAdapterUnsupported": "The Wi-Fi adapter or its driver of this PC cannot receive Miracast. Update the Wi-Fi driver, or use another PC or an adapter that supports Miracast.",
+  "@miracastHintAdapterUnsupported": {
+    "description": "Hint: adapter without Miracast receiver support."
+  },
+  "miracastHintAdapterNotOptimized": "Windows reports that the Wi-Fi driver is not optimised for Miracast. Receiving may work, but expect a poor picture or interruptions.",
+  "@miracastHintAdapterNotOptimized": {
+    "description": "Hint: driver reports support but not optimised."
+  },
+  "miracastHintDisabledByPolicy": "Windows policy (group policy or device management) has switched Miracast receiving off. Ask your administrator.",
+  "@miracastHintDisabledByPolicy": {
+    "description": "Hint: disabled by policy."
+  },
+  "miracastHintTemporarilyUnavailable": "Windows says receiving is temporarily not possible. Check that Wi-Fi is switched on and that no other app is using Miracast, then start again.",
+  "@miracastHintTemporarilyUnavailable": {
+    "description": "Hint: temporarily unavailable."
+  },
+  "miracastHintAccessDenied": "Windows refused access to the Miracast receiver. This build may need to be installed as a packaged app; see the documentation.",
+  "@miracastHintAccessDenied": {
+    "description": "Hint: access denied."
+  },
+  "miracastHintInvalidSettings": "The name or the pairing setting is not valid. Use a name of 1 to 32 characters without control characters.",
+  "@miracastHintInvalidSettings": {
+    "description": "Hint: invalid settings."
+  },
+  "miracastHintLibraryMissing": "The Miracast component (cc_miracast_ffi.dll) was not found next to the app, or it does not match this version. Reinstall the app.",
+  "@miracastHintLibraryMissing": {
+    "description": "Hint: DLL missing."
+  },
+  "miracastHintOther": "Miracast receiving failed. The technical message below may help the person who supports you.",
+  "@miracastHintOther": {
+    "description": "Hint: other failure."
+  },
   "joinPanelTitle": "Who may join",
   "@joinPanelTitle": {
     "description": "Receive screen: heading of the join settings."

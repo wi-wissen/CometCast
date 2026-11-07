@@ -1,0 +1,271 @@
+{
+  "description": "Connection check code (apps/web/src/core/sas.ts): `code` = connectionCode(local_sdp, remote_sdp); `fingerprint` = sdpFingerprint(sdp).",
+  "code": [
+    {
+      "name": "two simple fingerprints",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "order swapped",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "lower case input",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "realistic fingerprints",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 7B:8B:F0:65:5F:78:E2:51:3B:AC:6F:F3:3F:46:1B:35:DC:B8:5F:64:1A:24:C2:3B:D3:39:55:C3:D1:63:26:0D\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 3C:14:B5:E7:90:02:A1:77:4D:9E:21:F6:58:C0:AA:1B:6E:D2:3F:84:05:B9:7A:E3:C6:18:4F:52:9D:0B:A7:61\r\na=setup:actpass\r\n",
+      "expect": "000 641"
+    },
+    {
+      "name": "realistic fingerprints swapped",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 3C:14:B5:E7:90:02:A1:77:4D:9E:21:F6:58:C0:AA:1B:6E:D2:3F:84:05:B9:7A:E3:C6:18:4F:52:9D:0B:A7:61\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 7B:8B:F0:65:5F:78:E2:51:3B:AC:6F:F3:3F:46:1B:35:DC:B8:5F:64:1A:24:C2:3B:D3:39:55:C3:D1:63:26:0D\r\na=setup:actpass\r\n",
+      "expect": "000 641"
+    },
+    {
+      "name": "identical fingerprints",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": "560 056"
+    },
+    {
+      "name": "swapped certificate (attacker) differs",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee:ee\r\na=setup:actpass\r\n",
+      "expect": "385 199"
+    },
+    {
+      "name": "no fingerprint",
+      "local_sdp": "v=0\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "sha-1 fingerprint only",
+      "local_sdp": "a=fingerprint:sha-1 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "short fingerprint",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:CD\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "LF only line ends",
+      "local_sdp": "v=0\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\n",
+      "remote_sdp": "a=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12",
+      "expect": "418 683"
+    },
+    {
+      "name": "fingerprint is the last line without newline",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "trailing spaces and tab",
+      "local_sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB \t\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "tab separator",
+      "local_sdp": "a=fingerprint:sha-256\tAB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "two spaces separator",
+      "local_sdp": "a=fingerprint:sha-256  AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "no separator",
+      "local_sdp": "a=fingerprint:sha-256AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "first fingerprint wins",
+      "local_sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "sha-1 line before the sha-256 line",
+      "local_sdp": "a=fingerprint:sha-1 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "783 078"
+    },
+    {
+      "name": "indented line is not a match",
+      "local_sdp": " a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "fingerprint with non hex",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "fingerprint with dash separators",
+      "local_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "trailing garbage after fingerprint",
+      "local_sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB x\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "line separator U+2028 as line end",
+      "local_sdp": "v=0 a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB a=setup:actpass",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "both empty",
+      "local_sdp": "",
+      "remote_sdp": "",
+      "expect": null
+    }
+  ],
+  "fingerprint": [
+    {
+      "name": "two simple fingerprints",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "order swapped",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12"
+    },
+    {
+      "name": "lower case input",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab\r\na=setup:actpass\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "realistic fingerprints",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 7B:8B:F0:65:5F:78:E2:51:3B:AC:6F:F3:3F:46:1B:35:DC:B8:5F:64:1A:24:C2:3B:D3:39:55:C3:D1:63:26:0D\r\na=setup:actpass\r\n",
+      "expect": "7b:8b:f0:65:5f:78:e2:51:3b:ac:6f:f3:3f:46:1b:35:dc:b8:5f:64:1a:24:c2:3b:d3:39:55:c3:d1:63:26:0d"
+    },
+    {
+      "name": "realistic fingerprints swapped",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 3C:14:B5:E7:90:02:A1:77:4D:9E:21:F6:58:C0:AA:1B:6E:D2:3F:84:05:B9:7A:E3:C6:18:4F:52:9D:0B:A7:61\r\na=setup:actpass\r\n",
+      "expect": "3c:14:b5:e7:90:02:a1:77:4d:9e:21:f6:58:c0:aa:1b:6e:d2:3f:84:05:b9:7a:e3:c6:18:4f:52:9d:0b:a7:61"
+    },
+    {
+      "name": "identical fingerprints",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "swapped certificate (attacker) differs",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12"
+    },
+    {
+      "name": "no fingerprint",
+      "sdp": "v=0\r\n",
+      "expect": null
+    },
+    {
+      "name": "sha-1 fingerprint only",
+      "sdp": "a=fingerprint:sha-1 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "expect": null
+    },
+    {
+      "name": "short fingerprint",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB:CD\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "LF only line ends",
+      "sdp": "v=0\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "fingerprint is the last line without newline",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "trailing spaces and tab",
+      "sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB \t\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "tab separator",
+      "sdp": "a=fingerprint:sha-256\tAB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "two spaces separator",
+      "sdp": "a=fingerprint:sha-256  AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "no separator",
+      "sdp": "a=fingerprint:sha-256AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "expect": null
+    },
+    {
+      "name": "first fingerprint wins",
+      "sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "sha-1 line before the sha-256 line",
+      "sdp": "a=fingerprint:sha-1 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
+      "expect": "cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd"
+    },
+    {
+      "name": "indented line is not a match",
+      "sdp": " a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "expect": null
+    },
+    {
+      "name": "fingerprint with non hex",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ:ZZ\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "fingerprint with dash separators",
+      "sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB-AB\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "trailing garbage after fingerprint",
+      "sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB x\r\n",
+      "expect": null
+    },
+    {
+      "name": "line separator U+2028 as line end",
+      "sdp": "v=0 a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB a=setup:actpass",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "both empty",
+      "sdp": "",
+      "expect": null
+    }
+  ]
+}

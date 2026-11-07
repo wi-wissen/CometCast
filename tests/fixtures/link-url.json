@@ -1,0 +1,719 @@
+{
+  "description": "validateLinkUrl: input in, normalised href (or null) out. `expect` is what apps/web/src/core/control.ts returns (WHATWG URL of Node, see the test); `expect_apple_tv` (optional) is a documented, deliberately stricter result of the Swift implementation (see apps/apple-tv/CometCastCore/Sources/CometCastCore/LinkURL.swift).",
+  "cases": [
+    {
+      "name": "plain https",
+      "input": "https://example.com/",
+      "expect": "https://example.com/"
+    },
+    {
+      "name": "plain http",
+      "input": "http://example.com",
+      "expect": "http://example.com/"
+    },
+    {
+      "name": "no path",
+      "input": "https://example.com",
+      "expect": "https://example.com/"
+    },
+    {
+      "name": "uppercase scheme and host",
+      "input": "HTTPS://EXAMPLE.COM/Path",
+      "expect": "https://example.com/Path"
+    },
+    {
+      "name": "default port https",
+      "input": "https://example.com:443/",
+      "expect": "https://example.com/"
+    },
+    {
+      "name": "default port http",
+      "input": "http://example.com:80/",
+      "expect": "http://example.com/"
+    },
+    {
+      "name": "non default port",
+      "input": "https://example.com:8443/x",
+      "expect": "https://example.com:8443/x"
+    },
+    {
+      "name": "port zero",
+      "input": "http://example.com:0/",
+      "expect": "http://example.com:0/"
+    },
+    {
+      "name": "port too large",
+      "input": "http://example.com:65536/",
+      "expect": null
+    },
+    {
+      "name": "port 65535",
+      "input": "http://example.com:65535/",
+      "expect": "http://example.com:65535/"
+    },
+    {
+      "name": "empty port",
+      "input": "http://example.com:/a",
+      "expect": "http://example.com/a"
+    },
+    {
+      "name": "port with letters",
+      "input": "http://example.com:80a/",
+      "expect": null
+    },
+    {
+      "name": "leading zero port",
+      "input": "http://example.com:0080/",
+      "expect": "http://example.com/"
+    },
+    {
+      "name": "query only",
+      "input": "https://example.com?a=1",
+      "expect": "https://example.com/?a=1"
+    },
+    {
+      "name": "fragment only",
+      "input": "https://example.com#x",
+      "expect": "https://example.com/#x"
+    },
+    {
+      "name": "empty query",
+      "input": "https://example.com/?",
+      "expect": "https://example.com/?"
+    },
+    {
+      "name": "empty fragment",
+      "input": "https://example.com/#",
+      "expect": "https://example.com/#"
+    },
+    {
+      "name": "query with quote",
+      "input": "https://example.com/?a='b'",
+      "expect": "https://example.com/?a=%27b%27"
+    },
+    {
+      "name": "query with brace and caret",
+      "input": "https://example.com/?a={b}^c`d",
+      "expect": "https://example.com/?a={b}^c`d"
+    },
+    {
+      "name": "path with brace caret backtick pipe",
+      "input": "https://example.com/a{b}c^d`e|f",
+      "expect": "https://example.com/a%7Bb%7Dc^d%60e|f"
+    },
+    {
+      "name": "path with quote and angle",
+      "input": "https://example.com/a\"b<c>d",
+      "expect": "https://example.com/a%22b%3Cc%3Ed"
+    },
+    {
+      "name": "fragment with backtick and quote",
+      "input": "https://example.com/#a`b\"c<d>e",
+      "expect": "https://example.com/#a%60b%22c%3Cd%3Ee"
+    },
+    {
+      "name": "percent sequences kept",
+      "input": "https://example.com/a%20b%zz%2",
+      "expect": "https://example.com/a%20b%zz%2"
+    },
+    {
+      "name": "percent in query kept",
+      "input": "https://example.com/?a=%41%",
+      "expect": "https://example.com/?a=%41%"
+    },
+    {
+      "name": "non ascii path",
+      "input": "https://example.com/caf\u00e9/\u00fc",
+      "expect": "https://example.com/caf%C3%A9/%C3%BC"
+    },
+    {
+      "name": "non ascii query",
+      "input": "https://example.com/?q=\u00e4\u00f6",
+      "expect": "https://example.com/?q=%C3%A4%C3%B6"
+    },
+    {
+      "name": "non ascii fragment",
+      "input": "https://example.com/#\u00fc",
+      "expect": "https://example.com/#%C3%BC"
+    },
+    {
+      "name": "astral in path",
+      "input": "https://example.com/\ud83d\ude00",
+      "expect": "https://example.com/%F0%9F%98%80"
+    },
+    {
+      "name": "dot segments",
+      "input": "https://example.com/a/b/../c/./d",
+      "expect": "https://example.com/a/c/d"
+    },
+    {
+      "name": "dot segments above root",
+      "input": "https://example.com/../../a",
+      "expect": "https://example.com/a"
+    },
+    {
+      "name": "trailing dot segment",
+      "input": "https://example.com/a/b/.",
+      "expect": "https://example.com/a/b/"
+    },
+    {
+      "name": "trailing double dot",
+      "input": "https://example.com/a/b/..",
+      "expect": "https://example.com/a/"
+    },
+    {
+      "name": "encoded dots",
+      "input": "https://example.com/a/%2e%2E/b/%2e/c",
+      "expect": "https://example.com/b/c"
+    },
+    {
+      "name": "mixed encoded dots",
+      "input": "https://example.com/a/.%2e/b/%2e./c",
+      "expect": "https://example.com/c"
+    },
+    {
+      "name": "double slash path",
+      "input": "https://example.com//a//b",
+      "expect": "https://example.com//a//b"
+    },
+    {
+      "name": "backslash path",
+      "input": "https://example.com\\a\\b",
+      "expect": "https://example.com/a/b"
+    },
+    {
+      "name": "backslashes after scheme",
+      "input": "https:\\\\example.com\\a",
+      "expect": "https://example.com/a",
+      "expect_rust": null,
+      "note_rust": "the Rust check needs a literal ://"
+    },
+    {
+      "name": "one slash",
+      "input": "https:/example.com/a",
+      "expect": "https://example.com/a",
+      "expect_rust": null,
+      "note_rust": "the Rust check needs a literal ://"
+    },
+    {
+      "name": "no slashes",
+      "input": "https:example.com/a",
+      "expect": "https://example.com/a",
+      "expect_rust": null,
+      "note_rust": "the Rust check needs a literal ://"
+    },
+    {
+      "name": "three slashes",
+      "input": "https:///example.com/a",
+      "expect": "https://example.com/a"
+    },
+    {
+      "name": "many slashes",
+      "input": "https://///example.com/a",
+      "expect": "https://example.com/a"
+    },
+    {
+      "name": "credentials",
+      "input": "https://user@example.com/",
+      "expect": null
+    },
+    {
+      "name": "credentials with password",
+      "input": "https://user:pw@example.com/",
+      "expect": null
+    },
+    {
+      "name": "empty credentials",
+      "input": "https://@example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses any @ in the authority"
+    },
+    {
+      "name": "colon only credentials",
+      "input": "https://:@example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses any @ in the authority"
+    },
+    {
+      "name": "double colon credentials",
+      "input": "https://::@example.com/",
+      "expect": null
+    },
+    {
+      "name": "at in path",
+      "input": "https://example.com/a@b",
+      "expect": "https://example.com/a@b"
+    },
+    {
+      "name": "two ats",
+      "input": "https://a@b@example.com/",
+      "expect": null
+    },
+    {
+      "name": "ip v4",
+      "input": "http://192.168.1.10:8080/x",
+      "expect": "http://192.168.1.10:8080/x"
+    },
+    {
+      "name": "ip v4 hex",
+      "input": "http://0x7f.1/",
+      "expect": "http://127.0.0.1/"
+    },
+    {
+      "name": "ip v4 single number",
+      "input": "http://2130706433/",
+      "expect": "http://127.0.0.1/"
+    },
+    {
+      "name": "ip v4 octal",
+      "input": "http://0177.0.0.1/",
+      "expect": "http://127.0.0.1/"
+    },
+    {
+      "name": "ip v4 short",
+      "input": "http://127.1/",
+      "expect": "http://127.0.0.1/"
+    },
+    {
+      "name": "ip v4 too many parts",
+      "input": "http://1.2.3.4.5/",
+      "expect": null
+    },
+    {
+      "name": "ip v4 out of range",
+      "input": "http://256.1.1.1/",
+      "expect": null
+    },
+    {
+      "name": "ip v4 overflow single",
+      "input": "http://4294967296/",
+      "expect": null
+    },
+    {
+      "name": "ip v4 trailing dot",
+      "input": "http://127.0.0.1./",
+      "expect": "http://127.0.0.1/"
+    },
+    {
+      "name": "ip v4 last label numeric name",
+      "input": "http://example.1/",
+      "expect": null
+    },
+    {
+      "name": "host ends in hex-like",
+      "input": "http://a.0x1/",
+      "expect": null
+    },
+    {
+      "name": "ip v6 loopback",
+      "input": "http://[::1]/",
+      "expect": "http://[::1]/"
+    },
+    {
+      "name": "ip v6 with port",
+      "input": "http://[2001:db8::1]:8080/a",
+      "expect": "http://[2001:db8::1]:8080/a"
+    },
+    {
+      "name": "ip v6 uncompressed",
+      "input": "http://[2001:0db8:0000:0000:0000:0000:0000:0001]/",
+      "expect": "http://[2001:db8::1]/"
+    },
+    {
+      "name": "localhost",
+      "input": "http://localhost:3000/",
+      "expect": "http://localhost:3000/"
+    },
+    {
+      "name": "single label",
+      "input": "http://intranet/",
+      "expect": "http://intranet/"
+    },
+    {
+      "name": "trailing dot host",
+      "input": "https://example.com./",
+      "expect": "https://example.com./"
+    },
+    {
+      "name": "host with underscore",
+      "input": "https://my_host.example.com/",
+      "expect": "https://my_host.example.com/"
+    },
+    {
+      "name": "host with empty label",
+      "input": "https://a..b/",
+      "expect": "https://a..b/"
+    },
+    {
+      "name": "host leading dot",
+      "input": "https://.example.com/",
+      "expect": "https://.example.com/"
+    },
+    {
+      "name": "host with percent",
+      "input": "https://exa%6dple.com/",
+      "expect": "https://example.com/"
+    },
+    {
+      "name": "host with percent encoded dot",
+      "input": "https://example%2ecom/",
+      "expect": "https://example.com/"
+    },
+    {
+      "name": "host with space",
+      "input": "https://exa mple.com/",
+      "expect": null
+    },
+    {
+      "name": "host with angle",
+      "input": "https://exa<mple.com/",
+      "expect": null
+    },
+    {
+      "name": "host with caret",
+      "input": "https://exa^mple.com/",
+      "expect": null
+    },
+    {
+      "name": "host with pipe",
+      "input": "https://exa|mple.com/",
+      "expect": null
+    },
+    {
+      "name": "empty host",
+      "input": "https:///",
+      "expect": null
+    },
+    {
+      "name": "empty host with port",
+      "input": "https://:80/",
+      "expect": null
+    },
+    {
+      "name": "only scheme",
+      "input": "https:",
+      "expect": null
+    },
+    {
+      "name": "scheme and slashes",
+      "input": "https://",
+      "expect": null
+    },
+    {
+      "name": "idn host",
+      "input": "https://m\u00fcnchen.de/",
+      "expect": "https://xn--mnchen-3ya.de/",
+      "expect_apple_tv": null
+    },
+    {
+      "name": "punycode host",
+      "input": "https://xn--mnchen-3ya.de/",
+      "expect": "https://xn--mnchen-3ya.de/",
+      "expect_apple_tv": null
+    },
+    {
+      "name": "uppercase punycode",
+      "input": "https://XN--MNCHEN-3YA.DE/",
+      "expect": "https://xn--mnchen-3ya.de/",
+      "expect_apple_tv": null
+    },
+    {
+      "name": "fullwidth host",
+      "input": "https://\uff45xample.com/",
+      "expect": "https://example.com/",
+      "expect_apple_tv": null
+    },
+    {
+      "name": "bad punycode",
+      "input": "https://xn--a/",
+      "expect": null
+    },
+    {
+      "name": "soft hyphen in host",
+      "input": "https://exa\u00admple.com/",
+      "expect": "https://example.com/",
+      "expect_apple_tv": null
+    },
+    {
+      "name": "non breaking space",
+      "input": "https://example.com/\u00a0x",
+      "expect": "https://example.com/%C2%A0x",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses any Unicode white space; the web client only the ASCII and C1 control range and spaces"
+    },
+    {
+      "name": "relative path",
+      "input": "/a/b",
+      "expect": null
+    },
+    {
+      "name": "no scheme",
+      "input": "example.com/a",
+      "expect": null
+    },
+    {
+      "name": "protocol relative",
+      "input": "//example.com/a",
+      "expect": null
+    },
+    {
+      "name": "ftp",
+      "input": "ftp://example.com/",
+      "expect": null
+    },
+    {
+      "name": "file",
+      "input": "file:///etc/passwd",
+      "expect": null
+    },
+    {
+      "name": "javascript",
+      "input": "javascript:alert(1)",
+      "expect": null
+    },
+    {
+      "name": "mailto",
+      "input": "mailto:a@b.c",
+      "expect": null
+    },
+    {
+      "name": "data",
+      "input": "data:text/plain,hi",
+      "expect": null
+    },
+    {
+      "name": "blob",
+      "input": "blob:https://example.com/uuid",
+      "expect": null
+    },
+    {
+      "name": "ws",
+      "input": "ws://example.com/",
+      "expect": null
+    },
+    {
+      "name": "wss",
+      "input": "wss://example.com/",
+      "expect": null
+    },
+    {
+      "name": "scheme with plus",
+      "input": "git+https://example.com/",
+      "expect": null
+    },
+    {
+      "name": "scheme with digit start",
+      "input": "1http://example.com/",
+      "expect": null
+    },
+    {
+      "name": "uppercase mixed scheme",
+      "input": "HtTp://example.com/",
+      "expect": "http://example.com/"
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "expect": null
+    },
+    {
+      "name": "spaces only",
+      "input": "   ",
+      "expect": null
+    },
+    {
+      "name": "leading and trailing spaces",
+      "input": "  https://example.com/a  ",
+      "expect": "https://example.com/a"
+    },
+    {
+      "name": "tab inside",
+      "input": "https://exa\tmple.com/",
+      "expect": null
+    },
+    {
+      "name": "newline inside",
+      "input": "https://example.com/a\nb",
+      "expect": null
+    },
+    {
+      "name": "carriage return inside",
+      "input": "https://example.com/a\rb",
+      "expect": null
+    },
+    {
+      "name": "nul inside",
+      "input": "https://example.com/a\u0000b",
+      "expect": null
+    },
+    {
+      "name": "del inside",
+      "input": "https://example.com/a\u007fb",
+      "expect": null
+    },
+    {
+      "name": "c1 control inside",
+      "input": "https://example.com/a\u0085b",
+      "expect": null
+    },
+    {
+      "name": "leading nbsp",
+      "input": "\u00a0https://example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
+    },
+    {
+      "name": "leading ideographic space",
+      "input": "\u3000https://example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
+    },
+    {
+      "name": "leading bom",
+      "input": "\ufeffhttps://example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
+    },
+    {
+      "name": "trailing line separator",
+      "input": "https://example.com/\u2028",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
+    },
+    {
+      "name": "zero width space in host",
+      "input": "https://exa\u200bmple.com/",
+      "expect": "https://example.com/",
+      "expect_apple_tv": null
+    },
+    {
+      "name": "rtl override in path",
+      "input": "https://example.com/\u202e",
+      "expect": "https://example.com/%E2%80%AE",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses bidirectional control characters"
+    },
+    {
+      "name": "long idempotence case",
+      "input": "https://example.com/a%2e%2e/b",
+      "expect": "https://example.com/a%2e%2e/b"
+    },
+    {
+      "name": "percent encoded slash",
+      "input": "https://example.com/a%2fb",
+      "expect": "https://example.com/a%2fb"
+    },
+    {
+      "name": "percent encoded backslash",
+      "input": "https://example.com/a%5cb",
+      "expect": "https://example.com/a%5cb"
+    },
+    {
+      "name": "semicolon and equals",
+      "input": "https://example.com/a;b=c",
+      "expect": "https://example.com/a;b=c"
+    },
+    {
+      "name": "plus in query",
+      "input": "https://example.com/?a+b=c+d",
+      "expect": "https://example.com/?a+b=c+d"
+    },
+    {
+      "name": "star and parens",
+      "input": "https://example.com/*()!~'",
+      "expect": "https://example.com/*()!~'"
+    },
+    {
+      "name": "trailing slash query",
+      "input": "https://example.com/a/?b",
+      "expect": "https://example.com/a/?b"
+    },
+    {
+      "name": "media mp4",
+      "input": "https://cdn.example.com/video.MP4?token=abc",
+      "expect": "https://cdn.example.com/video.MP4?token=abc"
+    },
+    {
+      "name": "hls",
+      "input": "https://cdn.example.com/live/index.m3u8#t=1",
+      "expect": "https://cdn.example.com/live/index.m3u8#t=1"
+    },
+    {
+      "name": "hash in query area",
+      "input": "https://example.com/?a=1#b?c=2",
+      "expect": "https://example.com/?a=1#b?c=2"
+    },
+    {
+      "name": "question in fragment",
+      "input": "https://example.com/#a?b",
+      "expect": "https://example.com/#a?b"
+    },
+    {
+      "name": "hash twice",
+      "input": "https://example.com/#a#b",
+      "expect": "https://example.com/#a#b"
+    },
+    {
+      "name": "2048 characters",
+      "input_parts": [
+        "https://example.com/",
+        {
+          "repeat": "a",
+          "count": 2028
+        }
+      ],
+      "expect": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "2049 characters",
+      "input_parts": [
+        "https://example.com/",
+        {
+          "repeat": "a",
+          "count": 2029
+        }
+      ],
+      "expect": null
+    },
+    {
+      "name": "short input that grows over the limit when normalised",
+      "input_parts": [
+        "https://example.com/",
+        {
+          "repeat": "\u00e9",
+          "count": 700
+        }
+      ],
+      "expect": null
+    },
+    {
+      "name": "short input that fits after normalising",
+      "input_parts": [
+        "https://example.com/",
+        {
+          "repeat": "\u00e9",
+          "count": 500
+        }
+      ],
+      "expect": null
+    },
+    {
+      "name": "2048 characters plus spaces around",
+      "input_parts": [
+        "  https://example.com/",
+        {
+          "repeat": "a",
+          "count": 2028
+        },
+        "  "
+      ],
+      "expect": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
