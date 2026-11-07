@@ -215,7 +215,7 @@ it at all.
 | Objects | 2 000 000 | pre-scan |
 | Filters on one stream | 8 | pre-scan |
 
-**Uncertain:** all defaults are guesses for a classroom setting. The memory default comes from the
+**Uncertain:** all defaults are guesses for a typical meeting-room setting. The memory default comes from the
 measurements below on one Linux machine; nothing is measured on real devices. They are public
 fields of `Limits`.
 
@@ -232,14 +232,14 @@ produced.
 
 | What | Result |
 | --- | --- |
-| Lowest working `RLIMIT_AS` (set by the worker itself, with Landlock and seccomp active; bisection in steps of 4 MiB, debug build, second review) | `minimal.pdf` at 1 px (open only plus a tiny render): **47 MiB** (fails at 43). `classroom.pdf` at 1920 px: **91 MiB** (fails at 87). `minimal.pdf` at 3840 px: **107 MiB** (fails at 103). `classroom.pdf` at 3840 px (20.8 Mpx): **270 MiB** (fails at 266). `minimal.pdf` at 7680 px (7680 x 3840, 29 Mpx): **338 MiB** (fails at 334). Earlier coarse numbers with `sh -c ulimit -v` (96, 128, 384, 384 MiB) were upper bounds from a coarser search and are replaced by these. The 1 GiB default stays: about 3 times the largest of these, 2.5 times the worst case measured for the largest image the caps allow |
+| Lowest working `RLIMIT_AS` (set by the worker itself, with Landlock and seccomp active; bisection in steps of 4 MiB, debug build, second review) | `minimal.pdf` at 1 px (open only plus a tiny render): **47 MiB** (fails at 43). `slides.pdf` at 1920 px: **91 MiB** (fails at 87). `minimal.pdf` at 3840 px: **107 MiB** (fails at 103). `slides.pdf` at 3840 px (20.8 Mpx): **270 MiB** (fails at 266). `minimal.pdf` at 7680 px (7680 x 3840, 29 Mpx): **338 MiB** (fails at 334). Earlier coarse numbers with `sh -c ulimit -v` (96, 128, 384, 384 MiB) were upper bounds from a coarser search and are replaced by these. The 1 GiB default stays: about 3 times the largest of these, 2.5 times the worst case measured for the largest image the caps allow |
 | Largest image the caps allow: 8000 x 8000 RGB (192 MB decoded), square page | At 3840 x 3840: resident peak 272 MiB, 14 s (debug). At 5760 x 5760 (the output cap): peak 396 MiB, 26 s (debug, measured once by hand). So 1 GiB is about 2.5 times the worst case measured |
 | Flate bomb, 2 GiB of zeros in a 2.1 MB content stream, process limit only (pre-scan off, 512 MiB) | `WorkerFailed` after 4.8 s; resident peak seen by the parent 303 MiB; the test process stayed far below 600 MiB. With the pre-scan on: `Rejected` after 0.7 s |
 | Image declared 2e9 x 2e9 (tiny body), process limit only | `WorkerFailed` after 68 ms (peak seen 45 MiB). Pre-scan on: `Rejected` after 5 ms |
 | Image 20000 x 20000 RGB (1.2 GB decoded, 1.2 MB file), process limit only | `WorkerFailed` after 4.8 s (peak seen 300 MiB). Pre-scan on: `Rejected` after 55 ms |
 | 1 000 000 tiny pages (105 MB file) | Used to take 12 s and 900 MB. Now refused on the raw bytes in 30 ms (`TooManyPages`), also when `/Count` lies |
 | 100 000-level nested dictionary | Walking it in the pre-scan took 12 s (debug); now refused by the raw nesting check before parsing |
-| Cost of the process | Open 4.5 ms (was 0.2 to 1 ms) with `sh`; **5.6 ms** (median of 15, debug) now that the worker restricts itself with Landlock and seccomp and no shell is started. Render of a 1920 px page: debug minimal.pdf 66 ms now (67 before, 51 in process), classroom p1 272 ms (was 234); release minimal 17 ms (was 7.7), classroom p1 46 ms (was 25; release numbers not re-measured after the sandbox) |
+| Cost of the process | Open 4.5 ms (was 0.2 to 1 ms) with `sh`; **5.6 ms** (median of 15, debug) now that the worker restricts itself with Landlock and seccomp and no shell is started. Render of a 1920 px page: debug minimal.pdf 66 ms now (67 before, 51 in process), slides.pdf p1 272 ms (was 234); release minimal 17 ms (was 7.7), slides.pdf p1 46 ms (was 25; release numbers not re-measured after the sandbox) |
 
 "Peak seen" values are read by the parent every 10 ms, so they are lower bounds when the worker
 dies in between; the hard limit is the kernel's.
@@ -365,20 +365,20 @@ page at 1920 px width, median of 5 renders after the first:
 | File and page | Output | Debug (dev) | Release |
 | --- | --- | --- | --- |
 | minimal.pdf (200 x 100 pt, 2 rectangles, 2 letters) | 1920 x 960 | 51 ms | 7.7 ms |
-| classroom.pdf p1 (text, vectors) | 1920 x 2715 | 234 ms | 25 ms |
-| classroom.pdf p2 (JPEG) | 1920 x 2715 | 265 ms | 7.1 ms |
-| classroom.pdf p3 (Vera font, gradient) | 1920 x 2715 | 157 ms | 13.7 ms |
+| slides.pdf p1 (text, vectors) | 1920 x 2715 | 234 ms | 25 ms |
+| slides.pdf p2 (JPEG) | 1920 x 2715 | 265 ms | 7.1 ms |
+| slides.pdf p3 (Vera font, gradient) | 1920 x 2715 | 157 ms | 13.7 ms |
 | rotated_pages.pdf p1 (one box) | 1920 x 2880 | 123 ms | 22.4 ms |
 | rotated_pages.pdf p2 (rotated 90) | 1920 x 1280 | 48 ms | 2.7 ms |
 | two_pages_one_rotated.pdf p2 | 1920 x 3840 | 204 ms | 28.3 ms |
 | encrypted_empty_user_password.pdf | 1920 x 2715 | 113 ms | 6.3 ms |
 
-Open time was 0.2 to 1 ms for these tiny files. These pages are far simpler than classroom
-PDFs; **no statement about real classroom files, the Apple TV or weak mini PCs follows from
+Open time was 0.2 to 1 ms for these tiny files. These pages are far simpler than real-world
+PDFs; **no statement about real files, the Apple TV or weak mini PCs follows from
 them.** The plan's goal (a page in under 500 ms on weak hardware, measurement point 7) is
 **not verified**.
 
-Picture sizes for classroom.pdf page 1 at 300 px width: PNG 9 543 bytes, lossless WebP 16 678
+Picture sizes for slides.pdf page 1 at 300 px width: PNG 9 543 bytes, lossless WebP 16 678
 bytes. So for this page the lossless WebP of `image-webp` was **larger** than the PNG; one
 sample proves nothing general.
 
@@ -420,10 +420,10 @@ worker and the document; the file is not opened again automatically.
 
 Measured locally on one machine only (one Chromium/Chrome build on Linux, not in CI, not repeated elsewhere): the `.wasm` file is 5.3 MB raw and about 1.8 MB with
 `gzip -9` (the server does not compress, so unless a proxy does, the raw size is transferred; the file is
-loaded only when a PDF arrives). A generated three-page PDF and the classroom PDF render into a non-blank
+loaded only when a PDF arrives). A generated three-page PDF and the sample PDF render into a non-blank
 canvas at the expected places and colours (rendered in Chromium by `npm run e2e:pdf`); a damaged PDF gives the notice; a link annotation inside a test PDF
 is not followed. Not checked: Firefox, Safari, mobile browsers, large or hostile files in the browser (the
-hostile-file tests run on the native target only), the fidelity of real classroom PDFs (point 7), and
+hostile-file tests run on the native target only), the fidelity of real PDFs (point 7), and
 accessibility of the page content (the canvas is labelled with the page number only, there is no text
 alternative: UNCERTAIN, a text layer would need text extraction, which this API does not offer).
 
@@ -452,12 +452,12 @@ alternative: UNCERTAIN, a text layer would need text extraction, which this API 
 What the tests above show: standard fonts (Helvetica, Times) render through hayro's built-in
 substitutes, an embedded TrueType subset renders, vector shapes, curves, a shading and a
 DCT (JPEG) image render at the expected places and colours, and rotation works. I looked at
-the PNG output of the three classroom pages; they look correct.
+the PNG output of the three sample pages; they look correct.
 
 **Uncertain / not tested:** the plan's list of hayro gaps (no knockout groups, no non-embedded
 CID fonts, experimental status), CJK and right-to-left text, transparency groups, JPEG 2000,
 JBIG2, scanned pages, very large real files, PDFs with form fields or annotations, and the 20
-real classroom PDFs. No fallback to pdfium-render exists in the code.
+real PDFs. No fallback to pdfium-render exists in the code.
 
 ## In the Flutter app
 
@@ -511,7 +511,7 @@ Where the worker comes from, which platforms have it, and the limits of this sec
 ## Office documents (sender side, `cc-office`)
 
 Status: implemented for `cometcast-cli` (`send-file`, `office convert`), tested on **tiny
-generated files only** (Linux, one machine). **Fidelity on real classroom files has not been
+generated files only** (Linux, one machine). **Fidelity on real files has not been
 measured** (measurement point 7 still needs its five Office files). The Linux Flutter app uses it too (see
 [Office files in the Flutter app](#office-files-in-the-flutter-app)); the web client does not.
 
@@ -521,7 +521,7 @@ The sender converts an Office file to a PDF **before** the transfer, then sends 
 as before. The receiver never sees an Office file, so its security model (a PDF is hostile and is
 rendered in a limited child process, see above) does not change. The Office file comes from the
 sender's own user, so it is not "remote hostile input" in the way a PDF is for the receiver; it
-can still be a file somebody mailed to the teacher, so the converter is treated as an untrusted
+can still be a file somebody mailed to a colleague, so the converter is treated as an untrusted
 parser anyway.
 
 ### Engine
@@ -534,8 +534,13 @@ legacy binary files (`.doc .ppt .xls`) are refused as an unsupported type (`Unsu
 library, `UnsupportedType` in the app). Cost: about 250 extra crates and a larger binary (fonts). Seen speed
 on tiny files (debug build): 0.5 to 0.8 s. Maintenance: crate created 2026-02, about 12 000 downloads, a
 release every 1 to 3 weeks, one author (checked on crates.io on 2026-11-07); young. Fidelity is
-**unmeasured**; the crate reports what it left out as warnings (for example "Aptos rendered as Noto
-Sans"). UNCERTAIN: whether `office2pdf` follows any file links in a document was not checked. The
+**unmeasured**; the crate reports what it left out as warnings (for example when a face such as Aptos is not
+available and a substitute is used). **Fonts:** the worker carries Liberation Sans, Serif and Mono, Carlito and
+Caladea (SIL OFL 1.1, metric-compatible with Arial, Times New Roman, Courier New, Calibri and Cambria), compiled in and
+handed to the engine as in-memory fonts; Calibri is laid out with Carlito, Cambria with Caladea, and so on (details,
+checksums and licences: `crates/cc-office/fonts/FONTS.md`). Other Office faces such as Aptos have no bundled
+metric-compatible replacement: the engine falls back to its built-in Noto or Typst faces and the layout can differ from
+Word. UNCERTAIN: whether `office2pdf` follows any file links in a document was not checked. The
 `engine-rust` feature of `cc-office` can be turned off in a process that only needs the checks and the
 types and starts a worker that has the engine (see "Office files in the Flutter app").
 
@@ -610,7 +615,7 @@ a fallback. There is no second engine and no engine choice.
    conversion and warns when something is missing (for example no Landlock on a kernel older than 6.7), or
    when nothing at all was in effect (non-Unix).
 5. **Conversion**: `office2pdf` runs in-process in the worker on `<work>/in/input.<ext>` and the worker
-   writes `<work>/out/input.pdf`. Fonts are the ones bundled with the engine.
+   writes `<work>/out/input.pdf`. Fonts: the five metric-compatible families bundled in `cc-office` (see Fonts above), then the ones bundled with the engine.
 6. **Deadline**: 120 s by default (the worker times itself; the parent kills the **whole process group**
    at timeout + 2 s, and again after a normal exit to remove anything left behind). A helper that calls
    `setsid` (or `setpgid`) **leaves the group and survives the kill**; the engine starts no helper. Tested with a fake worker that starts

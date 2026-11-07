@@ -14,13 +14,15 @@
 //! ```
 //!
 //! The only engine is the pure-Rust one; see `docs/documents.md` ("Office documents").
-//! Nothing here measures how faithful the PDF is on real classroom files.
+//! Nothing here measures how faithful the PDF is on real files.
 //!
 //! Use [`convert_file`] or [`convert_bytes`] with [`Options`]. The worker program is
 //! `cc-office-worker` (next to the application) or any program that calls [`worker_main`],
 //! for example the hidden `office-worker` command of `cometcast-cli`.
 
 mod error;
+#[cfg(feature = "engine-rust")]
+mod fonts;
 mod format;
 mod runner;
 mod worker;

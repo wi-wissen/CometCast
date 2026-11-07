@@ -196,8 +196,13 @@ fn run_rust(a: &Args) -> Result<(), String> {
         .join("in")
         .join(format!("input.{}", a.format.extension()));
     let data = std::fs::read(&input).map_err(|e| format!("cannot read the input: {e}"))?;
-    let res = office2pdf::convert_bytes(&data, fmt, &ConvertOptions::default())
-        .map_err(|e| format!("office2pdf: {e}"))?;
+    // The metric-compatible fonts are compiled in (src/fonts.rs); they take priority over system fonts.
+    let options = ConvertOptions {
+        font_bytes: crate::fonts::bundled_fonts()?,
+        ..ConvertOptions::default()
+    };
+    let res =
+        office2pdf::convert_bytes(&data, fmt, &options).map_err(|e| format!("office2pdf: {e}"))?;
     for w in res.warnings.iter().take(50) {
         say(&format!("warning:{w}"));
     }

@@ -156,6 +156,30 @@ pub fn docx(text: &str) -> Vec<u8> {
     ])
 }
 
+/// A .docx with one paragraph per `(font family, text)` pair; every run names its family explicitly.
+pub fn docx_fonts(runs: &[(&str, &str)]) -> Vec<u8> {
+    let paras: String = runs
+        .iter()
+        .map(|(font, text)| {
+            format!(
+                r#"<w:p><w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}" w:cs="{font}"/><w:sz w:val="28"/></w:rPr><w:t>{text}</w:t></w:r></w:p>"#
+            )
+        })
+        .collect();
+    let doc = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{paras}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>"#
+    );
+    build(&[
+        Entry::deflated(
+            "[Content_Types].xml",
+            content_types(r#"<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>"#).as_bytes(),
+        ),
+        Entry::deflated("_rels/.rels", rels("officeDocument", "word/document.xml").as_bytes()),
+        Entry::deflated("word/document.xml", doc.as_bytes()),
+    ])
+}
+
 /// A minimal .xlsx with one sheet and one text cell plus one number.
 pub fn xlsx(text: &str) -> Vec<u8> {
     let wb = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
