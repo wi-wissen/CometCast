@@ -1,5 +1,7 @@
 # Fix list 2: web app after the second design review
 
+**Status (2026-11-07, third review):** done; all 16 items pass. Follow-up: [fix-list-web-3.md](fix-list-web-3.md).
+
 From the review of 2026-11-07 of main 4a13254 (screenshots `/tmp/shots2`, 1280 × 720 and phone 390 × 844; display dark / light / OLED, presenter light / dark). Decisions: spec [first-run-and-display.md](first-run-and-display.md) section 13, items 30–53; answers to D1 and E1–E14 in [implementation-questions.md](implementation-questions.md). The first fix list ([fix-list-web.md](fix-list-web.md)) is done; its 22 items were checked against the screenshots and pass, except where an item below says otherwise.
 
 In order: do the top first. `*` in a screenshot name means every theme. Paths are under `apps/web/src` unless they start with `crates/`, `docs/` or `tools/`. Every item that adds or changes copy changes `locales/en.json`, `locales/de.json` (Sie) and `locales/de-du.json` (du) with the values of spec 11. Every check that names a screenshot means: retake it with `e2e:shots` and look at it.
