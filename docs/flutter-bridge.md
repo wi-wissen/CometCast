@@ -1,6 +1,6 @@
 # Flutter bridge (Rust core in the Flutter app)
 
-The Flutter app (`apps/flutter`) talks to the Rust core through **flutter_rust_bridge** ("FRB"). This page explains how the pieces fit and what to run after changing something. Status: milestone M1, desktop app, Linux verified (see [Verified](#verified) and [Not done](#not-done)).
+The Flutter app (`apps/flutter`) talks to the Rust core through **flutter_rust_bridge** ("FRB"). This page explains how the pieces fit and what to run after changing something. Status: milestone M1, desktop app, Linux verified (see [Verified](#verified) and [Not done](#not-done)). The content channel (images, PDFs, links) is wired in as well, see [Content](#content-images-pdfs-links).
 
 ## The picture
 
@@ -22,7 +22,7 @@ cc-receiver (ReceiverCore) / cc-sender (SenderCore) / cc-proto (RoomCode)
 
 | Rust | Dart | Meaning |
 | --- | --- | --- |
-| `start_receiver(server, udp_bind, sink)` | `Stream<ReceiverUiEvent> startReceiver(...)` | Connect, create a room, report events |
+| `start_receiver(server, udp_bind, content, sink)` | `Stream<ReceiverUiEvent> startReceiver(...)` | Connect, create a room, report events; with `content` also images, PDFs, links and page commands from the sender (see [Content](#content-images-pdfs-links)) |
 | `stop_receiver()` | `Future<void> stopReceiver()` | Stop and close the room |
 | `take_frame()` | `Future<VideoFrame?> takeFrame()` | The newest decoded picture (RGBA) the UI has not fetched yet |
 | `set_video_max_size(width, height)` | sync | Size of the picture area in physical pixels; pictures are scaled down to it (never up, at most 1920x1080) |
@@ -38,8 +38,40 @@ cc-receiver (ReceiverCore) / cc-sender (SenderCore) / cc-proto (RoomCode)
 | `stop_sender()` | `Future<void> stopSender()` | Stop |
 | `check_room_code(input)` | `RoomCodeCheck checkRoomCode(...)` (sync) | Same rules as `cc_proto::RoomCode::parse` |
 | `room_code_length()` / `room_code_alphabet()` | sync | Constants from `cc-proto` |
+| `take_content_frame()` | `Future<ContentFrame?> takeContentFrame()` | The received image (file bytes) or PDF page (RGBA) that waits; pull model like `take_frame`, one slot, newest wins |
+| `set_content_target_width(width)` | sync | Width in physical pixels that PDF pages are rendered at (view width times device pixel ratio); the shown page is rendered again |
+| `validate_link(input)` | `LinkCheck validateLink(...)` (sync) | The link rules of `cc-files` (http/https, no credentials, length, no control characters); returns the normalised URL and the punycode host. The only place with link rules |
+| `start_content_sender(code, server, udp_bind, source, sink)` | `Stream<ContentSenderUiEvent> startContentSender(...)` | Check (file type by extension and bytes, size, PDF header, page count, link) and send an image, a PDF or a link over the control channel with progress; `source` is `File { path }` or `Link { url }` |
+| `send_content_cmd(cmd)` | `bool sendContentCmd(...)` (sync) | Queue `NextPage`, `PrevPage`, `GoToPage { page }` or `Stop` for the running content sender; `false` if none runs, the queue (64) is full or the page is 0 or above 1 000 000 |
+| `set_docs_worker(path)` / `docs_worker_path()` | sync | Explicit PDF worker program (tests, other layouts) / the worker that would be used now, or `None` |
 
 Events: `ReceiverUiEvent` = room code, peer joined, connection state, video track (MIME and codec), stats (packets, bytes, frames, key frames), **frame ready**, **video stats** (decoded, delivered, dropped, dropped packets, decode errors, key frame requests, size, mean decode time, last error), peer left, error. `SenderUiEvent` = joined, connection state, streaming (frames sent), **screen stats** (looks, changed, encoded, key frames, bytes), **encoded stats** (pushed, sent, dropped, key frames, key frame requests, bytes; encoded sender only), finished, peer left, error.
+
+## Content (images, PDFs, links)
+
+The native content channel of the Rust crates (`cc-files`, `cc-sender`'s `ContentSender`, `cc-receiver`'s `take_content_events`, `cc-docs`; format and limits in [web-m2.md](web-m2.md) and [transport.md](transport.md)) is used by the Flutter app: "Send file or link" on the send side, the receive view on the other. What the app does is in [documents.md](documents.md), "In the Flutter app". The files: `crates/cc-ffi/src/content.rs` (receiving side, mailbox, worker lookup, link check), `content_sender.rs` (sending side), the types in `api.rs`, and in Dart `receiver_controller.dart`, `receive_page.dart`, `content_sender_controller.dart`, `send_content_page.dart`.
+
+**Receiving.** `start_receiver(..., content: true)` sets `ReceiverOptions::content`. The receiver task reads the content events in the same `select!` as the core events (content first, as docs/transport.md asks), and after `PeerLeft` it hands over what is still queued (a 2 s patience per event) before it reports `PeerLeft`. The events for Dart are small: `ContentTransferStarted { document, name, size }`, `ContentFrameReady`, `ContentDocumentOpened { name, pages }`, `ContentLink { url, host }`, `ContentStopped`, `ContentError { error }`. The pictures do **not** travel in the stream:
+
+```
+cc-receiver content events (Blob = Arc<Vec<u8>>, queue bounded by count 16 and 32 MiB)
+   -> content.rs mailbox: ONE slot, newest wins, replaced pictures are counted
+   -> ContentFrameReady (only while the previous one was not answered)
+   -> Dart: take_content_frame() -> image bytes or page RGBA
+```
+
+Bounds and copies (UNCERTAIN: from reading the code, not measured): the mailbox holds one shared `Blob`; `take_content_frame` copies it once into a `Vec<u8>` and the bridge copies it once into the Dart heap, so a page of up to 127 MiB (the `cc-docs` output limit) exists up to three times for a moment, an image (at most 10 MiB) the same. A link, a stop, a new document and a refused PDF empty the mailbox, so a stale page cannot be fetched. Every receiver start and stop bumps a generation, so a task of an older receiver can neither publish nor clear. Text of the sender (the `detail` of an error, which can contain sender-chosen words) never reaches Dart; errors are the enum `UiContentError`, which the UI translates. File names were cleaned by `cc-files`; links are validated by `cc-files` and carry their host in the punycode form (`url` crate), which is what the card shows. The core never opens a link.
+
+The width that pages are rendered at is `set_content_target_width`; the app reports the width of the view in physical pixels (and again after a resize). The last value is also used when a receiver starts.
+
+**PDF worker.** PDFs are rendered by `cc-docs` in a resource-limited child process (docs/documents.md). `content::worker()` decides where it is, and never falls back to the in-process engine: (1) the explicit path of `set_docs_worker`, (2) the environment variable `COMETCAST_DOCS_WORKER` (left to `cc-docs`, which refuses an untrusted file), (3) a file `cc-docs-worker` **next to the running executable**, passed explicitly as `Isolation::Process(WorkerSpec)`, (4) `cc-docs`' own discovery. When none exists, a refused or unrenderable PDF is reported as `UiContentError::WorkerUnavailable` (decided by "no worker was found at start", not by matching text). The sender uses the same worker only to count pages for the presenter view; without one it sends anyway and the page count is unknown.
+
+**Sending.** `start_content_sender` reads the file in Rust (a regular file, at most 10 MiB for an image and 64 MiB for a PDF, `limit + 1` bytes read so a growing file or device cannot run on), checks the type by extension **and** by the first bytes for images (PNG, JPEG, GIF, WebP; the declared type is the one of the bytes), requires the `%PDF-` header, asks the worker for the page count and validates a link, all before it connects (`Prepared` or `Rejected { reason }`). Then: `Joined`, `Connected` (data channel open, waits at most 30 s), `Progress { sent, total }` (bytes handed to the channel, at most one report per percent; the channel buffers up to about 1 MiB, so the receiver can be that far behind), `Sent` (after the transport confirmed delivery). After `Sent` the sender stays connected and forwards `send_content_cmd` commands: native and web receivers drop shown content when the sender leaves. `Stop` is flushed, then the sender ends with `Stopped`. A PDF held for sending exists once (at most 64 MiB), briefly twice while the worker counts pages.
+
+Two things to know:
+
+- **Dart's `Process.start` and the worker.** While the Dart VM tracks a child it started itself, its exit handler can reap other children of the process, including the render worker that the Rust core starts; `cc-docs` then reports `Internal("cannot watch the worker")` (seen in the integration test: after `Process.start` the page count of a PDF was unknown and every page failed; before it and after a *detached* start it worked). The app never starts a process from Dart (`url_launcher` on Linux goes through GTK/GIO), so this does not affect it; the integration test starts `cometcast-cli` detached for that reason. UNCERTAIN: found by experiment, the mechanism inside the Dart VM was not read in its source; `cc-docs` could tolerate `ECHILD` (not changed here).
+- **One sender or receiver at a time.** The content sender shares the sender slot with the screen sender: starting one stops the other.
 
 ## The picture path (receiver)
 
@@ -97,11 +129,15 @@ What the CMake step does during `flutter build linux` / `flutter run -d linux`:
 
 At start-up `lib/core/rust_loader.dart` looks for the library in this order: the file named by `COMETCAST_FFI_LIB`; `lib/` next to the executable; the plain name `libcc_ffi.so`. Tests find `target/debug/libcc_ffi.so` of the workspace (`cargo build -p cc-ffi`) and skip the real-library tests if it is missing.
 
+The same step builds the **PDF worker**: it runs `cargo build -p cc-ffi -p cc-docs` (the `cc-docs-worker` binary comes with `cc-docs`' default feature `worker-bin`) and installs `cc-docs-worker` **next to the executable** (`bundle/cc-docs-worker`, `install(PROGRAMS ...)`), not into `lib/`: `cc-ffi` looks for it in the directory of the running executable and passes that path to `cc-docs` explicitly (see [Content](#content-images-pdfs-links)). `integration_test/content_e2e_test.dart` checks that the file is there and that `docs_worker_path()` names it without `COMETCAST_DOCS_WORKER`. The worker is a normal program of the same user: it restricts itself with Landlock and seccomp where the kernel allows it, and `docs/documents.md` says what that does and does not protect.
+
+Other platforms (UNCERTAIN, none of this was tried): Windows and macOS need the same file next to the executable (an extra CMake or Xcode copy step, `cc-docs-worker.exe` on Windows; on macOS a code-signed helper in the bundle); Android cannot start a binary from the app's data directory, so the worker would have to be packaged as a native library file (`libcc_docs_worker.so` in `nativeLibraryDir`, built by the cargo-ndk step) and started by that path, which needs a `set_docs_worker` call from Kotlin or Dart; iOS and tvOS cannot start a child process at all, so PDFs there would need the weaker in-process engine or rendering on the sender. Until then PDFs on those platforms fail with `WorkerUnavailable` (translated note, nothing crashes).
+
 The Linux runner also sets the window title and the window icon (`assets/icon.png`, found in the bundle's `data/flutter_assets`).
 
 ## Verified
 
-On Linux with Flutter 3.47.9 / Dart 3.13.7 and Rust 1.97: `flutter analyze`, `flutter test` (widget tests with a fake core plus tests against the real library), `flutter build linux --debug`, `flutter_rust_bridge_codegen generate` (no diff after the commit), `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and two integration tests run headless under `xvfb-run` against a real `cometcast-server` and the real `cometcast-cli`: `integration_test/receiver_smoke_test.dart` (counters) and `integration_test/screen_e2e_test.dart` (a real X11 screen as H.264 into the app and back out of the app into `cometcast-cli receive --decode`; the test reads the drawn pixels). Exact commands, output and numbers: `apps/flutter/README.md`.
+On Linux with Flutter 3.47.9 / Dart 3.13.7 and Rust 1.97: `flutter analyze`, `flutter test` (widget tests with a fake core plus tests against the real library), `flutter build linux --debug`, `flutter_rust_bridge_codegen generate` (no diff after the commit), `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and three integration tests run headless under `xvfb-run` against a real `cometcast-server` and the real `cometcast-cli`: `integration_test/receiver_smoke_test.dart` (counters), `integration_test/screen_e2e_test.dart` (a real X11 screen as H.264 into the app and back out of the app into `cometcast-cli receive --decode`; the test reads the drawn pixels) and `integration_test/content_e2e_test.dart` (`send-file` of a PDF with `--then next,go:3,prev,stop` into the app: the page indicator walks 1, 2, 3, 2 and the drawn pixels differ per page; an image; a link card that is not opened before the click; and the app as sender of a PDF into `cometcast-cli receive`, whose `Content:` lines show the pages). Exact commands, output and numbers: `apps/flutter/README.md`.
 
 Commands (from the repository root unless noted):
 
@@ -115,10 +151,13 @@ cargo test --workspace
 cargo build -p cc-ffi -p cometcast-server -p cometcast-cli
 (cd apps/flutter && flutter analyze && flutter test && COMETCAST_CARGO_TARGET_DIR=$PWD/../../target flutter build linux --debug)
 (cd apps/flutter && integration_test/run_screen_e2e.sh)
+cargo build --workspace --bins                              # the content test needs cc-docs-worker and the CLI
+(cd apps/flutter && integration_test/run_content_e2e.sh)
 ```
 
 ## Not done
 
+- Content: PDF pages are rendered by `cc-docs` at the view width; the receiver cannot turn pages (decision: the sender drives, the receiver's person can only close). The sender has no local preview or thumbnail of the page (no renderer on the sender, the page count only). Drag and drop of files onto the send screen is not implemented (`desktop_drop` was not added; UNCERTAIN whether it is "simple" on all platforms). The file dialog is `file_selector` (GTK dialog on Linux); the plugin is built into the Linux bundle, but the real dialog was never opened here (tests use a fake picker). The worker is bundled for Linux only (see above). The `url_launcher` call that opens a link was never run against a real browser here (tests use a fake opener; Linux uses GIO).
 - Screen capture exists for Linux/X11 only (Wayland, Windows, macOS: the UI shows a translated "not supported yet" message). The picture view shows H.264 only; the VP8 test video is counted, not drawn. The picture is copied from Rust to Dart for every frame (no Flutter `Texture`); cost in README.md.
 - Full screen is implemented in the Linux (GTK) runner only (platform channel `de.cometcast/window`).
 - Not built or tried: Windows, macOS, iOS (no toolchains here). Android builds (cargo-ndk through Gradle, no cargokit) but was never run on a device: see [android.md](android.md). Packaging for the others is open; cargokit is the likely route.

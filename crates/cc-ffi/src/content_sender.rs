@@ -19,6 +19,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use cc_files::wire::MAX_PAGE_NUMBER;
 use cc_files::{
     ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, Outgoing, document_transfer, image_transfer,
     link_message,
@@ -77,7 +78,10 @@ pub(crate) fn send_cmd(cmd: UiContentCmd) -> bool {
     let cmd = match cmd {
         UiContentCmd::NextPage => ControlCmd::NextPage,
         UiContentCmd::PrevPage => ControlCmd::PrevPage,
-        UiContentCmd::GoToPage { page } if page >= 1 => ControlCmd::GoToPage { page },
+        // The receiver counts page 0 and pages above the limit as protocol violations.
+        UiContentCmd::GoToPage { page } if (1..=MAX_PAGE_NUMBER).contains(&page) => {
+            ControlCmd::GoToPage { page }
+        }
         UiContentCmd::GoToPage { .. } => return false,
         UiContentCmd::Stop => ControlCmd::Stop,
     };
@@ -545,8 +549,20 @@ mod tests {
         assert!(send_cmd(UiContentCmd::NextPage));
         assert!(send_cmd(UiContentCmd::GoToPage { page: 3 }));
         assert!(!send_cmd(UiContentCmd::GoToPage { page: 0 }));
+        assert!(!send_cmd(UiContentCmd::GoToPage {
+            page: MAX_PAGE_NUMBER + 1
+        }));
+        assert!(send_cmd(UiContentCmd::GoToPage {
+            page: MAX_PAGE_NUMBER
+        }));
         assert_eq!(rx.try_recv().unwrap(), ControlCmd::NextPage);
         assert_eq!(rx.try_recv().unwrap(), ControlCmd::GoToPage { page: 3 });
+        assert_eq!(
+            rx.try_recv().unwrap(),
+            ControlCmd::GoToPage {
+                page: MAX_PAGE_NUMBER
+            }
+        );
         // The queue is bounded: a flood is refused, not stored.
         let accepted = (0..CMD_QUEUE * 2)
             .filter(|_| send_cmd(UiContentCmd::PrevPage))

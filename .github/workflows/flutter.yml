@@ -10,6 +10,8 @@ on:
       - 'crates/cc-sender/**'
       - 'crates/cc-transport/**'
       - 'crates/cc-proto/**'
+      - 'crates/cc-files/**'
+      - 'crates/cc-docs/**'
       - 'crates/cc-capture/**'
       - 'crates/cc-media/**'
       - 'crates/cc-discovery/**'
@@ -22,6 +24,8 @@ on:
       - 'crates/cc-sender/**'
       - 'crates/cc-transport/**'
       - 'crates/cc-proto/**'
+      - 'crates/cc-files/**'
+      - 'crates/cc-docs/**'
       - 'crates/cc-capture/**'
       - 'crates/cc-media/**'
       - 'crates/cc-discovery/**'
@@ -87,10 +91,11 @@ jobs:
           cargo clippy -p cc-ffi --all-targets -- -D warnings
           cargo test -p cc-ffi
       - run: flutter analyze
-      # The real-library tests in test/rust_core_test.dart need libcc_ffi.so first.
+      # The real-library tests in test/rust_core_test.dart need libcc_ffi.so first, and the one
+      # that counts PDF pages needs the render worker (cc-docs-worker) next to it.
       - name: Build the Rust core for the tests
         working-directory: .
-        run: cargo build -p cc-ffi
+        run: cargo build -p cc-ffi -p cc-docs
       - run: flutter test
       # Builds the Rust core through CMake and bundles it (see docs/flutter-bridge.md).
       - run: flutter build linux --debug
@@ -115,6 +120,16 @@ jobs:
           cargo build -p cc-ffi -p cometcast-server -p cometcast-cli
           cd apps/flutter
           integration_test/run_screen_e2e.sh
+      # Content test: images, PDF pages (worker bundled next to the app by the CMake step), links,
+      # presenter controls, in both directions against the real CLI.
+      # UNCERTAIN: not run on GitHub; run locally with the same script (apps/flutter/README.md).
+      - name: Content end-to-end test (app + server + CLI + PDF worker)
+        working-directory: .
+        run: |
+          pkill cometcast-server || true
+          cargo build --workspace --bins
+          cd apps/flutter
+          integration_test/run_content_e2e.sh
   android:
     runs-on: ubuntu-latest
     defaults:

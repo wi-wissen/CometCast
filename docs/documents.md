@@ -7,7 +7,7 @@ Status: PDF part implemented and tested on generated files only. Rendering runs 
 seccomp where the kernel allows it (since the security reviews, see "Limits and safety"). It is
 **not a sandbox in the full sense**: read "What this protects and what it does not" before
 relying on it.
-Office conversion, the WASM build, speaker notes and the Flutter UI are **not** done.
+Office conversion, the WASM build and speaker notes are **not** done. The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
 
 ## Idea (from the plan)
 
@@ -16,8 +16,7 @@ the pages itself with the same renderer, [hayro](https://github.com/LaurenzV/hay
 The presenter's view (current page, next page, notes, buttons) uses the same renderer; only
 the page number travels, as `ControlCmd` from `cc-proto` (`NextPage`, `PrevPage`,
 `GoToPage { page }`, `Stop`; first page is 1). How a file travels over the control DataChannel
-(image and link today) is in [web-m2.md](web-m2.md); sending a PDF file there is **not
-implemented**.
+(image, link and PDF) is in [web-m2.md](web-m2.md).
 
 ## What the crate offers
 
@@ -185,8 +184,11 @@ How the parent finds the worker (`Isolation::Auto` uses `WorkerSpec::discover`):
 
 If none is found, `open` fails with `DocError::WorkerUnavailable`; it does **not** silently fall
 back to the unprotected in-process engine. The CLI uses itself (`cometcast-cli docs-worker`). For
-the **Flutter app** (UNCERTAIN, not built): desktop builds should ship `cc-docs-worker` next to the
-app executable (found by step 3) or pass its path; Android cannot execute a binary from the app's
+the **Flutter app**: the Linux build ships `cc-docs-worker` next to the app executable
+(`apps/flutter/linux/CMakeLists.txt`, see [flutter-bridge.md](flutter-bridge.md)) and `cc-ffi` passes that
+path explicitly as `Isolation::Process`, so the app does not depend on the steps above; other platforms
+(UNCERTAIN, not built): desktop builds should ship `cc-docs-worker` next to the app executable
+or pass its path; Android cannot execute a binary from the app's
 data directory, so the worker has to be packaged as a native library file (for example
 `libcc_docs_worker.so` in `nativeLibraryDir`) and started by that path; iOS and tvOS cannot spawn
 it at all.
@@ -422,13 +424,54 @@ CID fonts, experimental status), CJK and right-to-left text, transparency groups
 JBIG2, scanned pages, very large real files, PDFs with form fields or annotations, and the 20
 real classroom PDFs. No fallback to pdfium-render exists in the code.
 
+## In the Flutter app
+
+Status: Linux desktop, tested with a fake core (widget tests), against the real library, and
+end to end under `xvfb` with the real server and `cometcast-cli`
+(`apps/flutter/integration_test/content_e2e_test.dart`). Everything below is a decision of the app,
+not of `cc-docs`; the bridge is described in [flutter-bridge.md](flutter-bridge.md).
+
+**Sending ("Send file or link").** The person chooses an image (PNG, JPEG, WebP, GIF) or a PDF with the file
+dialog (`file_selector`), or types a link, and enters the receiver's room code like for screen sharing.
+Rust checks everything (type by extension and bytes, size, `%PDF-` header, link rules; Dart does not
+repeat the rules) and counts the PDF's pages in the render worker, then the file goes over the control
+channel with a progress bar. For a PDF the presenter controls appear: previous, next, go to page, stop
+showing, and the keys arrow right/down/Page Down (next) and arrow left/up/Page Up (previous); they map to
+`ControlCmd` (`NextPage`, `PrevPage`, `GoToPage`, `Stop`). The sender draws nothing: the page number it shows is the
+one it asked for (the receiver does not report back), clamped to the page count when that is known. The sender must
+stay on the screen while the receiver shows the content; leaving it disconnects.
+
+**Receiving.** The receive view shows what the sender pushes, instead of the live screen (the latest content
+wins; closing returns to the live screen or to waiting):
+
+- an **image**, fitted into the window, with a close button. The header is read first and an image of more than
+  64 million pixels is refused (a small file can hold a huge picture; UNCERTAIN: the limit is a guess);
+- a **PDF page** rendered by Rust at the width of the view in physical pixels (view width times device pixel ratio,
+  reported again after a resize), with the indicator "Page N of M". **Page changes come from the sender only**;
+  the person at the receiver can only close or stop (a deliberate choice: a presenter is in charge, and the
+  receiver may be a wall display without input). The keys of the presenter are not bound on the receiver;
+- a **link card** "The sender wants to open `<host>`" with Open and Dismiss. The host is shown in its punycode form
+  (`xn--...`) so that look-alike names are visible, with the whole address under it. **Nothing is opened
+  automatically**: Open asks Rust to validate the address again, checks the scheme once more in Dart, and only then calls
+  `url_launcher` (external application mode). Dismiss has the initial focus, so a stray Enter does not open anything.
+
+Failures are calm, translated notes chosen by an error **code** (`DocumentRejected`, `TooLarge`, protocol
+violations, `transfer_timeout`, worker unavailable, render failed); text that came from the sender is never shown,
+except the cleaned file name and the validated address. A refused PDF closes the shown document, like the core does.
+Closing a document by hand makes the UI ignore its later pages (UNCERTAIN: the core cannot be told to close it, so
+it may keep rendering pages for the sender's commands until `stop`).
+
+Where the worker comes from, which platforms have it, and the limits of this section are in
+[flutter-bridge.md](flutter-bridge.md) ("Content" and "Build integration").
+
 ## Not done
 
 - 20 real PDFs (point 7), fidelity comparison with another viewer, WASM build and size.
 - Worker for macOS, Windows, Android and Flutter packaging: written, but only compile-checked or
   not built (see "Platform statements"); a long-lived worker per document (today one process per
   call, which costs a few milliseconds per page); a job object on Windows.
-- Sending the PDF as a file over the transport; receiver UI; page cache; presenter view.
+- A page cache (every page change renders again); a local preview or thumbnail on the presenter's
+  side (the Flutter sender only knows the page count); a receiver that turns pages itself.
 - Office to PDF (`office2pdf`), notes from PPTX.
 - Annotations (`lopdf` in the plan).
 

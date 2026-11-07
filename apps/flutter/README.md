@@ -6,9 +6,15 @@ Status: milestone M1 on the desktop. The app talks to the Rust core through
 [flutter_rust_bridge](https://cjycode.com/flutter_rust_bridge/) (see
 [docs/flutter-bridge.md](../../docs/flutter-bridge.md)). Screens:
 
-- Home: a quiet list. "Send file or link" is still a placeholder.
+- Home: a quiet list: send screen, send file or link, receive.
+- **Send file or link**: choose an image (PNG, JPEG, WebP, GIF) or a PDF with the file dialog, or type an
+  http(s) link; enter the receiver's room code; progress bar; for a PDF the presenter controls (previous, next,
+  go to page, stop; arrow keys, Page Up/Down). All checks are done by Rust. Details: docs/documents.md,
+  "In the Flutter app".
 - **Receive on this device**: server field (pre-filled, see below), big room code, status,
-  live counters. When an H.264 screen arrives, the **picture fills the window**: buttons for
+  live counters. Images, PDF pages (drawn by Rust at the width of the view, page indicator, pages follow the
+  sender) and link cards ("The sender wants to open <host>", Open / Dismiss, never opened without a click) that a
+  sender pushes take the window; a close button goes back. When an H.264 screen arrives, the **picture fills the window**: buttons for
   statistics (key `I`), full screen (`F11`; `Esc` leaves full screen first, then goes back) and
   stop. A translated "waiting for the sender's screen" line shows until the first picture. A
   track that is not H.264 (the built-in VP8 test video) is only counted and the screen says so.
@@ -33,7 +39,8 @@ Status: milestone M1 on the desktop. The app talks to the Rust core through
   pre-filled or saved as "last used". Details and open questions: docs/discovery.md, "In the Flutter app".
 
 **Not built yet:** screen capture on Windows, macOS, Wayland and mobile; other video codecs than
-H.264 in the picture view; audio; sending file or link. English + German, light/dark following the
+H.264 in the picture view; audio; drag and drop of files; the PDF worker for platforms other than Linux (PDFs
+there fail with a translated note); a thumbnail of the page on the presenter's side. English + German, light/dark following the
 system, keyboard friendly (Tab, Enter starts, Escape goes back). License: GPL-3.0-or-later.
 
 ## Needs
@@ -108,6 +115,26 @@ All tests passed!
 
 (The integration test binds WebRTC to `127.0.0.1:0` because both peers run on one machine.
 The app reads `COMETCAST_UDP_BIND` for the same purpose; normally leave it unset.)
+
+### Content end-to-end test (real server, real CLI, bundled PDF worker, headless)
+
+```sh
+# from the repository root: the CLI, the server and the PDF worker (cc-docs-worker)
+cargo build --workspace --bins
+# inside apps/flutter
+integration_test/run_content_e2e.sh
+```
+
+It starts a real `cometcast-server` and runs `integration_test/content_e2e_test.dart` under `xvfb-run`
+(`flutter test -d linux` builds the app, so the bundle contains the worker; the script unsets
+`COMETCAST_DOCS_WORKER`). Tests: the worker sits next to the executable and the core names it; **A1** the app is the
+receiver and `cometcast-cli send-file <CODE> classroom.pdf --then next,go:3,prev,stop` drives it: the page
+indicator must read 1, 2, 3, 2 of 3, the pixels of each page (read back from the page view) differ, the page is drawn at the
+width of the view, and `stop` removes it; **A2** an image is shown and closing it goes back to waiting; **A3** `send-link`
+shows a card with the punycode host and nothing is opened until Open is clicked; **B** the app is the sender of the PDF
+to `cometcast-cli receive`: the `Content:` lines show the document (3 pages) and pages 1, 2, 3, 2 for the keys and buttons of the
+presenter controls. The file dialog and the browser are replaced by fakes in these tests (a real dialog needs a person). The
+CLI is started detached (see docs/flutter-bridge.md, "Dart's `Process.start` and the worker").
 
 ### Screen end-to-end test (real server, real X11 screen, headless)
 
