@@ -1,6 +1,6 @@
 # First run and display: implementation spec
 
-Status: **final, approved for implementation; revised after the first and the second implementation review of the web app (2026-11-07).** The owner approved round 4 with two changes, which are applied here and in the final mockup. The review decisions are listed in [section 13](#13-decisions-after-implementation-review) (1–29 first review, 30–53 second review) and are already worked into the sections below; the work items for the web app are in [fix-list-web.md](fix-list-web.md) (done) and [fix-list-web-2.md](fix-list-web-2.md) (open), the answered questions in [implementation-questions.md](implementation-questions.md). How the native apps (Flutter, SwiftUI on Apple TV) build the same product is in [native-apps.md](native-apps.md). Build from this document; do not wait for further design review.
+Status: **final, approved for implementation; revised after the first and the second implementation review of the web app (2026-11-07).** The owner approved round 4 with two changes, which are applied here and in the final mockup. The review decisions are listed in [section 13](#13-decisions-after-implementation-review) (1–29 first review, 30–53 second review) and are already worked into the sections below; the work items for the web app are in [fix-list-web.md](fix-list-web.md) (done) and [fix-list-web-2.md](fix-list-web-2.md) (open), the answered questions in [implementation-questions.md](implementation-questions.md). How the native apps (Flutter, SwiftUI on Apple TV) build the same product is in [native-apps.md](native-apps.md). Build from this document; do not wait for further design review. **Addendum (2026-11-07):** [section 14](#14-screens-on-the-same-network-apps-only) adds the list of screens on the same network to the app start page, and German now ships in the "du" form (decision 54).
 
 This document describes the **whole product**, including parts that the mockup never drew (annotation toolbar, link card, relay confirmation, security code, connecting and offline states, the later error pages, the PDF page row, the web file page, the wizard address field). Where an item has no mockup counterpart, the section named here is its design.
 
@@ -25,7 +25,7 @@ Where this document and the mockup disagree, this document wins. Known places wh
 | D3 | **Dark** is the default appearance. |
 | D4 | **OLED black** means true black (`#000000`) for the background and all surfaces, with **no pixel drift** or position shifting. |
 | D5 | In the idle state the display **dims after about 5 to 10 minutes** without activity (this spec: 7 minutes, see 8.6). The system screensaver and sleep are blocked **only while someone is presenting**. The screen is kept awake during an active presentation and released when the display returns to idle or the session ends. |
-| D6 | German UI wording is formal **"Sie"** until the owner says otherwise. The mockup uses "du". Every German string below is given in both forms. **The shipped default is "Sie"** (as in the product today). The owner has an open question about this, so the switch must be possible in a single translation pass (see 11.1). |
+| D6 | German UI wording is **"du"** (owner decision, 2026-11-07; decision 54). Every German string below is given in both forms; the "Sie" set stays complete, so a switch back is still one file swap (see 11.1). |
 
 ## 2. Glossary
 
@@ -358,6 +358,7 @@ Code handling: the field shows what is typed, in uppercase; it never drops chara
 
 - Store: the system store page (not designed by us). Android passes code and address through the Google Play install referrer (assumption, not yet verified). iOS cannot, so the app asks to scan again.
 - App first-run page: heading `app.welcome`; code chip with `app.codeFromLink` (Android) or `app.codeScanned` (after scanning); if there is no code: `app.scanAgainBody` and a secondary button `app.scanQr`; name field; primary `app.connect` (disabled while there is no code).
+- **Screens on the same network:** the app start page gets the section of [14](#14-screens-on-the-same-network-apps-only) between the name field (which moves up) and the code. One tap on a found screen connects without a code.
 - Platform variants (details in [native-apps.md](native-apps.md)): devices without a camera (computers) show the code field of 5.2 instead of `app.scanQr`; on tablets and computers the page ends with the text link `app.beDisplay`, which starts the display setup (4.1). Scanning uses the system scanner (not designed by us). In the apps the disconnected page (5.7) omits `bye.body` (it speaks of a browser tab).
 
 ### 5.4 Waiting for approval
@@ -521,8 +522,8 @@ Pages wider than 720 px use the two-column layouts given in 5.2 and the error pa
 
 ### 11.1 Rules for German
 
-- **Shipped default: "Sie"** (column "DE Sie"). The column "DE du" is the wording of the mockup. The owner may switch to "du" later.
-- Implement this as two German value sets with identical keys (for example `de.json` = Sie and a `de-du.json` overlay, or two ARB files), so switching is one file swap, not a code change.
+- **Shipped default: "du"** (column "DE du (shipped)", owner decision 54). The column "DE Sie" is kept complete and is the alternative set.
+- Implement this as two German value sets with identical keys (for example `de.json` = du and a `de-sie.json` set, or two ARB files), so switching is one file swap, not a code change. Where the web app today has `de.json` = Sie and `de-du.json` = du, it is enough to make the du set the one that is loaded; the i18n check of 11.8 then runs in the other direction too (every du key that addresses the reader exists in the Sie set).
 - Every German string is a short main clause. Only the pronoun and the verb ending change between the two forms; sentence structure stays the same. Do not add strings in only one form.
 - English has one form.
 - Placeholders: `{room}`, `{dom}`, `{code}`, `{name}`, `{device}` (only in `start.detected`), `{n}`, `{total}`, `{sas}` (security code, `123 456`), `{ip}`, `{url}`, `{os}` (Windows, macOS, Linux), `{browser}` (Chrome, Safari, …), `{here}` (the address the presenter page is on). Quotes are part of the string where shown (German „…“, English “…”). Names are inserted already quoted via `common.quoted`.
@@ -531,7 +532,7 @@ Keys use the web app's dotted form. Flutter ARB uses the same keys in lower came
 
 ### 11.2 Common
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `common.back` | Back | Zurück | Zurück |
 | `common.next` | Next | Weiter | Weiter |
@@ -556,7 +557,7 @@ Keys use the web app's dotted form. Flutter ARB uses the same keys in lower came
 
 ### 11.3 Display: setup
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `setup.welcome.title` | Hi! This screen is about to become a display device. | Hallo! Dieser Bildschirm wird zum Anzeigegerät. | Willkommen! Dieser Bildschirm wird zum Anzeigegerät. |
 | `setup.welcome.body` | Afterwards anyone in the room can show here what is on their phone or laptop. With a code, no account. | Danach kann jeder im Raum hier zeigen, was auf seinem Handy oder Laptop ist. Mit einem Code, ohne Konto. | Danach kann jeder im Raum hier zeigen, was auf seinem Handy oder Laptop ist. Mit einem Code, ohne Konto. |
@@ -587,7 +588,7 @@ Note: `setup.done.bodyRemote` adds "or the Settings button" to the mockup text, 
 
 ### 11.4 Display: idle, settings, request, presenting, toasts
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `idle.step1` | Open in your browser | Im Browser öffnen | Im Browser öffnen |
 | `idle.step2` | Enter this code | Diesen Code eingeben | Diesen Code eingeben |
@@ -635,7 +636,7 @@ Note: `setup.done.bodyRemote` adds "or the Settings button" to the mockup text, 
 
 Additional setup keys (web, decision 13.5):
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `setup.address.sourcePage` | Set by the server of this page. | Vom Server dieser Seite vorgegeben. | Vom Server dieser Seite vorgegeben. |
 | `setup.address.sourceTyped` | Entered by hand. | Von Hand eingegeben. | Von Hand eingegeben. |
@@ -643,7 +644,7 @@ Additional setup keys (web, decision 13.5):
 
 ### 11.5 Presenter: start, app, waiting, what to show, presenting
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `start.titleRoom` | Connect to “{room}” (not used, decision 13.2) | Mit „{room}“ verbinden | Mit „{room}“ verbinden |
 | `start.titleGeneric` | Connect to a screen | Mit einem Bildschirm verbinden | Mit einem Bildschirm verbinden |
@@ -659,7 +660,7 @@ Additional setup keys (web, decision 13.5):
 | `start.appIos` | Get the app on the App Store | App im App Store holen | App im App Store holen |
 | `start.appDesktop` | Download the app for {os} | App für {os} herunterladen | App für {os} herunterladen |
 | `start.appPhone` | With the app you can also share your whole phone screen. | Mit der App teilst du auch deinen ganzen Handy-Bildschirm. | Mit der App teilen Sie auch Ihren ganzen Handy-Bildschirm. |
-| `start.appLaptop` | The app finds screens on the same network without a code. For now the browser is enough. | Die App findet Bildschirme im selben Netz auch ohne Code. Für jetzt reicht der Browser. | Die App findet Bildschirme im selben Netz auch ohne Code. Für jetzt reicht der Browser. |
+| `start.appLaptop` (valid: section 14) | The app finds screens on the same network without a code. For now the browser is enough. | Die App findet Bildschirme im selben Netz auch ohne Code. Für jetzt reicht der Browser. | Die App findet Bildschirme im selben Netz auch ohne Code. Für jetzt reicht der Browser. |
 | `start.detected` | Detected: {device}, {browser} | Erkannt: {device}, {browser} | Erkannt: {device}, {browser} |
 | `start.beDisplay` | Should this device be the screen itself? Open {dom}/display. | Soll dieses Gerät selbst der Bildschirm sein? {dom}/display öffnen. | Soll dieses Gerät selbst der Bildschirm sein? {dom}/display öffnen. |
 | `start.downloadStarted` | Download started. Until the app is installed, everything works here in the browser. | Download gestartet. Bis die App installiert ist, geht alles hier im Browser. | Download gestartet. Bis die App installiert ist, geht alles hier im Browser. |
@@ -709,7 +710,7 @@ Additional setup keys (web, decision 13.5):
 
 ### 11.6 Presenter: errors
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `error.why` | Why | Warum | Warum |
 | `error.now` | What now | Was jetzt | Was jetzt |
@@ -778,7 +779,7 @@ Note on `error.otherServer.now`: the mockup said "…the right address, here {do
 
 These keys already exist in the web app with these values (EN and DE Sie); they are now part of the spec. The DE du column is required (see 11.8 for the rest).
 
-| Key | EN | DE du | DE Sie (shipped) |
+| Key | EN | DE du (shipped) | DE Sie |
 | --- | --- | --- | --- |
 | `relay.confirm.title` | Use this relay? | Dieses Relay verwenden? | Dieses Relay verwenden? |
 | `relay.confirm.body` | A link asks this page to use the relay {host} instead of the default. Only continue if you know and trust its operator. | Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Mach nur weiter, wenn du den Betreiber kennst und ihm vertraust. | Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen. |
@@ -857,12 +858,14 @@ The du file must contain **every** key whose Sie value addresses the reader (Sie
 
 ## 12. Open points that do not block implementation
 
-- The owner's question "du" or "Sie" (D6). Ship Sie; the du set is ready.
+- ~~The owner's question "du" or "Sie" (D6).~~ Answered: "du" ships (decision 54).
 - The Android install referrer passing code and address to the app is an assumption; if it does not work, Android uses the iOS behaviour (scan again).
 - Exact idle-dim delay: 7 minutes is inside the owner's 5–10 minute range; adjust in one constant if testing suggests otherwise.
 - Owner: should the web display keep its drawing tools (annotation toolbar) at all? This spec keeps them, hidden at rest (13.7); removing them would make the display match "only End" exactly.
 - Owner: store listings and the desktop download. Until they exist the app offers are hidden (13.6).
-- Owner: `start.appLaptop` promises that the desktop app "finds screens on the same network without a code". The list of nearby screens is **not designed** yet (native-apps.md, section 9). Before `DOWNLOAD_URL_DESKTOP` is filled, either that list is designed and built, or the line changes. The line is hidden today (no desktop link).
+- ~~Owner: `start.appLaptop` promises the list of nearby screens.~~ Answered: the line stays and is now true; the list is designed in section 14 (decision 55). Until the list is built in the desktop app, `DOWNLOAD_URL_DESKTOP` stays empty, so the line stays hidden.
+- Owner: a screen in **Open** mode now lets anyone on the same network connect without seeing the screen (they only need to be in the network, not in the room). Is that acceptable as the default, or should Open screens announce themselves without the code (found in the list, but the code must still be typed), leaving one-tap joining to Approval on? This spec assumes: Open and Approval on both announce the code (14.8).
+- Owner: should a host be able to switch the announcement off on a display (for example in a shared office network)? Settings holds only join mode and appearance today (D2), so this spec adds no switch; Locked already hides the code.
 - Owner: whether native display apps on tablets and computers get the annotation toolbar (they do not in this round; same question as the web toolbar above).
 
 ## 13. Decisions after implementation review
@@ -927,3 +930,159 @@ Made on 2026-11-07 after reviewing the fix round (`apps/web`, main 4a13254) and 
 51. **Text fields get the focus ring** without the scale (3.5).
 52. **Native apps.** [native-apps.md](native-apps.md) maps every screen and state of this spec to Android (phone, tablet, TV), iOS/iPadOS, Linux/Windows/macOS (Flutter) and Apple TV (SwiftUI), with token, font, icon, motion, dimming and wake-lock rules. It adds no screens; where a platform needs a variant (link card without a browser, the `app.beDisplay` entry on tablets and computers, system scanners and pickers), it is named there and here.
 53. **Spec over mockup, now for everything.** The mockup is not redrawn for the items it never had (toolbar, link card, relay confirmation, security code, the later error pages, the PDF page row, the web file page, connecting and offline states, wizard address field, `start.beDisplay` link, OLED check outline). Their design is the section of this document named in the status note; the mockup's step cards, old headline, mode instruction lines, room menu, hold-to-allow, 8-character code and device frames stay superseded.
+
+### Decisions of 2026-11-07, afternoon
+
+54. **German ships in "du" (owner).** D6 and 11.1 changed; the tables mark "DE du" as shipped; the "Sie" set stays complete as the alternative.
+55. **`start.appLaptop` stays and becomes true (owner).** The apps find screens on the same network: section 14 (start page section, rows with name, mode and code, one tap to connect, relay confirmation for announced servers, empty, blocked, paused and permission states, announcement requirements). Mockup: https://claude.ai/artifact/2o5vZaZk9zuzBkPcYeKtWF.
+56. **The code is shown in every row** of that list. It is what tells equal names apart and lets the person check the row against the screen in front of them; the announcement therefore carries the code, not only a token (14.8).
+
+## 14. Screens on the same network (apps only)
+
+Added 2026-11-07. Clickable mockup: https://claude.ai/artifact/2o5vZaZk9zuzBkPcYeKtWF (DE du / EN, phone, iPhone, laptop, light and dark). Where the mockup and this section disagree, this section wins.
+
+Goal: a person who opens the **app** on a phone, tablet or computer can connect to a screen on the same network without typing a code. This makes `start.appLaptop` true. Browsers cannot see the local network, so the web presenter pages (5.2) do not change.
+
+### 14.1 Where it lives
+
+On the **app start page** (5.3), as one section between the name field and the code. There is no separate screen, no sheet, no tab. The code (scan button and code field) always stays on the same page, so the way that always works is never more than one glance away.
+
+New order of the app start page (5.3 otherwise unchanged):
+
+| Phone layout (< 720) | Laptop layout (≥ 720, spec 7.4) |
+| --- | --- |
+| 1. Brand row · 2. heading `app.welcome` · 3. name field `start.nameLabel` · 4. **section `nearby.title`** · 5. divider `start.or` · 6. secondary `app.scanQr` (devices with a camera) · 7. code field `start.codeLabel` · 8. primary `app.connect` at the bottom | Left column: brand, heading, name field, code field, `app.connect` (action row follows the content, 7.4), `app.beDisplay` link. Right column: the section `nearby.title` in a card (`p-surface`, 1 px `p-divider` `#E2E4E9` / `#2B2F38`, radius 14, padding 16), as the right card of the laptop start page (5.2) |
+
+- The name field moves **above** the section, because one tap on a screen connects with that name (14.4). An empty name is allowed (the display shows `common.noName`), as today.
+- `app.scanAgainBody` is not shown on this page when the section is shown (it speaks of scanning "once more", which is wrong for someone who opens the app from the home screen). It stays where the code chip is missing after a store install (iOS, 5.3), that is when the section is not shown.
+- The section is **not shown** (and no search runs) when: the page already has a code (code chip from a link, the install referrer or a scan: the person already has a target); the administrator's policy forbids announcements or locks the server (`docs/discovery.md`: `forbid_announcement`, `forbid_user_override`); the page is a display (TV, display role); the platform is the web.
+
+### 14.2 The section
+
+Section label `nearby.title` (13/700 `p-fg2`, the label style). Below it exactly one of these states:
+
+| State | When | Content |
+| --- | --- | --- |
+| Not asked yet | The platform needs a local-network permission (iOS, iPadOS; any platform that adds one later) and it was never asked | Secondary compact button with the search icon: `nearby.search`. Tapping it starts the search, which makes the system ask (8 below; spec 8 rule: a system dialog only as the direct result of the person's choice). After "Allow" the search runs at once and starts by itself on every later visit |
+| Searching | Search runs, nothing found yet, less than 8 s | One placeholder row: option-row size, 1 px **dashed** `p-border`, spinner (20, 5.4) + `nearby.searching` in `p-fg3`. No other text |
+| Found | At least one screen | The list (14.3). No "searching" text: the list updates silently |
+| Nothing found | Search ran 8 s and found nothing. The search continues | `nearby.none` (15, `p-fg2`), below it `nearby.noneWhy` as small print. If a screen appears later, the list replaces the text |
+| Paused | Phones and tablets: the search ran 60 s (14.5) | Small print `nearby.paused` and the compact button `nearby.search`. The list is cleared when the search stops (an entry that is no longer watched could be stale) |
+| Not allowed | The system permission was refused | Info icon 18 in `p-warn` + small print `nearby.denied`; below it a text link `nearby.allow` (style of `start.beDisplay`) that opens the app's page in the system settings. iOS: `UIApplication.openSettingsURLString` |
+| No local network | The device has no Wi-Fi or Ethernet connection (mobile data only) | wifi-off icon 18 in `p-warn` + small print `nearby.noWifi`. No search runs; it starts by itself when Wi-Fi comes |
+
+Compact button (new size, only here): secondary look (`p-surface`, 1 px `p-border`, radius 10), min height 44, padding 0 16, 15/700 `p-fg`, icon 18, content width on every device.
+
+### 14.3 One row per screen
+
+Each found screen is one button in the option-row look of 5.5 (min height 58, laptop 50; radius 12; 1 px `p-border`; padding 8 14; gap 12). In the laptop card the row fill is `p-bg` (the card is `p-surface`). Hover (pointer): border `p-primary`. Keyboard: Tab reaches each row in list order, Enter/Space taps, focus outline 2 `p-primary`, offset 2 (6.3 of native-apps.md).
+
+| Part | Content |
+| --- | --- |
+| Icon (22, `p-primary`) | `screen` |
+| Title (17/700 `p-fg`, line height 1.25, at most **2 lines**, then "…") | The announced name, cleaned like `room_name` (decision 13.2: control, bidi, zero-width, invisible and private-use characters removed, white space collapsed, cut at 32 characters) and shown in quotes with `common.quoted`. Empty after cleaning → `common.noName` without quotes, 17/500 `p-fg2` |
+| Subtitle (13/400 `p-fg3`, wraps) | `nearby.open` or `nearby.approval`; when the screen's server is not the default relay, a policy server or a DNS-SRV server: ` · ` + `nearby.via` (`{host}` = the announced server's host name, cleaned, no port unless it is not 443) |
+| Right (15 mono 700, letter-spacing .06em, `p-fg2`) | The screen's current code as `XXX XXX`. It is the same code the screen shows large, so the person can check that the row is the screen in front of them, and two equal names stay apart |
+
+**Locked screens** stay in the list, so the person knows the screen is there: `locked` icon in `p-fg3`, title in `p-fg3`, subtitle `nearby.locked`, no code (it is not announced), **dashed** border, not focusable and not tappable (`aria-disabled`). It becomes a normal row as soon as the screen announces Open or Approval on again.
+
+Rules:
+
+- **Never merge rows by name.** Two screens called „Raum 204" are two rows; the code (and `nearby.via` when the servers differ) tells them apart. Rows are merged only when they are the same screen (same instance id, 14.8).
+- **Order:** in the order they were first found; new rows are added **at the end**. Rows never re-sort while the page is shown (a row must not jump away from a finger). When the page is opened again, the list starts empty and fills in the order of discovery.
+- A row that **appeared, moved or changed within the last 500 ms ignores a tap** (a row above it may just have left).
+- A row leaves **at once** when its screen says goodbye or its announcement expires (14.8), without animation. No "gone" toast for rows that leave by themselves.
+- At most **32 rows**; further screens are not shown (no "and more" line). The page scrolls as a whole; the list has no scroll area of its own.
+- Accessible name of a row: `nearby.aria` ("„Raum 204“, Code P4X 9TR, Mit Freigabe"), with the full cleaned name (not cut at 2 lines).
+- `prefers-reduced-motion`: the spinner stands still (3.6).
+
+### 14.4 Tapping a row
+
+| Situation | What happens |
+| --- | --- |
+| Server is the default relay, a policy server, a DNS-SRV server, or a server this device was confirmed for before | The search stops. The row shows the spinner (20) instead of the code and `nearby.connecting` as subtitle; all other rows are disabled (55 % opacity). The app joins with the announced code and the name from the field. Then the known flow: Open → "What to show" (5.5); Approval on → waiting page (5.4) and the join request on the screen (4.4); blocked device → `error.denied`; `room_full` → `error.occupied`; every other failure → the error pages of 6 |
+| Server is anything else (announced only) | First the **relay confirmation page** (7.2, presenter variant) with the body `relay.confirm.bodyNearby` and the secondary button `common.cancel` (not `relay.confirm.cancel`: there is no default relay to fall back to here). Cancel → back to the start page, nothing was sent. "Use this relay" → the host is remembered as confirmed on this device, then as above. The announcement alone never makes a server trusted (`docs/discovery.md`, trust policy) |
+| The screen went Locked meanwhile (`room_locked`) | `error.locked` (6), as with a typed code |
+| The code is no longer valid (`room_not_found`: the screen ended its session or went off between announcement and tap) | No error page. Back to the start page; the row is removed; under the list one line of short status text in `p-error` (13/700): `nearby.gone`. The search starts again (the screen may announce its new code). The line goes away with the next tap or when the list changes |
+
+There is no extra confirmation for Open screens: the "What to show" page already comes before anything is shared, and the system capture dialog comes before the screen is shared (5.5).
+
+Withdrawing on the waiting page, Disconnect, the disconnected page and every error page lead back to the start page, which starts the search again.
+
+### 14.5 When the search runs
+
+- Starts when the start page is shown (and is not in a state of 14.1 without the section), when the app comes back to the foreground on that page, and when the device joins a Wi-Fi or Ethernet network.
+- Stops when the page is left (any tap on a row, Connect, Scan), when the app goes to the background, and when the device loses the local network.
+- **Phones and tablets:** stops after **60 s** on the page → state Paused (14.2). `nearby.search` starts another 60 s.
+- **Computers:** runs as long as the page is visible (window not minimised); no time limit.
+- No background search, no search on any other page, no notification about found screens.
+
+### 14.6 Platforms and devices
+
+| Device | Notes |
+| --- | --- |
+| Phone (Android, iPhone) | Phone layout. Rows full width, 58 high (touch target ≥ 44). On a small phone the list pushes the code part down; the page scrolls, Connect stays at the bottom of the content |
+| Tablet (Android, iPad) | Phone layout below 720 wide, laptop layout above (native-apps.md 4). Search limit as phones (60 s) |
+| Computer (Linux, Windows, macOS) | Laptop layout, list in the right card. Mouse hover, keyboard as 14.3. No scan button |
+| TV, Apple TV, any device in the display role | Nothing new is drawn. The display only **announces** itself (14.8) while it shows Idle or Presenting; the join request (4.4) is unchanged. The presenter app does not run on TVs |
+| Web (browser presenter and `/display`) | Not available. The web display cannot announce itself either; a web display is found only by its code |
+
+### 14.7 Tokens used
+
+Only tokens of 3.3: `p-bg`, `p-surface`, `p-border`, `p-divider`, `p-fg`, `p-fg2`, `p-fg3`, `p-primary` (icon, spinner, hover border, focus outline, text link), `p-primary-soft` (spinner track), `p-warn` (icons of Not allowed and No local network), `p-error` (the `nearby.gone` line). No new colour. Type and sizes as 3.4 / 3.5; the only new size is the compact button (14.2).
+
+### 14.8 Requirements for the announcement (for the engineers)
+
+What the design needs from the display's announcement and from the apps that read it. The protocol details are the engineers' (`docs/discovery.md`, section 3, extends the existing `_cometcast._tcp` record).
+
+The display (sender of the announcement) must:
+
+1. Announce only while it is a display with a code: in Idle and Presenting. **Not** during setup, in Idle connecting / offline (no valid code), or when its policy forbids announcements.
+2. Carry: a layout version; a **stable random instance id** per installation (not the host name, not a hardware id; new after a data reset) so the same screen seen on two interfaces or addresses is one row; the **room name** as set in setup (same cleaning as `room_name`, at most 32 characters; no fallback to the device or host name: none set → empty); the **server** (`host:port` + TLS flag, as today); the **join mode** (`open`, `approval`, `locked`); and, only for Open and Approval on, the **current code** (6 characters, the same as on the screen). If a separate join token is ever used, the code still has to be carried, because the list shows it.
+3. While **Locked**: keep announcing name, server and mode `locked`, and carry **no code and no token**.
+4. Update the announcement **within 1 s** when the code changes (End, restart, reconnect with a new code), the join mode changes, or the room name changes.
+5. Use a **short lifetime** for the record that holds code and mode (at most 30 s, refreshed before it runs out), so a screen that dies without saying goodbye leaves the lists within 30 s. Send a **goodbye** (withdraw the record) when the display app stops, goes to the background (native-apps.md 15), loses the server, or enters a state of point 1 where it must not announce.
+6. Keep the record small (one DNS-SD TXT record, well under 400 bytes) and send nothing else (no person names, no presenter information, no "busy" flag).
+
+The apps (receivers of the announcement) must:
+
+7. Treat every field as untrusted: clean the name (14.3), check the server like any announced server (`docs/discovery.md`: private-range IP literals only, TLS rule), drop a record whose code is not 6 characters from the code alphabet (5.2), drop records of another layout version.
+8. Merge by instance id; when two different instance ids claim the same name, show both.
+9. Remove a row when the record is withdrawn or its lifetime has passed without refresh; never show a cached entry from an earlier search.
+10. Keep at most 32 screens; drop the oldest-seen beyond that.
+11. Never pick a screen by itself, never pre-fill the code field from an announcement, and never save an announced server as "last used" unless the person confirmed it (14.4).
+12. Search only as 14.5 says; use the platform's browse API (NWBrowser on Apple, NsdManager on Android, the existing mDNS backend on desktops), so iOS shows its local-network prompt and Android needs no extra permission; map a refused permission (`kDNSServiceErr_PolicyDenied`) to the state Not allowed.
+
+### 14.9 Not included
+
+- Discovery in the browser or on the web display (impossible), and any "nearby" list on the display itself.
+- Automatic connection to the only screen found, "last used screen" shortcuts, favourites, renaming or hiding screens in the list.
+- Showing screens from other networks, Bluetooth or QR-less pairing, or any cloud list of screens.
+- A "busy" or "someone is presenting" state in the row (`error.occupied` covers it after the tap).
+- Sorting, search field or grouping in the list; a separate "Nearby" screen, sheet or tab.
+- A setting on the display to stop announcing (owner question, 12).
+
+### 14.10 Copy
+
+| Key | EN | DE du (shipped) | DE Sie |
+| --- | --- | --- | --- |
+| `nearby.title` | Screens on this network | Bildschirme in diesem Netz | Bildschirme in diesem Netz |
+| `nearby.searching` | Searching … | Sucht … | Sucht … |
+| `nearby.open` | Connects at once | Sofort verbunden | Sofort verbunden |
+| `nearby.approval` | Approval on | Mit Freigabe | Mit Freigabe |
+| `nearby.locked` | Locked right now | Gerade gesperrt | Gerade gesperrt |
+| `nearby.via` | via {host} | über {host} | über {host} |
+| `nearby.connecting` | Connecting … | Verbinde … | Verbinde … |
+| `nearby.none` | No screen found here. | Hier wurde kein Bildschirm gefunden. | Hier wurde kein Bildschirm gefunden. |
+| `nearby.noneWhy` | Many Wi-Fi networks hide devices from each other. The code on the screen always works. | Viele WLANs verbergen Geräte voreinander. Der Code auf dem Bildschirm geht immer. | same as du |
+| `nearby.paused` | Search stopped to save battery. | Suche angehalten, um Akku zu sparen. | same as du |
+| `nearby.search` | Search this network | In diesem Netz suchen | In diesem Netz suchen |
+| `nearby.denied` | Comet Cast may not search this network. | Comet Cast darf dieses Netz nicht durchsuchen. | same as du |
+| `nearby.allow` | Allow in Settings | In den Einstellungen erlauben | In den Einstellungen erlauben |
+| `nearby.noWifi` | Join the room’s Wi-Fi to find screens here. | Verbinde dich mit dem WLAN des Raums, um Bildschirme hier zu finden. | Verbinden Sie sich mit dem WLAN des Raums, um Bildschirme hier zu finden. |
+| `nearby.gone` | This screen is no longer available. | Dieser Bildschirm ist nicht mehr erreichbar. | same as du |
+| `nearby.aria` | {name}, code {code}, {mode} | {name}, Code {code}, {mode} | {name}, Code {code}, {mode} |
+| `relay.confirm.bodyNearby` | The screen {name} uses the relay {host}. Only continue if you know and trust its operator. | Der Bildschirm {name} nutzt das Relay {host}. Mach nur weiter, wenn du den Betreiber kennst und ihm vertraust. | Der Bildschirm {name} nutzt das Relay {host}. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen. |
+| `ios.localNetworkUsage` (`NSLocalNetworkUsageDescription`, shown by the system) | Comet Cast looks for screens on the same Wi-Fi so you do not have to type a code. | Comet Cast sucht Bildschirme im selben WLAN, damit du keinen Code tippen musst. | Comet Cast sucht Bildschirme im selben WLAN, damit Sie keinen Code tippen müssen. |
+
+`{name}` is inserted already quoted (`common.quoted`), or `common.noName`. `{mode}` is the subtitle text of the row (`nearby.open`, `nearby.approval`). Reused without change: `start.nameLabel`, `start.or`, `start.codeLabel`, `app.scanQr`, `app.connect`, `common.quoted`, `common.noName`, `common.cancel`, `relay.confirm.title`, `relay.confirm.risk`, `relay.confirm.use`. The existing system prompt text of the Apple TV (`docs/appletv-device-test-plan.md`, B1) is for the display and stays.

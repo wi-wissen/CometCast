@@ -1,6 +1,6 @@
 # Native apps: platform guidance
 
-Status: **final for this round (2026-11-07).** Companion to [first-run-and-display.md](first-run-and-display.md) (the spec). This file adds **no new design**. It says, for each native platform, how the screens and states of the spec are built, what is shared, and where a platform needs a variant because of what the platform can or cannot do. Where this file and the spec disagree, the spec wins; tell the designer.
+Status: **final for this round (2026-11-07).** Companion to [first-run-and-display.md](first-run-and-display.md) (the spec). This file adds **no new design** (the list of screens on the same network is designed in spec 14; section 4.1 below says how each platform builds it). It says, for each native platform, how the screens and states of the spec are built, what is shared, and where a platform needs a variant because of what the platform can or cannot do. Where this file and the spec disagree, the spec wins; tell the designer.
 
 Platforms of this round:
 
@@ -39,7 +39,7 @@ Engineers must not change these per platform. A difference is a bug.
 5. **Icons:** the stroke icons of `apps/web/src/components/Icon.vue` and the toolbar icons of `apps/web/src/components/ReceiverToolbar.vue` (24 × 24 view box, stroke 2, round caps and joins; `check` 2.6, `stop` and `x` 2.4). No Material Icons, no Cupertino icons, no SF Symbols.
 6. **States and timings:** the state table (spec 4), the 1 s input guard, controls shown 5 s with 400 ms fades, mouse throttle 400 ms, toast 3.2 s, idle dim after 7 min to 40 % in 2 s (restore 200 ms), the reconnect schedule (1 s, 2 s, 3 s, then 4 s; offline box when the 3 s attempt fails; busy 30 s; the 60 s busy window), connecting → offline after 8 s.
 7. **Behaviour:** focus rows and key meanings (spec 7.1) with the platform's key names, one dialog at a time, first input only reveals, no hold gestures, what is remembered (spec 4.3), the error mapping (spec 6), the code format and the code field rules (spec 5.2), the QR content `https://{dom}/{CODE}` at level M.
-8. **Copy:** the keys and values of spec 11 (EN, DE Sie shipped, DE du ready), including the `.Remote` / `.Pointer` variants chosen by input type, not by platform name.
+8. **Copy:** the keys and values of spec 11 and 14.10 (EN, DE du shipped, DE Sie ready), including the `.Remote` / `.Pointer` variants chosen by input type, not by platform name.
 9. **What is not built** (spec 10), plus section 9 below.
 
 ## 3. Display screens per platform
@@ -78,6 +78,21 @@ Presenter pages use the phone layout below 720 logical px of window width and th
 | 6 error pages | Same; "Scan QR code again" on phones and tablets with a camera | Same | No rescan button |
 
 Note on 5.7: `bye.body` says "You can close this tab", which is wrong in an app. In the apps, the disconnected page shows `bye.title` and the button only; the body line is omitted. (No new copy.)
+
+### 4.1 Screens on the same network (spec 14)
+
+The app start page of every presenter app (Android phone and tablet, iPhone, iPad, Linux, Windows, macOS) shows the section `nearby.title` of spec 14 and the display apps announce themselves (spec 14.8). Everything visible is identical; only the system parts differ:
+
+| | Android phone / tablet | iPhone / iPad | Linux / Windows / macOS | Displays (Android TV, Apple TV, tablet or computer in the display role) |
+| --- | --- | --- | --- | --- |
+| Browse | `NsdManager.discoverServices` (`_cometcast._tcp`), resolve with `registerServiceInfoCallback` (API 34+) or `resolveService` | `NWBrowser` with `.bonjourWithTXTRecord`; TXT via `NWTXTRecord` | the existing `mdns-sd` backend of `cc-discovery` | n/a (no list on a display) |
+| Announce | n/a on phones; `NsdManager.registerService` on tablets in the display role and Android TV | n/a on iPhone; `NWListener` service on iPad in the display role | `cc-discovery` `advertise_receiver` in the display role | Android TV: `NsdManager.registerService`; Apple TV: `NWListener.service` with TXT (replaces today's announcement fields, spec 14.8) |
+| Permission | none for browsing; a future Android local-network permission is handled like iOS | **Local Network** prompt, shown when the person taps `nearby.search` the first time (spec 14.2 "Not asked yet"); `NSLocalNetworkUsageDescription` = `ios.localNetworkUsage`; `NSBonjourServices` lists `_cometcast._tcp`. Denied (`PolicyDenied`) → state "Not allowed", link to `UIApplication.openSettingsURLString` | none (macOS 15+ may ask for Local Network for the desktop app the same way: handle it as iOS) | Apple TV and iPad already ask when announcing starts (`docs/appletv-device-test-plan.md` B1) |
+| Search time | 60 s, then Paused (spec 14.5) | 60 s, then Paused | while the window is visible | announce while Idle or Presenting |
+| "No local network" | `ConnectivityManager`: no `TRANSPORT_WIFI` / `TRANSPORT_ETHERNET` | `NWPathMonitor`: no `.wifi` / `.wiredEthernet` | no non-loopback interface with a private address | n/a |
+| Open the system settings (`nearby.allow`) | n/a (no permission) | `openSettingsURLString` | macOS: the Privacy & Security pane | n/a |
+
+Nothing about the list may run on the web; the web start page keeps `start.appLaptop` as the reason to get the app.
 
 ## 5. Navigation and Back
 
@@ -145,7 +160,7 @@ Touch first. Keyboard (desktop, tablets with a keyboard): Tab order = reading or
 | Scan the QR code (`app.scanQr`) | Google code scanner (ML Kit, system UI) | VisionKit `DataScannerViewController` (system UI) | n/a | n/a | n/a | n/a |
 | Text input on TV | System IME (Gboard for TV), opened on OK | Full-screen tvOS keyboard, opened on Select | | | | |
 | Open a link (link card Open) | `url_launcher`, external browser | n/a (presenter only) | default browser | default browser | default browser | n/a |
-| Permissions asked before use | Notifications (Android 13+, for the capture foreground service) when Share screen is first chosen | Local network (when discovery starts), camera (on Scan) | | | Screen Recording | |
+| Permissions asked before use | Notifications (Android 13+, for the capture foreground service) when Share screen is first chosen | Local network (when the person taps `nearby.search` the first time, spec 14.2), camera (on Scan) | | | Screen Recording | |
 
 Rules: open a system dialog only as the direct result of the person's choice (spec 5.5: no explainer page before it). Cancelling it returns to the page it came from without an error. A refused permission is handled exactly like a cancelled dialog (back to the page, no error page; spec 5.5: `capture_denied` never shows a page). The system itself tells the person how to allow it later.
 
@@ -155,7 +170,7 @@ TV text input: a text field gets focus like a button (with the ring) and opens t
 
 - **Share sheet entry points** ("Share to Comet Cast" from other apps, Android `ACTION_SEND`, iOS share extension, macOS share menu): not designed, not built.
 - The annotation toolbar on native display apps (tablets, computers): not built until the owner decides on drawing tools (spec 12). Existing annotation code in the Flutter receiver stays behind a build flag that is off.
-- The list of nearby screens on the desktop app (discovery without a code): not designed (spec 12).
+- ~~The list of nearby screens (discovery without a code)~~: now designed for all presenter apps (spec 14, section 4.1 above).
 - AirPlay, Google Cast and Miracast receiving screens, widgets, notifications other than the system's capture notification, home-screen shortcuts, Picture in Picture, multiple windows.
 - Any OLED black for presenter pages; any platform-specific appearance (Material You, Liquid Glass, Mica, vibrancy).
 
@@ -322,7 +337,7 @@ Lifecycle: when a display app goes to the background (Android `onStop`, tvOS/iPa
 ## 16. Copy and languages
 
 - Keys as spec 11.1: web dotted keys; Flutter ARB lower camel case (`settings.join.openText` → `settingsJoinOpenText`); Apple TV string catalog with the dotted keys.
-- German "Sie" is shipped; "du" must be switchable in one file swap: Flutter keeps two German ARB sets (`lib/l10n/app_de.arb` = Sie, `lib/l10n/du/app_de.arb` = du) and `l10n.yaml` points `arb-dir` to the chosen set at build time; Apple TV keeps `Localizable.xcstrings` (Sie) and `Localizable-du.xcstrings` (du) and reads the table named by one build setting.
+- German "du" is shipped (spec D6, decision 54); "Sie" stays switchable in one file swap: Flutter keeps two German ARB sets (`lib/l10n/app_de.arb` = du, `lib/l10n/sie/app_de.arb` = Sie) and `l10n.yaml` points `arb-dir` to the chosen set at build time; Apple TV keeps `Localizable.xcstrings` (du) and `Localizable-sie.xcstrings` (Sie) and reads the table named by one build setting. The iOS and tvOS `InfoPlist.strings` (local-network text) follow the same set.
 - `.Remote` vs `.Pointer` variants (`setup.done.body*`, `settings.close*`): Remote on TVs; Pointer on tablets and computers.
 - Language: system language, German or English, else English (`docs/i18n.md`). No language switch in the app.
 
@@ -359,4 +374,5 @@ A platform build is accepted for this round when, in all three display appearanc
 2. Every focus row of spec 7.1 works with the platform's keys (section 6), with the spec ring and no system focus effect.
 3. The wake lock is held only while presenting (checked by letting the device reach its screensaver timeout on Idle).
 4. Reduced motion removes the fades and the ring scale.
-5. Switching the German file set from Sie to du changes every addressing string and nothing else.
+5. Switching the German file set from du to Sie changes every addressing string and nothing else.
+6. Presenter apps: the states of spec 14.2 (not asked, searching, found, nothing found, paused, not allowed, no local network) and the tap outcomes of 14.4 (open, approval, other relay, gone) match the mockup and spec 14 on a real network with two displays of the same name; a display that is switched off leaves the list within 30 s.
