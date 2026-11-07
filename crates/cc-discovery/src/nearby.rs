@@ -287,8 +287,10 @@ impl NearbyTracker {
         }
 
         if self.entries.len() >= MAX_SCREENS {
-            // Spec 14.8, point 10: drop the oldest-seen (first found) beyond the limit.
-            changes.push(NearbyChange::Removed(self.entries.remove(0).screen.id));
+            // Spec 14.8, point 10 (decision N49): the first 32 found stay; a further screen is
+            // neither reported nor stored. It is added at the end when its next refresh
+            // arrives after a row has left.
+            return changes;
         }
         self.entries.push(Entry {
             screen: screen.clone(),
@@ -768,23 +770,44 @@ mod tests {
     }
 
     #[test]
-    fn at_most_32_rows_oldest_first_out() {
+    fn the_33rd_screen_does_not_push_a_row_out() {
         let mut t = NearbyTracker::new();
         let now = t0();
-        for i in 0..40u32 {
-            let id = format!("{i:016x}");
-            seen(
+        let id = |i: u32| format!("{i:016x}");
+        for i in 0..32u32 {
+            let ch = seen(
                 &mut t,
                 &format!("s{i}"),
                 "10.0.0.1",
-                &open(&id, "P4X9TR"),
+                &open(&id(i), "P4X9TR"),
                 now,
             );
+            assert_eq!(ch.len(), 1);
+        }
+        // The 33rd and later are not reported and not stored.
+        for i in 32..40u32 {
+            let ch = seen(
+                &mut t,
+                &format!("s{i}"),
+                "10.0.0.1",
+                &open(&id(i), "P4X9TR"),
+                now,
+            );
+            assert!(ch.is_empty(), "screen {i} was reported");
         }
         let s = t.screens();
         assert_eq!(s.len(), MAX_SCREENS);
-        assert_eq!(s[0].id, format!("{:016x}", 8));
-        assert_eq!(s[31].id, format!("{:016x}", 39));
+        for (n, row) in s.iter().enumerate() {
+            assert_eq!(row.id, id(n as u32), "row {n} changed");
+        }
+        // Row 5 leaves: the 33rd is reported at the end with its next refresh.
+        assert_eq!(t.on_gone("s5").len(), 1);
+        let ch = seen(&mut t, "s32", "10.0.0.1", &open(&id(32), "P4X9TR"), now);
+        assert!(matches!(&ch[..], [NearbyChange::Added(a)] if a.id == id(32)));
+        let s = t.screens();
+        assert_eq!(s.len(), MAX_SCREENS);
+        assert_eq!(s[31].id, id(32));
+        assert_eq!(s[5].id, id(6));
     }
 
     #[test]

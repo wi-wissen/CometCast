@@ -299,6 +299,10 @@ pub(crate) struct Prepared {
 pub(crate) enum PrepareError {
     /// The person cancelled the system picker or the system refused (`capture_denied`).
     Denied(String),
+    /// macOS before 14 (`capture_os_old`).
+    OsOld(String),
+    /// Wayland without the ScreenCast portal or libpipewire (`capture_no_portal`).
+    NoPortal(String),
     /// Anything else (`capture_unavailable`).
     Failed(String),
 }
@@ -312,6 +316,8 @@ impl From<String> for PrepareError {
 pub(crate) fn capture_err(e: cc_capture::CaptureError) -> PrepareError {
     match e {
         cc_capture::CaptureError::Denied => PrepareError::Denied(e.to_string()),
+        cc_capture::CaptureError::OsTooOld => PrepareError::OsOld(e.to_string()),
+        cc_capture::CaptureError::NoPortal(_) => PrepareError::NoPortal(e.to_string()),
         other => PrepareError::Failed(other.to_string()),
     }
 }

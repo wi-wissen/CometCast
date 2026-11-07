@@ -537,7 +537,12 @@ void main() {
       addTearDown(ctl.dispose);
       await pumpPage(
         t,
-        CodecPage(controller: ctl, onBack: nop, onScreen: onScreen ?? nop),
+        CodecPage(
+          controller: ctl,
+          onBack: nop,
+          onScreen: onScreen ?? nop,
+          onAction: (_) {},
+        ),
         size: const Size(1280, 800),
         locale: locale,
       );
@@ -621,9 +626,12 @@ void main() {
       expect(opened, 1);
     });
 
-    testWidgets('unsupported: the other page with the codec text', (t) async {
+    testWidgets('unsupported: the screen-sharing page with the codec text', (
+      t,
+    ) async {
       await pumpCodec(t, const UiCodecState.unsupported(reason: 'no bz2'));
-      expect(find.text('Something went wrong'), findsOneWidget);
+      expect(find.text('Screen sharing does not work here'), findsOneWidget);
+      expect(find.text('Something went wrong'), findsNothing);
       // The key's text only: no technical reason (N46); the action is Back, never Try again.
       expect(
         find.text(
@@ -632,8 +640,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('no bz2'), findsNothing);
+      // N56: now = nowNoApp; buttons file (primary), link, Back.
+      expect(find.text('Show a photo, a file or a link instead.'), findsOne);
+      expect(find.byKey(const Key('error-showFile')), findsOneWidget);
+      expect(find.byKey(const Key('error-showLink')), findsOneWidget);
       expect(find.byKey(const Key('error-back')), findsOneWidget);
-      expect(find.text('Back'), findsOneWidget);
       expect(find.text('Try again'), findsNothing);
       noMaterial(t);
     });

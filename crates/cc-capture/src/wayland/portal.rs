@@ -43,7 +43,7 @@ pub(super) struct Portal {
 }
 
 /// Map an ashpd error to the error of this crate. A cancelled or otherwise refused request is
-/// [`CaptureError::Denied`]; a missing portal service is `Unsupported`.
+/// [`CaptureError::Denied`]; a missing portal service is `NoPortal`.
 pub(super) fn map_error(e: &ashpd::Error) -> CaptureError {
     use ashpd::Error as E;
     match e {
@@ -52,10 +52,10 @@ pub(super) fn map_error(e: &ashpd::Error) -> CaptureError {
         // answer when the person closes their dialog.
         E::Response(_) => CaptureError::Denied,
         E::PortalNotFound(_) => {
-            CaptureError::Unsupported("no desktop portal with the ScreenCast interface")
+            CaptureError::NoPortal("no desktop portal with the ScreenCast interface")
         }
         E::RequiresVersion(..) => {
-            CaptureError::Unsupported("the desktop portal ScreenCast interface is too old")
+            CaptureError::NoPortal("the desktop portal ScreenCast interface is too old")
         }
         other => CaptureError::Display(format!("desktop portal: {other}")),
     }
@@ -65,9 +65,7 @@ pub(super) fn map_error(e: &ashpd::Error) -> CaptureError {
 /// session bus or no ScreenCast portal.
 pub(super) async fn connect() -> Result<(Screencast, Probe), CaptureError> {
     let sc = Screencast::new().await.map_err(|e| match map_error(&e) {
-        CaptureError::Display(_) => {
-            CaptureError::Unsupported("no desktop portal on the session bus")
-        }
+        CaptureError::Display(_) => CaptureError::NoPortal("no desktop portal on the session bus"),
         other => other,
     })?;
     // Properties are optional in old interface versions; a failure means "unknown" (0).
@@ -203,7 +201,7 @@ mod tests {
     fn old_interface_is_unsupported() {
         assert!(matches!(
             map_error(&ashpd::Error::RequiresVersion(4, 2)),
-            CaptureError::Unsupported(_)
+            CaptureError::NoPortal(_)
         ));
         assert!(matches!(
             map_error(&ashpd::Error::NoResponse),

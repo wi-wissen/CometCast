@@ -713,21 +713,64 @@ void main() {
         const PresenterUiEvent.error(code: 'capture_unavailable', message: 'x'),
       );
       await settle(t);
-      expect(find.text('Something went wrong'), findsOneWidget);
-      // The key text of N33, and Back (still connected) instead of Try again.
+      // N56: the screen-sharing page: title, why, now, and the three buttons.
+      expect(find.text('Screen sharing does not work here'), findsOneWidget);
+      expect(find.text('Something went wrong'), findsNothing);
       expect(
-        find.text(
-          'This device cannot share its screen with Comet Cast yet. Show a file or a link instead.',
-        ),
+        find.text('This device cannot pass its screen on to Comet Cast.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Show a photo, a file or a link instead.'),
         findsOneWidget,
       );
       expect(find.text('Try again'), findsNothing);
-      await t.tap(find.text('Back'));
+      expect(find.byKey(const Key('error-showFile')), findsOneWidget);
+      expect(find.byKey(const Key('error-showLink')), findsOneWidget);
+      // Show a link -> link page; system Back -> What to show (still connected).
+      await t.tap(find.byKey(const Key('error-showLink')));
       await settle(t);
-      expect(find.text('What would you like to show?'), findsOneWidget);
-      expect(h.core.startPresenterCalls, 1);
-      expect(h.core.stopPresenterCalls, 0);
+      expect(find.byKey(const Key('link-url')), findsOneWidget);
     });
+
+    for (final c in {
+      'capture_os_old': 'Sharing the screen needs macOS 14 or later. This Mac has an older version.',
+      'capture_no_portal': 'This desktop has no screen sharing for apps set up. Whoever looks after this computer can add it.',
+    }.entries) {
+      testWidgets('${c.key} is the screen-sharing page and keeps the join', (
+        t,
+      ) async {
+        final h = await pumpPresenter(t, code: 'K7QM2W');
+        await toWhat(t, h);
+        h.core.presenterEvents.add(
+          PresenterUiEvent.error(code: c.key, message: 'x'),
+        );
+        await settle(t);
+        expect(find.text('Screen sharing does not work here'), findsOneWidget);
+        expect(find.text(c.value), findsOneWidget);
+        // The buttons: file (primary), link, Back to What to show; still connected.
+        await t.tap(find.byKey(const Key('error-back')));
+        await settle(t);
+        expect(find.text('What would you like to show?'), findsOneWidget);
+        expect(h.core.startPresenterCalls, 1);
+        expect(h.core.stopPresenterCalls, 0);
+      });
+      testWidgets('${c.key}: Show photo or file opens the file page', (
+        t,
+      ) async {
+        final h = await pumpPresenter(t, code: 'K7QM2W');
+        await toWhat(t, h);
+        h.core.presenterEvents.add(
+          PresenterUiEvent.error(code: c.key, message: 'x'),
+        );
+        await settle(t);
+        await t.tap(find.byKey(const Key('error-showFile')));
+        await settle(t);
+        expect(find.byKey(const Key('file-pick')), findsNothing);
+        expect(find.text('Screen sharing does not work here'), findsNothing);
+        expect(find.text('What would you like to show?'), findsNothing);
+      });
+    }
 
     testWidgets('capture_denied shows no page at all', (t) async {
       final h = await pumpPresenter(t, code: 'K7QM2W');

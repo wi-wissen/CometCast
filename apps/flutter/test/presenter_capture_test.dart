@@ -207,9 +207,46 @@ void main() {
       await t.tap(find.byKey(const Key('what-screen')));
       await settle(t);
       expect(r.core.presentedScreens.length, 1);
-      expect(r.core.presentedScreens.single, isNotNull);
+      // N55: the system picker (`null`) opens on every tap; a forced display would be a request.
+      expect(r.core.presentedScreens.single, isNull);
       expect(r.core.startPresenterCalls, 1);
     });
+
+    testWidgets(
+      'a closed shared window (PresentingStopped) is the same as Stop: What to show, no error (N55)',
+      (t) async {
+        final r = await pump(t, desktop: true);
+        await toWhat(t, r);
+        await t.tap(find.byKey(const Key('what-screen')));
+        await settle(t);
+        r.core.presenterEvents.add(const PresenterUiEvent.presenting());
+        await settle(t);
+        expect(find.text('You are sharing your screen'), findsOneWidget);
+        // The core reports the closed window or the system's "stop sharing" like Stop.
+        r.core.presenterEvents.add(const PresenterUiEvent.presentingStopped());
+        await settle(t);
+        expect(find.text('What would you like to show?'), findsOneWidget);
+        expect(find.text('Something went wrong'), findsNothing);
+        expect(find.text('Screen sharing does not work here'), findsNothing);
+        expect(r.core.stopPresenterCalls, 0, reason: 'still connected');
+      },
+    );
+
+    testWidgets(
+      'a cancelled picker (capture_denied) is back at What, no page',
+      (t) async {
+        final r = await pump(t, desktop: true);
+        await toWhat(t, r);
+        await t.tap(find.byKey(const Key('what-screen')));
+        await settle(t);
+        r.core.presenterEvents.add(
+          const PresenterUiEvent.error(code: 'capture_denied', message: 'x'),
+        );
+        await settle(t);
+        expect(find.text('What would you like to show?'), findsOneWidget);
+        expect(find.text('Screen sharing does not work here'), findsNothing);
+      },
+    );
 
     testWidgets('without the H.264 encoder the codec page comes first', (
       t,
@@ -241,7 +278,7 @@ void main() {
       expect(find.text('What would you like to show?'), findsOneWidget);
     });
 
-    testWidgets('capture_unavailable is the other page and keeps the join', (
+    testWidgets('capture_unavailable is the screen-sharing page, join kept', (
       t,
     ) async {
       final r = await pump(t, desktop: true);
@@ -252,8 +289,13 @@ void main() {
         const PresenterUiEvent.error(code: 'capture_unavailable', message: 'x'),
       );
       await settle(t);
-      expect(find.text('Something went wrong'), findsOneWidget);
+      expect(find.text('Screen sharing does not work here'), findsOneWidget);
       expect(r.core.stopPresenterCalls, 0);
+      // The desktop picker opens on every tap: no X11 request unless a display is forced.
+      expect(r.core.presentedScreens, [null]);
+      // The page offers file, link and Back.
+      expect(find.byKey(const Key('error-showFile')), findsOneWidget);
+      expect(find.byKey(const Key('error-back')), findsOneWidget);
     });
   });
 

@@ -37,6 +37,8 @@ class FirstRunPage extends StatelessWidget {
     this.codeEmpty = false,
     this.canConnect = true,
     this.nearby,
+    this.connecting = false,
+    this.onAnyTap,
   });
 
   final TextEditingController codeController;
@@ -69,8 +71,24 @@ class FirstRunPage extends StatelessWidget {
   /// divider `start.or` comes after it and `app.scanAgainBody` is not shown.
   final Widget? nearby;
 
+  /// A nearby row is connecting (N54): Connect and Scan disabled, both fields read-only.
+  final bool connecting;
+
+  /// Any pointer-down on the page (the `nearby.gone` line goes with it, N51).
+  final VoidCallback? onAnyTap;
+
   @override
   Widget build(BuildContext context) {
+    final page = _build(context);
+    if (onAnyTap == null) return page;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => onAnyTap!(),
+      child: page,
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final s = PresenterScope.of(context);
     final p = s.tokens;
     final t = AppLocalizations.of(context);
@@ -105,12 +123,13 @@ class FirstRunPage extends StatelessWidget {
     final actions = <Widget>[
       PPrimaryButton(
         label: t.appConnect,
-        onPressed: canConnect ? onConnect : null,
+        onPressed: canConnect && !connecting ? onConnect : null,
       ),
       if (links.isNotEmpty)
         _LinksBlock(
-          // The stacked action area leaves 8 above; the laptop wants 12.
-          top: s.laptop ? 4 : 0,
+          // The stacked action area leaves 8 above; the laptop wants 12. With the nearby card
+          // the column's own 12 gap does it.
+          top: s.laptop && !(nearby != null && codeChip == null) ? 4 : 0,
           alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
           children: links,
         ),
@@ -124,6 +143,7 @@ class FirstRunPage extends StatelessWidget {
         controller: nameController,
         maxLength: 40,
         textInputAction: TextInputAction.next,
+        readOnly: connecting,
       ),
     ];
     final withNearby = nearby != null && codeChip == null;
@@ -171,7 +191,7 @@ class FirstRunPage extends StatelessWidget {
             key: const Key('scan-button'),
             label: t.appScanQr,
             icon: CcIconName.scan,
-            onPressed: onScan,
+            onPressed: connecting ? null : onScan,
           ),
           if (scanWrong)
             Semantics(
@@ -193,7 +213,8 @@ class FirstRunPage extends StatelessWidget {
           error: codeEmpty,
           errorText: codeEmpty ? t.startCodeEmpty : null,
           textInputAction: TextInputAction.done,
-          onSubmitted: (_) => onConnect(),
+          readOnly: connecting,
+          onSubmitted: connecting ? null : (_) => onConnect(),
         ),
       ],
     ];
@@ -721,6 +742,9 @@ enum ErrorKind {
   occupied,
   busy,
   outdated,
+
+  /// Apps: the device cannot share its screen (N56).
+  capture,
   other,
 }
 
@@ -738,15 +762,10 @@ class ErrorPage extends StatelessWidget {
     this.relayWhy = false,
     this.boxNow = false,
     this.dom = '',
-    this.useBack = false,
   });
   final ErrorKind kind;
   final void Function(ErrorAction) onAction;
 
-  /// The action is `common.back` to "What to show" (the person stays connected) instead of
-  /// Try again: Try again would only fail again (spec 6, N33, N46: the unsupported codec page
-  /// and `capture_unavailable`).
-  final bool useBack;
   final bool lockedWhile;
   final int cooldown;
 
@@ -780,6 +799,7 @@ class ErrorPage extends StatelessWidget {
       ErrorKind.occupied => (CcIconName.info, PTone.mut),
       ErrorKind.busy => (CcIconName.clock, PTone.warn),
       ErrorKind.outdated => (CcIconName.info, PTone.mut),
+      ErrorKind.capture => (CcIconName.info, PTone.mut),
       ErrorKind.other => (CcIconName.info, PTone.mut),
     };
     final (title, why, now) = switch (kind) {
@@ -832,6 +852,11 @@ class ErrorPage extends StatelessWidget {
         t.errorOutdatedWhy,
         t.errorOutdatedNowApp,
       ),
+      ErrorKind.capture => (
+        t.errorCaptureTitle,
+        otherWhy ?? t.errorsCaptureUnavailable,
+        t.errorNoScreenNowNoApp,
+      ),
       ErrorKind.other => (
         t.errorOtherTitle,
         otherWhy ?? t.errorsUnknown,
@@ -857,6 +882,13 @@ class ErrorPage extends StatelessWidget {
           label: t.errorActionShowFile,
           onPressed: () => onAction(ErrorAction.showFile),
         ),
+        // N56: initial focus on the primary.
+        ErrorKind.capture => PPrimaryButton(
+          key: const Key('error-showFile'),
+          label: t.errorActionShowFile,
+          autofocus: true,
+          onPressed: () => onAction(ErrorAction.showFile),
+        ),
         ErrorKind.denied => PPrimaryButton(
           key: const Key('error-ask'),
           label: cooldown > 0
@@ -869,22 +901,23 @@ class ErrorPage extends StatelessWidget {
           label: t.errorActionAsk,
           onPressed: () => onAction(ErrorAction.ask),
         ),
-        _ when useBack => PPrimaryButton(
-          key: const Key('error-back'),
-          label: t.commonBack,
-          onPressed: () => onAction(ErrorAction.back),
-        ),
         _ => PPrimaryButton(
           key: const Key('error-retry'),
           label: t.errorActionRetry,
           onPressed: () => onAction(ErrorAction.retry),
         ),
       },
-      if (kind == ErrorKind.noScreen)
+      if (kind == ErrorKind.noScreen || kind == ErrorKind.capture)
         PSecondaryButton(
           key: const Key('error-showLink'),
           label: t.errorActionShowLink,
           onPressed: () => onAction(ErrorAction.showLink),
+        ),
+      if (kind == ErrorKind.capture)
+        PSecondaryButton(
+          key: const Key('error-back'),
+          label: t.commonBack,
+          onPressed: () => onAction(ErrorAction.back),
         ),
       if (rescan)
         PSecondaryButton(
@@ -997,7 +1030,11 @@ class CodecPage extends StatelessWidget {
     required this.controller,
     required this.onBack,
     required this.onScreen,
+    required this.onAction,
   });
+
+  /// The buttons of the unsupported state (`error.capture`: file, link, back).
+  final void Function(ErrorAction) onAction;
 
   final CodecController controller;
   final VoidCallback onBack;
@@ -1015,12 +1052,11 @@ class CodecPage extends StatelessWidget {
         final info = controller.info;
         final state = controller.state;
         if (state is UiCodecState_Unsupported) {
-          // `error.other` with the codec text as its "why" (spec 5.8).
+          // `error.capture` with the codec text as its "why" (spec 5.8, N56).
           return ErrorPage(
-            kind: ErrorKind.other,
+            kind: ErrorKind.capture,
             otherWhy: t.codecUnsupported,
-            useBack: true,
-            onAction: (_) => onBack(),
+            onAction: onAction,
           );
         }
         final back = PSecondaryButton(

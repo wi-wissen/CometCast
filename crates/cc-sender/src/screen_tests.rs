@@ -421,6 +421,14 @@ fn a_cancelled_picker_is_reported_as_denied_and_other_errors_as_failed() {
         PrepareError::Failed(_)
     ));
     assert!(matches!(
+        capture_err(CaptureError::OsTooOld),
+        PrepareError::OsOld(_)
+    ));
+    assert!(matches!(
+        capture_err(CaptureError::NoPortal("x")),
+        PrepareError::NoPortal(_)
+    ));
+    assert!(matches!(
         capture_err(CaptureError::Display("x".into())),
         PrepareError::Failed(_)
     ));

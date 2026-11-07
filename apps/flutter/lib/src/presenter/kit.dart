@@ -604,10 +604,14 @@ class PField extends StatefulWidget {
     this.errorText,
     this.fieldKey,
     this.autofocus = false,
+    this.readOnly = false,
   });
 
   final String label;
   final TextEditingController controller;
+
+  /// Look unchanged, nothing can be typed (a row is connecting, N54).
+  final bool readOnly;
   final bool code;
   final bool error;
   final int? maxLength;
@@ -710,6 +714,7 @@ class _PFieldState extends State<PField> {
       controller: widget.controller,
       focusNode: _node,
       autofocus: widget.autofocus,
+      readOnly: widget.readOnly,
       style: style,
       cursorColor: p.primary,
       backgroundCursorColor: p.borderInput,
@@ -727,7 +732,7 @@ class _PFieldState extends State<PField> {
         if (widget.code) _UpperCase(),
       ],
       onChanged: widget.onChanged,
-      onSubmitted: widget.onSubmitted,
+      onSubmitted: widget.readOnly ? null : widget.onSubmitted,
     );
   }
 }

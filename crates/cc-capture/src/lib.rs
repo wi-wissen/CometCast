@@ -104,6 +104,13 @@ pub enum CaptureError {
     /// show no error for this (it is the app code `capture_denied`).
     #[error("screen capture was cancelled or refused")]
     Denied,
+    /// macOS before 14: the system picker does not exist (app code `capture_os_old`).
+    #[error("screen capture needs macOS 14 or newer")]
+    OsTooOld,
+    /// Linux/Wayland without the ScreenCast desktop portal or without libpipewire (app code
+    /// `capture_no_portal`).
+    #[error("no screen sharing for apps on this desktop: {0}")]
+    NoPortal(&'static str),
 }
 
 /// Id of the only source a picker backend lists: "whatever the person picks in the system
@@ -119,8 +126,9 @@ pub struct PickerOptions {
     /// its picker. Off, and nothing turns it on yet (open design question H1 in
     /// docs/design/implementation-questions-flutter.md).
     pub use_restore_token: bool,
-    /// Windows: the window handle (HWND as integer) that owns the picker dialog. `None` uses
-    /// the foreground window. Ignored elsewhere.
+    /// Windows: the window handle (HWND as integer) that owns the picker dialog. `None` uses the
+    /// program's own main window (the Flutter window, decision N55), and only a program without
+    /// one the foreground window. Ignored elsewhere.
     pub owner_window: Option<u64>,
     /// X11 display name for the fallback (`None` = `$DISPLAY`).
     pub x11_display: Option<String>,
@@ -158,6 +166,8 @@ pub enum LinuxPlan {
     Portal,
     /// X11 whole desktop (no picker).
     X11,
+    /// A Wayland session where the portal (or libpipewire) is missing: `capture_no_portal`.
+    NoPortal(&'static str),
     /// Nothing can capture here.
     Unavailable(&'static str),
 }
@@ -179,12 +189,12 @@ pub fn plan_linux(
         return LinuxPlan::X11;
     }
     if wayland_session && !wayland_built {
-        return LinuxPlan::Unavailable(
+        return LinuxPlan::NoPortal(
             "Wayland session, but this build has no portal/PipeWire capture (feature `wayland`)",
         );
     }
     if wayland_session {
-        return LinuxPlan::Unavailable("no ScreenCast desktop portal on this Wayland session");
+        return LinuxPlan::NoPortal("no ScreenCast desktop portal on this Wayland session");
     }
     LinuxPlan::Unavailable("neither DISPLAY nor WAYLAND_DISPLAY is set")
 }
@@ -237,11 +247,14 @@ pub fn open_picker(opts: &PickerOptions) -> Result<Box<dyn ScreenSource + Send>,
                 None => Err(CaptureError::Display("portal was not opened".into())),
             },
             #[cfg(not(feature = "wayland"))]
-            LinuxPlan::Portal => Err(unsupported::WaylandPipeWire.error()),
+            LinuxPlan::Portal => Err(CaptureError::NoPortal(
+                "no portal/PipeWire capture in this build",
+            )),
             LinuxPlan::X11 => Ok(Box::new(x11::X11Source::connect(
                 opts.x11_display.as_deref(),
                 x11::X11Options { fps: opts.fps },
             )?)),
+            LinuxPlan::NoPortal(why) => Err(CaptureError::NoPortal(why)),
             LinuxPlan::Unavailable(why) => Err(CaptureError::Unsupported(why)),
         }
     }
@@ -319,11 +332,11 @@ mod plan_tests {
     fn wayland_session_never_uses_xwayland() {
         assert!(matches!(
             plan_linux(true, true, true, || false),
-            LinuxPlan::Unavailable(m) if m.contains("portal")
+            LinuxPlan::NoPortal(m) if m.contains("portal")
         ));
         assert!(matches!(
             plan_linux(true, true, false, || panic!("not asked")),
-            LinuxPlan::Unavailable(m) if m.contains("feature")
+            LinuxPlan::NoPortal(m) if m.contains("feature")
         ));
     }
 

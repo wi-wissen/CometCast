@@ -53,7 +53,12 @@ enum PresenterContentPhase {
 /// Errors of a presentation that could not start: the session stays joined and the person is
 /// back at "What to show" (`capture_denied`: no page at all, spec 6). Every other error code
 /// ends the session. Same list as the Rust documentation of `PresenterUiEvent`.
-const presenterStartFailureCodes = {'capture_denied', 'capture_unavailable'};
+const presenterStartFailureCodes = {
+  'capture_denied',
+  'capture_unavailable',
+  'capture_os_old',
+  'capture_no_portal',
+};
 
 class PresenterSessionController extends ChangeNotifier {
   PresenterSessionController({required this.core, this.udpBind});

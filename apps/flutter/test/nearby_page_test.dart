@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
+import 'package:cometcast/src/presenter/kit.dart' show PPrimaryButton;
 import 'package:cometcast/src/presenter/pages.dart' show PresenterDevice;
 
 import 'nearby_support.dart';
@@ -104,11 +105,17 @@ void main() {
       expect(find.text('Connects at once'), findsOneWidget);
       expect(find.text('K7Q M2W'), findsOneWidget);
       expect(find.text('“Room 204”'), findsOneWidget);
-      expect(find.text('Approval on · via cast.example.org'), findsOneWidget);
+      expect(
+        find.text('Approval on · via\u00A0cast.example.org'),
+        findsOneWidget,
+      );
       expect(find.text('P4X 9TR'), findsOneWidget);
       // No name: the "no name" text without quotes; a port other than 443 is shown.
       expect(find.text('No name'), findsOneWidget);
-      expect(find.text('Connects at once · via 10.0.0.5:8443'), findsOneWidget);
+      expect(
+        find.text('Connects at once · via\u00A010.0.0.5:8443'),
+        findsOneWidget,
+      );
       // The list does not say "searching".
       expect(find.text('Searching …'), findsNothing);
       // Order of discovery.
@@ -289,14 +296,124 @@ void main() {
         2,
         reason: 'the search starts again',
       );
-      // The line goes away when the list changes.
+      // N51: the line outlives the refill ...
       n.core.search.add(
         NearbyUiEvent.added(
           screen: screen('b', name: 'Oder', code: 'P4X9TR'),
         ),
       );
       await settle(t);
+      await t.pump(const Duration(milliseconds: 600));
+      expect(find.byKey(const Key('nearby-row-b')), findsOneWidget);
+      expect(find.text('This screen is no longer available.'), findsOneWidget);
+      // ... and goes with the next tap anywhere on the page (here: the name field).
+      await t.tap(find.byKey(const Key('name-field')));
+      await settle(t);
       expect(find.text('This screen is no longer available.'), findsNothing);
+      await done(t, n);
+    },
+  );
+
+  nearbyPageTest('the gone line also goes with a tap on a row', (t) async {
+    final n = await pumpNearby(t);
+    await found(t, n, [screen('a'), screen('b', code: 'P4X9TR')]);
+    await t.tap(find.byKey(const Key('nearby-row-a')));
+    await settle(t);
+    n.core.presenterEvents.add(
+      const PresenterUiEvent.error(code: 'room_not_found', message: 'x'),
+    );
+    await settle(t);
+    expect(find.text('This screen is no longer available.'), findsOneWidget);
+    await found(t, n, [screen('b', code: 'P4X9TR')]);
+    expect(find.text('This screen is no longer available.'), findsOneWidget);
+    await t.tap(find.byKey(const Key('nearby-row-b')));
+    await settle(t);
+    expect(find.text('This screen is no longer available.'), findsNothing);
+    await done(t, n);
+  });
+
+  nearbyPageTest(
+    'while a row connects: Connect and Scan disabled, fields read-only, Enter does nothing (N54)',
+    (t) async {
+      final n = await pumpNearby(t);
+      await found(t, n, [screen('a'), screen('b', code: 'P4X9TR')]);
+      await t.tap(find.byKey(const Key('nearby-row-a')));
+      await t.pump(const Duration(milliseconds: 100));
+      expect(n.core.startPresenterCalls, 1);
+      // Scan: present, but disabled (no tap handler reacts).
+      expect(find.byKey(const Key('scan-button')), findsOneWidget);
+      var scans = 0;
+      await t.tap(find.byKey(const Key('scan-button')), warnIfMissed: false);
+      await settle(t);
+      expect(scans, 0);
+      // Connect: disabled.
+      await t.tap(find.text('Connect'));
+      await settle(t);
+      expect(n.core.startPresenterCalls, 1);
+      // The fields are read-only and Enter in the code field does nothing.
+      final code = t.widget<EditableText>(find.byKey(const Key('code-field')));
+      final name = t.widget<EditableText>(find.byKey(const Key('name-field')));
+      expect(code.readOnly, isTrue);
+      expect(name.readOnly, isTrue);
+      await t.tap(find.byKey(const Key('code-field')));
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await settle(t);
+      expect(n.core.startPresenterCalls, 1);
+      // Everything returns when the start page comes back (the screen was gone).
+      n.core.presenterEvents.add(
+        const PresenterUiEvent.error(code: 'room_not_found', message: 'x'),
+      );
+      await settle(t);
+      expect(
+        t.widget<EditableText>(find.byKey(const Key('code-field'))).readOnly,
+        isFalse,
+      );
+      expect(
+        t.widget<EditableText>(find.byKey(const Key('name-field'))).readOnly,
+        isFalse,
+      );
+      await done(t, n);
+    },
+  );
+
+  nearbyPageTest('nearby.via keeps "via" with the host (no-break space)', (
+    t,
+  ) async {
+    final n = await pumpNearby(t);
+    await found(t, n, [
+      screen(
+        'b',
+        name: 'Room 204',
+        mode: NearbyMode.approval,
+        server: 'wss://cast.musterfirma.de:443',
+      ),
+    ]);
+    expect(
+      find.text('Approval on · via\u00A0cast.musterfirma.de'),
+      findsOneWidget,
+    );
+    await done(t, n);
+  });
+
+  nearbyPageTest(
+    'laptop: the links follow Connect, first area 12 below, the second touching (A4)',
+    (t) async {
+      final n = await pumpNearby(
+        t,
+        size: const Size(1100, 800),
+        desktop: true,
+        device: PresenterDevice.computer,
+        platform: FakeNearbyPlatform(limited: false),
+        miracast: true,
+      );
+      final connect = t.getRect(find.byType(PPrimaryButton));
+      final first = t.getRect(find.byKey(const Key('be-display')));
+      final second = t.getRect(find.byKey(const Key('miracast-link')));
+      // The text is centred in a 44 high tap area: the area starts 12 below Connect.
+      expect(first.center.dy - connect.bottom, closeTo(12 + 22, 1));
+      expect(second.center.dy - first.center.dy, closeTo(44, 1));
+      expect(first.left, closeTo(connect.left, 1));
+      expect(second.left, closeTo(first.left, 1));
       await done(t, n);
     },
   );
@@ -367,7 +484,7 @@ void main() {
     await n.settings.confirmServer('cast.musterfirma.de');
     await found(t, n, [screen('a', server: 'wss://cast.musterfirma.de:443')]);
     // The row still names the server (it is not the default relay).
-    expect(find.textContaining('via cast.musterfirma.de'), findsOneWidget);
+    expect(find.textContaining('via\u00A0cast.musterfirma.de'), findsOneWidget);
     await t.tap(find.byKey(const Key('nearby-row-a')));
     await settle(t);
     expect(find.text('Use this relay?'), findsNothing);
@@ -464,7 +581,7 @@ void main() {
     ]);
     expect(find.text('„Raum 204“'), findsOneWidget);
     expect(
-      find.text('Mit Freigabe · über cast.musterfirma.de'),
+      find.text('Mit Freigabe · über\u00A0cast.musterfirma.de'),
       findsOneWidget,
     );
     await done(t, n);

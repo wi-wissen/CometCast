@@ -47,9 +47,9 @@ import 'pages.dart';
     // The list failed otherwise: the display does not answer, with the relay as the "why".
     case 'ice_failed':
       return (ErrorKind.displayOff, null);
-    // `error.noScreen` is web-only: an app that cannot capture shows `error.other`.
-    case 'capture_unavailable':
-      return (ErrorKind.other, 'capture_unavailable');
+    // `error.noScreen` is web-only: an app that cannot capture shows `error.capture` (N56).
+    case 'capture_unavailable' || 'capture_os_old' || 'capture_no_portal':
+      return (ErrorKind.capture, code);
     case 'unknown':
       return (ErrorKind.other, 'unknown');
     default:

@@ -31,7 +31,7 @@ use windows::Graphics::Capture::{
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Graphics::SizeInt32;
-use windows::Win32::Foundation::{HMODULE, HWND};
+use windows::Win32::Foundation::{HMODULE, HWND, LPARAM};
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
@@ -39,13 +39,17 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Resource, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Dxgi::{IDXGIAdapter, IDXGIDevice};
+use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
 use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize};
 use windows::Win32::UI::Shell::IInitializeWithWindow;
-use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-use windows::core::{IInspectable, Interface};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GW_OWNER, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowThreadProcessId,
+    IsWindowVisible,
+};
+use windows::core::{BOOL, IInspectable, Interface};
 
 use crate::convert::{PixelFormat, to_bgra};
 use crate::session::{Event, Pacer, Phase, Shared, Taken};
@@ -54,6 +58,64 @@ use crate::{
     Capture, CaptureError, CaptureSource, ChangeDetector, PICKER_SOURCE_ID, PickerOptions,
     ScreenSource,
 };
+
+/// The window class of the Flutter runner (`apps/flutter/windows/runner/win32_window.cpp`).
+const RUNNER_CLASS: &str = "FLUTTER_RUNNER_WIN32_WINDOW";
+
+struct OwnWindows {
+    pid: u32,
+    /// The first visible top-level window of this process without an owner.
+    any: Option<isize>,
+    /// The same, with the runner's window class.
+    runner: Option<isize>,
+}
+
+unsafe extern "system" fn collect_own(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    // SAFETY: `lparam` is the address of the `OwnWindows` that `own_window` keeps alive for the
+    // whole `EnumWindows` call.
+    let found = unsafe { &mut *(lparam.0 as *mut OwnWindows) };
+    let mut pid = 0u32;
+    // SAFETY: `hwnd` comes from the enumeration; `pid` is a valid pointer.
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    // SAFETY: plain calls with the window handle of the enumeration.
+    let top = pid == found.pid
+        && unsafe { IsWindowVisible(hwnd) }.as_bool()
+        && unsafe { GetWindow(hwnd, GW_OWNER) }.is_err_or_null();
+    if top {
+        found.any.get_or_insert(hwnd.0 as isize);
+        let mut name = [0u16; 64];
+        // SAFETY: the buffer is valid for its length.
+        let n = unsafe { GetClassNameW(hwnd, &mut name) } as usize;
+        if String::from_utf16_lossy(&name[..n.min(64)]) == RUNNER_CLASS {
+            found.runner.get_or_insert(hwnd.0 as isize);
+        }
+    }
+    BOOL(1)
+}
+
+trait OwnerCheck {
+    fn is_err_or_null(&self) -> bool;
+}
+
+impl OwnerCheck for windows::core::Result<HWND> {
+    fn is_err_or_null(&self) -> bool {
+        self.as_ref().map_or(true, |h| h.0.is_null())
+    }
+}
+
+/// The handle of this program's own main window (the Flutter runner's window class, else the
+/// first visible top-level window of the process), or `None` for a program without one.
+pub fn own_window() -> Option<u64> {
+    let mut found = OwnWindows {
+        // SAFETY: plain call without arguments.
+        pid: unsafe { GetCurrentProcessId() },
+        any: None,
+        runner: None,
+    };
+    // SAFETY: the callback only reads and writes `found`, which outlives the call.
+    let _ = unsafe { EnumWindows(Some(collect_own), LPARAM(&mut found as *mut _ as isize)) };
+    found.runner.or(found.any).map(|h| h as usize as u64)
+}
 
 /// How long `start` waits for the first picture after the person picked an item.
 /// UNCERTAIN: placeholder.
@@ -245,13 +307,14 @@ impl WgcSource {
     /// Show the system picker and return the chosen item.
     fn pick_item(&self) -> Result<GraphicsCaptureItem, CaptureError> {
         let picker = GraphicsCapturePicker::new().map_err(werr("cannot create the picker"))?;
-        let owner = match self.opts.owner_window {
+        // Decision N55: the picker is owned by the Comet Cast window, never by whatever window
+        // is in front. An explicit handle wins; else the app's own top-level window; the
+        // foreground window only where this process has none (a command-line program).
+        let owner = match self.opts.owner_window.or_else(own_window) {
             Some(h) => HWND(h as usize as *mut _),
             // SAFETY: plain call without arguments.
             None => unsafe { GetForegroundWindow() },
         };
-        // UNCERTAIN: a desktop app has to tell the picker its owner window; the foreground
-        // window is the app's window when the person has just clicked its button.
         let init: IInitializeWithWindow = picker.cast().map_err(werr("picker window init"))?;
         // SAFETY: `owner` is a window handle (possibly null, which the call rejects).
         unsafe { init.Initialize(owner) }.map_err(werr("cannot set the picker owner window"))?;

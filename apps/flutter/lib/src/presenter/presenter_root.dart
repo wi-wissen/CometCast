@@ -70,6 +70,8 @@ String errorsText(AppLocalizations t, String code) => switch (code) {
   'capture_denied' => t.errorsCaptureDenied,
   'capture_failed' => t.errorsCaptureFailed,
   'capture_unavailable' => t.errorsCaptureUnavailable,
+  'capture_os_old' => t.errorsCaptureOsOld,
+  'capture_no_portal' => t.errorsCaptureNoPortal,
   'join_pending' => t.errorsJoinPending,
   'join_denied' => t.errorsJoinDenied,
   'room_locked' => t.errorsRoomLocked,
@@ -673,12 +675,13 @@ class PresenterRootState extends State<PresenterRoot>
         return;
       }
     }
+    // Desktops: the system picker opens on every tap (N55). A forced display (development and
+    // tests, `COMETCAST_CAPTURE_DISPLAY`) captures that X11 display instead.
+    final forced = widget.settings.captureDisplay;
     _session.presentScreen(
-      ScreenRequest(
-        display: widget.settings.captureDisplay,
-        fps: 15,
-        bitrateKbps: 2000,
-      ),
+      forced == null && _desktop
+          ? null
+          : ScreenRequest(display: forced, fps: 15, bitrateKbps: 2000),
     );
   }
 
@@ -944,6 +947,8 @@ class PresenterRootState extends State<PresenterRoot>
           onMiracast: widget.onMiracast,
           codeEmpty: _codeEmpty,
           canConnect: c.phase != PresenterSessionPhase.connecting,
+          connecting: _nearbyConnectId != null,
+          onAnyTap: _nearby?.clearGoneLine,
           onConnect: _connect,
           nearby:
               _nearby != null &&
@@ -992,6 +997,7 @@ class PresenterRootState extends State<PresenterRoot>
           controller: _codecCtl!,
           onBack: () => _go(PresenterPage.what),
           onScreen: _startScreen,
+          onAction: _errorAction,
         );
       case PresenterPage.waiting:
         final total = c.timeoutSecs ?? _ios?.approval?.timeoutSecs ?? 60;
@@ -1024,8 +1030,6 @@ class PresenterRootState extends State<PresenterRoot>
           lockedWhile: _lockedWhile,
           cooldown: _error == ErrorKind.denied ? _cooldown : 0,
           otherWhy: _errorCode == null ? null : errorsText(t, _errorCode!),
-          // No capture backend: Back to "What to show", never Try again (N33).
-          useBack: _errorCode == 'capture_unavailable',
           relayWhy: _relayWhy,
           canRescan: widget.scanQr != null && !_desktop,
           onAction: _errorAction,

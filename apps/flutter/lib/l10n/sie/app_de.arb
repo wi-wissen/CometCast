@@ -363,7 +363,7 @@
   "nearbyOpen": "Sofort verbunden",
   "nearbyApproval": "Mit Freigabe",
   "nearbyLocked": "Gerade gesperrt",
-  "nearbyVia": "über {host}",
+  "nearbyVia": "über {host}",
   "nearbyConnecting": "Verbinde …",
   "nearbyNone": "Hier wurde kein Bildschirm gefunden.",
   "nearbyNoneWhy": "Viele WLANs verbergen Geräte voreinander. Der Code auf dem Bildschirm geht immer.",
@@ -379,5 +379,9 @@
   "startOr": "oder",
   "commonCancel": "Abbrechen",
   "codecStageHint": "Noch kein Bild: Dieser Bildschirm braucht den Video-Codec.",
-  "errorsCaptureUnavailable": "Dieses Gerät kann seinen Bildschirm noch nicht mit Comet Cast teilen. Zeigen Sie stattdessen eine Datei oder einen Link."
+  "errorsCaptureUnavailable": "Dieses Gerät kann seinen Bildschirm nicht an Comet Cast weitergeben.",
+  "errorsCaptureOsOld": "Bildschirm teilen braucht macOS 14 oder neuer. Auf diesem Mac läuft eine ältere Version.",
+  "errorsCaptureNoPortal": "Auf diesem Desktop ist kein Bildschirm-Teilen für Apps eingerichtet. Wer diesen Computer betreut, kann es nachrüsten.",
+  "errorCaptureTitle": "Bildschirm teilen geht hier nicht",
+  "errorNoScreenNowNoApp": "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link."
 }

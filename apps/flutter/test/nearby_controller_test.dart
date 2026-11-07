@@ -306,9 +306,19 @@ void main() {
         reason: 'rows of an earlier search are never kept',
       );
       expect(c.goneLine, isTrue);
-      // The line goes away when the list changes.
+      // N51: the refilling list does not remove the line, not even a row that leaves again.
       core.search.add(NearbyUiEvent.added(screen: screen('b')));
       await t.pump();
+      expect(c.goneLine, isTrue);
+      core.search.add(const NearbyUiEvent.removed(id: 'b'));
+      await t.pump();
+      expect(c.goneLine, isTrue);
+      // A tap on the page removes it; so does a start that is not the refill.
+      c.clearGoneLine();
+      expect(c.goneLine, isFalse);
+      c.markGone('b');
+      expect(c.goneLine, isTrue);
+      await c.start();
       expect(c.goneLine, isFalse);
     },
   );

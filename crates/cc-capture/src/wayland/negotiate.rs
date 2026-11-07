@@ -54,7 +54,7 @@ pub fn choose_source_types(available: u32) -> Result<u32, CaptureError> {
         return Ok(wanted);
     }
     match available & wanted {
-        0 => Err(CaptureError::Unsupported(
+        0 => Err(CaptureError::NoPortal(
             "the desktop portal offers neither monitors nor windows",
         )),
         t => Ok(t),

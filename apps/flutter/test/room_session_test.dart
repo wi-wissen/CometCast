@@ -473,12 +473,19 @@ void main() {
         'wrong_role',
         'not_in_room',
         'unknown',
-        'capture_unavailable',
         'something_new',
       ]) {
         expect(kind(c), ErrorKind.other, reason: c);
       }
       expect(errorKindForCode('forbidden')!.$2, 'forbidden');
+      // N56: the three desktop codes are the screen-sharing page, with the code as the why.
+      for (final c in [
+        'capture_unavailable',
+        'capture_os_old',
+        'capture_no_portal',
+      ]) {
+        expect(errorKindForCode(c), (ErrorKind.capture, c), reason: c);
+      }
       expect(errorKindForCode('capture_denied'), isNull);
     });
   });

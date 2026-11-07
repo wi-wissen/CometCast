@@ -165,9 +165,10 @@ class NearbyController extends ChangeNotifier {
 
   /// The start page is shown, the app is in the foreground, or Wi-Fi came: (re)start. Rows from
   /// an earlier search are never kept (14.8, point 9).
-  Future<void> start() async {
+  Future<void> start({bool keepGoneLine = false}) async {
     if (_disposed) return;
     _active = true;
+    if (!keepGoneLine) _goneLine = false;
     if (!_enabled) return;
     final run = ++_run;
     _teardown(clearRows: true);
@@ -285,7 +286,6 @@ class NearbyController extends ChangeNotifier {
         for (var k = i; k < _rows.length; k++) {
           _rows[k].changedAt = t;
         }
-        _goneLine = false;
       case NearbyUiEvent_Permission(:final state):
         _permission = state;
         if (state == NearbyPermission.denied) {
@@ -310,7 +310,6 @@ class NearbyController extends ChangeNotifier {
     } else if (_rows.length < maxRows) {
       _rows.add(NearbyRow(s, t));
     }
-    _goneLine = false;
   }
 
   void _onNetwork(bool has) {
@@ -375,15 +374,16 @@ class NearbyController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Start again after [markGone] keeping the status line (it goes away with the next tap or
-  /// when the list changes).
-  Future<void> restartKeepingLine() async {
-    final keep = _goneLine;
-    await start();
-    if (keep && !_disposed) {
-      _goneLine = true;
-      notifyListeners();
-    }
+  /// Start again after [markGone] keeping the status line: the refilling list does not remove
+  /// it (decision N51); it goes with the next tap on the page ([clearGoneLine]), [beginConnect],
+  /// [stop], or a [start] that is not this one.
+  Future<void> restartKeepingLine() => start(keepGoneLine: true);
+
+  /// A tap anywhere on the page (row, field, Scan, Connect) removes `nearby.gone`.
+  void clearGoneLine() {
+    if (!_goneLine || _disposed) return;
+    _goneLine = false;
+    notifyListeners();
   }
 
   @override

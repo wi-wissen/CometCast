@@ -110,6 +110,8 @@ Future<Nearby> pumpNearby(
   bool announcementsAllowed = true,
   bool withPlatform = true,
   Brightness brightness = Brightness.light,
+  bool? beDisplay,
+  bool miracast = false,
 }) async {
   await t.runAsync(loadAppFonts);
   final core = fake ?? FakeCoreApi();
@@ -139,6 +141,7 @@ Future<Nearby> pumpNearby(
   addTearDown(t.platformDispatcher.clearPlatformBrightnessTestValue);
   await t.pumpWidget(
     MaterialApp(
+      debugShowCheckedModeBanner: false,
       locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -151,6 +154,9 @@ Future<Nearby> pumpNearby(
         scanQr: desktop ? null : () async => null,
         links: LinkHandler(core: core, settings: settings),
         initialCode: code,
+        // A computer always has `app.beDisplay` (C1); tablets too.
+        onBeDisplay: (beDisplay ?? desktop) ? () {} : null,
+        onMiracast: miracast ? () {} : null,
         nearbyPlatform: withPlatform ? fakePlatform : null,
         nearbyController: withPlatform ? controller : null,
       ),

@@ -794,14 +794,13 @@ void main() {
             onAction: (_) {},
           ),
         );
-        // No capture backend: the key text of N33, Back to "What to show".
+        // The screen-sharing page (N56), in its four "why" variants (also under capture-*).
         await page(
           'error-capture-unavailable',
           ErrorPage(
-            kind: ErrorKind.other,
+            kind: ErrorKind.capture,
             otherWhy: lookupAppLocalizations(const Locale('en'))
                 .errorsCaptureUnavailable,
-            useBack: true,
             onAction: (_) {},
           ),
         );
@@ -823,7 +822,12 @@ void main() {
           );
           await page(
             'codec-${e.key}',
-            CodecPage(controller: ctl, onBack: nop, onScreen: nop),
+            CodecPage(
+              controller: ctl,
+              onBack: nop,
+              onScreen: nop,
+              onAction: (_) {},
+            ),
           );
           ctl.dispose();
         }
@@ -956,6 +960,9 @@ void main() {
         );
         await t.pump(const Duration(milliseconds: 100));
         await shot(t, '$p-gone');
+        // N51: the list refills and the line stays under it.
+        await found(t, n, nearbyScreens);
+        await shot(t, '$p-gone-refilled');
         await done(t, n);
 
         n = await open(t);
@@ -967,6 +974,179 @@ void main() {
       });
     }
   }
+  // Windows: both links under Connect (A4, C1).
+  shotTest('nearby laptop-light: found, Windows links', (t) async {
+    final n = await pumpNearby(
+      t,
+      size: const Size(1100, 800),
+      device: PresenterDevice.computer,
+      desktop: true,
+      platform: FakeNearbyPlatform(limited: false),
+      miracast: true,
+    );
+    await found(t, n, nearbyScreens);
+    await shot(t, 'nearby-laptop-light-found-windows');
+    await done(t, n);
+  });
+
+  // German (du) for every nearby state with text, phone and laptop (C2).
+  const nearbyScreensDe = [
+    ('a', 'Besprechungsraum Elbe', 'K7QM2W', NearbyMode.open, null),
+    ('b', 'Raum 204', 'P4X9TR', NearbyMode.approval, 'cast.musterfirma.de'),
+    ('c', 'Vereinsheim', null, NearbyMode.locked, null),
+  ];
+  for (final dev in {
+    'phone': (_phone, PresenterDevice.phone, false),
+    'laptop': (const Size(1100, 800), PresenterDevice.computer, true),
+  }.entries) {
+    final (size, device, desktop) = dev.value;
+    final p = 'nearby-${dev.key}-light-de';
+    final de = [
+      for (final s in nearbyScreensDe)
+        screen(
+          s.$1,
+          name: s.$2,
+          mode: s.$4,
+          code: s.$3,
+          server: s.$5 == null
+              ? 'wss://relay.cometcast.de:443'
+              : 'wss://${s.$5}:443',
+        ),
+    ];
+    Future<Nearby> openDe(WidgetTester t, {FakeNearbyPlatform? platform}) =>
+        pumpNearby(
+          t,
+          size: size,
+          device: device,
+          desktop: desktop,
+          locale: const Locale('de'),
+          platform:
+              platform ??
+              FakeNearbyPlatform(limited: !desktop, native: !desktop),
+        );
+    shotTest('$p: found, connecting, gone, none, paused', (t) async {
+      var n = await openDe(t);
+      await found(t, n, de);
+      await shot(t, '$p-found');
+      await t.tap(find.byKey(const Key('nearby-row-a')));
+      await t.pump(const Duration(milliseconds: 100));
+      await shot(t, '$p-connecting');
+      n.core.presenterEvents.add(
+        const PresenterUiEvent.error(code: 'room_not_found', message: 'x'),
+      );
+      await t.pump(const Duration(milliseconds: 100));
+      await shot(t, '$p-gone');
+      await found(t, n, de);
+      await shot(t, '$p-gone-refilled');
+      await done(t, n);
+
+      n = await openDe(t);
+      await t.pump(const Duration(seconds: 8));
+      await shot(t, '$p-none');
+      if (!desktop) {
+        await t.pump(const Duration(seconds: 52));
+        await shot(t, '$p-paused');
+      }
+      await done(t, n);
+    });
+    shotTest('$p: denied, no wifi', (t) async {
+      var n = await openDe(
+        t,
+        platform: FakeNearbyPlatform(
+          native: true,
+          perm: NearbyPermission.notAsked,
+        ),
+      );
+      await shot(t, '$p-not-asked');
+      await t.tap(find.byKey(const Key('nearby-search')));
+      await t.pump(const Duration(milliseconds: 100));
+      n.core.search.add(
+        const NearbyUiEvent.permission(state: NearbyPermission.denied),
+      );
+      await t.pump(const Duration(milliseconds: 100));
+      await shot(t, '$p-denied');
+      await done(t, n);
+      n = await openDe(t, platform: FakeNearbyPlatform(network: false));
+      await shot(t, '$p-no-wifi');
+      await done(t, n);
+    });
+  }
+
+  // The screen-sharing page (A6, N56): its four "why" variants on phone and laptop, light and
+  // dark; German (du) of each on the laptop.
+  for (final dev in {
+    'phone': const Size(400, 800),
+    'laptop': const Size(1100, 800),
+  }.entries) {
+    for (final b in [Brightness.light, Brightness.dark]) {
+      for (final lang in [
+        const Locale('en'),
+        if (dev.key == 'laptop' && b == Brightness.light) const Locale('de'),
+      ]) {
+        final p =
+            'capture-${dev.key}-${b.name}${lang.languageCode == 'de' ? '-de' : ''}';
+        shotTest('$p: error.capture', (t) async {
+          await t.runAsync(loadAppFonts);
+          t.view.physicalSize = dev.value;
+          t.view.devicePixelRatio = 1;
+          t.platformDispatcher.platformBrightnessTestValue = b;
+          addTearDown(t.view.reset);
+          addTearDown(t.platformDispatcher.clearPlatformBrightnessTestValue);
+          Future<void> page(String n, Widget w) async {
+            await t.pumpWidget(
+              MaterialApp(
+                debugShowCheckedModeBanner: false,
+                locale: lang,
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                theme: presenterTheme(Brightness.light),
+                darkTheme: presenterTheme(Brightness.dark),
+                home: PresenterFrame(
+                  child: Material(type: MaterialType.transparency, child: w),
+                ),
+              ),
+            );
+            await t.pump(const Duration(milliseconds: 100));
+            await shot(t, '$p-$n');
+          }
+
+          final l10n = lookupAppLocalizations(lang);
+          for (final e in {
+            'unavailable': l10n.errorsCaptureUnavailable,
+            'os-old': l10n.errorsCaptureOsOld,
+            'no-portal': l10n.errorsCaptureNoPortal,
+          }.entries) {
+            await page(
+              e.key,
+              ErrorPage(
+                kind: ErrorKind.capture,
+                otherWhy: e.value,
+                onAction: (_) {},
+              ),
+            );
+          }
+          final core = FakeCoreApi()
+            ..codecStateResult = const UiCodecState.unsupported(reason: 'x')
+            ..codecInfoResult = codecInfo;
+          final ctl = CodecController(
+            core: core,
+            settings: AppSettings.fromDefaults(core.serverDefaults()),
+          );
+          await page(
+            'codec',
+            CodecPage(
+              controller: ctl,
+              onBack: () {},
+              onScreen: () {},
+              onAction: (_) {},
+            ),
+          );
+          ctl.dispose();
+        });
+      }
+    }
+  }
+
   shotTest('nearby phone-light-de: found and relay (du)', (t) async {
     final n = await pumpNearby(
       t,

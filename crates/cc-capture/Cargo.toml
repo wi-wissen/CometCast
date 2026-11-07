@@ -48,7 +48,8 @@ windows = { version = "0.62", features = [
     "Win32_System_WinRT", # RoInitialize
     "Win32_System_WinRT_Direct3D11", # CreateDirect3D11DeviceFromDXGIDevice, DXGI access
     "Win32_UI_Shell", # IInitializeWithWindow (owner window of the picker)
-    "Win32_UI_WindowsAndMessaging", # GetForegroundWindow
+    "Win32_System_Threading", # GetCurrentProcessId (the app's own window owns the picker)
+    "Win32_UI_WindowsAndMessaging", # GetForegroundWindow, EnumWindows
 ] }
 
 # macOS only. objc2 and its framework crates (MIT or Zlib OR Apache-2.0 OR MIT).

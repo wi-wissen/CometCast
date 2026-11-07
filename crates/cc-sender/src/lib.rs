@@ -290,6 +290,15 @@ impl SenderCore {
                             code: "capture_denied".into(),
                             message,
                         },
+                        // The new non-fatal codes of the screen-sharing page (decision N56).
+                        screen::PrepareError::OsOld(message) => TransportError::Server {
+                            code: "capture_os_old".into(),
+                            message,
+                        },
+                        screen::PrepareError::NoPortal(message) => TransportError::Server {
+                            code: "capture_no_portal".into(),
+                            message,
+                        },
                         screen::PrepareError::Failed(m) => TransportError::Invalid(m),
                     })?)
                 }

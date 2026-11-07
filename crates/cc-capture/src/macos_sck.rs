@@ -275,9 +275,7 @@ impl SckSource {
             .operatingSystemVersion()
             .majorVersion as i64;
         if !picker_supported(major) {
-            return Err(CaptureError::Unsupported(
-                "the system screen picker needs macOS 14 or newer",
-            ));
+            return Err(CaptureError::OsTooOld);
         }
         Ok(Self {
             opts: opts.clone(),

@@ -865,9 +865,25 @@
   "@errorsBlockListFull": {
     "description": "Spec key errors.block_list_full"
   },
-  "errorsCaptureUnavailable": "This device cannot share its screen with Comet Cast yet. Show a file or a link instead.",
+  "errorsCaptureUnavailable": "This device cannot pass its screen on to Comet Cast.",
   "@errorsCaptureUnavailable": {
-    "description": "Spec key errors.capture_unavailable: the \"why\" of the other-error page when no capture backend exists (N33)."
+    "description": "Spec key errors.capture_unavailable: the \"why\" of the page error.capture (N56; the \"what now\" part moved to error.noScreen.nowNoApp)."
+  },
+  "errorsCaptureOsOld": "Sharing the screen needs macOS 14 or later. This Mac has an older version.",
+  "@errorsCaptureOsOld": {
+    "description": "Spec key errors.capture_os_old: macOS before 14 (N56)."
+  },
+  "errorsCaptureNoPortal": "This desktop has no screen sharing for apps set up. Whoever looks after this computer can add it.",
+  "@errorsCaptureNoPortal": {
+    "description": "Spec key errors.capture_no_portal: Linux without the ScreenCast portal or PipeWire (N56)."
+  },
+  "errorCaptureTitle": "Screen sharing does not work here",
+  "@errorCaptureTitle": {
+    "description": "Spec key error.capture.title (N56)"
+  },
+  "errorNoScreenNowNoApp": "Show a photo, a file or a link instead.",
+  "@errorNoScreenNowNoApp": {
+    "description": "Spec key error.noScreen.nowNoApp: the \"what now\" of error.capture (N56)"
   },
   "errorsCaptureDenied": "Screen sharing was cancelled or not allowed.",
   "@errorsCaptureDenied": {
@@ -1686,7 +1702,7 @@
   "@nearbyLocked": {
     "description": "Spec key nearby.locked"
   },
-  "nearbyVia": "via {host}",
+  "nearbyVia": "via {host}",
   "@nearbyVia": {
     "description": "Spec key nearby.via",
     "placeholders": {
