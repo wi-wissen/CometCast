@@ -8,7 +8,8 @@
 //   NEEDS_JSON='{"linux":{"result":"success"},...}' node tools/release-summary.mjs \
 //     --version 1.2.3 --assets DIR --out notes.md [--dry-run] [--image NAME]
 //
-// Exit code 1 only when DIR contains no files at all. Failed jobs do not change the exit code
+// Exit code 1 when DIR contains no platform artefact at all (only licence/SBOM/deploy files or
+// nothing). The notes file is still written first. Failed jobs do not change the exit code
 // (they are listed in the notes); the workflow marks the run red in a later step.
 import { readdirSync, writeFileSync } from 'node:fs';
 
@@ -36,8 +37,8 @@ const jobs = [
   ['windows', 'Windows desktop (zip), x86_64'],
   ['macos', 'macOS app (zip, dmg), universal'],
   ['android', 'Android (APK, AAB)'],
-  ['ios', 'iOS (xcarchive, optional IPA)'],
-  ['tvos', 'Apple TV (xcarchive)'],
+  ['ios', 'iOS (xcarchive, optional IPA; NO Rust core, not shippable)'],
+  ['tvos', 'Apple TV (xcarchive, optional signed IPA)'],
   ['web', 'Web app (zip)'],
   ['server', 'Server binaries (linux x86_64/aarch64, windows, macOS)'],
   ['docker', 'Docker image build (amd64, arm64)'],
@@ -49,7 +50,11 @@ const rows = jobs.map(([id, what]) => {
   return `| ${id} | ${what} | ${result} | UNCERTAIN until first real run |`;
 });
 
-const unsigned = files.filter((f) => /debugkey|UNSIGNED|adhoc|not-notarized/i.test(f));
+// Files that are not release-signed or not shippable. NO-CORE: the iOS project has no Rust core.
+const unsigned = files.filter((f) => /debugkey|UNSIGNED|adhoc|not-notarized|NO-CORE/i.test(f));
+// Platform artefacts = everything except the files of the `meta` job.
+const META = /^(cometcast-sbom-|cometcast-deploy-|LICENSE$|THIRD_PARTY_NOTICES\.md$)/;
+const platformFiles = files.filter((f) => !META.test(f));
 const bad = jobs.filter(([id]) => ['failure', 'cancelled'].includes(needs[id]?.result)).map(([id]) => id);
 
 const lines = [];
@@ -70,24 +75,24 @@ if (bad.length) {
 lines.push('### Signing');
 lines.push('');
 if (unsigned.length) {
-  lines.push('These files are NOT signed with a release key (signing secrets were not configured). Do not distribute them as official builds:');
+  lines.push('These files are NOT signed with a release key (signing secrets were not configured) or are NOT shippable (`NO-CORE`: iOS has no Rust core, so even a signed .ipa is only a build check). Do not distribute them as official builds:');
   lines.push('');
   for (const f of unsigned) lines.push(`- \`${f}\``);
 } else {
-  lines.push('No file name marks an unsigned artefact. This does not prove the Windows, Linux, web, server and Apple archive files are signed: only Android (keystore), macOS (Developer ID, notarisation) and the optional iOS IPA are signed by this workflow, and only when their secrets exist. See docs/releasing.md.');
+  lines.push('No file name marks an unsigned artefact. This does not prove the Windows, Linux, web, server and Apple archive files are signed: only Android (keystore), macOS (Developer ID, notarisation) and the optional iOS and tvOS IPAs are signed by this workflow, and only when their secrets exist. See docs/releasing.md.');
 }
 lines.push('');
 lines.push('### Notes');
 lines.push('');
 lines.push('- Verify downloads with `sha256sum -c SHA256SUMS`.');
-lines.push('- The native apps are built with the OpenH264 `h264-libloading` mode: Cisco\'s prebuilt `libopenh264` must be supplied at run time (`COMETCAST_OPENH264_LIB`), see docs/capture.md.');
+lines.push('- H.264: the native apps are built with the OpenH264 `h264-libloading` mode. No video until the codec manager lands: the apps do not download Cisco\'s `libopenh264` themselves yet, so it must be supplied by hand at run time (`COMETCAST_OPENH264_LIB`), see docs/capture.md.');
 lines.push('- Windows, macOS and iOS Flutter builds bundle a Rust core and workers only as far as this workflow does it (docs/releasing.md); the project README lists these platforms as not verified.');
-if (image) lines.push(`- Container image: \`${image}:${version}\` (linux/amd64, linux/arm64).`);
+if (image) lines.push(`- Container image: \`${image}:${version}\` (linux/amd64, linux/arm64). \`latest\` was NOT moved: run the "Promote latest" workflow after publishing this release (full releases only). The image has no PDF viewer.`);
 lines.push('');
 
 writeFileSync(out, lines.join('\n'));
 console.log(lines.join('\n'));
-if (files.length === 0) {
-  console.error('release-summary: no artefacts to publish');
+if (platformFiles.length === 0) {
+  console.error('release-summary: no platform artefact to publish (every platform job failed or was skipped)');
   process.exit(1);
 }

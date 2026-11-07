@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- For the helper executables in Contents/MacOS (cc-docs-worker, cc-office-worker).
+	     A helper started by a sandboxed app must be sandboxed itself and inherit the sandbox of
+	     its parent, otherwise macOS kills it at launch. Signing the helpers WITHOUT these two
+	     keys is the failure this file exists to avoid. Used only by .github/workflows/release.yml. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.inherit</key>
+	<true/>
+</dict>
+</plist>
