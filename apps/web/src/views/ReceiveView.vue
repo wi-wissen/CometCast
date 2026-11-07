@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AnnotationLayer from '../components/AnnotationLayer.vue'
 import ContentOverlay from '../components/ContentOverlay.vue'
+import JoinPanel from '../components/JoinPanel.vue'
 import ReceiverToolbar from '../components/ReceiverToolbar.vue'
 import { AnnotationModel } from '../core/annotations'
 import {
@@ -23,7 +24,7 @@ import {
 import { useReceiver } from '../composables/useReceiver'
 
 const { t, te } = useI18n()
-const { state, start, clearContent, nextPage, prevPage, renderPage } = useReceiver()
+const { state, start, clearContent, nextPage, prevPage, renderPage, setJoinMode, decide, denyAll, removePeer, dismissNotice } = useReceiver()
 const video = ref<HTMLVideoElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const freezeCanvas = ref<HTMLCanvasElement | null>(null)
@@ -51,6 +52,9 @@ const showVideo = computed(() => state.value.stream !== null && state.value.phas
 // The stage also exists without a screen stream (content-only senders: images, links).
 const showStage = computed(() => (state.value.phase === 'receiving' || state.value.content !== null))
 const immersive = computed(() => state.value.content !== null)
+// Join settings are a column next to the code; while somebody presents they shrink to a corner chip.
+const joinAvailable = computed(() => state.value.code !== null && state.value.phase !== 'error' && state.value.phase !== 'idle')
+const joinCompact = computed(() => showStage.value || state.value.phase === 'negotiating')
 
 // --- Toolbar, annotations (local only), freeze, black screen, fullscreen -------------------------
 const toolbar = ref(initialToolbar())
@@ -144,6 +148,7 @@ const contentErrorText = computed(() => {
     <h1 class="text-2xl font-semibold tracking-tight">{{ t('receive.title') }}</h1>
     <p v-if="!showStage" class="text-muted">{{ t('receive.intro') }}</p>
 
+    <div :class="joinAvailable && !joinCompact ? 'grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]' : ''">
     <div v-if="!showStage" class="rounded-cc border border-line bg-surface p-5">
       <div class="text-xs font-semibold uppercase tracking-wider text-muted">{{ t('receive.codeLabel') }}</div>
       <div
@@ -154,6 +159,21 @@ const contentErrorText = computed(() => {
         {{ showCode ? state.code : t('receive.codePlaceholder') }}
       </div>
       <p v-if="showCode" class="mt-2 text-sm text-muted">{{ t('receive.codeHelp') }}</p>
+    </div>
+    <JoinPanel
+      v-if="joinAvailable"
+      :mode="state.joinMode"
+      :requests="state.requests"
+      :peer-name="state.peerName"
+      :notice="state.notice"
+      :compact="joinCompact"
+      @mode="setJoinMode"
+      @allow="(id: number) => decide(id, true)"
+      @deny="(id: number) => decide(id, false)"
+      @deny-all="denyAll"
+      @remove="removePeer"
+      @dismiss="dismissNotice"
+    />
     </div>
 
     <p

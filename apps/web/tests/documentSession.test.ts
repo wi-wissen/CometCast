@@ -62,8 +62,8 @@ function setup(outcome: ConstructorParameters<typeof FakeRenderer>[0]) {
     },
   })
   r.start()
-  sock.recv({ type: 'room_created', code: 'ABC234' })
-  sock.recv({ type: 'peer_joined' })
+  sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+  sock.recv({ type: 'peer_joined', name: 'Guest 1' })
   const [a, b] = pair()
   rp.h.onDataChannel!(b)
   return { r, a, renderers }

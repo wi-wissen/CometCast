@@ -174,7 +174,18 @@
       "sharing": "Sharing your screen.",
       "peer_left": "The receiver left. Sharing has ended.",
       "stopped": "Sharing stopped.",
-      "error": "Something went wrong."
+      "error": "Something went wrong.",
+      "waiting_approval": "Waiting for the host to allow you to join. Nothing is sent until then."
+    },
+    "waiting": {
+      "title": "Waiting for the host",
+      "text": "The host has to allow you to join. Nothing is sent from your device until then.",
+      "check": "Check number",
+      "checkHelp": "If the host asks which request is yours, tell them this number.",
+      "timeLeft": "The request ends in {s} s.",
+      "cancel": "Cancel",
+      "retryIn": "You can ask again in {s} s.",
+      "retryNow": "Ask again"
     }
   },
   "errors": {
@@ -198,7 +209,15 @@
     "peer_failed": "The direct connection to the other device failed. Without STUN/TURN servers this only works in the same local network.",
     "capture_denied": "Screen sharing was cancelled or not allowed.",
     "capture_failed": "The screen could not be captured by this browser.",
-    "unknown": "An unknown error occurred."
+    "unknown": "An unknown error occurred.",
+    "join_pending": "Please wait until the host has allowed you to join.",
+    "join_denied": "The host did not allow you to join.",
+    "room_locked": "The room code is correct, but the room is locked right now. Ask the host to unlock it.",
+    "room_locked_waiting": "The room was locked while you were waiting. The code was right; ask the host to unlock it.",
+    "approval_timeout": "Nobody answered your request in time. You can ask again.",
+    "removed_by_host": "The host removed you from the room.",
+    "open_rooms_disabled": "This server does not allow open rooms.",
+    "no_such_request": "That request is no longer waiting."
   },
   "toolbar": {
     "label": "Screen tools",
@@ -246,7 +265,8 @@
       "sharing": "Connected. You can send now.",
       "peer_left": "The receiver left.",
       "stopped": "Disconnected.",
-      "error": "Something went wrong."
+      "error": "Something went wrong.",
+      "waiting_approval": "Waiting for the host to allow you to join."
     },
     "image": {
       "title": "Image",
@@ -302,5 +322,57 @@
   "sas": {
     "label": "Connection check code",
     "explain": "Both devices should show the same code. If they differ, stop: the connection may be intercepted. Comparing is up to you, the app does not enforce it."
+  },
+  "join": {
+    "panelTitle": "Who may join",
+    "modeLabel": "Join mode",
+    "mode": {
+      "open": {
+        "label": "Open",
+        "help": "Anyone who knows the room code joins at once."
+      },
+      "confirm": {
+        "label": "Ask first",
+        "help": "Every join waits until you allow it here."
+      },
+      "locked": {
+        "label": "Locked",
+        "help": "Nobody can join right now. The code stays the same."
+      }
+    },
+    "lockNow": "Lock room",
+    "requestsTitle": "Waiting to join",
+    "none": "Nobody is waiting.",
+    "wantsToPresent": "wants to present",
+    "nameBoxLabel": "Name entered by the sender (not checked)",
+    "check": "Check number {check}",
+    "checkHelp": "The same number is shown on the sender's screen.",
+    "allow": "Allow",
+    "allowHint": "Press and hold to allow.",
+    "allowHolding": "Keep holding…",
+    "allowHelp": "Hold {key} or the button for about a second to allow. A short press only shows a hint.",
+    "deny": "Deny",
+    "denyAll": "Deny all",
+    "more": "+{n} more waiting",
+    "secondsLeft": "{s} s left",
+    "connectedTitle": "Connected",
+    "noneConnected": "Nobody is connected.",
+    "remove": "Remove",
+    "removeLabel": "Remove {name} from the room",
+    "chip": "Join: {mode}",
+    "pill": "{n} waiting",
+    "open": "Show join settings",
+    "close": "Hide join settings",
+    "dismiss": "Dismiss",
+    "announce": "{name} is waiting to join. Check number {check}.",
+    "notice": {
+      "locked_discarded": "Room locked. {count} waiting request(s) were discarded.",
+      "open_disabled": "This server does not allow open rooms. \"Ask first\" is used instead."
+    }
+  },
+  "displayName": {
+    "label": "Your name (shown to the host)",
+    "hint": "Shown to the host when it has to approve you. Optional; up to 40 characters.",
+    "placeholder": "e.g. Alex"
   }
 }

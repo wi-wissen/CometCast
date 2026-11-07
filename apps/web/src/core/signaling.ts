@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Signalling client. Messages mirror crates/cc-proto and docs/protocol.md (version 1).
+// Signalling client. Messages mirror crates/cc-proto and docs/protocol.md (version 2).
 
-export const PROTO_VERSION = 1
+export const PROTO_VERSION = 2
+
+/** Who may join a room (docs/protocol.md, "Join approval"). */
+export type JoinMode = 'open' | 'confirm' | 'locked'
+export const JOIN_MODES: readonly JoinMode[] = ['open', 'confirm', 'locked']
+export const isJoinMode = (v: unknown): v is JoinMode => v === 'open' || v === 'confirm' || v === 'locked'
 
 export type Role = 'sender' | 'receiver'
 
 export type ClientMessage =
   | { type: 'hello'; proto_version: number; role: Role }
   // altcha: base64 of {challenge, solution}; only needed when the server answers altcha_required (docs/server.md)
-  | { type: 'create_room'; altcha?: string }
-  | { type: 'join_room'; code: string }
+  | { type: 'create_room'; altcha?: string; join_mode?: JoinMode }
+  | { type: 'join_room'; code: string; name?: string }
+  | { type: 'set_join_mode'; join_mode: JoinMode }
+  // id absent + allow false = deny all waiting requests
+  | { type: 'join_decision'; id?: number; allow: boolean }
+  | { type: 'remove_peer' }
+  | { type: 'cancel_join' }
   | { type: 'offer'; sdp: string }
   | { type: 'answer'; sdp: string }
   | { type: 'ice_candidate'; candidate: string }
@@ -19,9 +29,13 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: 'hello'; proto_version: number }
-  | { type: 'room_created'; code: string }
+  | { type: 'room_created'; code: string; join_mode: JoinMode }
   | { type: 'joined' }
-  | { type: 'peer_joined' }
+  | { type: 'peer_joined'; name: string }
+  | { type: 'join_pending'; timeout_secs: number; check: number }
+  | { type: 'join_request'; id: number; name: string; check: number }
+  | { type: 'join_request_cancelled'; id: number; reason: string }
+  | { type: 'join_mode_changed'; join_mode: JoinMode }
   | { type: 'offer'; sdp: string }
   | { type: 'answer'; sdp: string }
   | { type: 'ice_candidate'; candidate: string }
@@ -38,6 +52,14 @@ export const SERVER_ERROR_CODES = [
   'room_full',
   'not_in_room',
   'bad_message',
+  // Join approval (docs/protocol.md)
+  'join_pending',
+  'join_denied',
+  'room_locked',
+  'approval_timeout',
+  'removed_by_host',
+  'open_rooms_disabled',
+  'no_such_request',
   // Added with the server's M8 (docs/protocol.md). HTTP-side refusals of /altcha/challenge use
   // the same words (see altchaClient.ts), plus 'forbidden', 'server_full' and 'altcha_failed'.
   'altcha_required',
@@ -56,6 +78,7 @@ export function encodeClientMessage(m: ClientMessage): string {
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string'
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 /** Parses one server text frame. Returns null for anything that is not a valid server message. */
 export function decodeServerMessage(text: unknown): ServerMessage | null {
@@ -72,11 +95,20 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'hello':
       return typeof o.proto_version === 'number' ? { type: 'hello', proto_version: o.proto_version } : null
     case 'room_created':
-      return isStr(o.code) ? { type: 'room_created', code: o.code } : null
+      return isStr(o.code) && isJoinMode(o.join_mode) ? { type: 'room_created', code: o.code, join_mode: o.join_mode } : null
     case 'joined':
-    case 'peer_joined':
     case 'peer_left':
       return { type: o.type }
+    case 'peer_joined':
+      return isStr(o.name) ? { type: 'peer_joined', name: o.name } : null
+    case 'join_pending':
+      return isNum(o.timeout_secs) && isNum(o.check) ? { type: 'join_pending', timeout_secs: o.timeout_secs, check: o.check } : null
+    case 'join_request':
+      return isNum(o.id) && isStr(o.name) && isNum(o.check) ? { type: 'join_request', id: o.id, name: o.name, check: o.check } : null
+    case 'join_request_cancelled':
+      return isNum(o.id) && isStr(o.reason) ? { type: 'join_request_cancelled', id: o.id, reason: o.reason } : null
+    case 'join_mode_changed':
+      return isJoinMode(o.join_mode) ? { type: 'join_mode_changed', join_mode: o.join_mode } : null
     case 'offer':
     case 'answer':
       return isStr(o.sdp) ? { type: o.type, sdp: o.sdp } : null

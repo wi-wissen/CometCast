@@ -174,7 +174,18 @@
       "sharing": "Ihr Bildschirm wird geteilt.",
       "peer_left": "Der Empfänger hat die Verbindung verlassen. Die Freigabe ist beendet.",
       "stopped": "Freigabe beendet.",
-      "error": "Es ist ein Fehler aufgetreten."
+      "error": "Es ist ein Fehler aufgetreten.",
+      "waiting_approval": "Warten, bis der Gastgeber den Beitritt erlaubt. Bis dahin wird nichts gesendet."
+    },
+    "waiting": {
+      "title": "Warten auf den Gastgeber",
+      "text": "Der Gastgeber muss Ihren Beitritt erlauben. Bis dahin wird nichts von Ihrem Gerät gesendet.",
+      "check": "Prüfnummer",
+      "checkHelp": "Wenn der Gastgeber fragt, welche Anfrage Ihre ist, nennen Sie diese Nummer.",
+      "timeLeft": "Die Anfrage endet in {s} s.",
+      "cancel": "Abbrechen",
+      "retryIn": "Sie können in {s} s erneut anfragen.",
+      "retryNow": "Erneut anfragen"
     }
   },
   "errors": {
@@ -198,7 +209,15 @@
     "peer_failed": "Die direkte Verbindung zum anderen Gerät ist fehlgeschlagen. Ohne STUN/TURN-Server funktioniert das nur im selben lokalen Netzwerk.",
     "capture_denied": "Die Bildschirmfreigabe wurde abgebrochen oder nicht erlaubt.",
     "capture_failed": "Der Bildschirm konnte von diesem Browser nicht aufgenommen werden.",
-    "unknown": "Ein unbekannter Fehler ist aufgetreten."
+    "unknown": "Ein unbekannter Fehler ist aufgetreten.",
+    "join_pending": "Bitte warten Sie, bis der Gastgeber Ihren Beitritt erlaubt hat.",
+    "join_denied": "Der Gastgeber hat Ihren Beitritt nicht erlaubt.",
+    "room_locked": "Der Raumcode ist richtig, aber der Raum ist gerade gesperrt. Bitten Sie den Gastgeber, ihn zu entsperren.",
+    "room_locked_waiting": "Der Raum wurde gesperrt, während Sie gewartet haben. Der Code war richtig; bitten Sie den Gastgeber, den Raum zu entsperren.",
+    "approval_timeout": "Niemand hat Ihre Anfrage rechtzeitig beantwortet. Sie können erneut anfragen.",
+    "removed_by_host": "Der Gastgeber hat Sie aus dem Raum entfernt.",
+    "open_rooms_disabled": "Dieser Server erlaubt keine offenen Räume.",
+    "no_such_request": "Diese Anfrage wartet nicht mehr."
   },
   "toolbar": {
     "label": "Bildschirm-Werkzeuge",
@@ -246,7 +265,8 @@
       "sharing": "Verbunden. Sie können jetzt senden.",
       "peer_left": "Der Empfänger hat die Verbindung verlassen.",
       "stopped": "Getrennt.",
-      "error": "Etwas ist schiefgelaufen."
+      "error": "Etwas ist schiefgelaufen.",
+      "waiting_approval": "Warten, bis der Gastgeber den Beitritt erlaubt."
     },
     "image": {
       "title": "Bild",
@@ -302,5 +322,57 @@
   "sas": {
     "label": "Verbindungs-Prüfcode",
     "explain": "Beide Geräte sollten denselben Code anzeigen. Weichen sie ab, brechen Sie ab: Die Verbindung könnte abgefangen werden. Der Vergleich liegt bei Ihnen, die App erzwingt ihn nicht."
+  },
+  "join": {
+    "panelTitle": "Wer darf beitreten?",
+    "modeLabel": "Beitrittsmodus",
+    "mode": {
+      "open": {
+        "label": "Offen",
+        "help": "Wer den Raumcode kennt, tritt sofort bei."
+      },
+      "confirm": {
+        "label": "Erst fragen",
+        "help": "Jeder Beitritt wartet, bis Sie ihn hier erlauben."
+      },
+      "locked": {
+        "label": "Gesperrt",
+        "help": "Im Moment kann niemand beitreten. Der Code bleibt gleich."
+      }
+    },
+    "lockNow": "Raum sperren",
+    "requestsTitle": "Warten auf Beitritt",
+    "none": "Niemand wartet.",
+    "wantsToPresent": "möchte präsentieren",
+    "nameBoxLabel": "Vom Sender eingegebener Name (nicht geprüft)",
+    "check": "Prüfnummer {check}",
+    "checkHelp": "Dieselbe Nummer steht auf dem Bildschirm des Senders.",
+    "allow": "Erlauben",
+    "allowHint": "Zum Erlauben gedrückt halten.",
+    "allowHolding": "Weiter halten…",
+    "allowHelp": "Halten Sie {key} oder die Schaltfläche etwa eine Sekunde lang, um zu erlauben. Ein kurzer Druck zeigt nur einen Hinweis.",
+    "deny": "Ablehnen",
+    "denyAll": "Alle ablehnen",
+    "more": "+{n} weitere warten",
+    "secondsLeft": "noch {s} s",
+    "connectedTitle": "Verbunden",
+    "noneConnected": "Niemand ist verbunden.",
+    "remove": "Entfernen",
+    "removeLabel": "{name} aus dem Raum entfernen",
+    "chip": "Beitritt: {mode}",
+    "pill": "{n} wartend",
+    "open": "Beitrittseinstellungen anzeigen",
+    "close": "Beitrittseinstellungen ausblenden",
+    "dismiss": "Schließen",
+    "announce": "{name} wartet auf den Beitritt. Prüfnummer {check}.",
+    "notice": {
+      "locked_discarded": "Raum gesperrt. {count} wartende Anfrage(n) wurden verworfen.",
+      "open_disabled": "Dieser Server erlaubt keine offenen Räume. Stattdessen wird „Erst fragen“ verwendet."
+    }
+  },
+  "displayName": {
+    "label": "Ihr Name (wird dem Gastgeber angezeigt)",
+    "hint": "Wird dem Gastgeber angezeigt, wenn er Sie bestätigen muss. Optional; höchstens 40 Zeichen.",
+    "placeholder": "z. B. Alex"
   }
 }

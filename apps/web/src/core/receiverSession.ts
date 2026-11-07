@@ -4,7 +4,7 @@
 import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
 import { CONTROL_CHANNEL_LABEL, ControlReceiver, type ControlChannel, type ControlCmd, type TransferErrorCode } from './control'
 import { createWorkerRenderer, PdfError, type PageBitmap, type PdfRenderer, type PdfRendererFactory } from './pdfRenderer'
-import { SignalingClient, type ServerMessage, type SocketFactory } from './signaling'
+import { SignalingClient, type JoinMode, type ServerMessage, type SocketFactory } from './signaling'
 
 export type ReceiverPhase =
   | 'idle'
@@ -23,9 +23,35 @@ export type ReceivedContent =
   /** A PDF. `pages` is 0 while it is being opened; `page` is the shown page, counted from 1. */
   | { kind: 'document'; id: number; name: string; pages: number; page: number } // `id`: one per received transfer (also for the same name)
 
+/** A sender that waits for the host's decision (join mode "confirm"). All text is untrusted: show as plain text. */
+export interface JoinRequest {
+  id: number
+  /** Cleaned by the server (no control/bidi characters, at most 40 characters). */
+  name: string
+  /** Two-digit number that the sender's waiting screen shows too. */
+  check: number
+  /** Milliseconds since the epoch when it arrived (for the countdown). */
+  receivedAt: number
+}
+
+/** A short message about something that happened to the room's join settings. */
+export type JoinNotice =
+  | { kind: 'locked_discarded'; count: number }
+  | { kind: 'open_disabled' } // the server does not allow open rooms; "confirm" is used instead
+
+/** How long the server lets a request wait (its default). UNCERTAIN: an operator can change it; the server decides. */
+export const JOIN_REQUEST_SECS = 60
+
 export interface ReceiverState {
   phase: ReceiverPhase
   code: string | null
+  /** Who may join (as confirmed by the server). */
+  joinMode: JoinMode
+  /** Waiting join requests, oldest first. */
+  requests: JoinRequest[]
+  /** Name of the connected sender, or null. */
+  peerName: string | null
+  notice: JoinNotice | null
   /** Server error code or a local one (connection_lost, peer_failed, altcha_failed). Set when phase is 'error'. */
   errorCode: string | null
   stream: MediaStream | null
@@ -53,6 +79,10 @@ export interface ReceiverDeps {
   iceServers?: () => Promise<RTCIceServer[]>
   /** Creates the renderer for one received PDF (default: a Web Worker with the WASM build of cc-docs). */
   pdfRenderer?: PdfRendererFactory
+  /** Join mode of the room that is created (default "open"). Changed later with setJoinMode. */
+  joinMode?: JoinMode
+  /** Test seam: the clock (default Date.now). */
+  now?: () => number
   /** Test seam; defaults to URL.createObjectURL / revokeObjectURL. */
   objectUrl?: { create(b: Blob): string; revoke(u: string): void }
 }
@@ -81,6 +111,10 @@ const FATAL_RENDER_CODES = new Set(['timeout', 'failed', 'memory', 'closed', 'un
 const EMPTY: ReceiverState = {
   phase: 'idle',
   code: null,
+  joinMode: 'open',
+  requests: [],
+  peerName: null,
+  notice: null,
   errorCode: null,
   stream: null,
   content: null,
@@ -117,9 +151,12 @@ export class ReceiverSession {
   private held: ServerMessage[] = [] // messages that arrived before the ICE server list
   private altchaTried = false
   private altchaAbort: AbortController | null = null
+  private altchaPayload: string | undefined
+  private mode: JoinMode
 
   constructor(private readonly deps: ReceiverDeps) {
     this.peerFactory = deps.peerFactory ?? ((h, c) => createPeer(h, c))
+    this.mode = deps.joinMode ?? 'open'
   }
 
   get snapshot(): ReceiverState {
@@ -211,10 +248,11 @@ export class ReceiverSession {
     this.teardown()
     const run = ++this.run
     this.altchaTried = false
+    this.altchaPayload = undefined
     this.iceServers = []
     this.iceReady = !this.deps.iceServers
     this.held = []
-    this.set({ ...EMPTY, phase: 'connecting' })
+    this.set({ ...EMPTY, phase: 'connecting', joinMode: this.mode })
     if (this.deps.iceServers) {
       // Fetched while the room is being created; a sender needs a person to type the code,
       // so the list is normally there long before the first peer is made.
@@ -227,7 +265,7 @@ export class ReceiverSession {
       this.deps.url,
       'receiver',
       {
-        onReady: () => this.client?.send({ type: 'create_room' }),
+        onReady: () => this.sendCreateRoom(),
         onMessage: (m) => this.onMessage(m),
         onClose: () => this.fail('connection_lost'),
       },
@@ -239,7 +277,46 @@ export class ReceiverSession {
   stop(): void {
     this.run++
     this.teardown()
-    this.set({ ...EMPTY, phase: 'idle' })
+    this.set({ ...EMPTY, phase: 'idle', joinMode: this.mode })
+  }
+
+  private sendCreateRoom(): void {
+    this.client?.send({
+      type: 'create_room',
+      ...(this.altchaPayload ? { altcha: this.altchaPayload } : {}),
+      join_mode: this.mode,
+    })
+  }
+
+  // --- Join approval (the display device decides who may join) ----------------------------------
+
+  /** Changes who may join, at any time. The state changes when the server confirms. */
+  setJoinMode(mode: JoinMode): void {
+    this.mode = mode
+    if (this.state.code !== null) this.client?.send({ type: 'set_join_mode', join_mode: mode })
+  }
+
+  /** Allows (`true`) or denies a waiting request. The request leaves the list at once. */
+  decide(id: number, allow: boolean): void {
+    if (!this.state.requests.some((r) => r.id === id)) return
+    this.client?.send({ type: 'join_decision', id, allow })
+    this.set({ requests: this.state.requests.filter((r) => r.id !== id) })
+  }
+
+  /** Denies everybody who waits. */
+  denyAll(): void {
+    if (this.state.requests.length === 0) return
+    this.client?.send({ type: 'join_decision', allow: false })
+    this.set({ requests: [] })
+  }
+
+  /** Removes the connected sender from the room (it has to ask again). */
+  removePeer(): void {
+    this.client?.send({ type: 'remove_peer' })
+  }
+
+  dismissNotice(): void {
+    if (this.state.notice) this.set({ notice: null })
   }
 
   private iceLoaded(run: number, list: RTCIceServer[]): void {
@@ -260,8 +337,9 @@ export class ReceiverSession {
       (payload) => {
         if (run !== this.run || ctl.signal.aborted) return
         this.altchaAbort = null
+        this.altchaPayload = payload
         this.set({ phase: 'connecting' })
-        this.client?.send({ type: 'create_room', altcha: payload })
+        this.sendCreateRoom()
       },
       (e: unknown) => {
         if (run !== this.run || ctl.signal.aborted) return
@@ -326,11 +404,38 @@ export class ReceiverSession {
     }
     switch (m.type) {
       case 'room_created':
-        this.set({ phase: 'waiting_sender', code: m.code })
+        // A mode that was chosen while the room was being created is applied now.
+        this.set({ phase: 'waiting_sender', code: m.code, joinMode: m.join_mode })
+        if (this.mode !== m.join_mode) this.client?.send({ type: 'set_join_mode', join_mode: this.mode })
+        break
+      case 'join_request':
+        if (this.state.requests.some((r) => r.id === m.id)) break
+        this.set({
+          requests: [
+            ...this.state.requests,
+            { id: m.id, name: m.name, check: m.check, receivedAt: (this.deps.now ?? Date.now)() },
+          ],
+        })
+        break
+      case 'join_request_cancelled': {
+        const requests = this.state.requests.filter((r) => r.id !== m.id)
+        if (m.reason === 'locked') {
+          const prev = this.state.notice
+          const count = (prev?.kind === 'locked_discarded' ? prev.count : 0) + 1
+          this.set({ requests, notice: { kind: 'locked_discarded', count } })
+        } else this.set({ requests })
+        break
+      }
+      case 'join_mode_changed':
+        this.mode = m.join_mode
+        this.set({
+          joinMode: m.join_mode,
+          notice: m.join_mode === 'locked' ? this.state.notice : null,
+        })
         break
       case 'peer_joined':
         this.newPeer()
-        this.set({ phase: 'negotiating', stream: null, sas: undefined })
+        this.set({ phase: 'negotiating', stream: null, sas: undefined, peerName: m.name })
         break
       case 'offer': {
         const peer = this.peer ?? this.newPeer()
@@ -351,7 +456,7 @@ export class ReceiverSession {
         this.peer = null
         this.clearContent()
         this.control.reset()
-        this.set({ phase: 'peer_left', stream: null, sas: undefined })
+        this.set({ phase: 'peer_left', stream: null, sas: undefined, peerName: null })
         break
       case 'error':
         // Open servers answer the first create_room with altcha_required; the connection stays open.
@@ -359,6 +464,19 @@ export class ReceiverSession {
           this.solveAltcha()
           break
         }
+        // The server forbids open rooms: ask for one that needs approval instead of failing.
+        if (m.code === 'open_rooms_disabled') {
+          if (this.state.phase === 'connecting' && this.mode === 'open') {
+            this.mode = 'confirm'
+            this.set({ joinMode: 'confirm', notice: { kind: 'open_disabled' } })
+            this.sendCreateRoom()
+          } else {
+            this.set({ notice: { kind: 'open_disabled' } })
+          }
+          break
+        }
+        // A decision for a request that is already gone (timed out at the same moment).
+        if (m.code === 'no_such_request') break
         // not_in_room can arrive when the sender has just left; the room itself survives.
         if (m.code === 'not_in_room' && this.state.phase !== 'connecting') break
         this.fail(m.code)

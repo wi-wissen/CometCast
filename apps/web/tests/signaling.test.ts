@@ -10,23 +10,36 @@ import { FakeSocket } from './helpers/fakeSocket'
 
 describe('message encoding', () => {
   it('encodes client messages with snake_case type tags', () => {
-    expect(JSON.parse(encodeClientMessage({ type: 'hello', proto_version: 1, role: 'receiver' }))).toEqual({
+    expect(JSON.parse(encodeClientMessage({ type: 'hello', proto_version: 2, role: 'receiver' }))).toEqual({
       type: 'hello',
-      proto_version: 1,
+      proto_version: 2,
       role: 'receiver',
     })
     expect(JSON.parse(encodeClientMessage({ type: 'join_room', code: 'ABC234' }))).toEqual({
       type: 'join_room',
       code: 'ABC234',
     })
+    expect(JSON.parse(encodeClientMessage({ type: 'create_room', join_mode: 'confirm' }))).toEqual({
+      type: 'create_room',
+      join_mode: 'confirm',
+    })
+    expect(JSON.parse(encodeClientMessage({ type: 'join_decision', id: 2, allow: true }))).toEqual({
+      type: 'join_decision',
+      id: 2,
+      allow: true,
+    })
     expect(JSON.parse(encodeClientMessage({ type: 'ice_candidate', candidate: '{}' })).type).toBe('ice_candidate')
   })
   it('decodes every server message type', () => {
     const cases: ServerMessage[] = [
-      { type: 'hello', proto_version: 1 },
-      { type: 'room_created', code: 'ABC234' },
+      { type: 'hello', proto_version: 2 },
+      { type: 'room_created', code: 'ABC234', join_mode: 'confirm' },
       { type: 'joined' },
-      { type: 'peer_joined' },
+      { type: 'peer_joined', name: 'Ana' },
+      { type: 'join_pending', timeout_secs: 60, check: 42 },
+      { type: 'join_request', id: 3, name: 'Ana', check: 42 },
+      { type: 'join_request_cancelled', id: 3, reason: 'timeout' },
+      { type: 'join_mode_changed', join_mode: 'locked' },
       { type: 'offer', sdp: 'x' },
       { type: 'answer', sdp: 'y' },
       { type: 'ice_candidate', candidate: '{}' },
@@ -37,7 +50,7 @@ describe('message encoding', () => {
     for (const c of cases) expect(decodeServerMessage(JSON.stringify(c))).toEqual(c)
   })
   it('rejects invalid input', () => {
-    for (const bad of ['', 'nope', '[]', 'null', '{"type":"nope"}', '{"type":"offer"}', '{"type":"room_created","code":1}']) {
+    for (const bad of ['', 'nope', '[]', 'null', '{"type":"nope"}', '{"type":"offer"}', '{"type":"room_created","code":1}', '{"type":"room_created","code":"ABC234"}', '{"type":"join_request","id":"1","name":"x","check":1}', '{"type":"join_mode_changed","join_mode":"x"}', '{"type":"peer_joined"}']) {
       expect(decodeServerMessage(bad)).toBeNull()
     }
     expect(decodeServerMessage(new ArrayBuffer(2))).toBeNull()
@@ -56,8 +69,8 @@ describe('SignalingClient', () => {
     }, () => sock)
     c.open()
     sock.open()
-    expect(sock.sent[0]).toEqual({ type: 'hello', proto_version: 1, role: 'sender' })
-    sock.recv({ type: 'hello', proto_version: 1 })
+    expect(sock.sent[0]).toEqual({ type: 'hello', proto_version: 2, role: 'sender' })
+    sock.recv({ type: 'hello', proto_version: 2 })
     sock.recv({ type: 'joined' })
     sock.onmessage({ data: 'garbage' })
     expect(ready).toBe(1)
@@ -74,7 +87,7 @@ describe('SignalingClient', () => {
       onClose: () => got.push('close'),
     }, () => sock)
     c.open()
-    sock.recv({ type: 'hello', proto_version: 2 })
+    sock.recv({ type: 'hello', proto_version: 1 })
     expect(got).toEqual(['proto_mismatch'])
     expect(sock.closed).toBe(true)
   })

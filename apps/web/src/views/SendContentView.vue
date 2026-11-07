@@ -1,6 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
 import SasLine from '../components/SasLine.vue'
+import JoinWaiting from '../components/JoinWaiting.vue'
+import DisplayNameField from '../components/DisplayNameField.vue'
+import { useDeniedCooldown } from '../composables/useCooldown'
 // "Send file or link": images (picker or drag and drop) and http(s) links over the WebRTC control channel.
 // Nothing goes through the signalling server except the connection setup.
 import { computed, ref } from 'vue'
@@ -15,7 +18,8 @@ const touched = ref(false)
 const valid = computed(() => isValidRoomCode(code.value))
 const { state, start, stop, sendImage, sendDocument, sendLink, sendCmd } = useSender({ contentOnly: true })
 
-const active = computed(() => ['connecting', 'joining', 'negotiating', 'sharing'].includes(state.value.phase))
+const cooldown = useDeniedCooldown(state)
+const active = computed(() => ['connecting', 'joining', 'waiting_approval', 'negotiating', 'sharing'].includes(state.value.phase))
 const ready = computed(() => state.value.channelOpen)
 const errorText = computed(() => {
   const c = state.value.errorCode
@@ -25,7 +29,7 @@ const maxLabel = `${MAX_IMAGE_BYTES / (1024 * 1024)} MiB`
 const accept = IMAGE_MIME_TYPES.join(',')
 
 function onSubmit() {
-  if (valid.value && !active.value) void start(code.value)
+  if (valid.value && !active.value && cooldown.value === 0) void start(code.value)
 }
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
@@ -161,13 +165,14 @@ function stopShowing() {
         class="w-full max-w-xs rounded-cc border border-line2 bg-surface px-3 py-2 font-mono text-xl uppercase tracking-[0.3em]"
         @input="onInput"
       />
+      <DisplayNameField :disabled="active" />
       <p id="room-code-hint" class="text-sm" :class="touched && !valid ? 'text-err' : 'text-muted'">
         {{ touched && !valid ? t('send.codeInvalid') : t('send.codeHint') }}
       </p>
       <div class="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          :disabled="!valid || active"
+          :disabled="!valid || active || cooldown > 0"
           class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ t(state.phase === 'error' || state.phase === 'peer_left' ? 'send.tryAgain' : 'sendContent.connect') }}
@@ -184,6 +189,7 @@ function stopShowing() {
       </div>
     </form>
 
+    <JoinWaiting :state="state" @cancel="stop" />
     <p
       data-testid="status"
       :data-phase="state.phase"

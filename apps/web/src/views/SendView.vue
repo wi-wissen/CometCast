@@ -1,11 +1,14 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <script setup lang="ts">
 import SasLine from '../components/SasLine.vue'
+import JoinWaiting from '../components/JoinWaiting.vue'
+import DisplayNameField from '../components/DisplayNameField.vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { detectCapabilities } from '../core/capabilities'
 import { isTestVideo } from '../core/capture'
 import { useSender } from '../composables/useSender'
+import { useDeniedCooldown } from '../composables/useCooldown'
 import { isValidRoomCode, normalizeRoomCode, ROOM_CODE_LENGTH } from '../core/roomCode'
 
 const { t, te } = useI18n()
@@ -17,14 +20,15 @@ const valid = computed(() => isValidRoomCode(code.value))
 const { state, start, stop } = useSender()
 // TEST-ONLY: ?testVideo=1 replaces the screen with a canvas (see core/capture.ts).
 const canShare = computed(() => caps.screenShare || isTestVideo())
-const active = computed(() => ['capturing', 'connecting', 'joining', 'negotiating', 'sharing'].includes(state.value.phase))
+const cooldown = useDeniedCooldown(state)
+const active = computed(() => ['capturing', 'connecting', 'joining', 'waiting_approval', 'negotiating', 'sharing'].includes(state.value.phase))
 const errorText = computed(() => {
   const c = state.value.errorCode
   return c ? (te(`errors.${c}`) ? t(`errors.${c}`) : t('errors.unknown')) : ''
 })
 
 function onSubmit() {
-  if (valid.value && canShare.value && !active.value) void start(code.value)
+  if (valid.value && canShare.value && !active.value && cooldown.value === 0) void start(code.value)
 }
 
 function onInput(e: Event) {
@@ -56,6 +60,7 @@ function onInput(e: Event) {
         class="w-full max-w-xs rounded-cc border border-line2 bg-surface px-3 py-2 font-mono text-xl uppercase tracking-[0.3em]"
         @input="onInput"
       />
+      <DisplayNameField :disabled="active" />
       <p id="room-code-hint" class="text-sm text-muted">{{ t('send.codeHint') }}</p>
       <p id="room-code-status" class="text-sm" :class="valid ? 'text-ok' : 'text-err'" role="status">
         <template v-if="valid">{{ t('send.codeValid') }}</template>
@@ -64,7 +69,7 @@ function onInput(e: Event) {
       <div class="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          :disabled="!valid || !canShare || active"
+          :disabled="!valid || !canShare || active || cooldown > 0"
           class="rounded-cc bg-accent px-4 py-2 font-medium text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ t(state.phase === 'error' ? 'send.tryAgain' : 'send.connect') }}
@@ -81,6 +86,7 @@ function onInput(e: Event) {
       </div>
     </form>
 
+    <JoinWaiting :state="state" @cancel="stop" />
     <p
       data-testid="status"
       :data-phase="state.phase"

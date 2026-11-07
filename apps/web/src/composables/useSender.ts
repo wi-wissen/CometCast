@@ -5,6 +5,7 @@ import { getScreenStream } from '../core/capture'
 import { SenderSession, type SenderState } from '../core/senderSession'
 import { useRelay } from './useRelay'
 import { fetchIceServers } from '../core/altchaClient'
+import { loadDisplayName } from '../core/joinPrefs'
 
 /** `contentOnly`: no screen capture, only the control channel (images, links). */
 export function useSender(opts: { contentOnly?: boolean } = {}) {
@@ -18,6 +19,8 @@ export function useSender(opts: { contentOnly?: boolean } = {}) {
     },
     iceServers: () => fetchIceServers(current.value.httpBase),
     onChange: (s) => (state.value = s),
+    // Shown to the host when it has to approve the join (read when the join is sent).
+    name: () => loadDisplayName() || undefined,
     getStream: opts.contentOnly ? undefined : getScreenStream,
   })
   onBeforeUnmount(() => session.stop())

@@ -33,8 +33,8 @@ describe('content over the control channel (sessions with fake peers)', () => {
       objectUrl: { create: () => 'blob:fake', revoke: (u) => revoked.push(u) },
     })
     r.start()
-    sock.recv({ type: 'room_created', code: 'ABC234' })
-    sock.recv({ type: 'peer_joined' })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    sock.recv({ type: 'peer_joined', name: 'Guest 1' })
     const [a, b] = pair()
     rp.h.onDataChannel!(b)
     expect(b.binaryType).toBe('arraybuffer')
@@ -57,8 +57,8 @@ describe('content over the control channel (sessions with fake peers)', () => {
     let rp!: P
     const r = new ReceiverSession({ url: 'ws://x/ws', onChange: () => {}, socketFactory: () => sock, peerFactory: (h) => (rp = new P(h)) })
     r.start()
-    sock.recv({ type: 'room_created', code: 'ABC234' })
-    sock.recv({ type: 'peer_joined' })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    sock.recv({ type: 'peer_joined', name: 'Guest 1' })
     const [a, b] = pair()
     b.label = 'other'
     rp.h.onDataChannel!(b)
@@ -81,7 +81,7 @@ describe('content over the control channel (sessions with fake peers)', () => {
     })
     await s.start('ABC234')
     sock.open()
-    sock.recv({ type: 'hello', proto_version: 1 })
+    sock.recv({ type: 'hello', proto_version: 2 })
     sock.recv({ type: 'joined' })
     await tick()
     expect(s.snapshot.channelOpen).toBe(false)

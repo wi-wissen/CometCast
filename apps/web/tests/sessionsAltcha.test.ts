@@ -41,7 +41,7 @@ function setupReceiver(extra: Partial<ConstructorParameters<typeof ReceiverSessi
   })
   s.start()
   sock.open()
-  sock.recv({ type: 'hello', proto_version: 1 })
+  sock.recv({ type: 'hello', proto_version: 2 })
   return { s, sock, peers, states }
 }
 
@@ -50,16 +50,16 @@ describe('ReceiverSession with ALTCHA', () => {
     const d = deferred<string>()
     let signal: AbortSignal | undefined
     const { s, sock, states } = setupReceiver({ altcha: (sg) => { signal = sg; return d.promise } })
-    expect(sock.sent[1]).toEqual({ type: 'create_room' })
+    expect(sock.sent[1]).toEqual({ type: 'create_room', join_mode: 'open' })
     sock.recv({ type: 'error', code: 'altcha_required', message: '' })
     expect(s.snapshot.phase).toBe('checking')
     expect(signal?.aborted).toBe(false)
     d.resolve('PAYLOAD')
     await tick()
-    expect(sock.sent[2]).toEqual({ type: 'create_room', altcha: 'PAYLOAD' })
+    expect(sock.sent[2]).toEqual({ type: 'create_room', altcha: 'PAYLOAD', join_mode: 'open' })
     expect(s.snapshot.phase).toBe('connecting')
     expect(sock.closed).toBe(false)
-    sock.recv({ type: 'room_created', code: 'ABC234' })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
     expect(s.snapshot).toMatchObject({ phase: 'waiting_sender', code: 'ABC234' })
     expect(states.map((x) => x.phase)).toEqual(['connecting', 'checking', 'connecting', 'waiting_sender'])
   })
@@ -107,7 +107,7 @@ describe('ReceiverSession with ALTCHA', () => {
   it('does not call the solver when the server accepts create_room right away (internal mode)', () => {
     let calls = 0
     const { s, sock } = setupReceiver({ altcha: async () => { calls++; return 'P' } })
-    sock.recv({ type: 'room_created', code: 'ABC234' })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
     expect(s.snapshot.phase).toBe('waiting_sender')
     expect(calls).toBe(0)
   })
@@ -117,16 +117,16 @@ describe('ICE servers', () => {
   it('receiver passes the list to the peer', async () => {
     const { sock, peers } = setupReceiver({ iceServers: async () => TURN })
     await tick()
-    sock.recv({ type: 'room_created', code: 'ABC234' })
-    sock.recv({ type: 'peer_joined' })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    sock.recv({ type: 'peer_joined', name: 'Guest 1' })
     expect(peers[0].config).toEqual({ iceServers: TURN })
   })
 
   it('receiver waits for the list if a sender joins first', async () => {
     const d = deferred<RTCIceServer[]>()
     const { s, sock, peers } = setupReceiver({ iceServers: () => d.promise })
-    sock.recv({ type: 'room_created', code: 'ABC234' })
-    sock.recv({ type: 'peer_joined' })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    sock.recv({ type: 'peer_joined', name: 'Guest 1' })
     expect(peers).toHaveLength(0)
     d.resolve(TURN)
     await tick()
@@ -147,7 +147,7 @@ describe('ICE servers', () => {
       const s = new ReceiverSession({ url: 'ws://x/ws', onChange: () => {}, socketFactory: () => sock, iceServers: async () => TURN })
       s.start()
       await tick()
-      sock.recv({ type: 'peer_joined' })
+      sock.recv({ type: 'peer_joined', name: 'Guest 1' })
       expect(seen).toEqual([{ iceServers: TURN }])
       s.stop()
     } finally {
@@ -158,7 +158,7 @@ describe('ICE servers', () => {
   it('receiver works with an empty list', async () => {
     const { sock, peers } = setupReceiver({ iceServers: async () => [] })
     await tick()
-    sock.recv({ type: 'peer_joined' })
+    sock.recv({ type: 'peer_joined', name: 'Guest 1' })
     expect(peers[0].config).toEqual({ iceServers: [] })
   })
 
@@ -179,7 +179,7 @@ describe('ICE servers', () => {
       })
       await s.start('ABC234')
       sock.open()
-      sock.recv({ type: 'hello', proto_version: 1 })
+      sock.recv({ type: 'hello', proto_version: 2 })
       sock.recv({ type: 'joined' })
       await tick()
       expect(sock.sent.at(-1)).toEqual({ type: 'offer', sdp: 'OFFER' })

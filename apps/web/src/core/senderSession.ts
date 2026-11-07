@@ -10,6 +10,7 @@ export type SenderPhase =
   | 'capturing' // waiting for the browser's screen picker
   | 'connecting'
   | 'joining'
+  | 'waiting_approval' // the host has to allow the join; nothing is sent until then
   | 'negotiating'
   | 'sharing'
   | 'peer_left' // the receiver went away
@@ -24,6 +25,12 @@ export interface SenderState {
   channelOpen: boolean
   /** Connection check code once connected (compare with the receiver), else absent. */
   sas?: string
+  /** While `waiting_approval`: the two-digit number that the display shows on the request. */
+  check?: number
+  /** While `waiting_approval`: seconds until the server gives up. */
+  timeoutSecs?: number
+  /** Milliseconds since the epoch when an error happened (for "ask again in 15 s"). */
+  errorAt?: number
 }
 
 export interface SenderDeps {
@@ -35,6 +42,10 @@ export interface SenderDeps {
   peerFactory?: PeerFactory
   /** STUN/TURN list (GET /ice-servers). Must not reject; an empty list means none. */
   iceServers?: () => Promise<RTCIceServer[]>
+  /** Name shown to the host when it has to approve the join (the server cleans it). */
+  name?: () => string | undefined
+  /** Test seam: the clock (default Date.now). */
+  now?: () => number
 }
 
 export class SenderSession {
@@ -42,6 +53,7 @@ export class SenderSession {
   private control: ControlSender | null = null
   private channelOpen = false
   private sas: string | undefined
+  private check: { check: number; timeoutSecs: number } | undefined
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private stream: MediaStream | null = null
@@ -60,6 +72,11 @@ export class SenderSession {
   private set(phase: SenderPhase, errorCode: string | null = null): void {
     this.state = { phase, errorCode, channelOpen: this.channelOpen }
     if (phase === 'sharing' && this.sas) this.state.sas = this.sas
+    if (phase === 'waiting_approval' && this.check) {
+      this.state.check = this.check.check
+      this.state.timeoutSecs = this.check.timeoutSecs
+    }
+    if (phase === 'error') this.state.errorAt = (this.deps.now ?? Date.now)()
     this.deps.onChange(this.state)
   }
 
@@ -128,7 +145,8 @@ export class SenderSession {
       {
         onReady: () => {
           this.set('joining')
-          this.client?.send({ type: 'join_room', code })
+          const name = this.deps.name?.()
+          this.client?.send({ type: 'join_room', code, ...(name ? { name } : {}) })
         },
         onMessage: (m) => this.onMessage(m),
         onClose: () => this.fail('connection_lost'),
@@ -146,6 +164,7 @@ export class SenderSession {
 
   private teardown(): void {
     this.sas = undefined
+    this.check = undefined
     this.control = null
     this.channelOpen = false
     this.peer?.close()
@@ -165,7 +184,12 @@ export class SenderSession {
 
   private onMessage(m: ServerMessage): void {
     switch (m.type) {
+      case 'join_pending':
+        this.check = { check: m.check, timeoutSecs: m.timeout_secs }
+        this.set('waiting_approval')
+        break
       case 'joined':
+        this.check = undefined
         this.set('negotiating')
         void this.sendOffer()
         break
@@ -189,7 +213,9 @@ export class SenderSession {
         this.set('peer_left')
         break
       case 'error':
-        this.fail(m.code)
+        // Locked while this sender waited: the code was right, the room was locked in the meantime.
+        if (m.code === 'room_locked' && this.state.phase === 'waiting_approval') this.fail('room_locked_waiting')
+        else this.fail(m.code)
         break
       default:
         break
