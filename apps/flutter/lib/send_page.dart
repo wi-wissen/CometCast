@@ -14,6 +14,8 @@ import 'codec_notice.dart';
 import 'core/android_capture.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
+import 'join_state.dart';
+import 'join_widgets.dart';
 import 'sender_controller.dart';
 import 'settings.dart';
 import 'widgets.dart';
@@ -158,7 +160,9 @@ class _SendPageState extends State<SendPage> {
     // Desktop screen sharing encodes with OpenH264, which release builds download first (the
     // card under the switch explains it). Android encodes with MediaCodec.
     if (sharing && !_androidMode && !_codec.ready) return;
+    if (_controller.cooldownLeft > 0) return;
     widget.settings.rememberServer();
+    final name = widget.settings.displayName;
     if (sharing && _androidMode) {
       final t = AppLocalizations.of(context);
       _controller.startCapture(
@@ -169,12 +173,14 @@ class _SendPageState extends State<SendPage> {
           text: t.captureNotificationText,
           stopLabel: t.captureNotificationStop,
         ),
+        name: name,
       );
       return;
     }
     _controller.start(
       code: check.code,
       server: widget.settings.serverAddress.trim(),
+      name: name,
       // A screen is shared until the person stops it.
       seconds: sharing ? null : seconds,
       screen: sharing
@@ -248,6 +254,8 @@ class _SendPageState extends State<SendPage> {
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 16),
+                DisplayNameField(settings: widget.settings, enabled: !active),
+                const SizedBox(height: 16),
                 if (!_shareScreen)
                   TextField(
                     key: const Key('secondsField'),
@@ -279,12 +287,22 @@ class _SendPageState extends State<SendPage> {
                         )
                       : FilledButton.icon(
                           key: const Key('startButton'),
-                          onPressed: _start,
+                          onPressed: _controller.cooldownLeft > 0
+                              ? null
+                              : _start,
                           icon: const Icon(Icons.play_arrow),
                           label: Text(t.startSending),
                         ),
                 ),
                 const SizedBox(height: 24),
+                if (_controller.approval != null &&
+                    _controller.phase == SenderPhase.waitingApproval) ...[
+                  ApprovalWaitingCard(
+                    wait: _controller.approval!,
+                    onCancel: _controller.stop,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 // liveRegion: screen readers announce changes of the status.
                 Semantics(
                   liveRegion: true,
@@ -294,6 +312,11 @@ class _SendPageState extends State<SendPage> {
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ),
+                if (_controller.refusal == JoinRefusal.denied)
+                  RefusalNote(
+                    cooldownLeft: () => _controller.cooldownLeft,
+                    onElapsed: () => setState(() {}),
+                  ),
                 const SizedBox(height: 16),
                 NoticeBox(
                   noticeKey: const Key('sendNotice'),
@@ -471,11 +494,15 @@ class _SendPageState extends State<SendPage> {
     if (c.captureDenied) return t.sendCaptureDenied;
     if (c.captureStopped) return t.sendCaptureStopped;
     if (c.receiverLeft) return t.statusPeerLeftReceiver;
+    final refusal = c.refusal;
+    if (refusal != null) return joinRefusalText(t, refusal);
     switch (c.phase) {
       case SenderPhase.idle:
         return t.statusIdle;
       case SenderPhase.starting:
         return t.statusConnecting;
+      case SenderPhase.waitingApproval:
+        return t.sendWaitingStatus;
       case SenderPhase.finished:
         return t.sendFinished(c.framesSent);
       case SenderPhase.ended:

@@ -212,7 +212,12 @@ void main() {
         expect(core.receiverServer, 'relay.cometcast.de:443');
         expect(platform.awake, [true]);
 
-        core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
+        core.receiverEvents.add(
+          const ReceiverUiEvent.roomCode(
+            code: 'K7M2QX',
+            joinMode: UiJoinMode.open,
+          ),
+        );
         await tester.pump();
         final code = tester.widget<SelectableText>(
           find.byKey(const Key('roomCode')),
@@ -294,7 +299,12 @@ void main() {
       final core = await openTvReceive(tester, FakePlatform());
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
-      core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
+      core.receiverEvents.add(
+        const ReceiverUiEvent.roomCode(
+          code: 'K7M2QX',
+          joinMode: UiJoinMode.open,
+        ),
+      );
       core.receiverEvents.add(
         const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
       );
@@ -431,7 +441,12 @@ void main() {
         expect(core.passthrough, isTrue);
         expect(decoder.startCalls, 1);
 
-        core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
+        core.receiverEvents.add(
+          const ReceiverUiEvent.roomCode(
+            code: 'K7M2QX',
+            joinMode: UiJoinMode.open,
+          ),
+        );
         core.receiverEvents.add(
           const ReceiverUiEvent.videoTrack(mime: 'video/H264', codec: 'h264'),
         );

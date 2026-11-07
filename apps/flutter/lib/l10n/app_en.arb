@@ -1016,5 +1016,245 @@
   "codecRemembered": "Your consent is remembered; later downloads start without asking.",
   "@codecRemembered": {
     "description": "Note that consent is stored."
+  },
+  "joinPanelTitle": "Who may join",
+  "@joinPanelTitle": {
+    "description": "Receive screen: heading of the join settings."
+  },
+  "joinModeLabel": "Join mode",
+  "@joinModeLabel": {
+    "description": "Receive screen: accessibility label of the three-way choice."
+  },
+  "joinModeOpen": "Open",
+  "@joinModeOpen": {
+    "description": "Join mode: anyone with the code joins at once."
+  },
+  "joinModeConfirm": "Ask first",
+  "@joinModeConfirm": {
+    "description": "Join mode: every join needs the host's decision."
+  },
+  "joinModeLocked": "Locked",
+  "@joinModeLocked": {
+    "description": "Join mode: nobody can join."
+  },
+  "joinModeOpenHelp": "Anyone who knows the room code joins at once.",
+  "@joinModeOpenHelp": {
+    "description": "Explanation of the open join mode."
+  },
+  "joinModeConfirmHelp": "Every join waits until you allow it here.",
+  "@joinModeConfirmHelp": {
+    "description": "Explanation of the ask-first join mode."
+  },
+  "joinModeLockedHelp": "Nobody can join right now. The code stays the same.",
+  "@joinModeLockedHelp": {
+    "description": "Explanation of the locked join mode."
+  },
+  "joinLockNow": "Lock room",
+  "@joinLockNow": {
+    "description": "Quick action: switch the join mode to locked."
+  },
+  "joinRequestsTitle": "Waiting to join",
+  "@joinRequestsTitle": {
+    "description": "Heading of the list of join requests."
+  },
+  "joinNobodyWaiting": "Nobody is waiting.",
+  "@joinNobodyWaiting": {
+    "description": "No join requests."
+  },
+  "joinWantsToPresent": "wants to present",
+  "@joinWantsToPresent": {
+    "description": "After the quoted name of a sender: it asks to join."
+  },
+  "joinNameBoxLabel": "Name entered by the sender (not checked)",
+  "@joinNameBoxLabel": {
+    "description": "Label above the untrusted name of a join request."
+  },
+  "joinCheckNumber": "Check number {check}. The same number is shown on the sender's screen.",
+  "@joinCheckNumber": {
+    "description": "Check number of a join request.",
+    "placeholders": {
+      "check": {
+        "type": "int"
+      }
+    }
+  },
+  "joinAllow": "Allow",
+  "@joinAllow": {
+    "description": "Button: allow a join (needs to be held)."
+  },
+  "joinAllowHint": "Press and hold to allow.",
+  "@joinAllowHint": {
+    "description": "Hint after a short press on Allow."
+  },
+  "joinAllowHolding": "Keep holding…",
+  "@joinAllowHolding": {
+    "description": "Allow button while it is held."
+  },
+  "joinAllowHelp": "Hold OK (or the button) for about a second to allow. A short press only shows a hint.",
+  "@joinAllowHelp": {
+    "description": "Explains how to allow a join."
+  },
+  "joinDeny": "Deny",
+  "@joinDeny": {
+    "description": "Button: deny a join."
+  },
+  "joinDenyAll": "Deny all",
+  "@joinDenyAll": {
+    "description": "Button: deny all waiting join requests."
+  },
+  "joinMoreWaiting": "+{n} more waiting",
+  "@joinMoreWaiting": {
+    "description": "More join requests than shown.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "joinSecondsLeft": "{s} s left",
+  "@joinSecondsLeft": {
+    "description": "Time left of a join request.",
+    "placeholders": {
+      "s": {
+        "type": "int"
+      }
+    }
+  },
+  "joinConnectedTitle": "Connected",
+  "@joinConnectedTitle": {
+    "description": "Heading of the connected sender."
+  },
+  "joinNobodyConnected": "Nobody is connected.",
+  "@joinNobodyConnected": {
+    "description": "No sender connected."
+  },
+  "joinRemove": "Remove",
+  "@joinRemove": {
+    "description": "Button: remove the connected sender from the room."
+  },
+  "joinRemoveLabel": "Remove {name} from the room",
+  "@joinRemoveLabel": {
+    "description": "Accessibility label of the remove button.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "joinChip": "Join: {mode}",
+  "@joinChip": {
+    "description": "Small chip while somebody presents: current join mode.",
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "joinPill": "{n} waiting",
+  "@joinPill": {
+    "description": "Small pill: number of waiting join requests.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "joinOpenPanel": "Show join settings",
+  "@joinOpenPanel": {
+    "description": "Opens the join settings."
+  },
+  "joinClosePanel": "Hide join settings",
+  "@joinClosePanel": {
+    "description": "Closes the join settings."
+  },
+  "joinDismiss": "Dismiss",
+  "@joinDismiss": {
+    "description": "Dismisses a note."
+  },
+  "joinNoteLocked": "Room locked. {count} waiting request(s) were discarded.",
+  "@joinNoteLocked": {
+    "description": "Note after locking the room.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "joinNoteOpenDisabled": "This server does not allow open rooms. \"Ask first\" is used instead.",
+  "@joinNoteOpenDisabled": {
+    "description": "Note: the server forbids open rooms."
+  },
+  "joinAnnounce": "{name} is waiting to join. Check number {check}.",
+  "@joinAnnounce": {
+    "description": "Screen reader announcement of a new join request.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "check": {
+        "type": "int"
+      }
+    }
+  },
+  "joinNameFieldLabel": "Your name (shown to the host)",
+  "@joinNameFieldLabel": {
+    "description": "Send screen: name field."
+  },
+  "joinNameFieldHelper": "Shown to the host when it has to approve you. Optional; up to 40 characters.",
+  "@joinNameFieldHelper": {
+    "description": "Helper text of the name field."
+  },
+  "sendWaitingTitle": "Waiting for the host",
+  "@sendWaitingTitle": {
+    "description": "Send screen: waiting for approval."
+  },
+  "sendWaitingText": "The host has to allow you to join. Nothing is sent from your device until then.",
+  "@sendWaitingText": {
+    "description": "Send screen: explanation while waiting for approval."
+  },
+  "sendWaitingCheck": "Check number",
+  "@sendWaitingCheck": {
+    "description": "Send screen: label of the check number."
+  },
+  "sendWaitingCheckHelp": "If the host asks which request is yours, tell them this number.",
+  "@sendWaitingCheckHelp": {
+    "description": "Send screen: what the check number is for."
+  },
+  "sendWaitingCancel": "Cancel",
+  "@sendWaitingCancel": {
+    "description": "Send screen: cancel the wait."
+  },
+  "sendWaitingStatus": "Waiting for the host to allow you to join. Nothing is sent until then.",
+  "@sendWaitingStatus": {
+    "description": "Send screen: status line while waiting for approval."
+  },
+  "joinRefusalDenied": "The host did not allow you to join.",
+  "@joinRefusalDenied": {
+    "description": "Send screen: join denied."
+  },
+  "joinRefusalLocked": "The room code is correct, but the room is locked right now. Ask the host to unlock it.",
+  "@joinRefusalLocked": {
+    "description": "Send screen: room locked."
+  },
+  "joinRefusalLockedWaiting": "The room was locked while you were waiting. The code was right; ask the host to unlock it.",
+  "@joinRefusalLockedWaiting": {
+    "description": "Send screen: room locked while waiting."
+  },
+  "joinRefusalTimedOut": "Nobody answered your request in time. You can ask again.",
+  "@joinRefusalTimedOut": {
+    "description": "Send screen: approval timed out."
+  },
+  "joinRefusalRemoved": "The host removed you from the room.",
+  "@joinRefusalRemoved": {
+    "description": "Send screen: removed by the host."
+  },
+  "joinRetryIn": "You can ask again in {s} s.",
+  "@joinRetryIn": {
+    "description": "Send screen: pause after a denial.",
+    "placeholders": {
+      "s": {
+        "type": "int"
+      }
+    }
   }
 }

@@ -27,6 +27,7 @@ import 'package:cometcast/src/rust/api.dart'
         UiCodecInfo,
         UiCodecState,
         UiContentCmd,
+        UiJoinMode,
         VideoFrame;
 
 // The event and result classes (generated) are re-exported for the screens and tests.
@@ -34,6 +35,9 @@ export 'package:cometcast/src/rust/api.dart'
     hide
         startReceiver,
         stopReceiver,
+        setJoinMode,
+        decideJoin,
+        removePeer,
         startSender,
         startEncodedSender,
         pushEncodedFrame,
@@ -75,13 +79,27 @@ abstract class CoreApi {
   ///
   /// With [content] the receiver also accepts images, PDFs and links on the control channel
   /// and reports them as the `content...` events (see `take_content_frame` in api.rs).
+  ///
+  /// [joinMode] says who may join the room from the start (see [setJoinMode]).
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
     bool content = true,
+    UiJoinMode joinMode = UiJoinMode.open,
   });
 
   Future<void> stopReceiver();
+
+  /// Change who may join the running room, at any time (the server confirms with a
+  /// `joinModeChanged` event). False if no receiver runs.
+  bool setJoinMode(UiJoinMode mode);
+
+  /// Allow or deny the waiting request [id]. With [id] null and [allow] false: deny everybody who
+  /// waits. False if no receiver runs.
+  bool decideJoin({BigInt? id, required bool allow});
+
+  /// Remove the connected sender (the receiver then ends with `peerLeft`).
+  bool removePeer();
 
   /// The received image or PDF page that waits, or null. Call it after a `contentFrameReady`
   /// event; fetching re-arms that event. Only the latest picture is kept.
@@ -117,6 +135,7 @@ abstract class CoreApi {
     required String server,
     String? udpBind,
     required ContentSource source,
+    String? name,
   });
 
   /// Queue a presenter command (next/previous/go to page/stop) for the running content sender.
@@ -148,6 +167,7 @@ abstract class CoreApi {
     int? seconds,
     String? udpBind,
     ScreenRequest? screen,
+    String? name,
   });
 
   /// Join the room [code] and send the H.264 access units that the host pushes with
@@ -157,6 +177,7 @@ abstract class CoreApi {
     required String code,
     required String server,
     String? udpBind,
+    String? name,
   });
 
   /// Hand one H.264 access unit (Annex B or AVCC) to the encoded sender. The bytes are copied.
@@ -237,10 +258,26 @@ class RustCoreApi implements CoreApi {
     required String server,
     String? udpBind,
     bool content = true,
-  }) => rust.startReceiver(server: server, udpBind: udpBind, content: content);
+    UiJoinMode joinMode = UiJoinMode.open,
+  }) => rust.startReceiver(
+    server: server,
+    udpBind: udpBind,
+    content: content,
+    joinMode: joinMode,
+  );
 
   @override
   Future<void> stopReceiver() => rust.stopReceiver();
+
+  @override
+  bool setJoinMode(UiJoinMode mode) => rust.setJoinMode(mode: mode);
+
+  @override
+  bool decideJoin({BigInt? id, required bool allow}) =>
+      rust.decideJoin(id: id, allow: allow);
+
+  @override
+  bool removePeer() => rust.removePeer();
 
   @override
   Future<ContentFrame?> takeContentFrame() => rust.takeContentFrame();
@@ -270,11 +307,13 @@ class RustCoreApi implements CoreApi {
     required String server,
     String? udpBind,
     required ContentSource source,
+    String? name,
   }) => rust.startContentSender(
     code: code,
     server: server,
     udpBind: udpBind,
     source: source,
+    name: name,
   );
 
   @override
@@ -328,12 +367,14 @@ class RustCoreApi implements CoreApi {
     int? seconds,
     String? udpBind,
     ScreenRequest? screen,
+    String? name,
   }) => rust.startSender(
     code: code,
     server: server,
     seconds: seconds,
     udpBind: udpBind,
     screen: screen,
+    name: name,
   );
 
   @override
@@ -341,7 +382,13 @@ class RustCoreApi implements CoreApi {
     required String code,
     required String server,
     String? udpBind,
-  }) => rust.startEncodedSender(code: code, server: server, udpBind: udpBind);
+    String? name,
+  }) => rust.startEncodedSender(
+    code: code,
+    server: server,
+    udpBind: udpBind,
+    name: name,
+  );
 
   @override
   PushResult pushEncodedFrame(

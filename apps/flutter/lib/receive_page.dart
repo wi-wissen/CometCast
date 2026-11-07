@@ -21,6 +21,7 @@ import 'codec_controller.dart';
 import 'codec_notice.dart';
 import 'core/core_api.dart';
 import 'discovery.dart';
+import 'join_widgets.dart';
 import 'receiver_controller.dart';
 import 'settings.dart';
 import 'widgets.dart';
@@ -247,7 +248,7 @@ class _ReceivePageState extends State<ReceivePage> {
     widget.settings.rememberServer();
     // The announcement names the server that is really used now.
     if (server != _advertisedServer) _advertise();
-    _controller.start(server);
+    _controller.start(server, joinMode: widget.settings.joinMode);
   }
 
   /// Escape leaves full screen first, and only then goes back to the previous screen.
@@ -273,13 +274,40 @@ class _ReceivePageState extends State<ReceivePage> {
           listenable: _controller,
           builder: (context, _) {
             _syncAnnotations(_controller);
-            return _controller.shown != null
+            final onForm =
+                _controller.shown == null &&
+                !(_controller.textureId != null && _controller.hasLiveVideo) &&
+                _controller.image == null;
+            final page = _controller.shown != null
                 ? _buildContent(context)
                 : _controller.textureId != null && _controller.hasLiveVideo
                 ? _buildTextureVideo(context)
                 : _controller.image != null
                 ? _buildVideo(context)
                 : _buildForm(context);
+            // While somebody presents the join settings are a small chip (and a pill with
+            // the number of waiting requests) in a corner; they open on demand.
+            if (onForm ||
+                _controller.roomCode == null ||
+                _controller.phase != ReceiverPhase.running) {
+              return page;
+            }
+            return Stack(
+              children: [
+                page,
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: SafeArea(
+                    child: JoinChip(
+                      controller: _controller,
+                      settings: widget.settings,
+                      tv: _tv,
+                    ),
+                  ),
+                ),
+              ],
+            );
           },
         ),
       ),
@@ -573,6 +601,15 @@ class _ReceivePageState extends State<ReceivePage> {
           ),
           const SizedBox(height: 24),
           _RoomCodeCard(code: _controller.roomCode, tv: _tv),
+          if (_controller.roomCode != null &&
+              _controller.phase == ReceiverPhase.running) ...[
+            const SizedBox(height: 16),
+            JoinHostPanel(
+              controller: _controller,
+              settings: widget.settings,
+              tv: _tv,
+            ),
+          ],
           const SizedBox(height: 16),
           // liveRegion: screen readers announce changes of the status.
           Semantics(

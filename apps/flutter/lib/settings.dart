@@ -2,6 +2,8 @@
 // App settings that more than one screen uses. The last used server is remembered in a small
 // file (see [PrefsSettingsStore]).
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,6 +28,18 @@ abstract class SettingsStore {
 
   /// Remember the agreement. Failures are ignored.
   Future<void> saveCodecConsent(String consent) async {}
+
+  /// The join mode the person chose last for new rooms (`open`, `confirm`, `locked`), or null.
+  Future<String?> loadJoinMode() async => null;
+
+  /// Remember it. Failures are ignored: a convenience only.
+  Future<void> saveJoinMode(String mode) async {}
+
+  /// The name shown to a host that has to approve this device, or null.
+  Future<String?> loadDisplayName() async => null;
+
+  /// Remember it. Failures are ignored.
+  Future<void> saveDisplayName(String name) async {}
 }
 
 /// Keeps the value in memory only (tests).
@@ -47,6 +61,21 @@ class MemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> saveCodecConsent(String consent) async => codecConsent = consent;
+
+  String? joinMode;
+  String? displayName;
+
+  @override
+  Future<String?> loadJoinMode() async => joinMode;
+
+  @override
+  Future<void> saveJoinMode(String mode) async => joinMode = mode;
+
+  @override
+  Future<String?> loadDisplayName() async => displayName;
+
+  @override
+  Future<void> saveDisplayName(String name) async => displayName = name;
 }
 
 /// Saves the value with the `shared_preferences` package.
@@ -102,6 +131,40 @@ class PrefsSettingsStore implements SettingsStore {
       // Not saved; the person is asked again next time.
     }
   }
+
+  static const _joinModeKey = 'joinMode';
+  static const _displayNameKey = 'displayName';
+
+  @override
+  Future<String?> loadJoinMode() => _getString(_joinModeKey);
+
+  @override
+  Future<void> saveJoinMode(String mode) => _setString(_joinModeKey, mode);
+
+  @override
+  Future<String?> loadDisplayName() => _getString(_displayNameKey);
+
+  @override
+  Future<void> saveDisplayName(String name) =>
+      _setString(_displayNameKey, name);
+
+  Future<String?> _getString(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _setString(String key, String value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+    } catch (_) {
+      // Not saved; the app works without.
+    }
+  }
 }
 
 /// Like a tiny Pinia store: screens read [serverAddress] and listen for changes.
@@ -125,6 +188,8 @@ class AppSettings extends ChangeNotifier {
     this.udpBind,
     this.captureDisplay,
     this.store,
+    UiJoinMode joinMode = UiJoinMode.open,
+    String displayName = '',
   }) : _suggestions = serverSuggestions,
        _locked = locked,
        // ignore: prefer_initializing_formals (named parameters cannot be private)
@@ -135,7 +200,10 @@ class AppSettings extends ChangeNotifier {
        _serverAddress =
            (locked ? null : serverAddress) ??
            _prefill(serverSuggestions, locked: locked, saved: savedServer) ??
-           (locked ? '' : fallbackServerAddress);
+           (locked ? '' : fallbackServerAddress) {
+    _joinMode = joinMode;
+    _displayName = displayName;
+  }
 
   /// Settings with the offline answer of the core (policy file and built-in list). The
   /// network search is started with [discover]. [serverAddress] (development override) and
@@ -147,6 +215,8 @@ class AppSettings extends ChangeNotifier {
     String? udpBind,
     String? captureDisplay,
     SettingsStore? store,
+    UiJoinMode joinMode = UiJoinMode.open,
+    String displayName = '',
   }) {
     final saved = defaults.locked ? null : savedServer;
     return AppSettings(
@@ -165,6 +235,8 @@ class AppSettings extends ChangeNotifier {
       udpBind: udpBind,
       captureDisplay: captureDisplay,
       store: store,
+      joinMode: joinMode,
+      displayName: displayName,
     );
   }
 
@@ -178,6 +250,8 @@ class AppSettings extends ChangeNotifier {
     String? captureDisplay,
   }) async {
     final saved = await store.loadServer();
+    final savedMode = await store.loadJoinMode();
+    final savedName = await store.loadDisplayName();
     final defaults = core.serverDefaults();
     return AppSettings.fromDefaults(
       defaults,
@@ -187,6 +261,12 @@ class AppSettings extends ChangeNotifier {
       udpBind: udpBind,
       captureDisplay: captureDisplay,
       store: store,
+      // The first-run default is open; the last choice is only a convenience.
+      joinMode: UiJoinMode.values.firstWhere(
+        (m) => m.name == savedMode,
+        orElse: () => UiJoinMode.open,
+      ),
+      displayName: cleanDisplayName(savedName ?? ''),
     );
   }
 
@@ -246,6 +326,32 @@ class AppSettings extends ChangeNotifier {
   }
 
   final SettingsStore? store;
+
+  late UiJoinMode _joinMode;
+  late String _displayName;
+
+  /// Who may join the rooms this device creates (first run: open; remembered).
+  UiJoinMode get joinMode => _joinMode;
+
+  /// Remember the join mode that the person chose for new rooms.
+  void setJoinMode(UiJoinMode mode) {
+    if (mode == _joinMode) return;
+    _joinMode = mode;
+    unawaited(store?.saveJoinMode(mode.name) ?? Future<void>.value());
+    notifyListeners();
+  }
+
+  /// The name a host sees when it has to approve this device (empty = none: the server uses
+  /// "Guest N"). Cleaned and at most [maxDisplayNameChars] characters.
+  String get displayName => _displayName;
+
+  void setDisplayName(String name) {
+    final clean = cleanDisplayName(name);
+    if (clean == _displayName) return;
+    _displayName = clean;
+    unawaited(store?.saveDisplayName(clean) ?? Future<void>.value());
+    notifyListeners();
+  }
 
   /// The server used last time (null if none, or a policy locks the field).
   final String? savedServer;
@@ -402,4 +508,22 @@ class AppSettings extends ChangeNotifier {
   /// X11 display to share instead of `$DISPLAY`, for development and tests
   /// (`COMETCAST_CAPTURE_DISPLAY`, for example `:99`). `null` = the normal display.
   final String? captureDisplay;
+}
+
+/// Most characters of a display name (the server cuts at the same length).
+const maxDisplayNameChars = 40;
+
+/// Removes control, bidi and invisible characters, collapses white space and cuts the name. The
+/// server does the same; doing it here too keeps the field honest.
+String cleanDisplayName(String raw) {
+  final cleaned = raw.replaceAll(
+    RegExp(
+      '[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b-\\u200f\\u2028-\\u202e'
+      '\\u2060-\\u206f\\ufeff\\ue000-\\uf8ff]',
+    ),
+    '',
+  );
+  final single = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+  final runes = single.runes.toList();
+  return String.fromCharCodes(runes.take(maxDisplayNameChars));
 }

@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'core/core_api.dart';
+import 'join_state.dart';
 
 enum ContentSendPhase {
   /// Nothing started.
@@ -21,6 +22,9 @@ enum ContentSendPhase {
 
   /// Joined the room, waiting for the connection to the receiver.
   connecting,
+
+  /// The room needs the host's approval; nothing is sent until it is given.
+  waitingApproval,
 
   /// The transfer runs (progress).
   sending,
@@ -68,6 +72,21 @@ class ContentSenderController extends ChangeNotifier {
   String? error;
   bool receiverLeft = false;
 
+  /// While [ContentSendPhase.waitingApproval]: the check number and time limit.
+  ApprovalWait? approval;
+
+  /// Why this sender is not in the room (denied, locked, timed out, removed), or null.
+  JoinRefusal? refusal;
+  DateTime? refusedAt;
+
+  /// Seconds until a denied sender may ask again (0 = now, or not denied).
+  int get cooldownLeft {
+    final at = refusedAt;
+    if (refusal != JoinRefusal.denied || at == null) return 0;
+    final left = deniedCooldownSeconds - joinClock().difference(at).inSeconds;
+    return left < 0 ? 0 : left;
+  }
+
   /// The last page command was not accepted by the core.
   bool commandFailed = false;
 
@@ -79,6 +98,7 @@ class ContentSenderController extends ChangeNotifier {
       phase == ContentSendPhase.preparing ||
       phase == ContentSendPhase.converting ||
       phase == ContentSendPhase.connecting ||
+      phase == ContentSendPhase.waitingApproval ||
       phase == ContentSendPhase.sending ||
       phase == ContentSendPhase.ready;
 
@@ -93,8 +113,12 @@ class ContentSenderController extends ChangeNotifier {
     required String code,
     required String server,
     required ContentSource source,
+    String? name,
   }) {
     _cancel();
+    approval = null;
+    refusal = null;
+    refusedAt = null;
     phase = ContentSendPhase.preparing;
     connectionState = null;
     kind = null;
@@ -116,6 +140,7 @@ class ContentSenderController extends ChangeNotifier {
           server: server.trim(),
           udpBind: udpBind,
           source: source,
+          name: (name == null || name.trim().isEmpty) ? null : name.trim(),
         )
         .listen(
           _onEvent,
@@ -152,8 +177,28 @@ class ContentSenderController extends ChangeNotifier {
         // The name as picked (the PDF gets its name with `Prepared`).
         this.name = displayName(name);
         phase = ContentSendPhase.converting;
+      case ContentSenderUiEvent_WaitingForApproval(
+        :final timeoutSecs,
+        :final check,
+      ):
+        approval = ApprovalWait(check: check, timeoutSecs: timeoutSecs);
+        phase = ContentSendPhase.waitingApproval;
+      case ContentSenderUiEvent_JoinRefused(:final code):
+        refusal = refusalFromCode(
+          code,
+          wasWaiting: phase == ContentSendPhase.waitingApproval,
+        );
+        refusedAt = joinClock();
+        approval = null;
+        phase = ContentSendPhase.ended;
+      case ContentSenderUiEvent_RemovedByHost():
+        refusal = JoinRefusal.removed;
+        refusedAt = joinClock();
+        phase = ContentSendPhase.ended;
       case ContentSenderUiEvent_Joined():
-        if (phase == ContentSendPhase.preparing) {
+        approval = null;
+        if (phase == ContentSendPhase.preparing ||
+            phase == ContentSendPhase.waitingApproval) {
           phase = ContentSendPhase.connecting;
         }
       case ContentSenderUiEvent_ConnectionState(:final state):

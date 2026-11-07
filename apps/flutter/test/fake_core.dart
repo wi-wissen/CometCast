@@ -104,11 +104,45 @@ class FakeCoreApi implements CoreApi {
     required String server,
     String? udpBind,
     bool content = true,
+    UiJoinMode joinMode = UiJoinMode.open,
   }) {
     receiverServer = server;
     receiverContent = content;
+    receiverJoinMode = joinMode;
     return receiverEvents.stream;
   }
+
+  // --- join approval ----------------------------------------------------------------------
+
+  /// The join mode of the last startReceiver.
+  UiJoinMode? receiverJoinMode;
+
+  /// What the UI asked for (the fake does not answer with `joinModeChanged` by itself; tests
+  /// emit it, like the server would).
+  final joinModeRequests = <UiJoinMode>[];
+  final joinDecisions = <({BigInt? id, bool allow})>[];
+  int removePeerCalls = 0;
+
+  @override
+  bool setJoinMode(UiJoinMode mode) {
+    joinModeRequests.add(mode);
+    return true;
+  }
+
+  @override
+  bool decideJoin({BigInt? id, required bool allow}) {
+    joinDecisions.add((id: id, allow: allow));
+    return true;
+  }
+
+  @override
+  bool removePeer() {
+    removePeerCalls++;
+    return true;
+  }
+
+  /// The name given to the last sender start.
+  String? senderName;
 
   // --- received content -----------------------------------------------------------------
 
@@ -180,7 +214,9 @@ class FakeCoreApi implements CoreApi {
     required String server,
     String? udpBind,
     required ContentSource source,
+    String? name,
   }) {
+    senderName = name;
     contentCode = code;
     contentServer = server;
     contentSource = source;
@@ -328,7 +364,9 @@ class FakeCoreApi implements CoreApi {
     int? seconds,
     String? udpBind,
     ScreenRequest? screen,
+    String? name,
   }) {
+    senderName = name;
     senderScreen = screen;
     senderCode = code;
     senderServer = server;
@@ -341,7 +379,9 @@ class FakeCoreApi implements CoreApi {
     required String code,
     required String server,
     String? udpBind,
+    String? name,
   }) {
+    senderName = name;
     startEncodedCalls++;
     encodedCode = code;
     encodedServer = server;

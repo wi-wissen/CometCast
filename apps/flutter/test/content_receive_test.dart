@@ -56,8 +56,10 @@ Future<Harness> startReceiving(
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('startButton')));
   await flush(tester);
-  core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
-  core.receiverEvents.add(const ReceiverUiEvent.peerJoined());
+  core.receiverEvents.add(
+    const ReceiverUiEvent.roomCode(code: 'K7M2QX', joinMode: UiJoinMode.open),
+  );
+  core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Guest 1'));
   core.receiverEvents.add(
     const ReceiverUiEvent.connectionState(state: UiConnectionState.connected),
   );

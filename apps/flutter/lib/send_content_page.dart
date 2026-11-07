@@ -15,6 +15,8 @@ import 'package:cometcast/l10n/app_localizations.dart';
 
 import 'content_sender_controller.dart';
 import 'core/core_api.dart';
+import 'join_state.dart';
+import 'join_widgets.dart';
 import 'send_page.dart' show UpperCaseFormatter;
 import 'settings.dart';
 import 'widgets.dart';
@@ -186,11 +188,13 @@ class _SendContentPageState extends State<SendContentPage> {
       if (_linkCheck is! LinkCheck_Valid) return;
       source = ContentSource.link(url: _link.text);
     }
+    if (_controller.cooldownLeft > 0) return;
     widget.settings.rememberServer();
     _controller.start(
       code: check.code,
       server: widget.settings.serverAddress.trim(),
       source: source,
+      name: widget.settings.displayName,
     );
   }
 
@@ -283,6 +287,8 @@ class _SendContentPageState extends State<SendContentPage> {
                   onSubmitted: (_) => active ? null : _start(),
                 ),
                 const SizedBox(height: 16),
+                DisplayNameField(settings: widget.settings, enabled: !active),
+                const SizedBox(height: 16),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: active
@@ -294,12 +300,22 @@ class _SendContentPageState extends State<SendContentPage> {
                         )
                       : FilledButton.icon(
                           key: const Key('startButton'),
-                          onPressed: _start,
+                          onPressed: _controller.cooldownLeft > 0
+                              ? null
+                              : _start,
                           icon: const Icon(Icons.send),
                           label: Text(t.sendContentStart),
                         ),
                 ),
                 const SizedBox(height: 24),
+                if (_controller.approval != null &&
+                    _controller.phase == ContentSendPhase.waitingApproval) ...[
+                  ApprovalWaitingCard(
+                    wait: _controller.approval!,
+                    onCancel: _controller.stop,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Semantics(
                   liveRegion: true,
                   child: Text(
@@ -308,6 +324,11 @@ class _SendContentPageState extends State<SendContentPage> {
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ),
+                if (_controller.refusal == JoinRefusal.denied)
+                  RefusalNote(
+                    cooldownLeft: () => _controller.cooldownLeft,
+                    onElapsed: () => setState(() {}),
+                  ),
                 if (_controller.phase == ContentSendPhase.converting) ...[
                   const SizedBox(height: 12),
                   Semantics(
@@ -536,6 +557,8 @@ class _SendContentPageState extends State<SendContentPage> {
     if (c.rejection != null) return sendRejectionText(t, c.rejection!);
     if (c.error != null) return t.statusError(c.error!);
     if (c.receiverLeft) return t.statusPeerLeftReceiver;
+    final refusal = c.refusal;
+    if (refusal != null) return joinRefusalText(t, refusal);
     final name = c.name ?? '';
     switch (c.phase) {
       case ContentSendPhase.idle:
@@ -549,6 +572,8 @@ class _SendContentPageState extends State<SendContentPage> {
           return connectionStateText(t, c.connectionState);
         }
         return t.statusConnecting;
+      case ContentSendPhase.waitingApproval:
+        return t.sendWaitingStatus;
       case ContentSendPhase.sending:
         return t.sendContentSending(name, c.percent);
       case ContentSendPhase.ready:

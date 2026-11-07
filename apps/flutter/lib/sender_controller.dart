@@ -9,8 +9,9 @@ import 'package:flutter/foundation.dart';
 import 'capture_feeder.dart';
 import 'core/android_capture.dart';
 import 'core/core_api.dart';
+import 'join_state.dart';
 
-enum SenderPhase { idle, starting, running, finished, ended }
+enum SenderPhase { idle, starting, waitingApproval, running, finished, ended }
 
 class SenderController extends ChangeNotifier {
   SenderController({required this.core, this.udpBind, this.capture});
@@ -35,6 +36,23 @@ class SenderController extends ChangeNotifier {
   int framesSent = 0;
   bool receiverLeft = false;
 
+  /// While [SenderPhase.waitingApproval]: the check number and time limit.
+  ApprovalWait? approval;
+
+  /// Why this sender is not in the room (denied, locked, timed out, removed), or null.
+  JoinRefusal? refusal;
+
+  /// When the join was refused (for the pause before asking again).
+  DateTime? refusedAt;
+
+  /// Seconds until a denied sender may ask again (0 = now, or not denied).
+  int get cooldownLeft {
+    final at = refusedAt;
+    if (refusal != JoinRefusal.denied || at == null) return 0;
+    final left = deniedCooldownSeconds - joinClock().difference(at).inSeconds;
+    return left < 0 ? 0 : left;
+  }
+
   /// True while the screen (not the test video) is being sent.
   bool sharingScreen = false;
   int encodedFrames = 0;
@@ -56,7 +74,9 @@ class SenderController extends ChangeNotifier {
   String? error;
 
   bool get isActive =>
-      phase == SenderPhase.starting || phase == SenderPhase.running;
+      phase == SenderPhase.starting ||
+      phase == SenderPhase.waitingApproval ||
+      phase == SenderPhase.running;
 
   /// Join room [code] on [server] and send the test video for [seconds] seconds, or with
   /// [screen] the screen of this computer until stopped.
@@ -65,6 +85,7 @@ class SenderController extends ChangeNotifier {
     required String server,
     int? seconds,
     ScreenRequest? screen,
+    String? name,
   }) {
     _cancel();
     _releaseCapture();
@@ -78,6 +99,7 @@ class SenderController extends ChangeNotifier {
           seconds: seconds,
           udpBind: udpBind,
           screen: screen,
+          name: _nameOrNull(name),
         )
         .listen(
           _onEvent,
@@ -103,6 +125,9 @@ class SenderController extends ChangeNotifier {
     connectionState = null;
     framesSent = 0;
     receiverLeft = false;
+    approval = null;
+    refusal = null;
+    refusedAt = null;
     awaitingConsent = false;
     captureDenied = false;
     captureStopped = false;
@@ -116,6 +141,7 @@ class SenderController extends ChangeNotifier {
     required String code,
     required String server,
     required CaptureNotificationTexts notification,
+    String? name,
   }) async {
     final cap = capture;
     if (cap == null) {
@@ -173,7 +199,12 @@ class SenderController extends ChangeNotifier {
       return;
     }
     _sub = core
-        .startEncodedSender(code: code, server: server.trim(), udpBind: udpBind)
+        .startEncodedSender(
+          code: code,
+          server: server.trim(),
+          udpBind: udpBind,
+          name: _nameOrNull(name),
+        )
         .listen(
           _onEvent,
           onError: (Object e) {
@@ -201,7 +232,25 @@ class SenderController extends ChangeNotifier {
 
   void _onEvent(SenderUiEvent e) {
     switch (e) {
+      case SenderUiEvent_WaitingForApproval(:final timeoutSecs, :final check):
+        approval = ApprovalWait(check: check, timeoutSecs: timeoutSecs);
+        phase = SenderPhase.waitingApproval;
+      case SenderUiEvent_JoinRefused(:final code):
+        refusal = refusalFromCode(
+          code,
+          wasWaiting: phase == SenderPhase.waitingApproval,
+        );
+        refusedAt = joinClock();
+        approval = null;
+        phase = SenderPhase.ended;
+        _releaseCapture();
+      case SenderUiEvent_RemovedByHost():
+        refusal = JoinRefusal.removed;
+        refusedAt = joinClock();
+        phase = SenderPhase.ended;
+        _releaseCapture();
       case SenderUiEvent_Joined():
+        approval = null;
         phase = SenderPhase.running;
       case SenderUiEvent_ConnectionState(:final state):
         connectionState = state;
@@ -232,6 +281,11 @@ class SenderController extends ChangeNotifier {
         _releaseCapture();
     }
     notifyListeners();
+  }
+
+  static String? _nameOrNull(String? name) {
+    final n = name?.trim();
+    return (n == null || n.isEmpty) ? null : n;
   }
 
   /// The sender ended by itself: the native capture must not keep running (and showing its

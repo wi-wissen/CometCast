@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart' show WidgetsBinding;
 
 import 'core/android_video.dart';
 import 'core/core_api.dart';
+import 'join_state.dart';
 import 'window_control.dart';
 
 /// Opens a link in the system's browser. Replaced in tests; the real one is `launchUrl`.
@@ -144,6 +145,37 @@ class ReceivingInfo {
   final bool document;
 }
 
+/// A sender that waits for the host's decision (join mode `confirm`). The name is untrusted text
+/// that the server cleaned: show it as plain text.
+class JoinRequestView {
+  const JoinRequestView({
+    required this.id,
+    required this.name,
+    required this.check,
+    required this.receivedAt,
+  });
+
+  final BigInt id;
+  final String name;
+
+  /// Two-digit number that the sender's waiting screen shows too.
+  final int check;
+  final DateTime receivedAt;
+}
+
+/// A short message about the join settings.
+enum JoinNote {
+  /// The room was locked and this many waiting requests were discarded.
+  lockedDiscarded,
+
+  /// The server forbids open rooms: "ask first" is used instead.
+  openDisabled,
+}
+
+/// How long the server lets a request wait (its default). UNCERTAIN: an operator can change it;
+/// the server decides when a request ends.
+const joinRequestSeconds = 60;
+
 class ReceiverController extends ChangeNotifier {
   ReceiverController({
     required this.core,
@@ -181,6 +213,26 @@ class ReceiverController extends ChangeNotifier {
   String? roomCode;
   bool senderJoined = false;
   bool senderLeft = false;
+
+  // --- join approval ---------------------------------------------------------------------
+
+  /// Who may join (as confirmed by the server).
+  UiJoinMode joinMode = UiJoinMode.open;
+
+  /// Waiting requests, oldest first.
+  List<JoinRequestView> requests = const [];
+
+  /// Name of the connected sender, or null.
+  String? peerName;
+
+  /// Something to tell the host about the join settings, or null.
+  JoinNote? joinNote;
+  int discardedCount = 0;
+
+  /// Mode and server of the last [start] (for the retry without an open room).
+  UiJoinMode _startMode = UiJoinMode.open;
+  String _startServer = '';
+  bool _openRetried = false;
   UiConnectionState? connectionState;
   String? codec;
   int packets = 0;
@@ -281,8 +333,15 @@ class ReceiverController extends ChangeNotifier {
   bool get codecNotShown =>
       codec != null && codec != 'h264' && !hasLiveVideo && isActive;
 
-  /// Create a room on [server] and start listening.
-  void start(String server) {
+  /// Create a room on [server] and start listening. [joinMode] is who may join from the start.
+  void start(String server, {UiJoinMode joinMode = UiJoinMode.open}) {
+    _startMode = joinMode;
+    _startServer = server;
+    _openRetried = false;
+    _begin(server, joinMode);
+  }
+
+  void _begin(String server, UiJoinMode joinMode) {
     _cancel();
     _newSession();
     _clearImage();
@@ -292,6 +351,11 @@ class ReceiverController extends ChangeNotifier {
     roomCode = null;
     senderJoined = false;
     senderLeft = false;
+    this.joinMode = joinMode;
+    requests = const [];
+    peerName = null;
+    if (!_openRetried) joinNote = null;
+    discardedCount = 0;
     connectionState = null;
     codec = null;
     packets = bytes = frames = keyframes = 0;
@@ -312,6 +376,7 @@ class ReceiverController extends ChangeNotifier {
           server: server.trim(),
           udpBind: udpBind,
           content: content,
+          joinMode: joinMode,
         )
         .listen(
           _onEvent,
@@ -331,6 +396,7 @@ class ReceiverController extends ChangeNotifier {
 
   void _end() {
     phase = ReceiverPhase.ended;
+    requests = const [];
     _clearImage();
     _stopHardware();
     _clearContent();
@@ -340,10 +406,36 @@ class ReceiverController extends ChangeNotifier {
 
   void _onEvent(ReceiverUiEvent e) {
     switch (e) {
-      case ReceiverUiEvent_RoomCode(:final code):
+      case ReceiverUiEvent_RoomCode(:final code, joinMode: final mode):
         roomCode = code;
+        joinMode = mode;
         phase = ReceiverPhase.running;
-      case ReceiverUiEvent_PeerJoined():
+      case ReceiverUiEvent_JoinRequest(:final id, :final name, :final check):
+        if (requests.every((r) => r.id != id)) {
+          requests = [
+            ...requests,
+            JoinRequestView(
+              id: id,
+              name: name,
+              check: check,
+              receivedAt: joinClock(),
+            ),
+          ];
+        }
+      case ReceiverUiEvent_JoinRequestCancelled(:final id, :final reason):
+        requests = requests.where((r) => r.id != id).toList();
+        if (reason == 'locked') {
+          discardedCount++;
+          joinNote = JoinNote.lockedDiscarded;
+        }
+      case ReceiverUiEvent_JoinModeChanged(:final mode):
+        joinMode = mode;
+        if (mode != UiJoinMode.locked && joinNote == JoinNote.lockedDiscarded) {
+          joinNote = null;
+          discardedCount = 0;
+        }
+      case ReceiverUiEvent_PeerJoined(:final name):
+        peerName = name;
         senderJoined = true;
       case ReceiverUiEvent_ConnectionState(:final state):
         connectionState = state;
@@ -399,9 +491,19 @@ class ReceiverController extends ChangeNotifier {
         }
       case ReceiverUiEvent_PeerLeft():
         senderLeft = true;
+        peerName = null;
         _end();
         return;
       case ReceiverUiEvent_Error(:final message):
+        // The server forbids open rooms: ask for one that needs approval instead of failing.
+        if (message.contains('open_rooms_disabled') &&
+            !_openRetried &&
+            _startMode == UiJoinMode.open) {
+          _openRetried = true;
+          joinNote = JoinNote.openDisabled;
+          _begin(_startServer, UiJoinMode.confirm);
+          return;
+        }
         error = message;
         _end();
         return;
@@ -878,12 +980,46 @@ class ReceiverController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- join approval (the host decides who may join) -------------------------------------
+
+  /// Change who may join, at any time. The mode shown changes when the server confirms.
+  void setJoinMode(UiJoinMode mode) => core.setJoinMode(mode);
+
+  /// Allow or deny a waiting request. It leaves the list at once.
+  void decideJoin(BigInt id, {required bool allow}) {
+    if (requests.every((r) => r.id != id)) return;
+    core.decideJoin(id: id, allow: allow);
+    requests = requests.where((r) => r.id != id).toList();
+    notifyListeners();
+  }
+
+  /// Deny everybody who waits.
+  void denyAllJoins() {
+    if (requests.isEmpty) return;
+    core.decideJoin(allow: false);
+    requests = const [];
+    notifyListeners();
+  }
+
+  /// Remove the connected sender. UNCERTAIN: one sender per receiver, so the receiver ends
+  /// (`senderLeft`) and a new room with a new code has to be started.
+  void removePeer() => core.removePeer();
+
+  void dismissJoinNote() {
+    if (joinNote == null) return;
+    joinNote = null;
+    discardedCount = 0;
+    notifyListeners();
+  }
+
   /// Stop receiving. The room code disappears (the room is gone).
   Future<void> stop() async {
     _cancel();
     _newSession();
     phase = ReceiverPhase.idle;
     roomCode = null;
+    requests = const [];
+    peerName = null;
     _clearImage();
     _stopHardware();
     _clearContent();

@@ -59,12 +59,14 @@ void main() {
     expect(core.receiverServer, 'relay.cometcast.de:443');
     expect(find.text('Connecting to the server …'), findsOneWidget);
 
-    core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
+    core.receiverEvents.add(
+      const ReceiverUiEvent.roomCode(code: 'K7M2QX', joinMode: UiJoinMode.open),
+    );
     await tester.pump();
     expect(find.text('K7M2QX'), findsOneWidget);
     expect(find.textContaining('Waiting for a sender'), findsOneWidget);
 
-    core.receiverEvents.add(const ReceiverUiEvent.peerJoined());
+    core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Guest 1'));
     core.receiverEvents.add(
       const ReceiverUiEvent.connectionState(state: UiConnectionState.connected),
     );
@@ -100,7 +102,9 @@ void main() {
     final core = await openReceive(tester);
     await tester.tap(find.byKey(const Key('startButton')));
     await tester.pump();
-    core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'AB23CD'));
+    core.receiverEvents.add(
+      const ReceiverUiEvent.roomCode(code: 'AB23CD', joinMode: UiJoinMode.open),
+    );
     await tester.pump();
     await tester.tap(find.byKey(const Key('stopButton')));
     await tester.pump();
@@ -153,7 +157,9 @@ void main() {
     final core = await openReceive(tester);
     await tester.tap(find.byKey(const Key('startButton')));
     await tester.pump();
-    core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'AB23CD'));
+    core.receiverEvents.add(
+      const ReceiverUiEvent.roomCode(code: 'AB23CD', joinMode: UiJoinMode.open),
+    );
     await tester.pump();
     await core.receiverEvents.close();
     await tester.pump();
@@ -224,8 +230,10 @@ Future<FakeCoreApi> startAndConnect(WidgetTester tester) async {
   final core = await openReceive(tester);
   await tester.tap(find.byKey(const Key('startButton')));
   await tester.pump();
-  core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
-  core.receiverEvents.add(const ReceiverUiEvent.peerJoined());
+  core.receiverEvents.add(
+    const ReceiverUiEvent.roomCode(code: 'K7M2QX', joinMode: UiJoinMode.open),
+  );
+  core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Guest 1'));
   core.receiverEvents.add(
     const ReceiverUiEvent.connectionState(state: UiConnectionState.connected),
   );
@@ -383,8 +391,10 @@ void videoTests() {
     final core = await openReceive(tester, locale: 'de');
     await tester.tap(find.byKey(const Key('startButton')));
     await tester.pump();
-    core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
-    core.receiverEvents.add(const ReceiverUiEvent.peerJoined());
+    core.receiverEvents.add(
+      const ReceiverUiEvent.roomCode(code: 'K7M2QX', joinMode: UiJoinMode.open),
+    );
+    core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Guest 1'));
     await tester.pump();
     expect(find.text('Warte auf den Bildschirm des Senders …'), findsOneWidget);
     await deliverFrame(tester, core, solidFrame(8, 6, [255, 0, 0]));
@@ -480,8 +490,10 @@ Future<(FakeCoreApi, AnnotationController)> videoWithToolbar(
   if (locale != 'en') {
     await tester.tap(find.byKey(const Key('startButton')));
     await tester.pump();
-    core.receiverEvents.add(const ReceiverUiEvent.roomCode(code: 'K7M2QX'));
-    core.receiverEvents.add(const ReceiverUiEvent.peerJoined());
+    core.receiverEvents.add(
+      const ReceiverUiEvent.roomCode(code: 'K7M2QX', joinMode: UiJoinMode.open),
+    );
+    core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Guest 1'));
     await tester.pump();
   }
   core.receiverEvents.add(
