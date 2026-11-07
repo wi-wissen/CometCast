@@ -143,11 +143,23 @@ fn missing_worker_is_an_error_not_a_panic() {
 #[cfg(unix)]
 #[test]
 fn a_hanging_worker_is_killed_at_the_deadline_with_its_children() {
-    // A fake "worker" that ignores its arguments, starts a grandchild and sleeps.
+    // A fake "worker" that ignores its arguments, starts a grandchild (a background `sleep`,
+    // in the same process group), records the grandchild's pid in a file and sleeps itself.
     let dir = std::env::temp_dir().join(format!("cc-office-hang-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let script = dir.join("hang.sh");
-    std::fs::write(&script, "#!/bin/sh\nsleep 600 &\nsleep 600\n").unwrap();
+    let pidfile = dir.join("grandchild.pid");
+    let _ = std::fs::remove_file(&pidfile);
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nsleep 600 &\necho $! > '{}.tmp'\nmv '{}.tmp' '{}'\nsleep 600\n",
+            pidfile.display(),
+            pidfile.display(),
+            pidfile.display()
+        ),
+    )
+    .unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let o = Options {
@@ -170,7 +182,44 @@ fn a_hanging_worker_is_killed_at_the_deadline_with_its_children() {
         "took {:?}",
         t.elapsed()
     );
+    // The grandchild must be gone too. Zombies count as gone (nobody may have reaped the
+    // orphan yet); it is given a moment to die.
+    let pid: i32 = std::fs::read_to_string(&pidfile)
+        .expect("the fake worker never recorded its grandchild")
+        .trim()
+        .parse()
+        .expect("pid file content");
+    let mut alive = process_alive(pid);
+    for _ in 0..50 {
+        if !alive {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        alive = process_alive(pid);
+    }
+    if alive {
+        // Do not leave a 600 s sleep behind when the assertion fails.
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status();
+    }
+    assert!(!alive, "grandchild {pid} survived the group kill");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Whether a process exists and is not a zombie.
+#[cfg(unix)]
+fn process_alive(pid: i32) -> bool {
+    if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        // "pid (comm) S ...": the state follows the last ')'.
+        return stat
+            .rsplit_once(") ")
+            .and_then(|(_, rest)| rest.chars().next())
+            .is_some_and(|state| state != 'Z' && state != 'X');
+    }
+    // No /proc (macOS): signal 0 only tests for existence.
+    rustix::process::Pid::from_raw(pid)
+        .is_some_and(|p| rustix::process::test_kill_process(p).is_ok())
 }
 
 #[cfg(unix)]
@@ -223,6 +272,32 @@ fn a_worker_that_writes_a_fake_or_huge_result_is_refused() {
     assert!(
         matches!(run(&failing, 1 << 20), Err(OfficeError::ConversionFailed(m)) if m.contains("boom"))
     );
+    // Terminal escape sequences in warnings and in stderr never reach the caller.
+    let noisy_ok = mk(
+        "noisy.sh",
+        "printf 'warning:\\033[31mred\\033]0;title\\007 text\\n'; printf 'warning:\\2331mC1\\n'; printf 'protection:rlimit-cpu\\nprotection:\\033[2J\\n'; printf '%%PDF-1.7\\n%%%%EOF\\n' > \"$W/out/input.pdf\"",
+    );
+    let c = run(&noisy_ok, 1 << 20).expect("noisy but valid worker");
+    assert!(!c.warnings.is_empty());
+    for w in &c.warnings {
+        assert!(
+            !w.chars().any(char::is_control),
+            "control character in {w:?}"
+        );
+    }
+    assert_eq!(c.warnings[0], "[31mred]0;title text");
+    assert_eq!(c.protections, vec!["rlimit-cpu".to_string()]);
+    let noisy_fail = mk("noisyfail.sh", "printf 'bo\\033[2Jom\\007\\n' >&2; exit 3");
+    match run(&noisy_fail, 1 << 20) {
+        Err(OfficeError::ConversionFailed(m)) => {
+            assert!(
+                !m.chars().any(char::is_control),
+                "control character in {m:?}"
+            );
+            assert!(m.contains("bo[2Jom"), "{m:?}");
+        }
+        other => panic!("expected ConversionFailed, got {other:?}"),
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 

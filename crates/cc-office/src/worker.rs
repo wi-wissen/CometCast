@@ -41,7 +41,7 @@ fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
         match a.as_str() {
             "--engine" => engine = Some(val()?.to_string_lossy().into_owned()),
             "--format" => {
-                format = OfficeFormat::from_name(&val()?.to_string_lossy());
+                format = OfficeFormat::from_extension(&val()?.to_string_lossy());
                 if format.is_none() {
                     return Err("bad --format".into());
                 }
@@ -71,10 +71,19 @@ fn say(line: &str) {
     let _ = out.flush();
 }
 
+/// The value to set: what we want, but never more than the limit already in force. A parent
+/// that started us with a stricter soft limit keeps it (raising it back up to the hard limit
+/// would silently undo the caller's protection).
+#[cfg(unix)]
+fn limit_value(want: u64, soft: u64, hard: u64) -> u64 {
+    want.min(soft).min(hard)
+}
+
+/// Lower one resource limit (soft and hard together, so it cannot be raised again).
 #[cfg(unix)]
 fn lower(res: rlimit::Resource, want: u64) -> Result<(), String> {
-    let (_, hard) = rlimit::getrlimit(res).map_err(|e| format!("getrlimit: {e}"))?;
-    let v = want.min(hard);
+    let (soft, hard) = rlimit::getrlimit(res).map_err(|e| format!("getrlimit: {e}"))?;
+    let v = limit_value(want, soft, hard);
     rlimit::setrlimit(res, v, v).map_err(|e| format!("setrlimit: {e}"))
 }
 
@@ -90,8 +99,21 @@ fn harden(a: &Args) -> Result<Vec<&'static str>, String> {
     lower(Resource::CORE, 0).map_err(|e| format!("core limit: {e}"))?;
     got.push("rlimit-core");
     // Largest file any of them may write: the output cap (also caps LibreOffice's profile).
+    // Like AS and CPU this is **per process**, not a total for the process tree.
     lower(Resource::FSIZE, a.fsize).map_err(|e| format!("file size limit: {e}"))?;
     got.push("rlimit-fsize");
+    // Best effort, not fail closed: open files (never raised, see `lower`) and, for the
+    // LibreOffice supervisor only, processes. RLIMIT_NPROC counts every process and thread of
+    // the *user*, not of this tree, so a low value would also stop the pure-Rust engine's
+    // threads and a busy desktop session; 8192 is a fork-bomb brake, not a precise cap.
+    // UNCERTAIN: neither value was tuned against real LibreOffice runs beyond the tiny
+    // fixtures; the root user and CAP_SYS_RESOURCE are exempt from NPROC.
+    if lower(Resource::NOFILE, 2048).is_ok() {
+        got.push("rlimit-nofile");
+    }
+    if a.engine == "soffice" && lower(Resource::NPROC, 8192).is_ok() {
+        got.push("rlimit-nproc");
+    }
     // RLIMIT_AS is not enforced by the kernel on macOS; setting it may fail there. On Linux
     // it is mandatory. UNCERTAIN: the macOS behaviour was not run.
     match lower(Resource::AS, a.mem) {
@@ -211,15 +233,21 @@ fn run_rust(_a: &Args) -> Result<(), String> {
 }
 
 /// A minimal LibreOffice profile: macros off at the highest security level, no updating of
-/// external links. UNCERTAIN: the option paths and values are from LibreOffice's
-/// configuration schema as remembered, and were not each tested for effect; headless
-/// conversion does not run document macros by default either.
+/// external links in Calc, Writer, Impress and Draw. UNCERTAIN: the option paths and values
+/// are from LibreOffice's configuration schema as remembered, and were not each tested for
+/// effect; the Impress and Draw `Content/Update/Link` keys in particular may not exist (an
+/// unknown key is ignored, which would mean *no* protection there); headless conversion
+/// does not run document macros by default either. This profile does **not** stop
+/// LibreOffice from reading local files that a document links or includes (images, text
+/// sections, OLE links) and printing their content into the PDF; see docs/documents.md.
 const PROFILE_XCU: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item>
 <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item>
 <item oor:path="/org.openoffice.Office.Calc/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
 <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
+<item oor:path="/org.openoffice.Office.Impress/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
+<item oor:path="/org.openoffice.Office.Draw/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
 </oor:items>
 "#;
 
@@ -311,5 +339,33 @@ fn run_soffice(a: &Args) -> Result<(), String> {
             return Err("LibreOffice did not finish in time".into());
         }
         std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limit_value_never_raises() {
+        // Wanting more than the inherited soft limit keeps the soft limit.
+        assert_eq!(limit_value(1000, 10, 500), 10);
+        assert_eq!(limit_value(5, 10, 500), 5);
+        // Hard limit below the soft one cannot happen on Linux, but still bounds the value.
+        assert_eq!(limit_value(1000, 600, 500), 500);
+        // Unlimited inherited (u64::MAX) is lowered to the wish.
+        assert_eq!(limit_value(7, u64::MAX, u64::MAX), 7);
+    }
+
+    #[test]
+    fn lower_keeps_a_stricter_inherited_soft_limit() {
+        // RLIMIT_CORE is only touched by this test in this process (the workers run as
+        // separate processes), and 0 is what the worker wants for it anyway.
+        use rlimit::Resource;
+        lower(Resource::CORE, 0).expect("lower to 0");
+        // Asking for more later must not raise it again.
+        lower(Resource::CORE, 1_000_000).expect("lower with a bigger wish");
+        let (soft, hard) = rlimit::getrlimit(Resource::CORE).unwrap();
+        assert_eq!((soft, hard), (0, 0));
     }
 }

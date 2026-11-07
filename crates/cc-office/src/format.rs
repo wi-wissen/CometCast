@@ -30,11 +30,17 @@ impl OfficeFormat {
         Self::Ods,
     ];
 
-    /// Format from a file name or extension (case-insensitive, with or without a dot or a
-    /// directory part). Legacy binary formats (`.doc`, `.ppt`, `.xls`) are not accepted.
+    /// Format from a file name (case-insensitive, with or without a directory part). The name
+    /// must have a dot: a bare word such as "docx" is a file called docx, not a format.
+    /// Legacy binary formats (`.doc`, `.ppt`, `.xls`) are not accepted.
     pub fn from_name(name: &str) -> Option<Self> {
-        let ext = name.rsplit('.').next()?;
-        // Without a dot the whole text is taken as the extension ("docx").
+        let (_, ext) = name.rsplit_once('.')?;
+        Self::from_extension(ext)
+    }
+
+    /// Format from an extension without a dot (case-insensitive), as the parent passes it to
+    /// the worker.
+    pub fn from_extension(ext: &str) -> Option<Self> {
         match ext.to_ascii_lowercase().as_str() {
             "docx" => Some(Self::Docx),
             "pptx" => Some(Self::Pptx),
@@ -102,6 +108,14 @@ mod tests {
         assert_eq!(OfficeFormat::from_name("old.doc"), None);
         assert_eq!(OfficeFormat::from_name("old.xls"), None);
         assert_eq!(OfficeFormat::from_name("noext"), None);
+        // A dotless name is never a format, even when it spells one.
+        assert_eq!(OfficeFormat::from_name("docx"), None);
+        assert_eq!(OfficeFormat::from_name("/tmp/xlsx"), None);
+        assert_eq!(
+            OfficeFormat::from_extension("DOCX"),
+            Some(OfficeFormat::Docx)
+        );
+        assert_eq!(OfficeFormat::from_extension(".docx"), None);
         assert_eq!(OfficeFormat::from_name("a.pdf"), None);
     }
 

@@ -34,7 +34,7 @@ office2pdf = { version = "0.10", optional = true }
 # Resource limits and process-group kill on Unix (same crates as cc-docs).
 [target.'cfg(unix)'.dependencies]
 rlimit = "0.11"
-rustix = { version = "1", default-features = false, features = ["std", "process"] }
+rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 
 # Landlock (TCP deny) for the worker on Linux, best effort. Same crate as cc-docs.
 [target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]

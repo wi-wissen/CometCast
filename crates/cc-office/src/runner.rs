@@ -2,6 +2,11 @@
 //! The parent side: checks the input, makes a private work directory, starts the worker as a
 //! resource-limited child, waits with a deadline, kills the whole process group, and checks
 //! the result before it is returned.
+//!
+//! The work directory is removed when the conversion ends (also on an error or a timeout).
+//! If the **parent process itself is killed** (SIGKILL, power loss) the directory stays in
+//! the temp directory; the next conversion removes stale `cometcast-office-*` directories
+//! of this user that are older than one day, best effort.
 
 use std::ffi::OsString;
 use std::io::Read;
@@ -91,6 +96,54 @@ pub struct Converted {
     pub elapsed: Duration,
 }
 
+impl Converted {
+    /// The protections this platform is expected to give (see [`expected_protections`]) that
+    /// the worker did **not** report as in effect. Callers should tell the user when this is
+    /// not empty: the conversion still ran, but with less isolation than documented.
+    pub fn missing_protections(&self) -> Vec<&'static str> {
+        expected_protections()
+            .iter()
+            .copied()
+            .filter(|p| !self.protections.iter().any(|x| x == p))
+            .collect()
+    }
+}
+
+/// The protection names a worker on this platform is expected to report: resource limits on
+/// Unix (`rlimit-as` on Linux only), and the Landlock TCP block on Linux x86_64 and aarch64
+/// (it also needs kernel 6.7+, so it can be missing on a supported platform). Empty on other
+/// systems, where the worker applies no limit at all and only the parent's deadline holds.
+pub fn expected_protections() -> &'static [&'static str] {
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    {
+        &[
+            "rlimit-cpu",
+            "rlimit-core",
+            "rlimit-fsize",
+            "rlimit-nofile",
+            "rlimit-as",
+            "landlock-no-tcp",
+        ]
+    }
+    #[cfg(all(
+        unix,
+        not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))
+    ))]
+    {
+        &["rlimit-cpu", "rlimit-core", "rlimit-fsize", "rlimit-nofile"]
+    }
+    #[cfg(not(unix))]
+    {
+        &[]
+    }
+}
+
 /// Convert a file. The format comes from the extension; the content must agree.
 pub fn convert_file(path: &Path, opts: &Options) -> Result<Converted, OfficeError> {
     let name = path
@@ -98,13 +151,18 @@ pub fn convert_file(path: &Path, opts: &Options) -> Result<Converted, OfficeErro
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or(OfficeError::UnsupportedFormat)?;
     let format = OfficeFormat::from_name(&name).ok_or(OfficeError::UnsupportedFormat)?;
-    // `metadata` follows symbolic links, so a link to a device is seen as a device.
-    let meta = std::fs::metadata(path).map_err(|e| OfficeError::Io(e.to_string()))?;
+    // Open first, then look at the *open* file (`fstat`): no gap between the check and the
+    // use. `O_NONBLOCK` keeps the open of a FIFO from waiting for a writer; a link to a
+    // regular file is followed on purpose (the user named it), a link to a device is seen as
+    // a device and refused.
+    let file = open_input(path).map_err(|e| OfficeError::Io(e.to_string()))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| OfficeError::Io(e.to_string()))?;
     if !meta.is_file() {
         return Err(OfficeError::NotRegularFile);
     }
     let limit = opts.limits.max_input_bytes;
-    let file = std::fs::File::open(path).map_err(|e| OfficeError::Io(e.to_string()))?;
     // At most limit + 1 bytes: a file that grows cannot make this read without bound.
     let mut bytes = Vec::new();
     file.take(limit + 1)
@@ -114,6 +172,42 @@ pub fn convert_file(path: &Path, opts: &Options) -> Result<Converted, OfficeErro
         return Err(OfficeError::InputTooLarge { limit });
     }
     convert_bytes(&bytes, format, opts)
+}
+
+#[cfg(unix)]
+fn open_with(path: &Path, extra_flags: u32) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    // `bits()` of the flag set is a plain `c_int` worth of bits on every Unix.
+    let flags = (rustix::fs::OFlags::NONBLOCK.bits() | extra_flags) as i32;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(flags)
+        .open(path)
+}
+
+#[cfg(unix)]
+fn open_input(path: &Path) -> std::io::Result<std::fs::File> {
+    open_with(path, 0)
+}
+
+#[cfg(not(unix))]
+fn open_input(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(path)
+}
+
+/// Make text from an engine or from the worker's stderr safe to print: every control
+/// character (ESC, BEL, C1 controls such as CSI, ...) is dropped, line breaks and tabs become
+/// a space, and the bidirectional override characters that can reorder what a terminal shows
+/// are dropped as well.
+pub(crate) fn sanitize(s: &str) -> String {
+    s.chars()
+        .filter_map(|c| match c {
+            '\n' | '\r' | '\t' => Some(' '),
+            c if c.is_control() => None,
+            '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' => None,
+            c => Some(c),
+        })
+        .collect()
 }
 
 /// Convert bytes of a known format.
@@ -174,11 +268,64 @@ fn no_engine_reason(engine: Engine, format: OfficeFormat, have_soffice: bool) ->
 /// A private directory, removed again when dropped.
 struct WorkDir(PathBuf);
 
+/// Prefix of every work directory (the stale-directory clean-up only touches this prefix).
+const WORK_PREFIX: &str = "cometcast-office-";
+/// A work directory older than this is a leftover of a crashed run.
+const STALE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Remove work directories under `base` that a crashed or killed run left behind: a real
+/// directory (not a link) whose name starts with [`WORK_PREFIX`], owned by this user, and
+/// last modified more than `max_age` ago. Best effort; every failure is ignored.
+fn remove_stale_work_dirs(base: &Path, max_age: Duration) {
+    let Ok(rd) = std::fs::read_dir(base) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in rd.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with(WORK_PREFIX) {
+            continue;
+        }
+        // `symlink_metadata`: a link is never followed, so it is neither inspected nor removed.
+        let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if !meta.is_dir() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if meta.uid() != rustix::process::getuid().as_raw() {
+                continue;
+            }
+        }
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age > max_age);
+        if old {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 impl WorkDir {
     fn create() -> Result<Self, OfficeError> {
-        let base = std::env::temp_dir();
+        Self::create_in(&std::env::temp_dir())
+    }
+
+    /// Create the directory under `base`. `base` is made absolute and free of links first:
+    /// the worker runs with this directory as its working directory, so a relative `TMPDIR`
+    /// would not mean the same thing there. Stale directories of earlier runs are removed
+    /// once per process.
+    fn create_in(base: &Path) -> Result<Self, OfficeError> {
+        let base = std::fs::canonicalize(base)
+            .map_err(|e| OfficeError::Io(format!("cannot resolve the temp directory: {e}")))?;
+        static CLEANED: std::sync::Once = std::sync::Once::new();
+        CLEANED.call_once(|| remove_stale_work_dirs(&base, STALE_AFTER));
         let path = base.join(format!(
-            "cometcast-office-{}-{:016x}",
+            "{WORK_PREFIX}{}-{:016x}",
             std::process::id(),
             rand::random::<u64>()
         ));
@@ -327,8 +474,10 @@ fn run_worker(
     let stderr = String::from_utf8_lossy(&grab(err_rx)).into_owned();
 
     if !status.success() {
-        let detail = stderr.trim();
-        let detail: String = detail.chars().take(300).collect();
+        // Worker stderr can echo bytes from the document: strip control characters before
+        // the text can reach a terminal.
+        let detail = sanitize(&stderr);
+        let detail: String = detail.trim().chars().take(300).collect();
         return Err(OfficeError::ConversionFailed(if detail.is_empty() {
             format!("the worker ended with {status}")
         } else {
@@ -339,9 +488,17 @@ fn run_worker(
     let mut protections = Vec::new();
     for line in stdout.lines() {
         if let Some(w) = line.strip_prefix("warning:") {
-            warnings.push(w.to_string());
+            // Engine warnings quote the document (font names and so on): sanitise them.
+            warnings.push(sanitize(w).trim().chars().take(300).collect());
         } else if let Some(p) = line.strip_prefix("protection:") {
-            protections.push(p.to_string());
+            // Protection names are ours: anything that is not a plain name is dropped.
+            let p = p.trim();
+            if !p.is_empty()
+                && p.len() <= 32
+                && p.bytes().all(|b| b.is_ascii_lowercase() || b == b'-')
+            {
+                protections.push(p.to_string());
+            }
         }
     }
     let pdf = read_output(&work.0.join("out").join(OUTPUT_NAME), limits)?;
@@ -354,10 +511,35 @@ fn run_worker(
     })
 }
 
+#[cfg(unix)]
+fn open_output(path: &Path) -> std::io::Result<std::fs::File> {
+    open_with(path, rustix::fs::OFlags::NOFOLLOW.bits())
+}
+
+#[cfg(not(unix))]
+fn open_output(path: &Path) -> std::io::Result<std::fs::File> {
+    // No `O_NOFOLLOW` here: refuse a link by looking at it first (UNCERTAIN: not run on Windows).
+    if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
+        return Err(std::io::Error::other("a link"));
+    }
+    std::fs::File::open(path)
+}
+
 /// Read the result: a regular file (not a link), within the cap, that looks like a PDF.
 fn read_output(path: &Path, limits: &Limits) -> Result<Vec<u8>, OfficeError> {
     let bad = |m: &str| OfficeError::BadOutput(m.to_string());
-    let meta = std::fs::symlink_metadata(path).map_err(|_| bad("the engine produced no PDF"))?;
+    // Open without following a link and without blocking (the engine's directory is not
+    // trusted: the name could be a FIFO or a link), then look at the open file.
+    let file = open_output(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            bad("the engine produced no PDF")
+        } else {
+            bad("the result cannot be opened (a link or a special file?)")
+        }
+    })?;
+    let meta = file
+        .metadata()
+        .map_err(|e| OfficeError::Io(e.to_string()))?;
     if !meta.is_file() {
         return Err(bad("the result is not a regular file"));
     }
@@ -368,8 +550,8 @@ fn read_output(path: &Path, limits: &Limits) -> Result<Vec<u8>, OfficeError> {
         )));
     }
     let mut buf = Vec::new();
-    std::fs::File::open(path)
-        .and_then(|f| f.take(limits.max_output_bytes + 1).read_to_end(&mut buf))
+    file.take(limits.max_output_bytes + 1)
+        .read_to_end(&mut buf)
         .map_err(|e| OfficeError::Io(e.to_string()))?;
     if buf.len() as u64 > limits.max_output_bytes {
         return Err(bad("the PDF is larger than the cap"));
@@ -487,6 +669,123 @@ mod tests {
                 convert_file(&big, &o),
                 Err(OfficeError::BadContainer(_))
             ));
+        }
+    }
+
+    #[test]
+    fn sanitize_strips_every_control_character() {
+        let dirty = "a\u{1b}[31mb\u{7}c\u{9b}d\ne\tf\r\u{0}g\u{202e}h\u{1b}]0;title\u{7}";
+        let clean = sanitize(dirty);
+        assert!(!clean.chars().any(char::is_control), "{clean:?}");
+        assert!(!clean.contains('\u{202e}'));
+        assert_eq!(clean, "a[31mbcd e f gh]0;title");
+        assert_eq!(sanitize("plain text, ünïcode"), "plain text, ünïcode");
+    }
+
+    #[test]
+    fn work_dir_base_is_made_absolute() {
+        // A relative base (what a relative TMPDIR is) must not reach the worker as a relative
+        // path: the worker's working directory is the work directory itself.
+        let rel = format!("cc-office-reltest-{}", std::process::id());
+        std::fs::create_dir(&rel).unwrap();
+        let made = WorkDir::create_in(Path::new(&rel));
+        let expect_under = std::fs::canonicalize(&rel);
+        let path = made.as_ref().ok().map(|w| w.0.clone());
+        drop(made);
+        let _ = std::fs::remove_dir_all(&rel);
+        let path = path.expect("work dir under a relative base");
+        assert!(path.is_absolute(), "{path:?}");
+        assert!(path.starts_with(expect_under.unwrap()), "{path:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stale_work_dirs_are_removed_and_nothing_else() {
+        let scratch = WorkDir::create().unwrap();
+        let mk = |name: &str| {
+            let d = scratch.0.join(name);
+            std::fs::create_dir_all(d.join("in")).unwrap();
+            std::fs::write(d.join("in").join("f"), b"x").unwrap();
+            d
+        };
+        let old = mk("cometcast-office-1-old");
+        let fresh = mk("cometcast-office-2-fresh");
+        let other_name = mk("something-else");
+        let victim = mk("victim");
+        let link = scratch.0.join("cometcast-office-3-link");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        let two_days = std::time::SystemTime::now() - Duration::from_secs(2 * 24 * 3600);
+        for d in [&old, &other_name, &victim] {
+            std::fs::File::open(d)
+                .unwrap()
+                .set_modified(two_days)
+                .unwrap();
+        }
+        remove_stale_work_dirs(&scratch.0, STALE_AFTER);
+        assert!(!old.exists(), "the old work directory must be gone");
+        assert!(fresh.exists(), "a fresh one must stay");
+        assert!(
+            other_name.exists(),
+            "a directory with another name must stay"
+        );
+        assert!(
+            victim.join("in").join("f").exists(),
+            "a link must not be followed"
+        );
+        assert!(link.symlink_metadata().is_ok(), "the link itself stays");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fifos_do_not_block_and_are_refused() {
+        use rustix::fs::{CWD, FileType, Mode, mknodat};
+        let dir = WorkDir::create().unwrap();
+        // As the output file: refused, and the call returns.
+        let out = dir.0.join("out.pdf");
+        mknodat(CWD, &out, FileType::Fifo, Mode::RUSR | Mode::WUSR, 0).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let out2 = out.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(read_output(&out2, &Limits::default()));
+        });
+        let r = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("read_output blocked on a FIFO");
+        assert!(
+            matches!(&r, Err(OfficeError::BadOutput(m)) if m.contains("regular")),
+            "{r:?}"
+        );
+        // As the input file: refused without waiting for a writer.
+        let input = dir.0.join("in.docx");
+        mknodat(CWD, &input, FileType::Fifo, Mode::RUSR | Mode::WUSR, 0).unwrap();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(convert_file(&input, &Options::default()));
+        });
+        let r = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("convert_file blocked on a FIFO");
+        assert!(matches!(r, Err(OfficeError::NotRegularFile)), "{r:?}");
+    }
+
+    #[test]
+    fn missing_protections_are_listed() {
+        let mk = |p: &[&str]| Converted {
+            pdf: Vec::new(),
+            engine: Concrete::Rust,
+            warnings: Vec::new(),
+            protections: p.iter().map(|s| (*s).to_string()).collect(),
+            elapsed: Duration::ZERO,
+        };
+        let all = mk(expected_protections());
+        assert!(all.missing_protections().is_empty());
+        let none = mk(&[]);
+        assert_eq!(none.missing_protections(), expected_protections());
+        #[cfg(unix)]
+        {
+            let partial = mk(&["rlimit-cpu"]);
+            assert!(!partial.missing_protections().contains(&"rlimit-cpu"));
+            assert!(partial.missing_protections().contains(&"rlimit-fsize"));
         }
     }
 }

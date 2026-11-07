@@ -527,12 +527,25 @@ parser anyway.
 | Seen speed (tiny files, debug build) | 0.5 to 0.8 s | 1.5 to 2.1 s (start-up dominated) |
 | Fidelity | unmeasured; the crate reports what it left out as warnings (for example "Aptos rendered as Noto Sans") | unmeasured; generally seen as the reference for layout |
 
-`Engine::Auto` (the default) uses LibreOffice if it is found and the pure-Rust engine otherwise.
-UNCERTAIN: this order is a judgement (LibreOffice is the long-standing reference), not a
-measurement; change it once point 7 has data. A failure of the chosen engine is **not** retried with
-the other one (a file that one parser calls broken is not handed to a second parser behind the
-user's back); `--engine rust|soffice` chooses explicitly. The `engine-rust` feature of `cc-office`
-can be turned off to leave out the large dependency tree.
+`Engine::Auto` (the default) uses the **pure-Rust engine for `.docx .pptx .xlsx`** when it is compiled in,
+and LibreOffice only for `.odt .odp .ods` (which the Rust engine cannot read), or for OOXML when the
+Rust engine was left out of the build. `--engine soffice` asks for LibreOffice explicitly. UNCERTAIN:
+this order is a **security judgement, not a fidelity measurement**: LibreOffice is the long-standing
+reference for layout and may well produce better PDFs, but it is a large program with helper processes
+that can also read any file the user can read (next paragraph). Change the order once point 7 has
+data on both. A failure of the chosen engine is **not** retried with the other one (a file that one
+parser calls broken is not handed to a second parser behind the user's back); `--engine rust|soffice`
+chooses explicitly. The `engine-rust` feature of `cc-office` can be turned off to leave out the large
+dependency tree.
+
+**Risk with LibreOffice: linked content.** A document can link or include a local file (a linked image,
+an included text section, an OLE link). LibreOffice running as the user can read such a file and print
+its content into the PDF, which the sender then transfers. Nothing in this design stops that: the worker
+has **no file-system restriction** (Landlock only blocks TCP) and the profile switches below are best
+effort and unverified. Use `--engine soffice` only for documents you trust, and look at the PDF before
+sending. The CLI prints a note whenever LibreOffice did the conversion. UNCERTAIN: whether
+`office2pdf` follows any file links was not checked; it has no feature that the author of this note
+knows of for it, which is not a test.
 
 LibreOffice is found through `COMETCAST_SOFFICE` (absolute path), then `/usr/bin/soffice`,
 `/usr/local/bin/soffice`, `/usr/lib/libreoffice/program/soffice`, `/opt/libreoffice/program/soffice`,
@@ -541,43 +554,96 @@ installs are not looked for.
 
 ### Pipeline and limits
 
-1. **Input**: a regular file only (a device or FIFO is refused), at most **50 MiB**, read with a
-   `take(limit + 1)` bound. The extension chooses the format. A legacy binary or password-protected
-   file (an OLE container, not ZIP) gets a clear "save as .docx without a password" message.
-2. **ZIP pre-flight** (`zipcheck.rs`, our own reader of the central directory; nothing is extracted to disk):
-   at most **4000 entries**; no absolute names, `..`, backslash, NUL, control character or drive
-   letter; no duplicate names (case-insensitive); no encryption, ZIP64, multi-disk, or methods other than
-   stored and deflate; local header and central directory must agree; entries must not overlap;
-   each entry at most **128 MiB** and all together at most **512 MiB** uncompressed; ratio
-   at most **200:1** for entries over 1 MiB; and every entry is **really inflated** (and discarded) to
-   check that the real size equals the declared size, so a lying header is caught. The content
-   must match the extension (`word/document.xml`, `ppt/presentation.xml`, `xl/workbook.xml`, or the
-   OpenDocument `mimetype` entry). This is a screen against bombs and path tricks, not proof that the
-   XML parser behind it is safe.
+1. **Input**: a regular file only, at most **50 MiB**, read with a `take(limit + 1)` bound. The file is
+   **opened first** (`O_NONBLOCK`, so a FIFO cannot make the open wait) and the *open* file is checked with
+   `fstat`: a device, FIFO or directory is refused, with no gap between the check and the use. A symbolic
+   link to a regular file is followed on purpose. The file name must contain a dot: the extension chooses
+   the format, a bare name such as `docx` is not a format. A legacy binary or password-protected file
+   (an OLE container, not ZIP) gets a clear "save as .docx without a password" message.
+2. **ZIP pre-flight** (`zipcheck.rs`, our own reader of the central directory; nothing is extracted to disk).
+   Refused:
+   - more than **4000 entries**; names that are absolute, contain `..`, a backslash, NUL, any control
+     character or a drive letter; names that are equal after Unicode lower-casing (not Unicode
+     normalisation: two spellings of the same accented letter are not caught);
+   - encryption (flag bits 0 and 6); ZIP64 (a ZIP64 locator before the end record, a ZIP64 extra field
+     `0x0001`, or a size/offset/count field holding its `0xFFFF` / `0xFFFFFFFF` marker); multi-disk
+     archives (disk numbers, per-disk count, entry disk); compression methods other than stored (0) and
+     deflate (8); the Info-ZIP Unicode path extra field `0x7075` (it can replace the name that was
+     checked); a malformed extra-field area;
+   - an end-of-central-directory record that is not the end of the file (data after it, a comment length
+     that does not match the remaining bytes, a second candidate record, or an end-record signature
+     inside the comment); a central directory that does not end exactly where that record starts or
+     whose entries do not fill it exactly;
+   - a local header that disagrees with the central entry in **name, compression method, flags,
+     CRC-32, compressed size or uncompressed size**. With a data descriptor (flag bit 3) the local sizes
+     may be zero (or the same as the central ones) and the descriptor after the data, 12 bytes or 16
+     with its signature, must carry the central CRC and sizes;
+   - entries whose bytes (local header, data and descriptor) overlap each other, or reach into the
+     central directory or past the end of the file;
+   - an entry over **128 MiB**, all entries together over **512 MiB** uncompressed; a ratio over
+     **200:1** for entries over 1 MiB; and every entry is **really inflated** (and discarded) to check
+     that the real size equals the declared size, so a lying header is caught;
+   - content that does not match the extension (`word/document.xml`, `ppt/presentation.xml`,
+     `xl/workbook.xml`, or the OpenDocument `mimetype` entry).
+
+   Not checked: the CRC-32 of the data is compared between headers but **never recomputed**; gaps between
+   entries and prepended data are not looked for beyond the local header at offset 0; the offsets and
+   lengths use checked arithmetic (a 32-bit build was not run). This is a screen against bombs and path
+   tricks and against readers that disagree about the same file, not proof that the XML parser behind
+   it is safe.
 3. **Private work directory** (`$TMPDIR/cometcast-office-<pid>-<random>`, mode 0700, created with
-   `create` so an existing name is never reused, removed on drop). The input is copied there under a fixed
-   name (`input.<ext>`); the user's own file name never reaches an engine or a command line.
+   `create` so an existing name is never reused, removed on drop). The temp directory is made
+   **absolute and link-free** first (a relative `TMPDIR` would break the worker, whose working directory
+   is this directory). The input is copied there under a fixed name (`input.<ext>`); the user's own file
+   name never reaches an engine or a command line. **If the parent process is killed** (SIGKILL, power
+   loss) the directory is left behind; the next conversion removes directories with this name prefix
+   that are real directories (not links), owned by the user and **older than one day**, best effort.
+   A crash therefore leaks at most up to a day's worth of work directories (each holds a copy of the
+   document and possibly a LibreOffice profile).
 4. **Worker child** (`cc-office-worker`, or `cometcast-cli office-worker`): empty environment (LibreOffice gets
    only `PATH`, `HOME`, `TMPDIR`, `LANG` and a render setting, with `HOME` and `TMPDIR` inside the work directory), own process
    group, stdin closed. The worker sets, **fail closed on Linux**: `RLIMIT_CPU` (timeout + 2 s), `RLIMIT_CORE`
    0, `RLIMIT_FSIZE` (the output cap, which also limits what LibreOffice may write per file) and
-   `RLIMIT_AS` (4 GiB for either engine). Best effort: Landlock **blocks TCP connect and bind**
-   (kernel 6.7+, ABI 4), reported as `landlock-no-tcp`. It does **not** restrict the file system, UDP or Unix
+   `RLIMIT_AS` (4 GiB for either engine). Best effort (a failure is not fatal; it is reported by name
+   and warned about by the CLI): `RLIMIT_NOFILE` 2048 for either engine, and `RLIMIT_NPROC` 8192 for the
+   LibreOffice supervisor only. **No limit is ever raised**: each is set to the smaller of the wish and
+   the limit already in force, so a stricter inherited soft limit is kept (tested). Be clear about what
+   these are: `RLIMIT_AS`, `RLIMIT_CPU` and `RLIMIT_FSIZE` are **per process**, not totals for the process tree
+   (LibreOffice with helpers can use several times the address-space figure and write several output-sized
+   files); `RLIMIT_NPROC` counts all processes and threads of the **user**, so it is a fork-bomb brake and
+   is exempt for root and `CAP_SYS_RESOURCE`, and it was not set for the Rust engine because that engine
+   uses threads. UNCERTAIN: neither the NOFILE nor the NPROC value was tuned beyond tiny files.
+   Landlock **blocks TCP connect and bind** (best effort, kernel 6.7+, ABI 4), reported as
+   `landlock-no-tcp`. It does **not** restrict the file system, UDP or Unix
    sockets, and there is **no seccomp** (LibreOffice needs far too many system calls; the pure-Rust
    worker could get the allowlist treatment of `cc-docs`, not done). So this is a **resource-limited
    child process, not a sandbox**: a code-execution bug in a parser would run as the user.
+   `Converted::protections` lists what took effect; `Converted::missing_protections()` lists what this
+   platform should have given and did not (`expected_protections()`); the CLI prints both after every
+   conversion and warns when something is missing (for example no Landlock on a kernel older than 6.7), or
+   when nothing at all was in effect (non-Unix).
 5. **LibreOffice call**: `soffice --headless --invisible --norestore --nologo --nodefault --nolockcheck
    --nofirststartwizard -env:UserInstallation=<work>/profile --convert-to pdf --outdir <work>/out <work>/in/input.<ext>`, with a
    profile that sets the macro security level to 3, disables macro execution and sets "update links" to
-   "never" for Calc and Writer. UNCERTAIN: those profile keys are from memory of the configuration schema;
-   their effect was not tested (headless conversion does not run document macros by default either).
+   "never" for Calc, Writer, Impress and Draw. UNCERTAIN: those profile keys are from memory of the
+   configuration schema; their effect was not tested, and the **Impress and Draw keys are the least certain**
+   (they may not exist, in which case LibreOffice ignores them and links in presentations and drawings are
+   not switched off). Headless conversion does not run document macros by default either. None of this
+   stops a document from making LibreOffice read a local file into the PDF (see the risk above).
    Fonts are whatever the machine has; no font is bundled for this engine.
 6. **Deadline**: 120 s by default (the worker times itself; the parent kills the **whole process group**
-   at timeout + 2 s, and again after a normal exit to remove helper processes). Tested with a fake worker
-   that starts a grandchild and sleeps.
-7. **Result checks**: a regular file (not a link) in the output directory, at most **64 MiB** (the document
-   transfer limit), starting with `%PDF-` and with `%%EOF` in the last 2 KiB. The CLI test also opens the result with
-   `docs info`, the receiver's renderer.
+   at timeout + 2 s, and again after a normal exit to remove helper processes). A helper that calls
+   `setsid` (or `setpgid`) **leaves the group and survives the kill**; LibreOffice's own `oosplash` /
+   `soffice.bin` are not known to do that, but that was not verified. Tested with a fake worker that starts
+   a grandchild, records its pid, and sleeps: after the timeout the grandchild must not exist any more.
+7. **Result checks**: the output file is opened with `O_NOFOLLOW | O_NONBLOCK` and the *open* file is
+   checked with `fstat` (a link, a FIFO or any other special file is refused without blocking); it must be a
+   regular file of at most **64 MiB** (the document transfer limit), starting with `%PDF-` and with `%%EOF`
+   in the last 2 KiB. The CLI test also opens the result with `docs info`, the receiver's renderer.
+8. **Text from the engine** (warnings, the worker's stderr, protection names) is sanitised in the parent
+   before anything is printed: every control character (including ESC and the C1 controls) is dropped,
+   line breaks and tabs become a space, and the bidirectional override characters are dropped. Protection
+   names that are not plain lower-case words are discarded.
 
 ### Use
 
@@ -588,7 +654,8 @@ cometcast-cli office engines
 ```
 
 `send-file` converts first, prints the engine and the time, prints up to ten conversion
-warnings, and sends `<name>.pdf`. Library: `cc_office::convert_file(path, &Options)`; the application must
+warnings, prints the protections that were in effect (and a warning on stderr when Landlock or a limit
+was not, or a note when LibreOffice did the work), and sends `<name>.pdf`. Library: `cc_office::convert_file(path, &Options)`; the application must
 provide the worker (`WorkerSpec::discover()` finds `cc-office-worker` next to the executable, or pass
 `WorkerSpec::current_exe_with_arg("office-worker")`). Unlike `cc-docs` there is **no environment variable
 that replaces the worker program**.
@@ -605,13 +672,23 @@ not done. The worker would also have to be packaged next to the app (as `cc-docs
 
 - `cargo test -p cc-office`: format and engine selection; the ZIP pre-flight with generated archives (valid
   docx, xlsx, pptx and an ODF shape; bombs by ratio, by per-entry size and by total size; a lying header; too many
-  entries; seven kinds of unsafe name; duplicates; the encryption flag; overlap; corrupt files: every
-  truncation length, every single-byte flip without a panic, garbage in the data; legacy OLE); output
-  checks (fake, huge, missing, symbolic link); the private work directory; input checks; conversion of the three
+  entries; seven kinds of unsafe name; duplicates, also by Unicode case; the encryption flags; a **real**
+  overlap (a second entry's local header hidden inside the first entry's data, with matching names and
+  headers) and an entry reaching into the central directory; data after the end record, wrong and
+  ambiguous comment lengths, a gap before the end record, a directory longer than its entries; local
+  versus central method, flags, sizes and CRC; data descriptors (valid, mismatching, local values
+  present); `0x7075` and ZIP64 extra fields (also only in the local header) and malformed extras; ZIP64
+  locator and marker values; the four multi-disk fields; unknown compression methods 12, 14 and 99; a huge
+  local offset; corrupt files: every truncation length, every single-byte flip without a panic, garbage in
+  the data; legacy OLE); output checks (fake, huge, missing, symbolic link, FIFO without blocking); input
+  FIFO; the private work directory (also under a relative base) and the removal of stale work directories;
+  `lower` never raising a limit; control-character stripping; the engine order; dotless names; the missing-protections list;
+  conversion of the three
   generated fixtures through the **real worker** with the pure-Rust engine and with LibreOffice
   (**skipped loudly with a `SKIPPED:` line if `soffice` is absent**; `COMETCAST_REQUIRE_OFFICE_ENGINE=1` turns a skip into a failure);
-  a hanging fake worker killed at the deadline together with its child; fake workers that write a non-PDF,
-  nothing, an oversized file, or fail.
+  a hanging fake worker killed at the deadline together with its grandchild (checked through a pid file
+  and `/proc`; a zombie counts as dead); fake workers that write a non-PDF,
+  nothing, an oversized file, fail, or print terminal escape sequences in warnings and stderr.
 - `cargo test -p cometcast-cli --test office`: `office convert` end to end, a refused overwrite, the result opened by `docs info`,
   and six hostile or wrong files (corrupt, not a zip, legacy OLE, path traversal, a 200 MiB bomb, a docx under a `.pdf` name)
   that fail with a message and leave no output.
@@ -622,7 +699,8 @@ not done. The worker would also have to be packaged next to the app (as `cc-docs
 
 - No measurement of layout fidelity, fonts, charts, tables or embedded media on real documents; no comparison of the two engines.
 - The Windows and macOS code paths (soffice locations, the `file://` profile URL, no limits on Windows except the timeout) were not run.
-- No seccomp or file-system sandbox for either engine; `RLIMIT_AS` is not enforced by the macOS kernel.
+- No seccomp or file-system sandbox for either engine, so LibreOffice can read any user file that a document links; `RLIMIT_AS` is not enforced by the macOS kernel; the resource limits are per process; a helper that calls `setsid` escapes the group kill.
+- The unsigned 12-byte data descriptor form and a 32-bit build of the ZIP reader were not tested; the CRC-32 of the data is not recomputed.
 - Memory and time on large inputs (50 MiB files, big workbooks) were not measured; the 4 GiB address-space limit and the 120 s deadline are guesses.
 - Speaker notes from PPTX are not extracted.
 

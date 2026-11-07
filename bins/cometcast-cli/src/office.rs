@@ -22,9 +22,14 @@ office (see docs/documents.md):
   cometcast-cli office engines
   Converts .docx .pptx .xlsx (and .odt .odp .ods with LibreOffice) to PDF on this machine, in a
   child process with time, memory and size limits. send-file does the same before sending,
-  so the receiver only ever gets a PDF. --engine: auto (LibreOffice if installed, else the
-  built-in pure-Rust converter), rust, or soffice. LibreOffice is found in the usual places
-  or through COMETCAST_SOFFICE (full path). Fidelity on real documents has not been measured.";
+  so the receiver only ever gets a PDF. --engine: auto (default: the built-in pure-Rust
+  converter for .docx .pptx .xlsx, LibreOffice for .odt .odp .ods), rust, or soffice.
+  Choose soffice yourself only for documents you trust: LibreOffice can read any file you can
+  read (linked images, included text) into the PDF; the child process is limited, not
+  sandboxed. LibreOffice is found in the usual places or through COMETCAST_SOFFICE (full
+  path). Fidelity on real documents has not been measured, and neither engine order is
+  based on a comparison. The command warns when the limits or the network block were not
+  in effect.";
 
 /// What `office` was asked to do.
 pub enum OfficeArgs {
@@ -121,11 +126,50 @@ pub fn convert_for_send(path: &Path, engine: Engine) -> Result<(String, Vec<u8>)
     for w in conv.warnings.iter().take(10) {
         println!("Conversion warning: {w}");
     }
+    for line in protection_notes(&conv) {
+        eprintln!("{line}");
+    }
     let stem = path.file_stem().map_or_else(
         || "document".to_string(),
         |s| s.to_string_lossy().into_owned(),
     );
     Ok((format!("{stem}.pdf"), conv.pdf))
+}
+
+/// Lines to show about the isolation the conversion really had: what was in effect, and a
+/// warning when something expected was not (no Landlock on an old kernel, a platform without
+/// limits), or when LibreOffice, which can read any file, did the work.
+fn protection_notes(conv: &cc_office::Converted) -> Vec<String> {
+    let mut v = Vec::new();
+    if conv.protections.is_empty() {
+        v.push(
+            "Warning: no resource limits or network block were in effect for this conversion \
+             (only the time limit); see docs/documents.md."
+                .to_string(),
+        );
+    } else {
+        v.push(format!(
+            "Protections in effect: {}.",
+            conv.protections.join(", ")
+        ));
+        let missing = conv.missing_protections();
+        if !missing.is_empty() {
+            v.push(format!(
+                "Warning: not in effect: {}. The conversion ran with less isolation than \
+                 documented (for example Landlock needs Linux 6.7 or newer).",
+                missing.join(", ")
+            ));
+        }
+    }
+    if conv.engine == cc_office::Concrete::Soffice {
+        v.push(
+            "Note: LibreOffice can read any file you can read when the document links or \
+             includes it, and can print its content into the PDF. Check the PDF before \
+             sending it, and use it only for documents you trust."
+                .to_string(),
+        );
+    }
+    v
 }
 
 /// Run `office`.
@@ -156,6 +200,11 @@ fn run_inner(a: OfficeArgs) -> Result<(), String> {
                 } else {
                     "not compiled in"
                 }
+            );
+            println!(
+                "auto: .docx .pptx .xlsx use the rust engine when compiled in; .odt .odp .ods \
+                 use LibreOffice; --engine soffice forces LibreOffice (it can read any file you \
+                 can read)"
             );
             Ok(())
         }

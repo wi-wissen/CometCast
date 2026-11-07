@@ -13,6 +13,10 @@ pub struct Entry {
     /// Written in the central directory instead of the real uncompressed size.
     pub lie_usize: Option<u32>,
     pub flags: u16,
+    /// Extra field bytes, written in both the local and the central header.
+    pub extra: Vec<u8>,
+    /// Write the sizes after the data (flag bit 3) and zeros in the local header.
+    pub descriptor: bool,
 }
 
 impl Entry {
@@ -23,6 +27,8 @@ impl Entry {
             deflate: false,
             lie_usize: None,
             flags: 0,
+            extra: Vec::new(),
+            descriptor: false,
         }
     }
     pub fn deflated(name: &str, data: &[u8]) -> Self {
@@ -58,25 +64,39 @@ pub fn build(entries: &[Entry]) -> Vec<u8> {
         let offset = out.len() as u32;
         let method: u16 = if e.deflate { 8 } else { 0 };
         let usize_real = e.lie_usize.unwrap_or(e.data.len() as u32);
+        let flags = if e.descriptor { e.flags | 8 } else { e.flags };
         // local header
         le32(&mut out, 0x0403_4b50);
         le16(&mut out, 20);
-        le16(&mut out, e.flags);
+        le16(&mut out, flags);
         le16(&mut out, method);
         le16(&mut out, 0);
         le16(&mut out, 0x21);
-        le32(&mut out, crc.sum());
-        le32(&mut out, packed.len() as u32);
-        le32(&mut out, usize_real);
+        if e.descriptor {
+            le32(&mut out, 0);
+            le32(&mut out, 0);
+            le32(&mut out, 0);
+        } else {
+            le32(&mut out, crc.sum());
+            le32(&mut out, packed.len() as u32);
+            le32(&mut out, usize_real);
+        }
         le16(&mut out, e.name.len() as u16);
-        le16(&mut out, 0);
+        le16(&mut out, e.extra.len() as u16);
         out.extend_from_slice(&e.name);
+        out.extend_from_slice(&e.extra);
         out.extend_from_slice(&packed);
+        if e.descriptor {
+            le32(&mut out, 0x0807_4b50);
+            le32(&mut out, crc.sum());
+            le32(&mut out, packed.len() as u32);
+            le32(&mut out, usize_real);
+        }
         // central header
         le32(&mut central, 0x0201_4b50);
         le16(&mut central, 20);
         le16(&mut central, 20);
-        le16(&mut central, e.flags);
+        le16(&mut central, flags);
         le16(&mut central, method);
         le16(&mut central, 0);
         le16(&mut central, 0x21);
@@ -84,13 +104,14 @@ pub fn build(entries: &[Entry]) -> Vec<u8> {
         le32(&mut central, packed.len() as u32);
         le32(&mut central, usize_real);
         le16(&mut central, e.name.len() as u16);
-        le16(&mut central, 0);
+        le16(&mut central, e.extra.len() as u16);
         le16(&mut central, 0);
         le16(&mut central, 0);
         le16(&mut central, 0);
         le32(&mut central, 0);
         le32(&mut central, offset);
         central.extend_from_slice(&e.name);
+        central.extend_from_slice(&e.extra);
     }
     let cd_offset = out.len() as u32;
     out.extend_from_slice(&central);

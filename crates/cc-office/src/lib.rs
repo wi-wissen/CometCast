@@ -31,6 +31,8 @@ mod zipcheck;
 pub use engine::{Concrete, Engine, SOFFICE_ENV, find_soffice, rust_engine_compiled};
 pub use error::{Limits, OfficeError};
 pub use format::OfficeFormat;
-pub use runner::{Converted, Options, WorkerSpec, convert_bytes, convert_file};
+pub use runner::{
+    Converted, Options, WorkerSpec, convert_bytes, convert_file, expected_protections,
+};
 pub use worker::{worker_main, worker_main_args};
 pub use zipcheck::{ZipReport, check as check_container};
