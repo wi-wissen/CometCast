@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Publishes site/ to GitHub Pages (cometcast.de). One-time owner setup: docs/website.md.
+# Publishes site/ to GitHub Pages (cometcast.de) together with the web app under /app/.
+# One-time owner setup: docs/website.md (including "before enabling Pages: fill the imprint").
 name: Pages
 on:
   push:
     branches: [main]
     paths:
       - 'site/**'
+      - 'apps/web/**'
+      - 'crates/cc-docs-wasm/**'
+      - 'crates/cc-docs/**'
+      - 'Cargo.lock'
       - 'tools/check-site-links.mjs'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -28,15 +33,52 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - name: Check links
-        run: node tools/check-site-links.mjs site
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Check links of the static site (the web app is added later)
+        run: node tools/check-site-links.mjs site --without-app
+      - name: Install the Rust toolchain and the wasm target
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+      # The wasm-bindgen CLI must be exactly the version of the wasm-bindgen crate in Cargo.lock.
+      - name: Install the wasm-bindgen CLI of the version in Cargo.lock
+        run: |
+          set -euo pipefail
+          ver="$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+          test -n "$ver" || { echo "::error::wasm-bindgen not found in Cargo.lock"; exit 1; }
+          cargo install wasm-bindgen-cli --version "$ver" --locked
+      - name: Build the web app (PDF renderer and app)
+        working-directory: apps/web
+        env:
+          VITE_BASE: /app/
+          VITE_DEFAULT_RELAY: wss://relay.cometcast.de/ws
+        run: |
+          npm ci
+          npm run build:wasm
+          npm run build
+      - name: Stage site and web app
+        run: |
+          set -euo pipefail
+          rm -rf stage && mkdir stage
+          cp -a site/. stage/
+          mkdir -p stage/app
+          cp -a apps/web/dist/. stage/app/
+          test -f stage/app/index.html || { echo "::error::the web app is missing under /app/"; exit 1; }
+          test -f stage/app/pdf/cc_docs_wasm_bg.wasm || { echo "::error::the PDF renderer is missing under /app/"; exit 1; }
+          test -f stage/.nojekyll
+      - name: Check links of the staged artifact (/app/ must exist now)
+        run: node tools/check-site-links.mjs stage
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: stage
       - id: deployment
         uses: actions/deploy-pages@v4

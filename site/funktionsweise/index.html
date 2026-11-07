@@ -33,7 +33,7 @@
 <li><strong>Über einen Server.</strong> Wenn direkt nicht geht: der Server einer Organisation mit TURN-Relay (und optional einem SFU).</li>
 <li><strong>Eigenes WLAN.</strong> Wenn auch das nicht geht: das WLAN des Empfängers.</li>
 </ol>
-<div class="note"><p>Die Reihenfolge ist der Plan. Gemessen ist bisher nur wenig: Verbindungen im lokalen Netz und ein TURN-Test auf einem einzigen Rechner. Über echte Netze, NAT oder zwischen zwei Geräten über TURN ist es <span class="st">UNCERTAIN</span>.</p></div>
+<div class="note"><p>Die Reihenfolge ist der Plan. Gemessen ist bisher nur wenig: Verbindungen im lokalen Netz und ein TURN-Test auf einem einzigen Rechner. Über echte Netze, NAT oder zwischen zwei Geräten über TURN ist noch nicht getestet, ob und wie gut es funktioniert.</p></div>
 <h2>Wie die App den Server findet</h2>
 <ol class="steps"><li>MDM-Richtlinie</li><li>DNS-SRV-Eintrag <code>_cometcast._tcp</code></li><li>Ankündigung des Anzeigegeräts</li><li>Eingebaute Standardliste</li></ol>
 <p>Parallel läuft mDNS für die lokale Suche. Die Server-Suche in den Apps ist zum Teil noch nicht gebaut.</p>

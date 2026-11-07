@@ -4,22 +4,28 @@
 // and hreflang URL must point to an existing file (directory URLs need index.html), every #fragment
 // must match an id on the target page, and every page needs lang, title, description and a hreflang pair.
 // External links (https://...) are NOT fetched; the check is offline on purpose.
-// Placeholder paths that are known not to exist yet are listed in ALLOWED_MISSING.
-// Usage: node tools/check-site-links.mjs [site-dir]
+// The web app lives under /app/ only in the built artifact (the Pages workflow copies apps/web/dist there),
+// so the committed site/ directory does not contain it: pass --without-app to check site/ alone (links to
+// /app/ are then accepted); without the flag /app/ must exist, which is how the staged artifact is checked.
+// Files under /app/ are not page-checked (they are the Vite build, not site pages).
+// Usage: node tools/check-site-links.mjs [site-dir] [--without-app]
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'site'));
+const args = process.argv.slice(2);
+const withoutApp = args.includes('--without-app');
+const root = resolve(args.find((a) => !a.startsWith('--')) ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'site'));
 const ORIGIN = 'https://cometcast.de';
-const ALLOWED_MISSING = new Set(['/app/']); // web app placeholder, see docs/website.md
+const ALLOWED_MISSING = new Set(withoutApp ? ['/app/'] : []); // see docs/website.md
 
 const walk = (d) => readdirSync(d).flatMap((n) => {
   const f = join(d, n);
   return statSync(f).isDirectory() ? walk(f) : [f];
 });
 const files = walk(root);
-const htmls = files.filter((f) => f.endsWith('.html'));
+const appDir = join(root, 'app') + '/';
+const htmls = files.filter((f) => f.endsWith('.html') && !f.startsWith(appDir));
 const errors = [];
 const idsCache = new Map();
 

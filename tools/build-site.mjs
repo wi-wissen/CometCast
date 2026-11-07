@@ -10,7 +10,6 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'site');
 const ORIGIN = 'https://cometcast.de';
 const GH = 'https://github.com/wi-wissen/CometCast';
 const RELAY = 'https://github.com/wi-wissen/CometCast-Relay';
-const U = '<span class="st">UNCERTAIN</span>';
 const todo = (s) => `<span class="todo">TODO: ${s}</span>`;
 
 // slug per page and language ('' = start page)
@@ -45,9 +44,9 @@ content.start = {
     body: `
 <div class="hero"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="" width="112" height="112"></picture><div>
 <h1>Eine App. Sender und Empfänger.</h1>
-<p class="lead">Comet Cast schickt Bildschirm, Dokumente, Links und Medien an Apple TV, Google TV / Android TV, Mini-PCs und Browser. Gedacht für Schulen, Büros und Vereine, in denen viele verschiedene Geräte in einem Raum zusammenkommen.</p>
+<p class="lead">Comet Cast schickt Bildschirm, Dokumente, Links und Medien an Apple TV, Google TV / Android TV, Mini-PCs und Browser. Gedacht für Büros, Besprechungen, Vereine, Workshops und Schulen, in denen viele verschiedene Geräte in einem Raum zusammenkommen.</p>
 <div class="btns"><a class="btn primary" href="/app/">Web-App öffnen</a><a class="btn" href="/downloads/">Downloads &amp; Status</a><a class="btn" href="/funktionsweise/">Wie es funktioniert</a></div>
-<p><small>Der Link zur Web-App unter <code>/app/</code> ist ein Platzhalter (${U}: noch nicht veröffentlicht, siehe <a href="/downloads/">Downloads</a>).</small></p>
+<p><small>Die Web-App liegt unter <code>/app/</code>. Sie braucht einen Relay-Server; der Stand steht unter <a href="/downloads/">Downloads</a>.</small></p>
 </div></div>
 <div class="note"><p><strong>Stand: Beta 0.1, in Entwicklung.</strong> Vieles funktioniert bisher nur auf einem Rechner oder in einem lokalen Netz. Was geprüft ist und was nicht, steht ehrlich auf der Seite <a href="/downloads/">Downloads</a>.</p></div>
 <h2>Was Comet Cast ist</h2>
@@ -68,9 +67,9 @@ content.start = {
     body: `
 <div class="hero"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="" width="112" height="112"></picture><div>
 <h1>One app. Sender and receiver.</h1>
-<p class="lead">Comet Cast sends your screen, documents, links and media to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for schools, offices and clubs, where many different devices meet in one room.</p>
+<p class="lead">Comet Cast sends your screen, documents, links and media to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for offices, meetings, clubs, workshops and schools, where many different devices meet in one room.</p>
 <div class="btns"><a class="btn primary" href="/app/">Open web app</a><a class="btn" href="/en/downloads/">Downloads &amp; status</a><a class="btn" href="/en/how-it-works/">How it works</a></div>
-<p><small>The web app link <code>/app/</code> is a placeholder (${U}: not published yet, see <a href="/en/downloads/">Downloads</a>).</small></p>
+<p><small>The web app is at <code>/app/</code>. It needs a relay server; the current status is on <a href="/en/downloads/">Downloads</a>.</small></p>
 </div></div>
 <div class="note"><p><strong>Status: v0.1 beta, in development.</strong> Much of it has only been tried on one machine or one local network. The page <a href="/en/downloads/">Downloads</a> says honestly what is checked and what is not.</p></div>
 <h2>What Comet Cast is</h2>
@@ -102,7 +101,7 @@ content.how = {
 <li><strong>Über einen Server.</strong> Wenn direkt nicht geht: der Server einer Organisation mit TURN-Relay (und optional einem SFU).</li>
 <li><strong>Eigenes WLAN.</strong> Wenn auch das nicht geht: das WLAN des Empfängers.</li>
 </ol>
-<div class="note"><p>Die Reihenfolge ist der Plan. Gemessen ist bisher nur wenig: Verbindungen im lokalen Netz und ein TURN-Test auf einem einzigen Rechner. Über echte Netze, NAT oder zwischen zwei Geräten über TURN ist es ${U}.</p></div>
+<div class="note"><p>Die Reihenfolge ist der Plan. Gemessen ist bisher nur wenig: Verbindungen im lokalen Netz und ein TURN-Test auf einem einzigen Rechner. Über echte Netze, NAT oder zwischen zwei Geräten über TURN ist noch nicht getestet, ob und wie gut es funktioniert.</p></div>
 <h2>Wie die App den Server findet</h2>
 <ol class="steps"><li>MDM-Richtlinie</li><li>DNS-SRV-Eintrag <code>_cometcast._tcp</code></li><li>Ankündigung des Anzeigegeräts</li><li>Eingebaute Standardliste</li></ol>
 <p>Parallel läuft mDNS für die lokale Suche. Die Server-Suche in den Apps ist zum Teil noch nicht gebaut.</p>
@@ -125,7 +124,7 @@ content.how = {
 <li><strong>Through a server.</strong> If direct fails: an organisation's server with a TURN relay (and optionally an SFU).</li>
 <li><strong>Own Wi-Fi.</strong> If that fails too: the receiver's own Wi-Fi.</li>
 </ol>
-<div class="note"><p>The order is the plan. Little is measured so far: connections on a local network and a TURN test on a single machine. Across real networks, through NAT, or between two devices over TURN it is ${U}.</p></div>
+<div class="note"><p>The order is the plan. Little is measured so far: connections on a local network and a TURN test on a single machine. Across real networks, through NAT, or between two devices over TURN it has not been tested yet whether and how well it works.</p></div>
 <h2>How the app finds the server</h2>
 <ol class="steps"><li>MDM policy</li><li>DNS-SRV record <code>_cometcast._tcp</code></li><li>Announcement from the display device</li><li>Built-in default list</li></ol>
 <p>mDNS runs in parallel for local discovery. Parts of the server discovery in the apps are not built yet.</p>
@@ -172,7 +171,7 @@ content.downloads = {
 <h2>Downloads</h2>
 <div class="btns"><a class="btn primary" href="${GH}/releases/latest">Neueste Version auf GitHub Releases</a><a class="btn" href="/app/">Web-App öffnen</a></div>
 <div class="note"><p>Zum Zeitpunkt dieser Seite (2026-11-07) ist auf GitHub <strong>noch keine Version veröffentlicht</strong>. Der Link führt dann zu einer leeren oder fehlenden Seite. Dateien gibt es erst, wenn eine Version dort erscheint. Wer jetzt testen will, baut aus dem Quellcode (siehe <a href="${GH}#build-and-run">README</a>).</p>
-<p>Die Web-App unter <code>/app/</code> ist ein Platzhalter: ${U}, ob und wann sie dort liegt. Sie besteht aus statischen Dateien und kann auf dieser Seite gehostet werden; sie spricht dann per <code>wss</code> mit einem Relay-Server. Die Anbindung an <code>relay.cometcast.de</code> ist noch nicht fertig, und dieser Server existiert noch nicht.</p></div>
+<p>Die Web-App liegt unter <code>/app/</code>. Sie besteht aus statischen Dateien und wird von dieser Seite ausgeliefert; sie spricht per <code>wss</code> mit einem Relay-Server. Die Anbindung an <code>relay.cometcast.de</code> ist noch nicht fertig, und dieser Server existiert noch nicht.</p></div>
 <h2 id="status">Statustabelle (Stand 2026-11-07)</h2>
 <p>Quelle: <a href="${GH}/blob/main/docs/architecture.md#milestones">docs/architecture.md</a> und README. Nichts darüber hinaus ist behauptet. Was nicht in der Tabelle steht, ist ein Plan.</p>
 ${statusTable('de')}
@@ -187,7 +186,7 @@ ${statusTable('de')}
 <h2>Downloads</h2>
 <div class="btns"><a class="btn primary" href="${GH}/releases/latest">Latest release on GitHub Releases</a><a class="btn" href="/app/">Open web app</a></div>
 <div class="note"><p>When this page was written (2026-11-07) <strong>no release is published</strong> on GitHub yet. The link then leads to an empty or missing page. There are files only once a release appears there. To try it now, build from source (see the <a href="${GH}#build-and-run">README</a>).</p>
-<p>The web app at <code>/app/</code> is a placeholder: ${U} whether and when it is there. It consists of static files and can be hosted on this site; it then talks to a relay server over <code>wss</code>. The connection to <code>relay.cometcast.de</code> is not finished, and that server does not exist yet.</p></div>
+<p>The web app is at <code>/app/</code>. It consists of static files and is served by this site; it talks to a relay server over <code>wss</code>. The connection to <code>relay.cometcast.de</code> is not finished, and that server does not exist yet.</p></div>
 <h2 id="status">Status table (as of 2026-11-07)</h2>
 <p>Source: <a href="${GH}/blob/main/docs/architecture.md#milestones">docs/architecture.md</a> and the README. Nothing beyond that is claimed. What is not in the table is a plan.</p>
 ${statusTable('en')}
