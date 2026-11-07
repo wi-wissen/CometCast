@@ -970,6 +970,10 @@
   "@codecRetry": {
     "description": "Button after a failed download."
   },
+  "hardwareDecoderFailed": "The video decoder of this device failed. The picture is now decoded by the app itself, which needs the video codec below.",
+  "@hardwareDecoderFailed": {
+    "description": "Receiver, Android: the hardware (MediaCodec) decoder failed and the software decoder takes over."
+  },
   "codecFailed": "The video codec could not be downloaded: {reason}",
   "@codecFailed": {
     "description": "The download failed; reason is technical English text.",

@@ -18,8 +18,8 @@ class CodecController extends ChangeNotifier {
     required this.core,
     required this.settings,
     this.pollInterval = const Duration(milliseconds: 300),
-    this.needed = true,
-  }) {
+    bool needed = true,
+  }) : _needed = needed {
     if (needed) {
       state = core.codecState();
       info = core.codecInfo();
@@ -31,7 +31,8 @@ class CodecController extends ChangeNotifier {
   /// False where the OpenH264 library is never used on this screen: the Android sender (the
   /// device's own MediaCodec makes the H.264) and a receiver that decodes with the device's
   /// MediaCodec. The card then never shows and nothing is downloaded.
-  final bool needed;
+  bool get needed => _needed;
+  bool _needed;
 
   final CoreApi core;
   final AppSettings settings;
@@ -55,6 +56,18 @@ class CodecController extends ChangeNotifier {
       state is UiCodecState_Missing &&
       !settings.codecConsentFor(info) &&
       !(info?.autoDownload ?? false);
+
+  /// The device's own decoder failed: the OpenH264 codec is needed after all. Reads the state,
+  /// shows the card and, if the person agreed before (or the administrator allows it), starts
+  /// the download. Without consent nothing is downloaded.
+  Future<void> require() async {
+    if (_needed || _disposed) return;
+    _needed = true;
+    state = core.codecState();
+    info = core.codecInfo();
+    notifyListeners();
+    await init();
+  }
 
   /// Call once when the screen opens: reads the remembered consent and, if the person agreed
   /// before or the administrator allows it, starts the download at once.

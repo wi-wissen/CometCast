@@ -203,6 +203,14 @@ class ReceiverController extends ChangeNotifier {
   /// Why the hardware path was given up (technical English), or null.
   String? hardwareError;
 
+  /// Set once the hardware decoder failed during this run of the app: later sessions go straight
+  /// to the software decoder instead of failing the same way again. Not stored on disk.
+  static String? hardwareBrokenReason;
+
+  /// Forget a remembered hardware failure (tests).
+  @visibleForTesting
+  static void resetHardwareBroken() => hardwareBrokenReason = null;
+
   /// A live picture is on screen: a decoded image, or a texture that knows its size.
   bool get hasLiveVideo =>
       image != null || (textureId != null && videoWidth > 0 && videoHeight > 0);
@@ -435,6 +443,12 @@ class ReceiverController extends ChangeNotifier {
   void _startHardware() {
     final d = hardwareDecoder;
     if (d == null) return;
+    final broken = hardwareBrokenReason;
+    if (broken != null) {
+      // Failed before in this run: stay with the software decoder.
+      hardwareError = broken;
+      return;
+    }
     hardwareError = null;
     core.setVideoPassthrough(true);
     final session = _session;
@@ -486,6 +500,7 @@ class ReceiverController extends ChangeNotifier {
   void _hardwareFailed(String message) {
     debugPrint('cometcast: hardware video decoder failed: $message');
     hardwareError = message;
+    hardwareBrokenReason = message;
     _stopHardware(); // also switches the core back to the software decoder
     notifyListeners();
   }

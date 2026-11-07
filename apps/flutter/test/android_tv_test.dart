@@ -95,7 +95,19 @@ Future<FakeCoreApi> openTvReceive(
   return core;
 }
 
+const _codecInfo = UiCodecInfo(
+  fileName: 'libopenh264-2.6.0-android-arm64.8.so',
+  version: '2.6.0',
+  host: 'ciscobinary.openh264.org',
+  downloadBytes: 634264,
+  autoDownload: false,
+  adminDir: null,
+);
+
 void main() {
+  setUp(ReceiverController.resetHardwareBroken);
+  tearDown(ReceiverController.resetHardwareBroken);
+
   group('platform wrapper', () {
     const channel = MethodChannel('de.cometcast/platform');
 
@@ -304,6 +316,107 @@ void main() {
   });
 
   group('hardware decoder path', () {
+    testWidgets(
+      'hardware failure: the codec card appears, nothing is downloaded before consent',
+      (tester) async {
+        final decoder = FakeVideoDecoder();
+        final core = FakeCoreApi()
+          ..codecStateResult = const UiCodecState.missing()
+          ..codecInfoResult = _codecInfo;
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          CometCastApp(
+            core: core,
+            tv: true,
+            androidPlatform: FakePlatform(),
+            videoDecoder: decoder,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('codecNotice')), findsNothing);
+        decoder.controller.add(const VideoDecoderError('codec died'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('codecNotice')), findsOneWidget);
+        expect(find.byKey(const Key('codecDownload')), findsOneWidget);
+        expect(find.byKey(const Key('hardwareError')), findsOneWidget);
+        expect(find.textContaining('video decoder of this device'), findsOne);
+        expect(core.ensureCodecCalls, 0);
+        await tester.tap(find.byKey(const Key('codecDownload')));
+        await tester.pumpAndSettle();
+        expect(core.ensureCodecCalls, 1);
+      },
+    );
+
+    testWidgets('hardware failure: German text and an unsupported codec', (
+      tester,
+    ) async {
+      final decoder = FakeVideoDecoder();
+      final core = FakeCoreApi()
+        ..codecStateResult = const UiCodecState.unsupported(reason: 'no arch');
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        CometCastApp(
+          locale: const Locale('de'),
+          core: core,
+          tv: true,
+          androidPlatform: FakePlatform(),
+          videoDecoder: decoder,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      decoder.controller.add(const VideoDecoderError('codec died'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Videodecoder dieses Geräts'), findsOne);
+      expect(find.byKey(const Key('codecUnsupported')), findsOneWidget);
+      expect(core.ensureCodecCalls, 0);
+    });
+
+    testWidgets('hardware failure is sticky: new sessions use software', (
+      tester,
+    ) async {
+      final decoder = FakeVideoDecoder();
+      final core = FakeCoreApi()
+        ..codecStateResult = const UiCodecState.missing()
+        ..codecInfoResult = _codecInfo;
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      Future<void> open() async {
+        await tester.pumpWidget(
+          CometCastApp(
+            key: UniqueKey(),
+            core: core,
+            tv: true,
+            androidPlatform: FakePlatform(),
+            videoDecoder: decoder,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+      }
+
+      await open();
+      expect(decoder.startCalls, 1);
+      decoder.controller.add(const VideoDecoderError('codec died'));
+      await tester.pumpAndSettle();
+      // A new receive view (new session): no hardware attempt, card from the start.
+      await open();
+      expect(decoder.startCalls, 1);
+      expect(core.passthrough, isFalse);
+      expect(find.byKey(const Key('codecNotice')), findsOneWidget);
+      expect(find.byKey(const Key('hardwareError')), findsOneWidget);
+      expect(core.ensureCodecCalls, 0);
+    });
+
     testWidgets(
       'pass-through, texture, units reach the decoder, size shows it',
       (tester) async {

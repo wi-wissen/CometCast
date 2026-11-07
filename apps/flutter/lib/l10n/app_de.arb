@@ -203,6 +203,7 @@
   "codecDownloading": "Der Video-Codec wird heruntergeladen ...",
   "codecProgress": "{percent} %",
   "codecRetry": "Erneut versuchen",
+  "hardwareDecoderFailed": "Der Videodecoder dieses Geräts ist ausgefallen. Das Bild wird nun von der App selbst dekodiert; dafür benötigen Sie den unten genannten Video-Codec.",
   "codecFailed": "Der Video-Codec konnte nicht heruntergeladen werden: {reason}",
   "codecOffline": "Kein Internetzugang? Bitten Sie Ihre Administratorin oder Ihren Administrator, die Datei {file} (so wie von Cisco geladen, mit oder ohne die Endung .bz2) in den Ordner {dir} zu kopieren oder die Variable COMETCAST_CODEC_DIR auf einen Ordner zu setzen, der sie enthält.",
   "codecOfflineNoDir": "Kein Internetzugang? Bitten Sie Ihre Administratorin oder Ihren Administrator, die Datei {file} (so wie von Cisco geladen, mit oder ohne die Endung .bz2) in einen Ordner zu kopieren und die Umgebungsvariable COMETCAST_CODEC_DIR auf diesen Ordner zu setzen.",

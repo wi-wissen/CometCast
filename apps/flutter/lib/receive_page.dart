@@ -4,6 +4,7 @@
 // PDF pages and links that the sender shares take the window instead (the latest content wins);
 // the close button goes back. Page changes come from the sender only.
 
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -83,7 +84,9 @@ class _ReceivePageState extends State<ReceivePage> {
     core: widget.core,
     settings: widget.settings,
     // The device's own decoder (MediaCodec) shows the picture: no OpenH264, no download.
-    needed: _profile.videoDecoder == null,
+    needed:
+        _profile.videoDecoder == null ||
+        ReceiverController.hardwareBrokenReason != null,
   );
   bool _serverEmpty = false;
 
@@ -128,7 +131,16 @@ class _ReceivePageState extends State<ReceivePage> {
         if (mounted && !_controller.isActive) _start();
       });
     }
+    _controller.addListener(_onControllerChanged);
     _codec.init();
+  }
+
+  /// The hardware decoder failed: the software decoder (OpenH264) takes over, so the codec card
+  /// (consent, download, or why it is not available) must be able to show.
+  void _onControllerChanged() {
+    if (_controller.hardwareError != null && !_codec.needed) {
+      unawaited(_codec.require());
+    }
   }
 
   AndroidPlatform? _keepAwakePlatform;
@@ -136,6 +148,7 @@ class _ReceivePageState extends State<ReceivePage> {
   @override
   void dispose() {
     widget.settings.removeListener(_onSettings);
+    _controller.removeListener(_onControllerChanged);
     widget.settings.cancelDiscovery();
     _advertiseRun++;
     _keepAwakePlatform?.setKeepScreenOn(false).catchError((Object _) {});
@@ -520,6 +533,15 @@ class _ReceivePageState extends State<ReceivePage> {
             autofocus: true,
             onSubmitted: _controller.isActive ? null : _start,
           ),
+          if (_controller.hardwareError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                t.hardwareDecoderFailed,
+                key: const Key('hardwareError'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           CodecNotice(controller: _codec),
           if (_serverEmpty)
             Padding(
