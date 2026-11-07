@@ -29,7 +29,10 @@ class PictureStage extends StatelessWidget {
       child = Center(
         child: AspectRatio(
           aspectRatio: w / h,
-          child: Texture(key: const Key('videoTexture'), textureId: c.textureId!),
+          child: Texture(
+            key: const Key('videoTexture'),
+            textureId: c.textureId!,
+          ),
         ),
       );
     } else if (c.image != null) {

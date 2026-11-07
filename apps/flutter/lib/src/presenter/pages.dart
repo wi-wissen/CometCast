@@ -67,7 +67,11 @@ class FirstRunPage extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(codeChip!, key: const Key('code-chip'), style: s.type.codeChip),
+                Text(
+                  codeChip!,
+                  key: const Key('code-chip'),
+                  style: s.type.codeChip,
+                ),
                 Row(
                   children: [
                     CcIcon(CcIconName.check, color: p.ok, size: 16),
@@ -169,7 +173,11 @@ class WaitingPage extends StatelessWidget {
             children: [
               Text(t.waitCheckLabel, style: s.type.label),
               const SizedBox(height: 4),
-              Text('$check', key: const Key('waiting-check'), style: s.type.checkNumber),
+              Text(
+                '$check',
+                key: const Key('waiting-check'),
+                style: s.type.checkNumber,
+              ),
               const SizedBox(height: 4),
               Text(
                 t.waitCheckHint,
@@ -308,7 +316,11 @@ class FilePage extends StatelessWidget {
         if (error != null)
           Semantics(
             liveRegion: true,
-            child: Text(error!, key: const Key('file-error'), style: s.type.errorText),
+            child: Text(
+              error!,
+              key: const Key('file-error'),
+              style: s.type.errorText,
+            ),
           ),
       ],
     );
@@ -564,11 +576,7 @@ class ErrorPage extends StatelessWidget {
         t.errorTimeoutWhy,
         t.errorTimeoutNow,
       ),
-      ErrorKind.ended => (
-        t.errorEndedTitle,
-        t.errorEndedWhy,
-        t.errorEndedNow,
-      ),
+      ErrorKind.ended => (t.errorEndedTitle, t.errorEndedWhy, t.errorEndedNow),
       ErrorKind.occupied => (
         t.errorOccupiedTitle,
         t.errorOccupiedWhy,
@@ -586,7 +594,8 @@ class ErrorPage extends StatelessWidget {
         t.errorOtherNow,
       ),
     };
-    final rescan = canRescan &&
+    final rescan =
+        canRescan &&
         (kind == ErrorKind.code ||
             kind == ErrorKind.expired ||
             kind == ErrorKind.ended);
@@ -655,11 +664,19 @@ class ErrorPage extends StatelessWidget {
             children: [
               Text(t.errorWhy.toUpperCase(), style: s.type.cardLabel),
               const SizedBox(height: 4),
-              Text(why, key: const Key('error-why'), style: s.type.body.copyWith(color: s.tokens.fg)),
+              Text(
+                why,
+                key: const Key('error-why'),
+                style: s.type.body.copyWith(color: s.tokens.fg),
+              ),
               const SizedBox(height: 10),
               Text(t.errorNow.toUpperCase(), style: s.type.cardLabel),
               const SizedBox(height: 4),
-              Text(now, key: const Key('error-now'), style: s.type.body.copyWith(color: s.tokens.fg)),
+              Text(
+                now,
+                key: const Key('error-now'),
+                style: s.type.body.copyWith(color: s.tokens.fg),
+              ),
             ],
           ),
         ),

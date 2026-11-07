@@ -67,7 +67,9 @@ void main() {
       expect(find.byKey(const Key('settings-open')), findsOneWidget);
     });
 
-    testWidgets('pointer variant of the last text, tablets and computers', (t) async {
+    testWidgets('pointer variant of the last text, tablets and computers', (
+      t,
+    ) async {
       await pumpDisplay(t, setupDone: false, tv: false);
       // A tablet or computer starts as a presenter; the link starts the setup.
       await t.tap(find.text('Use this device as the screen'));
@@ -82,7 +84,10 @@ void main() {
       await t.pump();
       await t.tap(find.text('Looks right'));
       await t.pump();
-      expect(find.textContaining('“Settings” at the bottom right'), findsOneWidget);
+      expect(
+        find.textContaining('“Settings” at the bottom right'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -132,7 +137,9 @@ void main() {
       expect(find.text('Locked'), findsNWidgets(2)); // pill and QR caption
     });
 
-    testWidgets('dims after 7 minutes and a key press only restores', (t) async {
+    testWidgets('dims after 7 minutes and a key press only restores', (
+      t,
+    ) async {
       await pumpDisplay(t);
       double dim() =>
           t.widget<AnimatedOpacity>(find.byKey(const Key('dim'))).opacity;
@@ -146,29 +153,32 @@ void main() {
   });
 
   group('Settings (4.3)', () {
-    testWidgets('opened by the focused button, changes at once, closed by Back', (t) async {
-      final h = await pumpDisplay(t);
-      await key(t, LogicalKeyboardKey.select);
-      expect(find.byKey(const Key('settings-close')), findsOneWidget);
-      expect(find.text('Close (Back key)'), findsOneWidget);
-      // Initial focus: the tile of the current mode (Open); Approval on is next to it.
-      await key(t, LogicalKeyboardKey.arrowRight);
-      await key(t, LogicalKeyboardKey.select);
-      expect(h.core.joinModeRequests, [UiJoinMode.confirm]);
-      expect(h.store.setup?.mode, DefaultMode.confirm);
-      // Appearance: the row below, to Light.
-      await key(t, LogicalKeyboardKey.arrowDown);
-      await key(t, LogicalKeyboardKey.select);
-      expect(h.store.appearance, Appearance.light);
-      // Locked is not stored.
-      await key(t, LogicalKeyboardKey.arrowUp);
-      await key(t, LogicalKeyboardKey.arrowRight);
-      await key(t, LogicalKeyboardKey.select);
-      expect(h.core.joinModeRequests.last, UiJoinMode.locked);
-      expect(h.store.setup?.mode, DefaultMode.confirm);
-      await back(t);
-      expect(find.byKey(const Key('settings-close')), findsNothing);
-    });
+    testWidgets(
+      'opened by the focused button, changes at once, closed by Back',
+      (t) async {
+        final h = await pumpDisplay(t);
+        await key(t, LogicalKeyboardKey.select);
+        expect(find.byKey(const Key('settings-close')), findsOneWidget);
+        expect(find.text('Close (Back key)'), findsOneWidget);
+        // Initial focus: the tile of the current mode (Open); Approval on is next to it.
+        await key(t, LogicalKeyboardKey.arrowRight);
+        await key(t, LogicalKeyboardKey.select);
+        expect(h.core.joinModeRequests, [UiJoinMode.confirm]);
+        expect(h.store.setup?.mode, DefaultMode.confirm);
+        // Appearance: the row below, to Light.
+        await key(t, LogicalKeyboardKey.arrowDown);
+        await key(t, LogicalKeyboardKey.select);
+        expect(h.store.appearance, Appearance.light);
+        // Locked is not stored.
+        await key(t, LogicalKeyboardKey.arrowUp);
+        await key(t, LogicalKeyboardKey.arrowRight);
+        await key(t, LogicalKeyboardKey.select);
+        expect(h.core.joinModeRequests.last, UiJoinMode.locked);
+        expect(h.store.setup?.mode, DefaultMode.confirm);
+        await back(t);
+        expect(find.byKey(const Key('settings-close')), findsNothing);
+      },
+    );
 
     testWidgets('focus never wraps', (t) async {
       await pumpDisplay(t);
@@ -192,8 +202,12 @@ void main() {
     testWidgets('guard of 1 s, queue, Yes, No and block', (t) async {
       final h = await pumpDisplay(t, mode: DefaultMode.confirm);
       h.core.receiverEvents
-        ..add(ReceiverUiEvent.joinRequest(id: BigInt.one, name: 'Lena', check: 42))
-        ..add(ReceiverUiEvent.joinRequest(id: BigInt.two, name: 'Tom', check: 17));
+        ..add(
+          ReceiverUiEvent.joinRequest(id: BigInt.one, name: 'Lena', check: 42),
+        )
+        ..add(
+          ReceiverUiEvent.joinRequest(id: BigInt.two, name: 'Tom', check: 17),
+        );
       await t.pump();
       expect(text(const Key('request-name')), '“Lena”');
       expect(text(const Key('request-check')), '42');
@@ -259,32 +273,37 @@ void main() {
   });
 
   group('presenting (4.5)', () {
-    testWidgets('quiet at rest, reveal on a key, End, wake lock only while presenting', (t) async {
-      final h = await pumpDisplay(t);
-      h.core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Lena'));
-      await t.pump();
-      expect(h.wake.held, isFalse);
-      await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
-      expect(h.wake.held, isTrue);
-      expect(find.byKey(const Key('room-code')), findsNothing);
-      expect(controlsOpacity(t), 0);
-      // The first key only reveals; it activates nothing.
-      await key(t, LogicalKeyboardKey.select);
-      expect(h.core.endRoomCalls, 0);
-      expect(controlsOpacity(t), 1);
-      expect(find.text('“Lena” is showing'), findsOneWidget);
-      // Controls hide after 5 s.
-      await t.pump(const Duration(seconds: 5, milliseconds: 100));
-      expect(controlsOpacity(t), 0);
-      // An arrow shows them with End focused; select ends the session.
-      await key(t, LogicalKeyboardKey.arrowDown);
-      await t.pump(const Duration(milliseconds: 100));
-      await key(t, LogicalKeyboardKey.select);
-      expect(h.core.endRoomCalls, 1);
-      h.core.receiverEvents.add(const ReceiverUiEvent.roomEnded());
-      await t.pump();
-      expect(find.text('Session ended · new code'), findsOneWidget);
-    });
+    testWidgets(
+      'quiet at rest, reveal on a key, End, wake lock only while presenting',
+      (t) async {
+        final h = await pumpDisplay(t);
+        h.core.receiverEvents.add(
+          const ReceiverUiEvent.peerJoined(name: 'Lena'),
+        );
+        await t.pump();
+        expect(h.wake.held, isFalse);
+        await deliverFrame(t, h.core, solidFrame(16, 9, [255, 0, 0]));
+        expect(h.wake.held, isTrue);
+        expect(find.byKey(const Key('room-code')), findsNothing);
+        expect(controlsOpacity(t), 0);
+        // The first key only reveals; it activates nothing.
+        await key(t, LogicalKeyboardKey.select);
+        expect(h.core.endRoomCalls, 0);
+        expect(controlsOpacity(t), 1);
+        expect(find.text('“Lena” is showing'), findsOneWidget);
+        // Controls hide after 5 s.
+        await t.pump(const Duration(seconds: 5, milliseconds: 100));
+        expect(controlsOpacity(t), 0);
+        // An arrow shows them with End focused; select ends the session.
+        await key(t, LogicalKeyboardKey.arrowDown);
+        await t.pump(const Duration(milliseconds: 100));
+        await key(t, LogicalKeyboardKey.select);
+        expect(h.core.endRoomCalls, 1);
+        h.core.receiverEvents.add(const ReceiverUiEvent.roomEnded());
+        await t.pump();
+        expect(find.text('Session ended · new code'), findsOneWidget);
+      },
+    );
 
     testWidgets('Back shows the controls, then hides them', (t) async {
       final h = await pumpDisplay(t);
@@ -313,7 +332,9 @@ void main() {
   });
 
   group('lifecycle', () {
-    testWidgets('going to the background ends the session without a toast', (t) async {
+    testWidgets('going to the background ends the session without a toast', (
+      t,
+    ) async {
       final h = await pumpDisplay(t);
       t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await t.pump();

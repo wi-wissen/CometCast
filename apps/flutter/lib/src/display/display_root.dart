@@ -112,7 +112,11 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     debugLabel: 'display:root',
     skipTraversal: true,
   );
-  final FocusNode _settingsNode = RowNode(row: 0, col: 0, debugLabel: 'settings');
+  final FocusNode _settingsNode = RowNode(
+    row: 0,
+    col: 0,
+    debugLabel: 'settings',
+  );
   final FocusNode _endNode = RowNode(row: 0, col: 0, debugLabel: 'end');
 
   bool _ready = false;
@@ -163,7 +167,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
 
   bool get _presenting {
     final shown = _c.shown;
-    return _c.hasLiveVideo || shown is ReceivedImage || shown is ReceivedDocument;
+    return _c.hasLiveVideo ||
+        shown is ReceivedImage ||
+        shown is ReceivedDocument;
   }
 
   @override
@@ -410,7 +416,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (FocusManager.instance.primaryFocus == null ||
-          FocusManager.instance.primaryFocus == FocusManager.instance.rootScope) {
+          FocusManager.instance.primaryFocus ==
+              FocusManager.instance.rootScope) {
         _rootNode.requestFocus();
       }
     });
@@ -418,7 +425,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
     if (e is! KeyDownEvent) {
-      return e is KeyRepeatEvent ? KeyEventResult.ignored : KeyEventResult.ignored;
+      return e is KeyRepeatEvent
+          ? KeyEventResult.ignored
+          : KeyEventResult.ignored;
     }
     if (_keyGate(e)) return KeyEventResult.handled;
     final k = e.logicalKey;
@@ -428,7 +437,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
         k == LogicalKeyboardKey.contextMenu || k == LogicalKeyboardKey.keyM;
     final c = _c;
     if (_setup == null) {
-      if (back) return _back() ? KeyEventResult.handled : KeyEventResult.ignored;
+      if (back) {
+        return _back() ? KeyEventResult.handled : KeyEventResult.ignored;
+      }
       return KeyEventResult.ignored;
     }
     if (c.requests.isNotEmpty) {
@@ -620,8 +631,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
             final shown = c.shown;
             final link = shown is ReceivedLink ? shown : null;
             final hidePointer = presenting && !_controlsShown;
-            final transferPill =
-                presenting && c.receiving != null
+            final transferPill = presenting && c.receiving != null
                 ? t.receiveTransfer(c.receiving!.name, '0')
                 : null;
             final errorToast = c.noteError == null
@@ -697,8 +707,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       onDeny: () => _decide(head, allow: false),
                       onBlock: () => _decide(head, allow: false, block: true),
                     ),
-                  if (_codecAttention(c))
-                    _CodecLayer(controller: _codec!),
+                  if (_codecAttention(c)) _CodecLayer(controller: _codec!),
                   if (_toast != null) DToast(text: _toast!),
                 ],
               ),

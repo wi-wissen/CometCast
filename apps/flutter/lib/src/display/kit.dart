@@ -76,9 +76,8 @@ class DisplayCanvas extends StatelessWidget {
         height: canvasHeight,
         child: ClipRect(
           child: MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.noScaling),
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.noScaling),
             child: DefaultTextStyle(
               style: scope.type.body.copyWith(color: scope.tokens.fg),
               child: child,
@@ -95,7 +94,12 @@ class DisplayCanvas extends StatelessWidget {
 /// A focus node that knows its place in the rows of a screen (spec 7.1: left/right move within
 /// a row, up/down to the same column or the last item of the next row, no wrapping).
 class RowNode extends FocusNode {
-  RowNode({required this.row, required this.col, super.debugLabel, super.onKeyEvent});
+  RowNode({
+    required this.row,
+    required this.col,
+    super.debugLabel,
+    super.onKeyEvent,
+  });
 
   final int row;
   final int col;

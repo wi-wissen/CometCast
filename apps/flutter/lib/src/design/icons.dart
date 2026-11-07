@@ -46,19 +46,13 @@ class _R extends _Shape {
 }
 
 const Map<CcIconName, List<_Shape>> _shapes = {
-  CcIconName.open: [
-    _R(4, 11, 16, 10, 2),
-    _P('M8 11V7a4 4 0 0 1 7.5-2'),
-  ],
+  CcIconName.open: [_R(4, 11, 16, 10, 2), _P('M8 11V7a4 4 0 0 1 7.5-2')],
   CcIconName.approval: [
     _C(9, 8, 4),
     _P('M2 21c0-4 3-6 7-6s7 2 7 6'),
     _P('M16 11l2 2 4-4'),
   ],
-  CcIconName.locked: [
-    _R(4, 11, 16, 10, 2),
-    _P('M8 11V7a4 4 0 0 1 8 0v4'),
-  ],
+  CcIconName.locked: [_R(4, 11, 16, 10, 2), _P('M8 11V7a4 4 0 0 1 8 0v4')],
   CcIconName.gear: [
     _P(
       'M10.3 2.6h3.4l.5 2.6a7.5 7.5 0 0 1 1.9 1.1l2.5-.9 1.7 2.9-2 1.7a7.6 7.6 0 0 1 0 2.2l2 1.7-1.7 2.9-2.5-.9a7.5 7.5 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a7.5 7.5 0 0 1-1.9-1.1l-2.5.9-1.7-2.9 2-1.7a7.6 7.6 0 0 1 0-2.2l-2-1.7 1.7-2.9 2.5.9a7.5 7.5 0 0 1 1.9-1.1z',
@@ -81,20 +75,11 @@ const Map<CcIconName, List<_Shape>> _shapes = {
     ),
   ],
   CcIconName.download: [_P('M12 3v12M7 10l5 5 5-5M5 21h14')],
-  CcIconName.info: [
-    _C(12, 12, 9),
-    _P('M12 11v6M12 7.5h.01'),
-  ],
+  CcIconName.info: [_C(12, 12, 9), _P('M12 11v6M12 7.5h.01')],
   CcIconName.check: [_P('M5 12l5 5 9-10')],
   CcIconName.x: [_P('M6 6l12 12M18 6L6 18')],
-  CcIconName.clock: [
-    _C(12, 12, 9),
-    _P('M12 7v5l3 2'),
-  ],
-  CcIconName.screen: [
-    _R(3, 4, 18, 12, 2),
-    _P('M8 20h8M12 16v4'),
-  ],
+  CcIconName.clock: [_C(12, 12, 9), _P('M12 7v5l3 2')],
+  CcIconName.screen: [_R(3, 4, 18, 12, 2), _P('M8 20h8M12 16v4')],
   CcIconName.file: [
     _P('M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z'),
     _P('M14 3v6h6'),

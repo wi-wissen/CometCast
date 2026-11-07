@@ -16,10 +16,7 @@ Future<void> shot(WidgetTester tester, String name) async {
   final view = tester.binding.renderViews.first;
   final layer = view.debugLayer as OffsetLayer;
   await tester.runAsync(() async {
-    final image = await layer.toImage(
-      Offset.zero & view.size,
-      pixelRatio: 1,
-    );
+    final image = await layer.toImage(Offset.zero & view.size, pixelRatio: 1);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     File('${dir.path}/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
   });

@@ -86,11 +86,11 @@ void main() {
     },
   );
 
-  testWidgets('german text uses the formal address', (tester) async {
+  testWidgets('german text uses the informal address (du is shipped)', (tester) async {
     await open(tester, locale: 'de');
     expect(find.text('Video-Codec erforderlich'), findsOneWidget);
     expect(find.text('Herunterladen'), findsOneWidget);
-    expect(find.textContaining('Bitten Sie Ihre'), findsOneWidget);
+    expect(find.textContaining('Bitte deine'), findsOneWidget);
   });
 
   testWidgets('consent button downloads, shows progress, remembers consent', (

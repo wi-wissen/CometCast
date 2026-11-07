@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Shared helpers of the display and presenter tests.
 
-import 'dart:async';
-
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';

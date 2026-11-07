@@ -289,29 +289,6 @@ class ReceiverController extends ChangeNotifier {
   /// Blocked senders (the host can unblock them).
   List<BlockedView> blocks = const [];
 
-  /// Requests that the host hid with "Later": they stay in the join menu but not on the takeover.
-  final Set<BigInt> _snoozed = {};
-
-  /// The request that takes over the display now (the oldest one that was not hidden), or null.
-  JoinRequestView? get takeoverRequest {
-    for (final r in requests) {
-      if (!_snoozed.contains(r.id)) return r;
-    }
-    return null;
-  }
-
-  /// Other requests that wait behind [takeoverRequest].
-  int get takeoverMore {
-    final n = requests.where((r) => !_snoozed.contains(r.id)).length;
-    return n > 1 ? n - 1 : 0;
-  }
-
-  /// Hide the request from the takeover without deciding ("Later", Back).
-  void snoozeRequest(BigInt id) {
-    _snoozed.add(id);
-    notifyListeners();
-  }
-
   /// Something to tell the host about the join settings, or null.
   JoinNote? joinNote;
   int discardedCount = 0;
@@ -445,7 +422,6 @@ class ReceiverController extends ChangeNotifier {
     requests = const [];
     peerName = null;
     blocks = const [];
-    _snoozed.clear();
     if (!_openRetried) joinNote = null;
     discardedCount = 0;
     connectionState = null;
@@ -524,7 +500,6 @@ class ReceiverController extends ChangeNotifier {
           }
         }
         requests = requests.where((r) => r.id != id).toList();
-        _snoozed.remove(id);
         if (reason == 'locked') {
           discardedCount++;
           joinNote = JoinNote.lockedDiscarded;

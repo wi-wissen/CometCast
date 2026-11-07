@@ -56,7 +56,9 @@ class SetupController extends ChangeNotifier {
   /// not typed and the person did not move on yet).
   void updateOptions(List<AddressOption> o) {
     options = o;
-    if (_typed == null && o.isNotEmpty) _current = (_current ?? 0).clamp(0, o.length - 1);
+    if (_typed == null && o.isNotEmpty) {
+      _current = (_current ?? 0).clamp(0, o.length - 1);
+    }
     notifyListeners();
   }
 
@@ -77,7 +79,8 @@ class SetupController extends ChangeNotifier {
   bool showField = false;
   AddressError? fieldError;
 
-  AddressOption? get address => _typed ?? (_current == null ? null : options[_current!]);
+  AddressOption? get address =>
+      _typed ?? (_current == null ? null : options[_current!]);
 
   void _set(WizardState s) {
     _wizard = s;
@@ -158,7 +161,11 @@ class SetupController extends ChangeNotifier {
 }
 
 class SetupWizardView extends StatefulWidget {
-  const SetupWizardView({super.key, required this.controller, required this.remote});
+  const SetupWizardView({
+    super.key,
+    required this.controller,
+    required this.remote,
+  });
 
   final SetupController controller;
 
@@ -191,10 +198,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
         final w = c.wizard;
         final card = DCard(
           width: 780,
-          children: [
-            _top(s, t, w.step),
-            ..._body(context, s, t, w),
-          ],
+          children: [_top(s, t, w.step), ..._body(context, s, t, w)],
         );
         // Step 0 is centred vertically; steps 1 to 4 have their top edge at 64 so that the logo
         // and the dots do not jump (decision 13.46).
@@ -236,8 +240,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
     );
   }
 
-  Text _h(DisplayScope s, String text) =>
-      Text(text, style: s.type.heading);
+  Text _h(DisplayScope s, String text) => Text(text, style: s.type.heading);
   Text _p(DisplayScope s, String text) => Text(text, style: s.type.body);
 
   List<Widget> _body(
@@ -465,10 +468,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
       default:
         return [
           _h(s, t.setupDoneTitle),
-          _p(
-            s,
-            widget.remote ? t.setupDoneBodyRemote : t.setupDoneBodyPointer,
-          ),
+          _p(s, widget.remote ? t.setupDoneBodyRemote : t.setupDoneBodyPointer),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

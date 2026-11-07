@@ -144,7 +144,8 @@ class PPage extends StatelessWidget {
                           else
                             const Spacer(),
                           actionArea(),
-                          if (bottomReserve > 0) SizedBox(height: bottomReserve),
+                          if (bottomReserve > 0)
+                            SizedBox(height: bottomReserve),
                           if (laptop) const Spacer(),
                         ],
                       ),
@@ -217,6 +218,7 @@ class _PTapState extends State<PTap> {
             onTap: widget.onPressed,
             child: Stack(
               clipBehavior: Clip.none,
+              fit: StackFit.passthrough,
               children: [
                 widget.builder(context),
                 if (_focus)
@@ -276,28 +278,31 @@ class PPrimaryButton extends StatelessWidget {
           minWidth: s.laptop ? 160 : 0,
         ),
         padding: EdgeInsets.symmetric(horizontal: s.laptop ? 24 : 14),
-        alignment: Alignment.center,
+
         decoration: BoxDecoration(
           color: enabled ? p.primary : p.disabled,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              CcIcon(icon!, color: enabled ? p.onPrimary : p.onDisabled),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: s.type.primaryButton.copyWith(
-                  color: enabled ? p.onPrimary : p.onDisabled,
+        child: Center(
+          widthFactor: 1,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                CcIcon(icon!, color: enabled ? p.onPrimary : p.onDisabled),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: s.type.primaryButton.copyWith(
+                    color: enabled ? p.onPrimary : p.onDisabled,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -337,29 +342,32 @@ class PSecondaryButton extends StatelessWidget {
         padding: EdgeInsets.symmetric(
           horizontal: s.laptop && !fullWidth ? 24 : 14,
         ),
-        alignment: Alignment.center,
+
         decoration: BoxDecoration(
           color: p.surface,
           border: Border.all(width: 1, color: p.borderInput),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              CcIcon(icon!, color: enabled ? p.fg : p.fg3),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: s.type.secondaryButton.copyWith(
-                  color: enabled ? p.fg : p.fg3,
+        child: Center(
+          widthFactor: 1,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                CcIcon(icon!, color: enabled ? p.fg : p.fg3),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: s.type.secondaryButton.copyWith(
+                    color: enabled ? p.fg : p.fg3,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -492,18 +500,9 @@ class _PSpinnerState extends State<PSpinner>
     return ExcludeSemantics(
       child: RotationTransition(
         turns: _c,
-        child: Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border(
-              top: BorderSide(width: 3, color: p.primary),
-              left: BorderSide(width: 3, color: p.primarySoft),
-              right: BorderSide(width: 3, color: p.primarySoft),
-              bottom: BorderSide(width: 3, color: p.primarySoft),
-            ),
-          ),
+        child: CustomPaint(
+          size: const Size.square(20),
+          painter: _SpinnerPainter(p.primary, p.primarySoft),
         ),
       ),
     );
@@ -692,4 +691,24 @@ class POption extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A 3 px ring in `p-primary-soft` with a quarter in `p-primary`.
+class _SpinnerPainter extends CustomPainter {
+  _SpinnerPainter(this.arc, this.ring);
+  final Color arc;
+  final Color ring;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = Rect.fromLTWH(1.5, 1.5, size.width - 3, size.height - 3);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawArc(r, 0, math.pi * 2, false, paint..color = ring);
+    canvas.drawArc(r, -math.pi / 2, math.pi / 2, false, paint..color = arc);
+  }
+
+  @override
+  bool shouldRepaint(_SpinnerPainter old) => old.arc != arc || old.ring != ring;
 }

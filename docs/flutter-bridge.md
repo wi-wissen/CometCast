@@ -200,3 +200,7 @@ OpenH264 from source and is meant for development and CI only. For release build
 docs/capture.md. The Linux CMake step builds the default variant.
 
 **Codec API (2026-11-07):** `codec_state()`, `codec_info()`, `ensure_codec()` and `set_codec_dir()` in `api.rs` (types `UiCodecState`, `UiCodecInfo`) expose the OpenH264 download of `cc-codec` (docs/capture.md, "Runtime codec"). With `h264-source` the state is always `Ready`; with `h264-libloading` and no source feature it follows `cc-codec`. The Dart side is `lib/codec_controller.dart`, `lib/codec_notice.dart` (card with consent, progress, retry, offline hint) and `lib/codec_setup.dart` (Android directory), tests in `test/codec_notice_test.dart`. Codegen was run with `h264-libloading` as the temporary default of `cc-ffi`, then run again: no change.
+
+## UI on top of the bridge (designed product)
+
+The screens of `apps/flutter` changed (docs/design/first-run-and-display.md, native-apps.md); **the bridge did not** (no `cc-ffi` signature changed, no code regeneration). The display uses `ReceiverController` (`start_receiver`, `set_join_mode`, `decide_join`, `deny_and_block_join`, `end_room`); the presenter uses `SenderController` and `ContentSenderController`. Not exposed by the bridge yet and therefore not shown: the room name on the presenter's pages, the security code, the shown page and page count, receive progress (see `docs/design/implementation-questions-flutter.md`, C1 to C4). `watch_receivers` and `start_advertising` are no longer called by the UI (the "nearby screens" list is not designed).

@@ -154,9 +154,7 @@ class IdleScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      appLineStores
-                          ? t.idleAppLine(dom)
-                          : t.idleAppLineWeb,
+                      appLineStores ? t.idleAppLine(dom) : t.idleAppLineWeb,
                       key: const Key('idle-foot'),
                       style: s.type.footer,
                     ),
@@ -264,14 +262,20 @@ class _Steps extends StatelessWidget {
           width: 38,
           height: 38,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: s.tokens.acc, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: s.tokens.acc,
+            shape: BoxShape.circle,
+          ),
           child: Text(n, style: s.type.stepNumber),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [Text(label, style: s.type.stepLabel), value],
+            children: [
+              Text(label, style: s.type.stepLabel),
+              value,
+            ],
           ),
         ),
       ],
@@ -646,7 +650,9 @@ class _Tile extends StatelessWidget {
             ],
             Text(
               label,
-              style: small ? s.type.lookTile(selected) : s.type.modeTile(selected),
+              style: small
+                  ? s.type.lookTile(selected)
+                  : s.type.modeTile(selected),
             ),
           ],
         ),

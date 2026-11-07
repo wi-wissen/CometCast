@@ -159,8 +159,7 @@ class PresenterRootState extends State<PresenterRoot> {
   bool _useContent = false;
 
   bool get _desktop =>
-      widget.desktop ??
-      !(Platform.isAndroid || Platform.isIOS);
+      widget.desktop ?? !(Platform.isAndroid || Platform.isIOS);
 
   @override
   void initState() {
@@ -217,7 +216,9 @@ class PresenterRootState extends State<PresenterRoot> {
       setState(() => _codeEmpty = true);
       return;
     }
-    final check = widget.core.checkRoomCode(raw.replaceAll(RegExp(r'[\s-]'), ''));
+    final check = widget.core.checkRoomCode(
+      raw.replaceAll(RegExp(r'[\s-]'), ''),
+    );
     if (check is! RoomCodeCheck_Valid) {
       // Wrong characters or length: the error page, without asking the server.
       _fail(ErrorKind.code);
@@ -293,7 +294,8 @@ class PresenterRootState extends State<PresenterRoot> {
     if (_desktop) {
       // Desktop capture is encoded with OpenH264, which release builds download first. No
       // designed place for the consent yet: the existing card, on its own page.
-      final codec = widget.codec ??
+      final codec =
+          widget.codec ??
           (_codecCtl ??= CodecController(
             core: widget.core,
             settings: widget.settings,
@@ -423,7 +425,11 @@ class PresenterRootState extends State<PresenterRoot> {
     }
   }
 
-  void _ended({JoinRefusal? refusal, bool receiverLeft = false, String? error}) {
+  void _ended({
+    JoinRefusal? refusal,
+    bool receiverLeft = false,
+    String? error,
+  }) {
     if (_page == PresenterPage.error || _page == PresenterPage.bye) return;
     if (refusal != null) {
       final (k, w) = refusalPage(refusal);
@@ -439,7 +445,11 @@ class PresenterRootState extends State<PresenterRoot> {
       final recent =
           _busyAt != null &&
           DateTime.now().difference(_busyAt!) < const Duration(seconds: 60);
-      final r = errorKindFor(error, wasWaiting: _wasWaiting, recentBusy: recent);
+      final r = errorKindFor(
+        error,
+        wasWaiting: _wasWaiting,
+        recentBusy: recent,
+      );
       if (r == null) {
         _go(PresenterPage.what);
         return;
@@ -501,9 +511,7 @@ class PresenterRootState extends State<PresenterRoot> {
         _go(PresenterPage.what);
       case PresenterPage.presenting:
         break; // Stop is the only way out
-      case PresenterPage.error ||
-          PresenterPage.bye ||
-          PresenterPage.relay:
+      case PresenterPage.error || PresenterPage.bye || PresenterPage.relay:
         _go(PresenterPage.firstRun);
     }
     return true;
@@ -537,10 +545,7 @@ class PresenterRootState extends State<PresenterRoot> {
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) handleBack();
         },
-        child: Material(
-          type: MaterialType.transparency,
-          child: _buildPage(t),
-        ),
+        child: Material(type: MaterialType.transparency, child: _buildPage(t)),
       ),
     );
   }
@@ -574,7 +579,8 @@ class PresenterRootState extends State<PresenterRoot> {
         );
       case PresenterPage.file:
         final c = _content;
-        final busy = _useContent &&
+        final busy =
+            _useContent &&
             (c.phase == ContentSendPhase.preparing ||
                 c.phase == ContentSendPhase.converting ||
                 c.phase == ContentSendPhase.connecting ||
@@ -645,5 +651,6 @@ class PresenterRootState extends State<PresenterRoot> {
     }
   }
 
-  String _spaced(String c) => c.length == 6 ? '${c.substring(0, 3)} ${c.substring(3)}' : c;
+  String _spaced(String c) =>
+      c.length == 6 ? '${c.substring(0, 3)} ${c.substring(3)}' : c;
 }

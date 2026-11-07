@@ -560,7 +560,7 @@ void main() {
       },
     );
 
-    testWidgets('German texts use the formal address', (tester) async {
+    testWidgets('German texts use the informal address (du is shipped)', (tester) async {
       final core = FakeMiracastCore()
         ..probeResult = const MiracastProbe(
           issue: MiracastIssue.featureMissing,
@@ -569,7 +569,7 @@ void main() {
       expect(find.text('Nicht gestartet.'), findsOneWidget);
       expect(find.text('Empfang starten'), findsOneWidget);
       final hint = tester.widget<Text>(find.byKey(const Key('miracastHint')));
-      expect(hint.data, contains('Starten Sie danach diese App neu'));
+      expect(hint.data, contains('Starte danach diese App neu'));
       await close(tester);
     });
 

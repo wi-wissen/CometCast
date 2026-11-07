@@ -238,8 +238,7 @@ class DisplayType {
   TextStyle get chip => _ui(18, regular, t.fg);
 
   /// Mode tile: 16 / 500, selected 700.
-  TextStyle modeTile(bool selected) =>
-      _ui(16, selected ? bold : medium, t.fg);
+  TextStyle modeTile(bool selected) => _ui(16, selected ? bold : medium, t.fg);
 
   /// Appearance tile: 15 / 500, selected 700.
   TextStyle lookTile(bool selected) => _ui(15, selected ? bold : medium, t.fg);

@@ -55,7 +55,6 @@ XTypeGroup contentTypeGroup(String typesLabel) => XTypeGroup(
   ],
 );
 
-
 /// The translated text for a refusal found by the Rust core.
 String sendRejectionText(AppLocalizations t, UiSendRejection r) => switch (r) {
   UiSendRejection.unreadable => t.sendRejectUnreadable,
@@ -70,4 +69,3 @@ String sendRejectionText(AppLocalizations t, UiSendRejection r) => switch (r) {
   UiSendRejection.officeEncrypted => t.sendRejectOfficeEncrypted,
   UiSendRejection.officeFailed => t.sendRejectOfficeFailed,
 };
-

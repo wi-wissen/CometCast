@@ -169,3 +169,16 @@ Pass criteria that decide the plan's own open questions (A2 fallback in [measure
 | Is the Flutter app a usable TV receiver (A2)? | D1 to D9 pass on the Streamer: launcher banner, remote navigation without traps, hardware decoded 1080p30 for 30 minutes | Build only the TV receiver natively in Kotlin (A2 fallback) |
 | Do cheap boxes cope (A7)? | D11 passes or fails with a clear message | Minimum requirements in the docs and a warning about cheap boxes |
 | Does phone mirroring hold (M6)? | B1, B4, B8, B9 pass; latency is recorded | Rework the service where it failed; move the frame path from Dart into native code if B6 or B12 show the platform channel to be the limit |
+
+## Designed UI rows (UNCERTAIN: never run on a device)
+
+| Row | What to check | Expected |
+| --- | --- | --- |
+| U1 | TV first launch | Setup wizard (5 steps), D-pad moves in rows, no wrap, focus ring amber, Back = previous step |
+| U2 | TV idle, leave it past the system screensaver time | The system screensaver or sleep may start (no wake lock on idle); the screen dims by the app after 7 minutes, any key only restores |
+| U3 | TV, presenter shows the screen for longer than the screensaver time | The screen stays on; after End or Stop it may sleep again |
+| U4 | Join request with Approval on | Dialog over idle and over a presentation, Yes focused, a press within 1 s decides nothing, Back does nothing |
+| U5 | TV Back on idle | First press nothing, second within 2 s leaves the app |
+| U6 | Tablet: "Use this device as the screen" | Wizard, then immersive landscape display; after a restart the app starts as a display |
+| U7 | Phone: presenter pages | No scan button (not built), code field, What to show, Screen opens the system consent, cancelling returns without an error page |
+| U8 | App to background while presenting on the display | Session ends silently, new code on return |

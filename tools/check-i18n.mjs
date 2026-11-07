@@ -92,12 +92,35 @@ function checkGermanDu(label, deRel, duRel) {
   return { label, status: 'checked', problems };
 }
 
+// Flutter: the loaded German set (app_de.arb, "du") and the formal alternate (sie/app_de.arb, not loaded) must
+// have the same keys and the same {placeholders} (docs/design/first-run-and-display.md, 11.1).
+function checkFlutterGermanSets(label, loadedRel, alternateRel) {
+  const a = join(root, loadedRel);
+  const b = join(root, alternateRel);
+  if (![a, b].every((p) => existsSync(p))) return { label, status: 'skipped', problems: [], note: 'file missing' };
+  const problems = [];
+  try {
+    const x = readJson(a);
+    const y = readJson(b);
+    const holders = (t) => [...String(t).matchAll(/\{(\w+)/g)].map((m) => m[1]).sort().join(',');
+    for (const k of Object.keys(x).filter((k) => !k.startsWith('@'))) {
+      if (!(k in y)) problems.push(`"${k}" is in app_de.arb but missing in sie/app_de.arb`);
+      else if (holders(x[k]) !== holders(y[k])) problems.push(`"${k}": placeholders differ between the two German sets`);
+    }
+    for (const k of Object.keys(y).filter((k) => !k.startsWith('@'))) if (!(k in x)) problems.push(`"${k}" is in sie/app_de.arb but missing in app_de.arb`);
+  } catch (e) {
+    problems.push(`cannot read file: ${e.message}`);
+  }
+  return { label, status: 'checked', problems };
+}
+
 const arbKeys = (p) => Object.keys(readJson(p)).filter((k) => !k.startsWith('@'));
 
 const results = [
   comparePair('web (en.json vs de.json)', 'apps/web/src/locales/en.json', 'apps/web/src/locales/de.json', (p) => flatten(readJson(p))),
   checkGermanDu('web (de-du.json vs de.json)', 'apps/web/src/locales/de.json', 'apps/web/src/locales/de-du.json'),
   comparePair('flutter (app_en.arb vs app_de.arb)', 'apps/flutter/lib/l10n/app_en.arb', 'apps/flutter/lib/l10n/app_de.arb', arbKeys),
+  checkFlutterGermanSets('flutter (app_de.arb du vs sie/app_de.arb)', 'apps/flutter/lib/l10n/app_de.arb', 'apps/flutter/lib/l10n/sie/app_de.arb'),
   checkXcstrings('apple-tv (Localizable.xcstrings)', 'apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings'),
 ];
 
