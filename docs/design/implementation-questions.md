@@ -5,7 +5,7 @@ mockup. The implementer made no design decisions. Each item says what was found,
 code does **meanwhile** (the smallest neutral behaviour; no styling or wording was invented). A designer answers; the
 code is then changed in one place each time.
 
-**Status (2026-11-07): every question in A to C is answered** (lines "Answered:"). The decisions are also in the spec, section 13; the resulting work is in [fix-list-web.md](fix-list-web.md). D1 and section E (written while the fix list was built) are **not answered yet**.
+**Status (2026-11-07): every question in A to C is answered** (lines "Answered:"). The decisions are also in the spec, section 13; the resulting work is in [fix-list-web.md](fix-list-web.md). **D1 and section E are answered too** (second review, same day): decisions 13.30–13.53 in the spec, work in [fix-list-web-2.md](fix-list-web-2.md). Copy keys are given in EN / DE du / DE Sie in spec section 11.
 
 ## A. The spec and the protocol disagree
 
@@ -186,6 +186,7 @@ code is then changed in one place each time.
 - **Options:** (a) show nothing (current); (b) show a hint only if the connection then fails; (c) show a hint at once.
   Options (b) and (c) need the sessions to expose the state next to `iceServers` (a small change in `senderSession.ts`,
   `receiverSession.ts` and the Rust `ReceiverCore` / `SenderCore`).
+- **Answered:** option (b). Nothing is shown before a connection fails. When the presenter's connection then fails (`peer_failed`): list refused (`rate_limited`, `refused`) → `error.busy`; list failed otherwise (`http_error`, `bad_answer`, `unreachable`) → `error.displayOff` with the new "why" `error.displayOff.whyRelay` (EN "The two devices could not reach each other, and the server could not help this time." / DE du and Sie "Die beiden Geräte haben sich nicht erreicht, und der Server konnte diesmal nicht helfen."). `ok` and `none` change nothing. The display shows nothing (the presenter page tells the person); the screen-reader status line may carry the `errors.<code>` text. Needed: the sessions (web and Rust cores) expose the last `IceFetchState` next to `iceServers`. No tokens or layout change. Spec 6, decision 13.45.
 
 ## E. Questions from the fix round
 
@@ -202,6 +203,7 @@ No answer is needed for the fix list to be complete; each answer changes one pla
   (c) show the box after 5 s.
 - **Meanwhile:** (a). The 3 s are counted from the first loss and are not restarted by a failed retry, so the box does not
   flicker away while a retry runs.
+- **Answered:** option (b), defined exactly: after a loss try again at **1 s, 2 s and 3 s**, then every 4 s; the offline box appears **when the attempt at 3 s fails** (no separate 3 s timer), so a drop under 3 s never shows it and the box never flickers away during a later attempt. Until then the idle screen stays unchanged. Busy refusals (`rate_limited`, `banned`, `server_full`, `forbidden`) show the box with `bodyBusy` at once and retry after 30 s. No copy or token change. Spec 4.2, decision 13.30.
 
 ### E2. "Page n of m" cannot be shown on the presenter's page
 - **Found:** the control channel has no message from the display to the presenter, so a web presenter does not know the
@@ -209,6 +211,7 @@ No answer is needed for the fix list to be complete; each answer changes one pla
 - **Options:** (a) never show it on the web until a message exists; (b) add a display-to-presenter message (a protocol
   addition of the control channel, not of the signalling).
 - **Meanwhile:** (a). `PresentingPage` has the optional props `page` and `total` and the keys exist, nothing passes them.
+- **Answered:** (b) as a **protocol requirement** of the content control channel: the display sends the shown `page` and the `pages` count whenever either changes. With it: `presenting.pageOf` above the row, Previous disabled (`p-disabled`) on page 1 and Next on the last page. Until it exists (now): (a), no line, both buttons enabled. Keys unchanged. Spec 5.6, decision 13.31.
 
 ### E3. Failures that spec 6 does not list: `error.code` or the existing wording?
 - **Found:** spec 6 says "anything not listed → `error.code`". The code has a page kind `generic` (existing wording
@@ -217,6 +220,7 @@ No answer is needed for the fix list to be complete; each answer changes one pla
 - **Options:** (a) keep `generic`; (b) map them all to `error.code`; (c) a new page with a card for them.
 - **Meanwhile:** (a), unchanged. The three new pages (`occupied`, `busy`, `outdated`) take their codes out of `generic`.
   `forbidden` also keeps its 30 s retry on the display.
+- **Answered:** (c). New page **`error.other`** with the Why / What now card: icon (i) grey; heading `error.other.title` (EN "Something went wrong" / DE du and Sie "Etwas hat nicht geklappt"); why = the existing `errors.<code>` text; now `error.other.now` (EN "Try again. If it happens again, tell the host." / du "Versuch es noch einmal. Wenn es wieder passiert, sag dem Gastgeber Bescheid." / Sie "Versuchen Sie es noch einmal. Wenn es wieder passiert, sagen Sie dem Gastgeber Bescheid."); button Try again. It replaces `generic` for `forbidden`, `altcha_*`, `wrong_role`, `not_in_room`, `unknown` and anything unlisted. `capture_denied` never shows a page (back to "What to show"). `forbidden` keeps its 30 s retry on the display (offline box with `bodyBusy`). Spec 6, decision 13.32.
 
 ### E4. Relay confirmation on presenter pages: "buttons as on error pages" or "Cancel first"?
 - **Found:** error pages put the primary button first; the spec also says Cancel is first in the focus order, and Cancel is
@@ -224,6 +228,7 @@ No answer is needed for the fix list to be complete; each answer changes one pla
 - **Options:** (a) Cancel (secondary) then Use this relay (primary); (b) primary first with a changed focus order.
 - **Meanwhile:** (a), the same order and roles as on the display card; Cancel has the initial focus. The host name is a line
   of 17/700 `p-fg` on the presenter card and 18 mono `--mut` on the display card (the spec gives no style for it).
+- **Answered:** (a), Cancel (secondary, initial focus) before Use this relay (primary), everywhere; the one exception to "primary first". But the confirmation is redesigned (the screenshots show the display card in CSS px, too small at 1280 and wrapping on a phone, and both cards over a page that already shows the unconfirmed relay host): **display** = 600 ref dialog card on the scaled canvas over plain `--bg` with only the logo; **presenter** = its own page in the error-page layout (icon `info` in `p-warn`, heading, body, host line, risk as small print), replacing the start page. Host line: display 18 mono `--fg`; presenter 17 mono 700 `p-fg`. The unconfirmed host appears nowhere else until confirmed. Copy unchanged (now listed in spec 11.7, du values added). Spec 7.2, decisions 13.37, 13.48.
 
 ### E5. Link card with a media link
 - **Found:** spec 4.5: the player "inside the same card with the existing texts". Not given: the Play button's look, its
@@ -232,6 +237,7 @@ No answer is needed for the fix list to be complete; each answer changes one pla
   link). The warning and error lines are 16 `--fg` bold (everything else is `--mut`). The player is a header row (host, Stop) and
   the media element up to 300 reference px high inside the 600 card; while it plays the card shows only title, address and
   player. Stop, Escape and Dismiss still close the whole card.
+- **Answered:** accepted as built, with one change: warning and error lines stay 16/700 `--fg` and get the `info` icon 20 in `--acc` in front (the display's only signal colour). Player header: `receive.media.from` 15/700 `--fg` left, Stop (secondary) right; media on `#000000`. Focus while playing: [Stop]; Back closes the card. Platforms that cannot open a page (Apple TV, Android TV without a browser): no Open, hint `receive.link.hintTv` (new, EN/du/Sie in spec 11.7), initial focus Dismiss (Play for media). Spec 4.5, decision 13.34.
 
 ### E6. Address field in the wizard: what do the buttons do?
 - **Found:** spec 4.1 says OK / Enter confirms and Back cancels; the row [Back, Other address, Looks right] is only given for
@@ -240,10 +246,12 @@ No answer is needed for the fix list to be complete; each answer changes one pla
 - **Meanwhile:** with the field open, **Looks right** confirms it (like Enter), **Back** (and Escape) closes the field and stays
   on step 3, **Other address** is not drawn. After the field was used or cancelled, "Other address" opens the field again
   (the relays of `config.json` are reached again by going Back one step and forward).
+- **Answered:** accepted as built. Additions: after Back closes the field, focus goes to "Other address"; focus rows with the field open are [field] · [Back, Looks right]; an invalid address shows the existing `relay.errors.*` line under the field, 16 `--fg` with the `info` icon in `--acc`. The field gets the display focus ring without scale. Spec 4.1, 7.1, decisions 13.38, 13.51.
 
 ### E7. Wizard: the custom field is emptied again
 - **Found:** an emptied field leaves no chip selected and no name.
 - **Meanwhile:** Finish uses the first suggestion then (as before). The chips stay unselected until one is chosen.
+- **Answered:** change: when the field becomes empty (or only spaces), the chip that was selected before typing is selected again (at first the first suggestion). There is always exactly one visible choice; Finish uses it. No copy change. Spec 4.1, decision 13.39.
 
 ### E8. Which address counts as "the default relay" on the web?
 - **Found:** spec 4.1: `sourceDefault` for the default relay, `sourcePage` for the page's own server or `config.json`. When no
@@ -252,10 +260,12 @@ No answer is needed for the fix list to be complete; each answer changes one pla
   `config.json` relay (also when picked with "Other address") and a relay from `?server=` say `sourcePage`; a relay chosen in
   this tab that the page does not offer says `sourceTyped`. With a plain self-hosted page the card therefore says "Set by the
   server of this page." and never "Default server. Nothing to set up."
+- **Answered:** accepted as built. Correct: on a self-hosted page the address was set by that page's server. Spec 4.1, decision 13.40.
 
 ### E9. "Get the app" on the error page "Screen sharing does not work in this browser"
 - **Found:** spec 6 lists it as a button; decision 13.6 says no button that does nothing. With empty store constants it did nothing.
 - **Meanwhile:** the button is drawn only when the app can be offered for the device (`appUrlFor`). Same rule as the start page.
+- **Answered:** accepted, and the texts follow: without an app offer the "What now" text is new `error.noScreen.nowNoApp` (EN "Show a photo, a file or a link instead." / du "Zeig stattdessen ein Foto, eine Datei oder einen Link." / Sie "Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link.") and the Screen row subtitle on "What to show" is new `what.screenPhoneBrowserNoApp` (EN "Not possible in a phone browser" / DE "Geht im Handy-Browser nicht"). Spec 5.5, 11.5, 11.6, decision 13.42.
 
 ### E10. `room_name` that is not a string
 - **Found:** the server answers a `create_room` with a non-string `room_name` like any malformed message (`bad_message`); clients
@@ -263,21 +273,25 @@ No answer is needed for the fix list to be complete; each answer changes one pla
   non-string `room_name` as "no room name" and keep the rest of the message valid (fixtures in `tests/fixtures/signaling.json`).
 - **Question:** is the lenient client rule right, or should a wrong type make the message invalid like a wrong `check`?
 - **Meanwhile:** lenient (no room, no code, the presenter still joins).
+- **Answered:** lenient is right. `room_name` is optional display text, not a security property like `check`: a missing, null, empty, blank or non-string value means "no room name", the rest of the message stays valid. The server still rejects a non-string value in `create_room` (`bad_message`), as built. Decision 13.49.
 
 ### E11. Which input hides the display's focus ring?
 - **Found:** spec 7.2: "the first mouse or touch input". The check in the fix list says "a mouse move and click".
 - **Meanwhile:** a pointer press, a touch start and a real mouse movement (non-zero movement) hide it; any key press shows it.
+- **Answered:** accepted as built (spec 7.2 now says pointer press, touch start or real mouse movement). Decision 13.50.
 
 ### E12. Looks of the annotation toolbar that the spec does not give
 - **Meanwhile:** its own focus outline (2 `--focus`, not the D-pad ring, because it is not in the focus rows); the ink swatches have
   a 1 px `--line` ring instead of the old white one (white ink on a light panel would vanish); the toast sits at 66 reference px
   (toolbar bottom 58 + 8) while the toolbar is shown, whatever its width; a hidden toolbar is `inert`.
+- **Answered:** all accepted and now in the spec (3.5): Tab focus outline 2 `--focus`, offset 2, no glow, no scale; swatches 1 px `--line` ring, selected swatch/size/tool 2 px `--acc` border; disabled undo/clear at 40 %; toast at 66 while the toolbar shows; hidden = `inert`; tooltips and accessible names on every button. The toolbar is the one allowed icon-only control set on the display (section 9 amended). Decision 13.35.
 
 ### E13. Things seen and not changed (not on the fix list)
 - Black screen and "frozen" are kept in the toolbar state: the black screen stays on when the next presentation starts (the
   frozen frame is dropped when the stream ends).
 - A PDF page is shown on grey (`bg-neutral-700`), not on black as spec 4.5 says; the progress and the content-error pills over the
   picture still have the old black / red look; the PDF page error box is red.
+- **Answered:** (1) black screen, frozen picture and all strokes **end with the presentation** (stop, disconnect, End); the next presentation starts live and visible. (2) PDF pages on `#000000`. (3) Transfer progress = pill in name-tag look, bottom 12 centred, 15/700 `--fg` (`receive.transfer`). (4) Content errors = toasts (as decided in 13.12). (5) PDF page error = its text centred in a name-tag-look box. No red, no black pills. Spec 3.5, 4.5, decision 13.41.
 
 ### E14. A banned address sees "No internet on this device" on later attempts
 - **Found:** the first refusal with `banned` gives the new page "The server is busy"; the server then closes the connection, so the
@@ -285,3 +299,4 @@ No answer is needed for the fix list to be complete; each answer changes one pla
   screenshots; `error-busy` exists for the first refusal only).
 - **Options:** (a) leave it; (b) tell a closed connection right after `banned` as busy for a while.
 - **Meanwhile:** (a).
+- **Answered:** (b): for **60 s** after a `rate_limited`, `banned` or `server_full` refusal, a closed connection (`connection_lost`) is treated as the same refusal: presenter `error.busy`, display offline box with `bodyBusy` and the 30 s retry. No copy change. Spec 4.2, 6, decision 13.44.

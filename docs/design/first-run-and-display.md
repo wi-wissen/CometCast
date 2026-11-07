@@ -1,6 +1,8 @@
 # First run and display: implementation spec
 
-Status: **final, approved for implementation; revised after the implementation review of the web app (2026-11-07).** The owner approved round 4 with two changes, which are applied here and in the final mockup. The review decisions are listed in [section 13](#13-decisions-after-implementation-review) and are already worked into the sections below; the work items for the web app are in [fix-list-web.md](fix-list-web.md), the answered questions in [implementation-questions.md](implementation-questions.md). Build from this document; do not wait for further design review.
+Status: **final, approved for implementation; revised after the first and the second implementation review of the web app (2026-11-07).** The owner approved round 4 with two changes, which are applied here and in the final mockup. The review decisions are listed in [section 13](#13-decisions-after-implementation-review) (1–29 first review, 30–53 second review) and are already worked into the sections below; the work items for the web app are in [fix-list-web.md](fix-list-web.md) (done) and [fix-list-web-2.md](fix-list-web-2.md) (open), the answered questions in [implementation-questions.md](implementation-questions.md). How the native apps (Flutter, SwiftUI on Apple TV) build the same product is in [native-apps.md](native-apps.md). Build from this document; do not wait for further design review.
+
+This document describes the **whole product**, including parts that the mockup never drew (annotation toolbar, link card, relay confirmation, security code, connecting and offline states, the later error pages, the PDF page row, the web file page, the wizard address field). Where an item has no mockup counterpart, the section named here is its design.
 
 - Final clickable mockup: https://claude.ai/artifact/6gJouE3T4cWCdiWuG3CWc1 (German and English, uses "du")
 - Earlier rounds, for history only: round 4 https://claude.ai/artifact/3pJjsoF2aTEjCkstWngUoW, round 3 https://claude.ai/artifact/1yevs8Z4UukdUF83R31Y7K, round 2 https://claude.ai/artifact/MAGbm5M2sgYXhy1PjLxhgt
@@ -63,7 +65,9 @@ All display measurements are in **reference px on a 960 × 540 canvas**. Scale u
 | QR modules | `#0E1630` | `#0E1630` | `#0E1630` | QR code dots (always dark on light) |
 | Dialog scrim | `rgba(0,0,0,.55)` | same | same | Behind join request and Settings |
 
-Derived values: selected tile fill = `color-mix(in srgb, var(--acc) 14%, var(--panel2))` in Dark and Light; **in OLED black the selected tile fill stays `#000000`** (selection = `--acc` border + bold text only); name tag, End, annotation toolbar and frozen badge fill = `color-mix(in srgb, var(--panel) 92%, transparent)`; focus glow = `0 0 0 9px rgba(255,201,77,.18)`. Text on an accent fill uses `--bg`.
+Derived values: selected tile fill = `color-mix(in srgb, var(--acc) 14%, var(--panel2))` in Dark and Light; **in OLED black the selected tile fill stays `#000000`** (selection = `--acc` border + bold text only); name tag, End, annotation toolbar, frozen badge and transfer progress pill fill = `color-mix(in srgb, var(--panel) 92%, transparent)`; focus glow = `0 0 0 9px rgba(255,201,77,.18)`. Text on an accent fill uses `--bg`.
+
+QR box (decision 13.33): with a code it has the `--qrbg` fill; in **Light** it also has a 1 px `--line` border (white on white has no edge otherwise). **Empty QR box** (connecting, offline): no modules, no caption, fill `--panel2`, 1 px `--line` border, **full opacity** (in OLED black: `#000000` fill + border). The Locked QR (modules present) keeps the 25 % opacity.
 
 Rules:
 
@@ -155,12 +159,15 @@ Display (ref px):
 | Wizard / dialog buttons | min height 50, padding 0 22, radius 12, border 2 |
 | "No and block" | ghost button, height 34 (not stretched to the row; vertically centred against Yes/No), radius 10, border 2, 14 px text |
 | Name tag and End | both min height 46, radius 10, border 2 `--line`, 12 from the bottom and side edges. Name tag: line 1 15/700 `--fg`; optional line 2 (security code) 13/400 `--mut`, digits mono 700 `--fg`; padding 6 14 |
-| Annotation toolbar (web display only) | top 12, centred; height 46, radius 10, border 2 `--line`, fill as name tag; icons 20 in `--fg`, buttons 36 × 36; selected tool: 2 px `--acc` border; separators 1 px `--line` |
+| Annotation toolbar (web display only) | top 12, centred; height 46, radius 10, border 2 `--line`, fill as name tag; icons 20 in `--fg`, buttons 36 × 36; selected tool, selected swatch and selected size: 2 px `--acc` border; disabled button (undo/clear with nothing to undo): icon at 40 % opacity; separators 1 px `--line`; ink swatches 20 discs in their ink colour with a 1 px `--line` ring; keyboard focus (Tab, not in the D-pad rows): outline 2 `--focus`, offset 2, no glow, no scale. Every button has a tooltip and an accessible name (`toolbar.*`, 11.7). Hidden = not focusable (`inert`) |
 | Frozen badge | top 12, left 12; same look as the name tag, 15/700 |
-| Toast | top 14, centred, padding 8 20, radius 999, fill `--fg`, text `--bg`, 17/700, shadow `0 10px 30px rgba(0,0,0,.4)`. While the annotation toolbar is visible: top = toolbar bottom + 8 (never on top of it) |
-| Focus ring | outline 4 `--focus`, offset 3, glow 9, scale 1.03 |
+| Transfer progress pill | bottom 12, centred; name-tag look (fill, 2 px `--line`, radius 10, min height 46, padding 6 14), text 15/700 `--fg` (`receive.transfer`); shown only while presenting and while a transfer runs, at rest too (it is a state) |
+| Toast | top 14, centred, padding 8 20, radius 999, fill `--fg`, text `--bg`, 17/700, shadow `0 10px 30px rgba(0,0,0,.4)`. While the annotation toolbar is visible: top = toolbar bottom + 8 = 66 (never on top of it) |
+| Focus ring | outline 4 `--focus`, offset 3, glow 9, scale 1.03. **Text fields** (wizard room name and server address): the same outline, offset and glow, **no scale**; the field's own 2 px border stays `--line` |
 
-Presenter (CSS px): page padding 18 22 22 (phone), 20 40 (laptop); vertical gap 14; inputs 46 high, radius 8; primary button min 50, radius 10; secondary min 48, radius 10 (phone: full width; laptop: content width, min 160, padding 0 24, see 7.4); option rows min 58 (laptop 50), radius 12; cards radius 14, padding 14; icon disc 56 (icon 28). Touch targets are never below 44 × 44.
+Everything on the display, **including toasts, dialogs and the presenting controls**, is placed on the 960 × 540 canvas (3.1), never on the browser viewport. Only the picture and its black background fill the whole viewport while presenting (decision 13.36).
+
+Presenter (CSS px): page padding 18 22 22 (phone), laptop top `max(40px, 10vh)`, sides 40, bottom 40 (decision 13.43); vertical gap 14; error card labels (`error.why`, `error.now`) 12/700 uppercase, letter-spacing .06em, `p-fg3`, 4 above their text, 10 between the two parts; inputs 46 high, radius 8; primary button min 50, radius 10; secondary min 48, radius 10 (phone: full width; laptop: content width, min 160, padding 0 24, see 7.4); option rows min 58 (laptop 50), radius 12; cards radius 14, padding 14; icon disc 56 (icon 28). Touch targets are never below 44 × 44.
 
 ### 3.6 Motion
 
@@ -184,7 +191,7 @@ The display is in exactly one of these states. Dialogs (Settings, join request) 
 | State | Shown when |
 | --- | --- |
 | Setup | First launch, until "Go to idle screen" |
-| Idle, connecting | Idle, no code yet (first 8 s after start or after the connection came back): room name, pill, step 1 with `{dom}` as usual; the code line keeps its height but is empty; QR box empty (no modules) at 25 % opacity, no caption. No spinner, no text. After 8 s without a code → Idle, offline |
+| Idle, connecting | Idle, no code yet (first 8 s after start or after the connection came back): room name, pill, step 1 with `{dom}` as usual; the code line keeps its height but is empty; empty QR box (3.2), no caption. No spinner, no text. After 8 s without a code → Idle, offline |
 | Idle | No one presenting |
 | Idle, offline | Idle, and the display cannot reach `{dom}` (or the server refuses it; see 4.2) |
 | Idle, dimmed | Idle and no activity for 7 minutes |
@@ -193,7 +200,7 @@ The display is in exactly one of these states. Dialogs (Settings, join request) 
 
 ### 4.1 Setup wizard (first run)
 
-A card (780 ref px wide) centred on `--bg`. Top row: logo (40) left; step dots (4 dots, 10 px, done = `--acc`, todo = `--line`) and "Step n of 4" right, hidden on the welcome screen.
+A card (780 ref px wide) centred horizontally on `--bg`. The welcome card (step 0) is centred vertically; for steps 1–4 the card's **top edge is fixed at 64** so the logo and the step dots do not jump between steps (decision 13.46). Top row: logo (40) left; step dots (4 dots, 10 px, done = `--acc`, todo = `--line`) and "Step n of 4" right, hidden on the welcome screen.
 
 | Step | Content | Buttons (D-pad order, left to right) | Initial focus |
 | --- | --- | --- | --- |
@@ -204,10 +211,12 @@ A card (780 ref px wide) centred on `--bg`. Top row: logo (40) left; step dots (
 | 4 Done | `setup.done.title`, `setup.done.body` | `setup.done.finish` (primary) | Finish |
 
 - Name suggestions (DE / EN): Besprechungsraum Elbe / Meeting room Elbe, Wohnzimmer / Living room, Vereinsheim / Clubhouse, Werkstatt / Workshop, Raum 204 / Room 204. The first is preselected. A custom name opens the system on-screen keyboard.
-- The custom name field starts **empty** (placeholder none). Typing a non-empty name deselects all chips; choosing a chip clears the field. The room name is whichever of the two is set. The chips are one D-pad row even when they wrap onto two lines.
+- The custom name field starts **empty** (placeholder none). Typing a non-empty name deselects all chips; choosing a chip clears the field. The room name is whichever of the two is set. The chips are one D-pad row even when they wrap onto two lines. **When the field is emptied again, the chip that was selected before typing is selected again** (at first: the first suggestion), so exactly one name is always visible as chosen (decision 13.39). A name of only spaces counts as empty.
+- The custom name field and the address field open the on-screen keyboard only on OK / Enter / tap, not when they get focus. Up/Down leave a text field (they never move the caret); Left/Right move the caret.
 - Locked is not offered as a default; it only exists during a session.
 - The address is detected, not typed: DNS entry of the company network → own server; in-house box found on the network → box; otherwise the default server. "Other address" cycles through the found options (if only one exists, it opens a text field for an address).
-- **Web (`/display`)**: a web page cannot see DNS entries or boxes. The card shows the relay host the page uses. Source line: `setup.address.sourceDefault` for the default relay, `setup.address.sourcePage` for any relay that comes from the page's own server or its `config.json`, `setup.address.sourceTyped` for an address typed into the field. `setup.address.sourceOwn` and `setup.address.sourceBox` are used by the native apps only. "Other address" cycles through the relays of `config.json`, then opens the field; the field replaces the address card content in place: label `setup.address.fieldLabel`, the same input style as the room name field, OK/Enter confirms (back to the card with `sourceTyped`), Back cancels.
+- **Web (`/display`)**: a web page cannot see DNS entries or boxes. The card shows the relay host the page uses. Source line: `setup.address.sourceDefault` for the default relay, `setup.address.sourcePage` for any relay that comes from the page's own server or its `config.json`, `setup.address.sourceTyped` for an address typed into the field. `setup.address.sourceOwn` and `setup.address.sourceBox` are used by the native apps only. "Other address" cycles through the relays of `config.json`, then opens the field; the field replaces the address card content in place: label `setup.address.fieldLabel`, the same input style as the room name field, OK/Enter confirms (back to the card with `sourceTyped`), Back cancels. With the field open the button row is [Back, Looks right]: **Looks right** confirms like Enter, **Back** (and Escape) closes the field and stays on step 3 with focus on "Other address", "Other address" is not drawn. After the field was used or cancelled, "Other address" opens the field again; the relays of `config.json` are reached again by going one step back and forward (decision 13.38). An invalid address shows the existing `relay.errors.*` line under the field (16, `--fg`, led by the `info` icon 20 in `--acc`, as the warning lines of 4.5; no red).
+- Which source line (web, decision 13.40): `sourceDefault` only for the relay built into the page (`VITE_DEFAULT_RELAY`); the page's own server, a `config.json` relay (also when reached with "Other address") and a confirmed `?server=` relay say `sourcePage`; an address typed into the field says `sourceTyped`.
 - Back on the remote goes one step back; on step 0 it does nothing.
 - Finish stores room name, default join mode and server, then shows Idle with the chosen mode.
 
@@ -227,12 +236,14 @@ The QR code encodes `https://{dom}/{CODE}` (code without spaces; for the in-hous
 
 Open and Approval on look the same apart from the pill. The step 3 "guide" cards from round 2 are gone.
 
-**Offline:** steps 1 and 2 are replaced by a box (`--panel`, dashed 2 px `--line` border, radius 16, wifi-off icon 34 in `--acc`) with `idle.offline.title` (22/700) and a body. The QR box stays in place at 25 % opacity but is **empty** (no modules: the old code must not be scannable) and has no caption. When the network returns, code and QR come back by themselves. Show the offline box only after the connection has been gone for 3 s (no flicker on short drops).
+**Offline:** steps 1 and 2 are replaced by a box (`--panel`, dashed 2 px `--line` border, radius 16, wifi-off icon 34 in `--acc`) with `idle.offline.title` (22/700) and a body. The QR box stays in place but is **empty** (3.2: no modules, so the old code cannot be scanned; `--panel2` fill, `--line` border, no caption). When the network returns, code and QR come back by themselves.
+
+Reconnect schedule (decision 13.30): after a loss, try again **at 1 s, 2 s and 3 s**, then every 4 s. The offline box appears **when the attempt at 3 s has failed** (not on a separate timer), so a drop shorter than 3 s never shows the box, and it never flickers away while a later attempt runs. Until then the idle screen stays unchanged (no flicker). When the connection comes back with a new code, code and QR change without animation.
 
 | Cause | Body | Retry |
 | --- | --- | --- |
-| Network or server not reachable, connection lost | `idle.offline.body` | every 4 s |
-| `rate_limited`, `banned`, `server_full` | `idle.offline.bodyBusy` | after 30 s |
+| Network or server not reachable, connection lost | `idle.offline.body` | 1 s, 2 s, 3 s, then every 4 s |
+| `rate_limited`, `banned`, `server_full`, `forbidden` | `idle.offline.bodyBusy` (box at once, no 3 s wait) | after 30 s. A connection that closes within 60 s after one of these refusals counts as the same refusal (decision 13.44) |
 | `proto_mismatch`, `bad_hello` (page older than server) | `idle.offline.bodyOutdated` | none; reload needed |
 
 If the server refuses Open (`open_rooms_disabled`), the room becomes Approval on, the pill changes and toast `toast.openDisabled` appears once. A failed transfer of content (damaged PDF …) is a toast with the existing wording.
@@ -293,7 +304,14 @@ Shown only while it applies, at rest too (they are states, not controls): the **
 
 Not on the display: "Close image", "Close document" and PDF page buttons. Pages are turned on the presenter's page (5.6); content goes away when the presenter stops, disconnects or the host presses End.
 
-**Link sent by a presenter:** the display never opens a page by itself (safety rule). The link card is a dialog in the style of the join request (4.4: 600 card, scrim, section label, `receive.link.title`, the address in 18 mono `--mut` wrapping anywhere, `receive.link.hint`), buttons **Open** (primary) and **Dismiss** (secondary), initial focus Open, the same 1 s input guard, Back = Dismiss. On the web display Open opens a new tab. A media link shows its player inside the same card with the existing texts.
+**Link sent by a presenter:** the display never opens a page by itself (safety rule). The link card is a dialog in the style of the join request (4.4: 600 card, scrim, section label, `receive.link.title`, the address in 18 mono `--mut` wrapping anywhere, `receive.link.hint`), buttons **Open** (primary) and **Dismiss** (secondary), initial focus Open, the same 1 s input guard, Back = Dismiss. On the web display Open opens a new tab. The section label is `receive.link.title` ("{host} wants to open a link"); there is no separate heading.
+
+- **Media link** (decision 13.34): a secondary button **Play** (`receive.media.play`) comes before Open: focus row [Play, Open, Dismiss], initial focus still Open. Warning and error lines (`receive.media.localWarning`, `.mixed`, `.hlsUnsupported`, `.error.*`) are 16/700 `--fg`, led by the `info` icon 20 in `--acc`; all other card text is `--mut`. No red. While playing, the card shows the section label, the address and the player: a header row (`receive.media.from` 15/700 `--fg` left, secondary **Stop** right) and the media element, full card width, at most 300 high, on `#000000`. Stop, Back/Escape and Dismiss close the whole card.
+- **Platforms that cannot open a web page** (Apple TV; an Android TV without a browser): no Open button; the hint is `receive.link.hintTv`; focus row [Dismiss] or [Play, Dismiss] for media; initial focus Dismiss (Play for media).
+
+**Content states while presenting** (decision 13.41): a PDF page is drawn on `#000000` like every picture (no grey page background). A running transfer shows the transfer progress pill (3.5). A failed transfer or a PDF that cannot be shown is a **toast** (`receive.transferError.*`); a single PDF page that cannot be drawn shows its `receive.document.pageError.*` text centred in a name-tag-look box (15/700 `--fg`). No red, no black pills. The **black screen, frozen picture and all strokes end with the presentation**: when the presenter stops, disconnects or the host presses End, the next presentation starts with a visible, live picture and no strokes.
+
+**Annotation toolbar contents** (web display only, left to right, separators between groups): [Pen, Highlighter, Eraser] · [5 ink swatches: red, yellow, green, blue, white; 3 sizes: thin, medium, thick] · [Undo, Clear all, Laser pointer] · [Freeze, Black screen, Full screen]. Accessible names and tooltips: `toolbar.*` (11.7). No tool is selected at first (the pointer only shows the controls); choosing a tool marks it with the `--acc` border. The toolbar is the only place on the display with icon-only buttons (decision 13.35); it is a pointer tool, every button has a tooltip and an accessible name.
 
 **End** closes the session: all presenters are disconnected, all waiting requests are dropped, blocks are cleared, a new code is made, the display returns to Idle, toast `toast.sessionEnded`. Presenters see "Presentation ended". There is no confirmation step.
 
@@ -340,6 +358,7 @@ Code handling: the field shows what is typed, in uppercase; it never drops chara
 
 - Store: the system store page (not designed by us). Android passes code and address through the Google Play install referrer (assumption, not yet verified). iOS cannot, so the app asks to scan again.
 - App first-run page: heading `app.welcome`; code chip with `app.codeFromLink` (Android) or `app.codeScanned` (after scanning); if there is no code: `app.scanAgainBody` and a secondary button `app.scanQr`; name field; primary `app.connect` (disabled while there is no code).
+- Platform variants (details in [native-apps.md](native-apps.md)): devices without a camera (computers) show the code field of 5.2 instead of `app.scanQr`; on tablets and computers the page ends with the text link `app.beDisplay`, which starts the display setup (4.1). Scanning uses the system scanner (not designed by us). In the apps the disconnected page (5.7) omits `bye.body` (it speaks of a browser tab).
 
 ### 5.4 Waiting for approval
 
@@ -351,16 +370,16 @@ Header row: green tick disc (40) + `what.connectedTo` (room name from `joined.ro
 
 | Row | Title | Subtitle |
 | --- | --- | --- |
-| Screen | `what.screen` | Laptop: `what.screenLaptop`; app: `what.screenApp`; phone browser: `what.screenPhoneBrowser` (icon in `p-warn`) |
+| Screen | `what.screen` | Laptop: `what.screenLaptop`; app: `what.screenApp`; phone browser: `what.screenPhoneBrowser` when an app can be offered for this device, otherwise `what.screenPhoneBrowserNoApp` (icon in `p-warn` in both cases) |
 | File | `what.file` | `what.fileSub` |
 | Link | `what.link` | `what.linkSub` |
 
 Bottom: secondary `what.disconnect` → "Disconnected" page; toast `toast.left` on the display. No security code on this page (the display shows it only while presenting).
 
 - Screen on a laptop → the browser's own share dialog opens directly, with "Window" preselected where the browser allows it. There is **no** explainer page before it.
-- Screen in a phone browser → error "Screen sharing does not work in this browser" (it is known before; the page says so in the subtitle).
+- Screen in a phone browser → error "Screen sharing does not work in this browser" (it is known before; the page says so in the subtitle). Without an app offer for the device (13.6) the page has no "Get the app" button and its "What now" text is `error.noScreen.nowNoApp` (decision 13.42).
 - Screen in the app → the system prompt (Android "Start recording or casting", iOS "Start Broadcast").
-- Cancelling the system dialog returns to this page without an error.
+- Cancelling the system dialog returns to this page without an error (`capture_denied` never shows an error page).
 - File → file page. **App:** heading `file.title`, `file.body`, recent files as a 2-column grid of thumbnails, secondary `common.back`. **Browser** (a browser cannot list recent files): heading `what.file`, body `file.bodyWeb`, primary `file.pick` (opens the system file dialog: PNG, JPEG, WebP, GIF, PDF), then while sending a progress line (small print "{name} · {n} %" + 6 px bar), an inline error in `p-error` if it fails, secondary `common.back` at the bottom. Picking a file starts presenting. Cancelling the dialog changes nothing.
 - Link → link page: heading `what.link`, field `link.label` (type url), `link.hint`, primary `link.go`, secondary `common.back`. The display asks its host before opening (4.5).
 - Replacing what is shown: "Stop showing", then pick again (the display shows Idle in between). No "replace" action.
@@ -369,7 +388,7 @@ Bottom: secondary `what.disconnect` → "Disconnected" page; toast `toast.left` 
 
 Icon disc + heading (`presenting.screen` / `presenting.file` / `presenting.link`), body `presenting.where` (omitted when there is no room name), small print `presenting.sas` when the security code is known (`p-fg3`, digits mono 700 `p-fg`), primary button `presenting.stop`. Stop returns to "What to show". The browser's own "sharing" bar or the phone's red indicator stay as the system draws them; when Chrome's bar is shown at the bottom of the page, keep 76 px free at the bottom of the page.
 
-While a PDF is shown: a row of two secondary buttons `presenting.prevPage` and `presenting.nextPage` (phone: side by side, each half width, min 48 high) above Stop, with `presenting.pageOf` ("Page 3 of 12") as small print above the row when the page count is known.
+While a PDF is shown: a row of two secondary buttons `presenting.prevPage` and `presenting.nextPage` (phone: side by side, each half width, min 48 high) **directly above Stop** (8 between them; on the phone both rows are part of the bottom action area, so the thumb reaches all three), with `presenting.pageOf` ("Page 3 of 12") as small print above the row when the page count is known. When the page is known, Previous is disabled (`p-disabled`) on page 1 and Next on the last page; while it is unknown both stay enabled. **Protocol requirement (decision 13.31):** the display reports the shown page and the page count to the presenter over the content control channel whenever they change (`page`, `pages`); until this message exists the line is not shown and both buttons stay enabled.
 
 ### 5.7 Disconnected
 
@@ -394,8 +413,16 @@ Every error page has the same layout: icon disc (56), heading, a card with two l
 | `error.occupied` | Someone else is already connected (`room_full`; one presenter per room) | (i) in grey | Try again |
 | `error.busy` | `rate_limited`, `banned`, `server_full` | clock in `p-warn` | Try again |
 | `error.outdated` | `proto_mismatch`, `bad_hello`, `bad_message` (page and server do not match) | (i) in grey | `error.action.reload` (reloads the page) |
+| `error.other` | Every other failure: `forbidden`, `altcha_*`, `wrong_role`, `not_in_room`, `unknown` and any code not listed (decision 13.32) | (i) in grey | Try again |
 
-For the in-house box, `error.noInternet` uses the `nowBox` text (must be on the same Wi-Fi). Mapping of other failures: `connection_lost` → `error.noInternet`, `peer_failed` → `error.displayOff`; anything not listed → `error.code`. "Scan QR code again" exists only in the apps (a browser page cannot open the camera); web error pages never show it.
+For the in-house box, `error.noInternet` uses the `nowBox` text (must be on the same Wi-Fi). Mapping of other failures:
+
+- `connection_lost` → `error.noInternet`, **except** within 60 s after a `rate_limited`, `banned` or `server_full` refusal, where it is `error.busy` again (the server closes the connection after a ban; decision 13.44).
+- `peer_failed` → `error.displayOff`; **but** when the list of STUN/TURN servers (`/ice-servers`) was refused for this connection (`rate_limited` or `refused`) → `error.busy`, and when it failed otherwise (`http_error`, `bad_answer`, `unreachable`) → `error.displayOff` with the "why" text `error.displayOff.whyRelay`. A relay that offers no list (404, `none`) changes nothing. Nothing is shown before the connection fails (decision 13.45).
+- `capture_denied` → no error page (back to "What to show").
+- Anything not listed → `error.other`: heading `error.other.title`, "why" = the existing text `errors.<code>`, "what now" = `error.other.now`. `error.code` is used only for codes that are wrong or unknown.
+
+"Scan QR code again" exists only in the apps (a browser page cannot open the camera); web error pages never show it.
 
 ## 7. Layout per device class
 
@@ -412,13 +439,14 @@ Focus order (rows top to bottom):
 | Idle | [Settings] |
 | Settings | [Close] · [Open, Approval on, Locked] · [Dark, Light, OLED black, Automatic] |
 | Join request | [Yes, No, No and block] |
-| Link card | [Open, Dismiss] (Back = Dismiss) |
+| Link card | [Open, Dismiss]; media link [Play, Open, Dismiss]; platform without a browser [Dismiss] or [Play, Dismiss] (Back = Dismiss) |
+| Media playing in the link card | [Stop] (Back = close the card) |
 | Relay confirmation (`/display`) | [Cancel, Use this relay] |
 | Presenting (controls shown) | [End] |
 | Setup 0 | [Start] |
-| Setup 1 | [5 name chips] · [Back, Next] |
+| Setup 1 | [5 name chips] · [field] · [Back, Next] |
 | Setup 2 | [Open, Approval on] · [Back, Next] |
-| Setup 3 | [Back, Other address, Looks right] |
+| Setup 3 | [Back, Other address, Looks right]; field open: [field] · [Back, Looks right] |
 | Setup 4 | [Finish] |
 
 Keys:
@@ -437,9 +465,12 @@ Keys:
 
 - Same screens and sizes, scaled to the window. The page asks for fullscreen on first click (optional; ignore rejection) and uses the Screen Wake Lock API while presenting (D5).
 - A portrait or very narrow window (a phone) gets the 16:9 canvas centred and letterboxed, as in 3.1. There is no portrait layout; a phone is not a target display.
-- Focus ring: on page load the initial focus shows the ring (the page cannot know yet whether a keyboard or remote drives it). The first mouse or touch input hides it; the next key press shows it again. Same ring as on TV.
+- Focus ring: on page load the initial focus shows the ring (the page cannot know yet whether a keyboard or remote drives it). The first pointer press, touch start or real mouse movement (non-zero distance) hides it; the next key press shows it again (decision 13.50). Same ring as on TV.
 - The server (or any static host) must answer `/display`, `/{CODE}` and `/app` with `index.html`; otherwise the QR code leads to a 404 (GitHub Pages: a copy of `index.html` as `404.html`).
-- A relay that only a link asked for (`?server=`) is confirmed in a dialog before anything connects. On `/display` it uses the dialog card of 4.3/4.4 (section label `relay.confirm.title`, body and risk text 16 `--mut`, buttons **Cancel** secondary with initial focus, **Use this relay** primary); on presenter pages it uses a presenter card (heading 24/700, body 15, risk as small print, buttons as on error pages, Cancel first in focus order). Copy unchanged.
+- A relay that only a link asked for (`?server=`) is confirmed **before anything else is shown or connects** (decision 13.37). Nothing of the page that would use the relay is drawn behind it, and the relay host appears nowhere else (not as `{dom}`, not in the `start.beDisplay` link) until it is confirmed.
+  - **On `/display`:** on the scaled canvas (3.1, all sizes in reference px), over plain `--bg` with only the logo (46) at the idle screen's top-left position. Dialog card 600 wide as 4.4 (no scrim needed: there is nothing behind it), centred: section label `relay.confirm.title`; body `relay.confirm.body` 16 `--mut`; the host on its own line, 18 mono `--fg`, wrapping anywhere; `relay.confirm.risk` 16 `--mut`; buttons [**Cancel** (`relay.confirm.cancel`, secondary, initial focus), **Use this relay** (primary)], left-aligned, 50 high. Back/Escape = Cancel. Cancel continues with the default relay (setup or idle); Use continues with the confirmed relay.
+  - **On presenter pages:** its own **page** in the error-page layout (6), replacing the start page: icon disc `info` in `p-warn`; heading `relay.confirm.title`; body `relay.confirm.body` (15, `p-fg2`); the host on its own line, 17 mono 700 `p-fg`; `relay.confirm.risk` as small print; actions [**Cancel** secondary, **Use this relay** primary] in this order (phone: stacked at the bottom, Cancel on top; laptop: in a row below the content, Cancel left). Cancel has the initial focus; Enter on load cancels. After the decision the start page appears (with the code chip if the link carried a code).
+  - Copy unchanged (11.7).
 - Mouse movement over the screen during a presentation shows the controls (throttled to one trigger per 400 ms); a click or tap anywhere shows them; clicking End ends the session. The pointer hides together with the controls.
 - Keyboard: arrows = D-pad, Enter or Space = OK, Escape = Back, `M` = Menu. Tab follows the focus order above.
 - Settings button opens Settings by click or tap.
@@ -450,7 +481,7 @@ Width 360–430 px, single column, primary action at the bottom of the page wher
 
 ### 7.4 Presenter: laptop
 
-Pages wider than 720 px use the two-column layouts given in 5.2 and the error pages; buttons sit in a row. Max content width 744 px, centred. The action row **follows the content** (24 px below it), buttons content width (min 160, padding 0 24), primary first, left-aligned; it is not pinned to the bottom of the window (that is the phone layout). Presenter pages are real pages in the browser; the mockup's device frames are not drawn.
+Pages wider than 720 px use the two-column layouts given in 5.2 and the error pages; buttons sit in a row. Max content width 744 px, centred. The action row **follows the content** (24 px below it), buttons content width (min 160, padding 0 24), primary first (the relay confirmation page is the one exception: Cancel first, 7.2), left-aligned; it is not pinned to the bottom of the window (that is the phone layout). Presenter pages are real pages in the browser; the mockup's device frames are not drawn.
 
 ## 8. Interaction rules (summary)
 
@@ -469,7 +500,7 @@ Pages wider than 720 px use the two-column layouts given in 5.2 and the error pa
 - Join request is announced as an alert dialog with the label "Request: “{name}”".
 - Mode tiles and appearance tiles are radio groups; the settings button has the visible word as its label.
 - Toasts are polite live regions.
-- Icon-only items do not exist on the display. The QR code has the label "QR: {url}".
+- Icon-only items do not exist on the display, except the annotation toolbar of the web display (pointer tool; every button has a tooltip and an accessible name, 4.5). The QR code has the label "QR: {url}".
 
 ## 10. Not included (do not build)
 
@@ -484,6 +515,7 @@ Pages wider than 720 px use the two-column layouts given in 5.2 and the error pa
 - AirPlay, Miracast and Google Cast receiving (covered elsewhere; not part of this flow).
 - The mockup's own frame: chapter tabs, simulated remote, scenario buttons, notes, device switcher, the "view from 4 m" preview, the host instructions panel.
 - Store pages, system share dialogs and camera chips: they are drawn by the operating system.
+- Share sheet entry points ("Share to Comet Cast" from other apps) on any platform: not in this round (native-apps.md, section 9).
 
 ## 11. Copy
 
@@ -649,6 +681,7 @@ Additional setup keys (web, decision 13.5):
 | `what.screenLaptop` | Whole screen or one window, live | Ganzer Bildschirm oder ein Fenster, live | Ganzer Bildschirm oder ein Fenster, live |
 | `what.screenApp` | Your whole phone display, live | Dein ganzes Handy-Display, live | Ihr ganzes Handy-Display, live |
 | `what.screenPhoneBrowser` | On a phone only with the app | Geht auf dem Handy nur mit der App | Geht auf dem Handy nur mit der App |
+| `what.screenPhoneBrowserNoApp` | Not possible in a phone browser | Geht im Handy-Browser nicht | Geht im Handy-Browser nicht |
 | `what.file` | Show a photo or file | Foto oder Datei zeigen | Foto oder Datei zeigen |
 | `what.fileSub` | PDF or image. You turn pages, everything else stays with you | PDF oder Bild. Du blätterst, der Rest bleibt bei dir | PDF oder Bild. Sie blättern, der Rest bleibt bei Ihnen |
 | `what.link` | Show a link | Link zeigen | Link zeigen |
@@ -695,9 +728,11 @@ Additional setup keys (web, decision 13.5):
 | `error.noInternet.nowBox` | For {dom} you must be on the same Wi-Fi as the screen. Ask for the room’s Wi-Fi. | Für {dom} musst du im selben WLAN sein wie der Bildschirm. Frag nach dem WLAN des Raums. | Für {dom} müssen Sie im selben WLAN sein wie der Bildschirm. Fragen Sie nach dem WLAN des Raums. |
 | `error.noScreen.title` | Screen sharing does not work in this browser | Bildschirm teilen geht in diesem Browser nicht | Bildschirm teilen geht in diesem Browser nicht |
 | `error.noScreen.why` | Phone browsers may not pass on your screen. That is the browser, not you. | Handy-Browser dürfen deinen Bildschirm nicht weitergeben. Das liegt am Browser, nicht an dir. | Handy-Browser dürfen Ihren Bildschirm nicht weitergeben. Das liegt am Browser, nicht an Ihnen. |
+| `error.noScreen.nowNoApp` | Show a photo, a file or a link instead. | Zeig stattdessen ein Foto, eine Datei oder einen Link. | Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link. |
 | `error.noScreen.now` | Show a photo, a file or a link instead. Or get the app, then the screen works too. | Zeig stattdessen ein Foto, eine Datei oder einen Link. Oder hol dir die App, dann geht auch der Bildschirm. | Zeigen Sie stattdessen ein Foto, eine Datei oder einen Link. Oder holen Sie sich die App, dann geht auch der Bildschirm. |
 | `error.displayOff.title` | The screen does not answer | Der Bildschirm antwortet nicht | Der Bildschirm antwortet nicht |
 | `error.displayOff.why` | The display device is off, asleep, or Comet Cast is closed there. Your request did not arrive. | Das Anzeigegerät ist aus, schläft oder Comet Cast ist dort geschlossen. Deine Anfrage ist nicht angekommen. | Das Anzeigegerät ist aus, schläft oder Comet Cast ist dort geschlossen. Ihre Anfrage ist nicht angekommen. |
+| `error.displayOff.whyRelay` | The two devices could not reach each other, and the server could not help this time. | Die beiden Geräte haben sich nicht erreicht, und der Server konnte diesmal nicht helfen. | same as du |
 | `error.displayOff.now` | Is the code still on the screen? If not, ask the host to open Comet Cast there. | Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen. | same as du |
 | `error.denied.title` | Not allowed | Nicht zugelassen | Nicht zugelassen |
 | `error.denied.why` | “No” was chosen on the screen. | Am Bildschirm wurde „Nein“ gewählt. | Am Bildschirm wurde „Nein“ gewählt. |
@@ -731,10 +766,94 @@ Additional setup keys (web, decision 13.5):
 | `error.outdated.title` | This page is out of date | Diese Seite ist veraltet | Diese Seite ist veraltet |
 | `error.outdated.why` | The server was updated in the meantime. | Der Server wurde inzwischen aktualisiert. | same as du |
 | `error.outdated.now` | Reload the page. | Die Seite neu laden. | same as du |
+| `error.other.title` | Something went wrong | Etwas hat nicht geklappt | Etwas hat nicht geklappt |
+| `error.other.why` | (the existing text `errors.<code>`, 11.8) | | |
+| `error.other.now` | Try again. If it happens again, tell the host. | Versuch es noch einmal. Wenn es wieder passiert, sag dem Gastgeber Bescheid. | Versuchen Sie es noch einmal. Wenn es wieder passiert, sagen Sie dem Gastgeber Bescheid. |
 
 "same as du" means the Sie value is identical to the du value; it still exists as its own entry in the Sie file.
 
 Note on `error.otherServer.now`: the mockup said "…the right address, here {dom}". This spec drops "here {dom}", because the presenter page cannot know the display's address when the code belongs to another server. Show the "Open {dom}" button only when the code's server is known (for example from a QR link); otherwise show only "Retype code".
+
+### 11.7 Copy of items the mockup did not draw
+
+These keys already exist in the web app with these values (EN and DE Sie); they are now part of the spec. The DE du column is required (see 11.8 for the rest).
+
+| Key | EN | DE du | DE Sie (shipped) |
+| --- | --- | --- | --- |
+| `relay.confirm.title` | Use this relay? | Dieses Relay verwenden? | Dieses Relay verwenden? |
+| `relay.confirm.body` | A link asks this page to use the relay {host} instead of the default. Only continue if you know and trust its operator. | Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Mach nur weiter, wenn du den Betreiber kennst und ihm vertraust. | Ein Link fordert diese Seite auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen. |
+| `relay.confirm.risk` | The operator of this relay can see who connects, your room codes and network addresses, and can redirect the connection. Nothing is connected and no screen is captured before you decide. | Der Betreiber dieses Relays kann sehen, wer sich verbindet, deine Raumcodes und Netzwerkadressen, und kann die Verbindung umleiten. Es wird nichts verbunden und kein Bildschirm erfasst, bevor du entschieden hast. | Der Betreiber dieses Relays kann sehen, wer sich verbindet, Ihre Raumcodes und Netzwerkadressen, und kann die Verbindung umleiten. Es wird nichts verbunden und kein Bildschirm erfasst, bevor Sie entschieden haben. |
+| `relay.confirm.use` | Use this relay | Dieses Relay verwenden | Dieses Relay verwenden |
+| `relay.confirm.cancel` | Cancel (use the default relay) | Abbrechen (Standard-Relay verwenden) | Abbrechen (Standard-Relay verwenden) |
+| `receive.link.title` | {host} wants to open a link | {host} möchte einen Link öffnen | {host} möchte einen Link öffnen |
+| `receive.link.hint` | The sender asks you to open this link. Open it only if you expect it. It opens in a new tab, and only if you click “Open”. | Der Absender bittet dich, diesen Link zu öffnen. Öffne ihn nur, wenn du ihn erwartest. Er öffnet sich in einem neuen Tab, und nur wenn du auf „Öffnen“ klickst. | Der Absender bittet Sie, diesen Link zu öffnen. Öffnen Sie ihn nur, wenn Sie ihn erwarten. Er öffnet sich in einem neuen Tab, und nur wenn Sie auf „Öffnen“ klicken. |
+| `receive.link.hintTv` (new) | This screen cannot open web pages. Open the address on your own device if you need it. | Dieser Bildschirm kann keine Webseiten öffnen. Öffne die Adresse bei Bedarf auf deinem eigenen Gerät. | Dieser Bildschirm kann keine Webseiten öffnen. Öffnen Sie die Adresse bei Bedarf auf Ihrem eigenen Gerät. |
+| `receive.link.open` | Open | Öffnen | Öffnen |
+| `receive.link.dismiss` | Dismiss | Verwerfen | Verwerfen |
+| `receive.media.play` | Play from {host} | Von {host} abspielen | Von {host} abspielen |
+| `receive.media.stop` | Stop | Stopp | Stopp |
+| `receive.media.from` | Playing from {host} | Wiedergabe von {host} | Wiedergabe von {host} |
+| `receive.transfer` | Receiving {name}… {percent} % | {name} wird empfangen … {percent} % | {name} wird empfangen … {percent} % |
+| `toolbar.label` | Screen tools | Bildschirm-Werkzeuge | Bildschirm-Werkzeuge |
+| `toolbar.pen` · `.marker` · `.eraser` | Pen · Highlighter · Eraser | Stift · Textmarker · Radierer | same as du |
+| `toolbar.color.*` | Red · Yellow · Green · Blue · White | Rot · Gelb · Grün · Blau · Weiß | same as du |
+| `toolbar.size.*` | Thin · Medium · Thick | Dünn · Mittel · Dick | same as du |
+| `toolbar.undo` · `.clear` · `.laser` | Undo · Clear all annotations · Laser pointer | Rückgängig · Alle Markierungen löschen · Laserpointer | same as du |
+| `toolbar.freeze` | Freeze image (the live stream keeps running) | Bild einfrieren (der Live-Stream läuft weiter) | same as du |
+| `toolbar.black` · `.fullscreen` · `.exitFullscreen` | Black screen · Full screen · Exit full screen | Schwarzer Bildschirm · Vollbild · Vollbild beenden | same as du |
+| `toolbar.frozenHint` | Frozen. The live stream keeps running in the background. | Eingefroren. Der Live-Stream läuft im Hintergrund weiter. | same as du |
+| `toolbar.blackHint` | Screen hidden | Bildschirm ausgeblendet | same as du |
+| `app.beDisplay` (new, native apps on tablets and computers, see native-apps.md) | Use this device as the screen | Dieses Gerät als Bildschirm verwenden | Dieses Gerät als Bildschirm verwenden |
+
+The other `receive.media.*`, `receive.transferError.*`, `receive.document.pageError.*` and `relay.errors.*` values stay as they are in `apps/web/src/locales/en.json` and `de.json`; their du forms are in 11.8 where the Sie form addresses the reader.
+
+### 11.8 Missing "du" values (decision 13.47)
+
+The du file must contain **every** key whose Sie value addresses the reader (Sie, Ihr, Ihnen …); otherwise the du set silently shows Sie text. These 42 keys were missing in `de-du.json`. Values:
+
+| Key | DE du |
+| --- | --- |
+| `relay.errors.empty` | Bitte gib eine Adresse ein. |
+| `relay.errors.insecure` | Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwende wss://. |
+| `relay.errors.mixed` | Eine über https geöffnete Seite kann kein unverschlüsseltes ws://-Relay verwenden (der Browser blockiert das). Bitte verwende wss://. |
+| `relay.confirm.body`, `relay.confirm.risk`, `receive.link.hint` | see 11.7 |
+| `receive.status.checking` | Dein Browser wird geprüft … |
+| `receive.status.peer_left` | Der Absender hat die Verbindung verlassen. Du kannst diesen Code behalten und auf einen neuen Absender warten. |
+| `receive.media.hint` | Dieser Link verweist auf eine Mediendatei. Sie wird von {host} nur geladen, wenn du auf „Abspielen“ klickst. |
+| `receive.media.hlsUnsupported` | Dies sieht nach einem HLS-Stream aus, den dieser Browser nicht abspielen kann. Du kannst den Link trotzdem öffnen. |
+| `receive.media.error.unsupported` | Diese Datei kann hier nicht abgespielt werden: Das Format wird nicht unterstützt, die Datei fehlt oder der Medienserver erlaubt die Wiedergabe von anderen Websites nicht. Mit „Öffnen“ siehst du sie in einem neuen Tab. ({host}) |
+| `receive.media.error.blocked` | Der Browser hat die automatische Wiedergabe blockiert. Klick auf „Erneut versuchen“, um sie zu starten. |
+| `receive.media.mixed` | Diese Adresse verwendet http://, diese Seite aber https://, daher würde der Browser die Wiedergabe hier blockieren. Du kannst den Link trotzdem öffnen. |
+| `receive.media.localWarning` | Achtung: Diese Adresse zeigt auf ein Gerät oder einen Namen innerhalb eines Netzwerks (eine IP-Adresse oder ein lokaler Name). Spiel sie nur ab, wenn du das erwartest. |
+| `send.status.idle`, `sendContent.status.idle` | Gib den Code des Empfängers ein, um zu beginnen. |
+| `send.status.capturing` | Wähle im Browser-Dialog aus, was geteilt werden soll … |
+| `send.status.sharing` | Dein Bildschirm wird geteilt. |
+| `sendContent.intro` | Gib den Raumcode des Empfängers ein und sende dann ein Bild, ein PDF oder einen Link. Die Inhalte gehen direkt zum Empfänger; der Server hilft nur beim Verbinden. |
+| `sendContent.status.sharing` | Verbunden. Du kannst jetzt senden. |
+| `sendContent.image.drop` | Zieh ein Bild hierher, oder |
+| `sendContent.document.drop` | Zieh ein PDF hierher, oder |
+| `sendContent.link.invalid` | Bitte gib eine vollständige Webadresse ein, die mit http:// oder https:// beginnt. |
+| `errors.bad_hello` | Der Server hat den Verbindungsaufbau nicht akzeptiert. Bitte lade die Seite neu. |
+| `errors.proto_mismatch` | Diese Seite und der Server verwenden unterschiedliche Protokollversionen. Bitte lade die Seite neu. |
+| `errors.bad_message` | Der Server konnte eine Nachricht nicht verstehen. Bitte lade die Seite neu. |
+| `errors.room_not_found` | Es gibt keinen Raum mit diesem Code. Prüf den Code auf dem Empfänger. |
+| `errors.altcha_required` | Der Server verlangt eine kurze Browserprüfung, bevor er einen Raum anlegt. Bitte versuch es erneut. |
+| `errors.altcha_invalid` | Die Browserprüfung wurde nicht akzeptiert (möglicherweise ist sie abgelaufen). Bitte versuch es erneut. |
+| `errors.altcha_failed` | Die Browserprüfung konnte nicht abgeschlossen werden. Bitte versuch es erneut. |
+| `errors.altcha_too_hard` | Der Server verlangt eine Browserprüfung, die für dieses Gerät zu aufwendig ist, und sie wurde nicht gestartet. Bitte versuch es später erneut oder wende dich an den Betreiber des Servers. |
+| `errors.altcha_expired` | Die Browserprüfung des Servers war bereits abgelaufen. Bitte versuch es erneut; falls das wiederholt passiert, prüf Datum und Uhrzeit dieses Geräts. |
+| `errors.rate_limited` | Zu viele Anfragen aus diesem Netzwerk. Bitte warte einen Moment und versuch es erneut. |
+| `errors.banned` | Dieses Netzwerk ist wegen zu vieler fehlgeschlagener Versuche für kurze Zeit gesperrt. Bitte versuch es später erneut. |
+| `errors.server_full` | Der Server ist gerade ausgelastet. Bitte versuch es später erneut. |
+| `errors.join_pending` | Bitte warte, bis der Gastgeber deinen Beitritt erlaubt hat. |
+| `errors.join_denied` | Der Gastgeber hat deinen Beitritt nicht erlaubt. |
+| `errors.room_locked` | Der Raumcode ist richtig, aber der Raum ist gerade gesperrt. Bitte den Gastgeber, ihn zu entsperren. |
+| `errors.room_locked_waiting` | Der Raum wurde gesperrt, während du gewartet hast. Der Code war richtig; bitte den Gastgeber, den Raum zu entsperren. |
+| `errors.approval_timeout` | Niemand hat deine Anfrage rechtzeitig beantwortet. Du kannst erneut anfragen. |
+| `errors.removed_by_host` | Der Gastgeber hat dich aus dem Raum entfernt. |
+| `errors.block_list_full` | Die Blockliste ist voll. Gib zuerst jemanden frei. |
+
+`tools/check-i18n.mjs` gets a rule: a key whose `de` value contains the word Sie, Ihr/Ihre/Ihren/Ihrem/Ihrer/Ihres or Ihnen must exist in `de-du` (the "Sie wird" of `receive.media.hint` means "it" and is the one known false alarm; list it as an exception).
 
 ## 12. Open points that do not block implementation
 
@@ -743,6 +862,8 @@ Note on `error.otherServer.now`: the mockup said "…the right address, here {do
 - Exact idle-dim delay: 7 minutes is inside the owner's 5–10 minute range; adjust in one constant if testing suggests otherwise.
 - Owner: should the web display keep its drawing tools (annotation toolbar) at all? This spec keeps them, hidden at rest (13.7); removing them would make the display match "only End" exactly.
 - Owner: store listings and the desktop download. Until they exist the app offers are hidden (13.6).
+- Owner: `start.appLaptop` promises that the desktop app "finds screens on the same network without a code". The list of nearby screens is **not designed** yet (native-apps.md, section 9). Before `DOWNLOAD_URL_DESKTOP` is filled, either that list is designed and built, or the line changes. The line is hidden today (no desktop link).
+- Owner: whether native display apps on tablets and computers get the annotation toolbar (they do not in this round; same question as the web toolbar above).
 
 ## 13. Decisions after implementation review
 
@@ -777,3 +898,32 @@ Made on 2026-11-07 after reviewing the built web app (`apps/web`, merge fd03220)
 27. **Fonts.** Bundled subsets accepted (3.4).
 28. **QR version.** Any version at level M is fine; the box size does not change.
 29. **Wizard room name.** The custom name field starts empty; a chip and the field are never both set.
+
+### Decisions after the second implementation review
+
+Made on 2026-11-07 after reviewing the fix round (`apps/web`, main 4a13254) and its 183 screenshots. Questions D1 and E1–E14 are answered in [implementation-questions.md](implementation-questions.md); the work items are in [fix-list-web-2.md](fix-list-web-2.md). The sections above already contain these decisions.
+
+30. **Reconnect schedule (E1).** After a loss the display tries again at 1 s, 2 s and 3 s, then every 4 s; the offline box appears when the attempt at 3 s fails, so a drop under 3 s never shows it (4.2). Busy refusals: box at once, retry after 30 s.
+31. **PDF page on the presenter (E2). Protocol requirement:** the display reports `page` and `pages` to the presenter over the content control channel. With it: "Page n of m" and Previous/Next disabled at the ends; without it (today): no line, both enabled (5.6).
+32. **Other failures (E3).** New page `error.other` (heading "Something went wrong", why = the existing `errors.<code>` text, now = `error.other.now`, Try again) for every code without its own page. `error.code` only for wrong or unknown codes; `capture_denied` never shows a page (6).
+33. **QR box.** Light: 1 px `--line` border. Empty box (connecting, offline): `--panel2` fill, `--line` border, full opacity, no modules, no caption; OLED black `#000000` (3.2). The light-grey 25 % slab is gone.
+34. **Media link card (E5).** As built (Play secondary before Open, initial focus Open, player up to 300 high), plus: warning and error lines 16/700 `--fg` led by the `info` icon in `--acc` (4.5).
+35. **Toolbar is the one icon-only control set (E12, section 9).** Tooltips and accessible names on every button; its own Tab focus outline (2 `--focus`, offset 2); swatches with a 1 px `--line` ring; selected tool, swatch and size with a 2 px `--acc` border; hidden = `inert`; toast at 66 while it shows (3.5).
+36. **Everything on the canvas.** Toasts, dialogs, toolbar, name tag, End, badges and pills are placed on the scaled 16:9 canvas, never on the viewport; only the picture fills the viewport (3.5).
+37. **Relay confirmation, redesigned (E4).** Shown before anything else: on `/display` a 600 dialog card on the canvas over plain `--bg` with the logo only; on presenter pages its own page in the error-page layout. The unconfirmed host appears nowhere else. Order [Cancel, Use this relay], Cancel focused (7.2).
+38. **Wizard address field (E6).** As built: [Back, Looks right] while the field is open; Back closes the field (focus to "Other address"); after that "Other address" opens the field again (4.1).
+39. **Wizard room name (E7).** An emptied field reselects the chip that was selected before typing (4.1).
+40. **Default relay on the web (E8).** As built: `sourceDefault` only for the relay built into the page; everything the page's server provides says `sourcePage` (4.1).
+41. **Content states (E13).** PDF pages on black; transfer progress as a name-tag-look pill; content errors as toasts; page errors in a name-tag-look box; black screen, frozen picture and strokes end with the presentation (4.5).
+42. **No app, no promise (E9).** "Get the app" only when an app can be offered (as built); then the texts change too: `error.noScreen.nowNoApp`, `what.screenPhoneBrowserNoApp` (5.5).
+43. **Laptop presenter pages.** Top padding `max(40px, 10vh)`; the content no longer hugs the window's top edge (3.5).
+44. **Banned, then closed (E14).** For 60 s after a `rate_limited`, `banned` or `server_full` refusal, a closed connection is treated as the same refusal: presenter `error.busy`, display `bodyBusy` (4.2, 6).
+45. **STUN/TURN list refused (D1).** Show nothing at once; only when the connection then fails: refused list (`rate_limited`, `refused`) → `error.busy`; failed list (`http_error`, `bad_answer`, `unreachable`) → `error.displayOff` with `error.displayOff.whyRelay`. The display shows nothing (the presenter tells the person). Sessions expose the fetch state next to `iceServers` (6).
+46. **Wizard card position.** Steps 1–4: the card's top edge is fixed at 64; only the welcome card is centred (4.1).
+47. **"du" set complete.** 42 missing du values are given in 11.8; the i18n check enforces it.
+48. **Presenter relay page order (E4).** Cancel (secondary) before Use this relay (primary), on the phone too; the only exception to "primary first".
+49. **`room_name` of the wrong type (E10).** The lenient rule is right: a missing, null, empty, blank or non-string `room_name` from the server means "no room name"; the rest of the message stays valid. The field is display text, not a security property (unlike `check`).
+50. **Which input hides the focus ring (E11).** As built: a pointer press, a touch start or a real mouse movement hides it; any key shows it.
+51. **Text fields get the focus ring** without the scale (3.5).
+52. **Native apps.** [native-apps.md](native-apps.md) maps every screen and state of this spec to Android (phone, tablet, TV), iOS/iPadOS, Linux/Windows/macOS (Flutter) and Apple TV (SwiftUI), with token, font, icon, motion, dimming and wake-lock rules. It adds no screens; where a platform needs a variant (link card without a browser, the `app.beDisplay` entry on tablets and computers, system scanners and pickers), it is named there and here.
+53. **Spec over mockup, now for everything.** The mockup is not redrawn for the items it never had (toolbar, link card, relay confirmation, security code, the later error pages, the PDF page row, the web file page, connecting and offline states, wizard address field, `start.beDisplay` link, OLED check outline). Their design is the section of this document named in the status note; the mockup's step cards, old headline, mode instruction lines, room menu, hold-to-allow, 8-character code and device frames stay superseded.
