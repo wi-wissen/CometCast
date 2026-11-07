@@ -26,6 +26,17 @@ dependencies:
   path_provider: ^2.1.5
   file_selector: ^1.1.0
   url_launcher: ^6.3.3
+  # The logo (assets/logo/*.svg, with radial gradients) and nothing else is drawn from SVG.
+  # MIT. Pinned: the design needs identical output on every platform.
+  flutter_svg: 2.3.2
+  # Icon path data of the design (lib/src/design/icons.dart), parsed into Paths. MIT. Pinned.
+  path_drawing: 1.0.1
+  # The QR code of the idle screen, level M (docs/design/first-run-and-display.md 4.2).
+  # BSD-3-Clause (with `qr` 3.0.3, BSD-3-Clause). Pinned.
+  qr_flutter: 4.1.0
+  # Keeps the screen awake while presenting, never on Idle (native-apps.md 15). BSD-3-Clause
+  # (brings package_info_plus, dbus, win32). Pinned.
+  wakelock_plus: 1.8.2
 
 dev_dependencies:
   flutter_test:
@@ -42,3 +53,32 @@ flutter:
   generate: true
   assets:
     - assets/icon.png
+    - assets/logo/cometcast-logo-dark.svg
+    - assets/logo/cometcast-logo-light.svg
+  # Atkinson Hyperlegible Next and Mono 5.3.0 (SIL OFL 1.1, assets/fonts/OFL-*.txt), the same
+  # release as the @fontsource packages of apps/web, converted from woff to ttf without any
+  # change to the glyphs. The "Ext" family holds Latin Extended and is the fallback of the
+  # first (Flutter allows one file per weight in a family).
+  fonts:
+    - family: AtkinsonHyperlegibleNext
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-400.ttf
+          weight: 400
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-500.ttf
+          weight: 500
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-700.ttf
+          weight: 700
+    - family: AtkinsonHyperlegibleNextExt
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleNextExt-400.ttf
+          weight: 400
+        - asset: assets/fonts/AtkinsonHyperlegibleNextExt-500.ttf
+          weight: 500
+        - asset: assets/fonts/AtkinsonHyperlegibleNextExt-700.ttf
+          weight: 700
+    - family: AtkinsonHyperlegibleMono
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleMono-500.ttf
+          weight: 500
+        - asset: assets/fonts/AtkinsonHyperlegibleMono-700.ttf
+          weight: 700

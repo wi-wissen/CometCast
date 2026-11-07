@@ -2,46 +2,31 @@
 
 > **Verified with Flutter 3.47.9 (stable, Dart 3.13.7) and Rust 1.97 on Linux: `flutter analyze` clean, `flutter test` passes (widget tests with a fake core and tests against the real Rust library), `flutter build linux --debug` succeeds with the Rust core built and bundled, and two headless tests (xvfb) with a real server: the old smoke test (room code, rising packet counters) and a screen test in which a real X11 screen (Xvfb with a red window) travels as H.264 through `cometcast-cli send --screen` into the app, whose drawn picture is read back pixel by pixel (red, then blue), and the app as sender of that screen into `cometcast-cli receive --decode`. `flutter build apk --debug` also succeeded earlier (arm64-v8a and armeabi-v7a, Rust core built with cargo-ndk; not re-run for this change). Not verified: anything on an Android device or emulator or an Android TV, the Android release build, Windows, macOS, iOS builds, `flutter build linux --release`, a real Wayland or GNOME/KDE desktop, a real window manager (full screen was only tested with a mocked channel and compiled into the GTK runner, never seen on a real display).**
 
-Status: milestone M1 on the desktop. The app talks to the Rust core through
-[flutter_rust_bridge](https://cjycode.com/flutter_rust_bridge/) (see
-[docs/flutter-bridge.md](../../docs/flutter-bridge.md)). Screens:
+Status: the app follows the designed product (`docs/design/first-run-and-display.md`, `docs/design/native-apps.md`, mockup linked there). **Everything below was verified with widget tests and a fake core only. UNCERTAIN: nothing of the new UI was run on a device, a TV, a Mac, a Windows PC or a real Linux desktop session; the Linux build, the Android build and the new native-facing code (wake lock package, immersive mode, orientation lock, app lifecycle) were not re-run.** The app talks to the Rust core through [flutter_rust_bridge](https://cjycode.com/flutter_rust_bridge/) (see [docs/flutter-bridge.md](../../docs/flutter-bridge.md)); the bridge was not changed.
 
-- Home: a quiet list: send screen, send file or link, receive.
-- **Send file or link**: choose an image (PNG, JPEG, WebP, GIF) or a PDF with the file dialog, or type an
-  http(s) link; enter the receiver's room code; progress bar; for a PDF the presenter controls (previous, next,
-  go to page, stop; arrow keys, Page Up/Down). All checks are done by Rust. Details: docs/documents.md,
-  "In the Flutter app".
-- **Receive on this device**: server field (pre-filled, see below), big room code, status,
-  live counters. Images, PDF pages (drawn by Rust at the width of the view, page indicator, pages follow the
-  sender) and link cards ("The sender wants to open <host>", Open / Dismiss, never opened without a click) that a
-  sender pushes take the window; a close button goes back. When an H.264 screen arrives, the **picture fills the window**: buttons for
-  statistics (key `I`), full screen (`F11`; `Esc` leaves full screen first, then goes back) and
-  stop. A translated "waiting for the sender's screen" line shows until the first picture. A
-  track that is not H.264 (the built-in VP8 test video) is only counted and the screen says so.
-- **Send screen**: server field, **"Share this screen"** switch with the monitor list (Linux/X11;
-  on Wayland and other systems a translated "not supported on this system yet" message, decided
-  by a Rust-side check), room code input (validated by the Rust core with the same alphabet as
-  `cc-proto`), duration (only for the test video), status. Without the switch it sends the
-  built-in VP8 test stream.
-- **Server address**: pre-filled from the Rust core: at once from `server_defaults()`, then from
-  `discover_servers()` (policy, DNS-SRV, display announcements, built-in list, then
-  `127.0.0.1:8443` for development). Suggestions are chips that say where each came from
-  (translated). The last server you started with is saved (`shared_preferences`) and wins at the
-  next start unless an administrator policy names servers; `COMETCAST_SERVER=host:port`
-  overrides both (development). If the policy forbids other servers the field is read-only
-  ("Your administrator has set the server."). Problems while searching are shown as calm,
-  translated notes (by code, never raw text); a small hint shows while the search runs and
-  closing the screen cancels it.
-- **Receive screen** announces itself and its server in the local network while it is open
-  (`start_advertising`); the **send screen** lists "Nearby receivers" (name and announced
-  server, marked "not verified"); a tap takes the server, shows its source next to the field
-  and focuses the room code field (the code is never announced). Announced servers are never
-  pre-filled or saved as "last used". Details and open questions: docs/discovery.md, "In the Flutter app".
+## Roles and screens
 
-**Not built yet:** screen capture on Windows, macOS, Wayland and mobile; other video codecs than
-H.264 in the picture view; audio; drag and drop of files; the PDF worker for platforms other than Linux (PDFs
-there fail with a translated note); a thumbnail of the page on the presenter's side. English + German, light/dark following the
-system, keyboard friendly (Tab, Enter starts, Escape goes back). License: GPL-3.0-or-later.
+| Device | Role |
+| --- | --- |
+| Android TV / Google TV | display only; setup wizard on first launch |
+| Phone | presenter only |
+| Tablet, computer | presenter; the text link `Use this device as the screen` starts the display setup, after which the app starts as a display on every launch |
+
+- **Display** (`lib/src/display`): setup wizard (4.1), idle screen with address, code, QR code, mode pill, offline, connecting and locked states (4.2), Settings with join mode and appearance (4.3), join request dialog with queue, check number, 1 s input guard and D-pad focus (4.4), full-bleed presenting with name tag and End (4.5), link card, toasts (4.6), idle dimming after 7 minutes, wake lock only while presenting. State of the room stays in `ReceiverController`.
+- **Presenter** (`lib/src/presenter`): first run, what to show, file, link, waiting with the check number, presenting, disconnected, the error pages of spec 6 (incl. `error.other`) and the relay confirmation page. State stays in `SenderController` and `ContentSenderController`.
+- **Tokens and fonts** (`lib/src/design`): `DisplayTokens` (Dark, Light, OLED black, Automatic), `PresenterTokens` (light, dark), type, the stroke icons and the Atkinson Hyperlegible fonts (SIL OFL, `assets/fonts`). Screens read only these tokens; no Material colour scheme is used on the display.
+- **Strings**: ARB files from the spec copy tables. **German is "du"** (`lib/l10n/app_de.arb`, loaded). The formal "Sie" set is `lib/l10n/sie/app_de.arb` (not loaded; copy it over `app_de.arb` to switch). Both sets have the same keys and placeholders (`test/l10n_sets_test.dart`, `tools/check-i18n.mjs`).
+- Open design and core questions: [docs/design/implementation-questions-flutter.md](../../docs/design/implementation-questions-flutter.md).
+
+Removed with the designed UI: the home list, the old receive, send and send-content screens, the preliminary join approval widgets (host panel, takeover, menu chip, waiting card) and the statistics overlay.
+
+### Screenshots without golden files
+
+```sh
+COMETCAST_SHOTS=/tmp/shots-flutter flutter test test/screenshots_test.dart
+```
+
+writes a PNG of every display state (TV 1920x1080 and tablet 1280x800; Dark, Light, OLED black) and every presenter page (phone 400x800 and tablet; light and dark). Nothing is compared.
 
 ## Needs
 

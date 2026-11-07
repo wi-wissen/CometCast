@@ -180,6 +180,45 @@ enum JoinNote {
   openDisabled,
 }
 
+/// Something the display tells the host in a toast (docs/design/first-run-and-display.md 4.6).
+sealed class ReceiverNotice {
+  const ReceiverNotice();
+}
+
+/// A sender connected (join mode open, or after the host allowed it).
+class NoticeJoined extends ReceiverNotice {
+  const NoticeJoined(this.name);
+  final String name;
+}
+
+/// The server ended a waiting request (`join_approval_secs` ran out).
+class NoticeExpired extends ReceiverNotice {
+  const NoticeExpired(this.name);
+  final String name;
+}
+
+/// A waiting sender withdrew its request or went away.
+class NoticeWithdrawn extends ReceiverNotice {
+  const NoticeWithdrawn(this.name);
+  final String name;
+}
+
+/// The connected sender left.
+class NoticeLeft extends ReceiverNotice {
+  const NoticeLeft(this.name);
+  final String name;
+}
+
+/// The session ended by End: everybody dropped, a new code follows.
+class NoticeSessionEnded extends ReceiverNotice {
+  const NoticeSessionEnded();
+}
+
+/// The server forbids open rooms; the room is Approval on now.
+class NoticeOpenDisabled extends ReceiverNotice {
+  const NoticeOpenDisabled();
+}
+
 /// How long the server lets a request wait (its default). UNCERTAIN: an operator can change it;
 /// the server decides when a request ends.
 const joinRequestSeconds = 60;
@@ -193,7 +232,21 @@ class ReceiverController extends ChangeNotifier {
     this.content = true,
     this.maxImagePixels = defaultMaxImagePixels,
     this.hardwareDecoder,
+    this.onNotice,
+    this.restartMode,
+    this.restartOnPeerLeft = false,
   }) : _setFullscreen = setFullscreen ?? setWindowFullscreen;
+
+  /// Called for what the display tells the host in a toast. Null in the old screens.
+  final void Function(ReceiverNotice notice)? onNotice;
+
+  /// The mode of a room that starts after End (the default mode; Locked never survives End,
+  /// spec 4.3). Null: the current mode is kept.
+  UiJoinMode? restartMode;
+
+  /// The sender leaving does not end the receiver: a new room (a new code) starts at once and
+  /// the display is idle again (spec 4.5). The old receive page ends instead.
+  final bool restartOnPeerLeft;
 
   final CoreApi core;
   final String? udpBind;
@@ -235,29 +288,6 @@ class ReceiverController extends ChangeNotifier {
 
   /// Blocked senders (the host can unblock them).
   List<BlockedView> blocks = const [];
-
-  /// Requests that the host hid with "Later": they stay in the join menu but not on the takeover.
-  final Set<BigInt> _snoozed = {};
-
-  /// The request that takes over the display now (the oldest one that was not hidden), or null.
-  JoinRequestView? get takeoverRequest {
-    for (final r in requests) {
-      if (!_snoozed.contains(r.id)) return r;
-    }
-    return null;
-  }
-
-  /// Other requests that wait behind [takeoverRequest].
-  int get takeoverMore {
-    final n = requests.where((r) => !_snoozed.contains(r.id)).length;
-    return n > 1 ? n - 1 : 0;
-  }
-
-  /// Hide the request from the takeover without deciding ("Later", Back).
-  void snoozeRequest(BigInt id) {
-    _snoozed.add(id);
-    notifyListeners();
-  }
 
   /// Something to tell the host about the join settings, or null.
   JoinNote? joinNote;
@@ -322,6 +352,9 @@ class ReceiverController extends ChangeNotifier {
 
   /// A note about content that failed or was refused, or null.
   ContentNote? note;
+
+  /// The error behind [note] (the display's toast text depends on it), or null.
+  UiContentError? noteError;
 
   /// Bumped when the shown content is replaced or removed; a picture fetch that began earlier
   /// drops its result.
@@ -389,7 +422,6 @@ class ReceiverController extends ChangeNotifier {
     requests = const [];
     peerName = null;
     blocks = const [];
-    _snoozed.clear();
     if (!_openRetried) joinNote = null;
     discardedCount = 0;
     connectionState = null;
@@ -459,8 +491,15 @@ class ReceiverController extends ChangeNotifier {
           ];
         }
       case ReceiverUiEvent_JoinRequestCancelled(:final id, :final reason):
+        final gone = requests.where((r) => r.id == id).firstOrNull;
+        if (gone != null) {
+          if (reason == 'timeout') {
+            onNotice?.call(NoticeExpired(gone.name));
+          } else if (reason == 'cancelled' || reason == 'left') {
+            onNotice?.call(NoticeWithdrawn(gone.name));
+          }
+        }
         requests = requests.where((r) => r.id != id).toList();
-        _snoozed.remove(id);
         if (reason == 'locked') {
           discardedCount++;
           joinNote = JoinNote.lockedDiscarded;
@@ -480,11 +519,13 @@ class ReceiverController extends ChangeNotifier {
       case ReceiverUiEvent_RoomEnded():
         // The host ended the session: the room and its code are gone. A new room (a new
         // code) is created in the same mode at once.
-        _begin(_startServer, joinMode);
+        onNotice?.call(const NoticeSessionEnded());
+        _begin(_startServer, restartMode ?? joinMode);
         return;
       case ReceiverUiEvent_PeerJoined(:final name):
         peerName = name;
         senderJoined = true;
+        onNotice?.call(NoticeJoined(name));
       case ReceiverUiEvent_ConnectionState(:final state):
         connectionState = state;
       case ReceiverUiEvent_VideoTrack(:final codec):
@@ -532,6 +573,7 @@ class ReceiverController extends ChangeNotifier {
       case ReceiverUiEvent_ContentError(:final error):
         receiving = null;
         note = contentNoteFor(error);
+        noteError = error;
         // The core closes the shown document when a PDF is refused.
         if (error == UiContentError.documentRejected ||
             error == UiContentError.workerUnavailable) {
@@ -539,7 +581,13 @@ class ReceiverController extends ChangeNotifier {
         }
       case ReceiverUiEvent_PeerLeft():
         senderLeft = true;
+        final left = peerName;
         peerName = null;
+        if (left != null) onNotice?.call(NoticeLeft(left));
+        if (restartOnPeerLeft) {
+          _begin(_startServer, joinMode);
+          return;
+        }
         _end();
         return;
       case ReceiverUiEvent_Error(:final message):
@@ -549,6 +597,7 @@ class ReceiverController extends ChangeNotifier {
             _startMode == UiJoinMode.open) {
           _openRetried = true;
           joinNote = JoinNote.openDisabled;
+          onNotice?.call(const NoticeOpenDisabled());
           _begin(_startServer, UiJoinMode.confirm);
           return;
         }
@@ -961,6 +1010,7 @@ class ReceiverController extends ChangeNotifier {
   void dismissNote() {
     if (note == null) return;
     note = null;
+    noteError = null;
     notifyListeners();
   }
 
@@ -1063,7 +1113,7 @@ class ReceiverController extends ChangeNotifier {
   void unblock(BigInt id) => core.unblock(id);
 
   /// End the room session: everybody is dropped; a new room with a new code starts at once.
-  void endRoom() => core.endRoom();
+  bool endRoom() => core.endRoom();
 
   void dismissJoinNote() {
     if (joinNote == null) return;

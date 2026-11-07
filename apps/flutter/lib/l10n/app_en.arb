@@ -4,54 +4,6 @@
   "@appTitle": {
     "description": "Name of the app, shown in the app bar and task switcher."
   },
-  "homeSendScreen": "Send screen",
-  "@homeSendScreen": {
-    "description": "Home list row: start sharing this device's screen."
-  },
-  "homeSendScreenHint": "Show your screen on another device",
-  "@homeSendScreenHint": {
-    "description": "Subtitle of the 'Send screen' row."
-  },
-  "homeSendFileOrLink": "Send file or link",
-  "@homeSendFileOrLink": {
-    "description": "Home list row: send a document, file or web link."
-  },
-  "homeSendFileOrLinkHint": "Images, PDFs and links",
-  "@homeSendFileOrLinkHint": {
-    "description": "Subtitle of the 'Send file or link' row."
-  },
-  "homeReceive": "Receive on this device",
-  "@homeReceive": {
-    "description": "Home list row: make this device a receiver."
-  },
-  "homeReceiveHint": "Let others send to this device",
-  "@homeReceiveHint": {
-    "description": "Subtitle of the 'Receive' row."
-  },
-  "languageLabel": "Language",
-  "@languageLabel": {
-    "description": "Label for the language setting."
-  },
-  "previewNotice": "Preview build (v0.1)",
-  "@previewNotice": {
-    "description": "Notice shown at the bottom while the app is an early preview."
-  },
-  "roomCodeLabel": "Room code",
-  "@roomCodeLabel": {
-    "description": "Label for the short code that pairs a sender with a receiver."
-  },
-  "comingSoon": "Coming soon",
-  "@comingSoon": {
-    "description": "Shown when a row is tapped but the feature is not built yet."
-  },
-  "receiveTitle": "Receive on this device",
-  "@receiveTitle": {
-    "description": "Title of the receive screen."
-  },
-  "sendTitle": "Send screen",
-  "@sendTitle": {
-    "description": "Title of the send screen."
-  },
   "serverLabel": "Server",
   "@serverLabel": {
     "description": "Label of the text field for the signalling server address."
@@ -60,37 +12,9 @@
   "@serverHelper": {
     "description": "Helper text under the server field."
   },
-  "serverEmpty": "Please enter a server address.",
-  "@serverEmpty": {
-    "description": "Error when the server field is empty."
-  },
-  "startReceiving": "Start receiving",
-  "@startReceiving": {
-    "description": "Button: create a room and wait for a sender."
-  },
-  "startSending": "Start sending",
-  "@startSending": {
-    "description": "Button: join the room and send the test video."
-  },
   "stop": "Stop",
   "@stop": {
     "description": "Button: stop receiving or sending."
-  },
-  "statusIdle": "Not started.",
-  "@statusIdle": {
-    "description": "Status text before anything was started."
-  },
-  "statusConnecting": "Connecting to the server …",
-  "@statusConnecting": {
-    "description": "Status text while the server connection is being set up."
-  },
-  "statusWaitingForSender": "Waiting for a sender. Enter this code on the sending device.",
-  "@statusWaitingForSender": {
-    "description": "Status text of the receiver after the room code is shown."
-  },
-  "statusSenderJoined": "A sender has joined. The connection is being set up …",
-  "@statusSenderJoined": {
-    "description": "Status text of the receiver when a sender joined."
   },
   "statusConnectionState": "Connection: {state, select, new{new} connecting{connecting} connected{connected} disconnected{disconnected} failed{failed} closed{closed} other{unknown}}",
   "@statusConnectionState": {
@@ -100,135 +24,6 @@
         "type": "String"
       }
     }
-  },
-  "statusPeerLeftSender": "The sender has left.",
-  "@statusPeerLeftSender": {
-    "description": "Status text of the receiver when the sender left."
-  },
-  "statusPeerLeftReceiver": "The receiver has left.",
-  "@statusPeerLeftReceiver": {
-    "description": "Status text of the sender when the receiver left."
-  },
-  "statusError": "Error: {message}",
-  "@statusError": {
-    "description": "Status text when something failed. The message is a technical text in English.",
-    "placeholders": {
-      "message": {
-        "type": "String"
-      }
-    }
-  },
-  "statsTitle": "Incoming video",
-  "@statsTitle": {
-    "description": "Heading of the box with receive counters."
-  },
-  "statsCodec": "Codec",
-  "@statsCodec": {
-    "description": "Label: video codec."
-  },
-  "statsCodecUnknown": "not known yet",
-  "@statsCodecUnknown": {
-    "description": "Shown for the codec before a video track arrived."
-  },
-  "statsPackets": "Packets",
-  "@statsPackets": {
-    "description": "Label: number of received network packets."
-  },
-  "statsBytes": "Bytes",
-  "@statsBytes": {
-    "description": "Label: number of received bytes."
-  },
-  "statsFrames": "Frames",
-  "@statsFrames": {
-    "description": "Label: number of received video frames."
-  },
-  "statsKeyframes": "Key frames",
-  "@statsKeyframes": {
-    "description": "Label: number of received key frames (complete pictures)."
-  },
-  "receiveNotice": "Pictures are shown for H.264 video, for example when a Linux computer shares its screen. Images, PDF pages and links that a sender shares are shown too. The built-in test video (VP8) is only counted.",
-  "@receiveNotice": {
-    "description": "Notice on the receive screen: which video is shown."
-  },
-  "sendNotice": "Without \"Share this screen\", a built-in test video (VP8) is sent instead of your screen.",
-  "@sendNotice": {
-    "description": "Notice on the send screen: what is sent when screen sharing is off."
-  },
-  "roomCodeInputLabel": "Room code of the receiver",
-  "@roomCodeInputLabel": {
-    "description": "Label of the text field where the sender types the room code."
-  },
-  "roomCodeHelper": "{length} characters, allowed: {alphabet}",
-  "@roomCodeHelper": {
-    "description": "Helper text under the room code field. The alphabet comes from the Rust core.",
-    "placeholders": {
-      "length": {
-        "type": "int"
-      },
-      "alphabet": {
-        "type": "String"
-      }
-    }
-  },
-  "roomCodeWrongLength": "The code must have exactly {length} characters.",
-  "@roomCodeWrongLength": {
-    "description": "Error: room code has the wrong length.",
-    "placeholders": {
-      "length": {
-        "type": "int"
-      }
-    }
-  },
-  "roomCodeInvalidChar": "The character \"{char}\" is not allowed in a room code.",
-  "@roomCodeInvalidChar": {
-    "description": "Error: room code contains a character that is not in the alphabet.",
-    "placeholders": {
-      "char": {
-        "type": "String"
-      }
-    }
-  },
-  "durationLabel": "Duration in seconds",
-  "@durationLabel": {
-    "description": "Label of the field for how long the test video is sent."
-  },
-  "durationInvalid": "Enter a whole number from 1 to 3600.",
-  "@durationInvalid": {
-    "description": "Error: the duration is not a valid number."
-  },
-  "sendStreaming": "Sending the test video: {frames} frames sent",
-  "@sendStreaming": {
-    "description": "Status text of the sender while streaming.",
-    "placeholders": {
-      "frames": {
-        "type": "int"
-      }
-    }
-  },
-  "sendFinished": "Finished: {frames} frames sent",
-  "@sendFinished": {
-    "description": "Status text of the sender when the duration is over.",
-    "placeholders": {
-      "frames": {
-        "type": "int"
-      }
-    }
-  },
-  "sendJoined": "Joined the room. The connection is being set up …",
-  "@sendJoined": {
-    "description": "Status text of the sender after joining."
-  },
-  "copyCode": "Copy code",
-  "@copyCode": {
-    "description": "Tooltip of the button that copies the room code."
-  },
-  "codeCopied": "Code copied",
-  "@codeCopied": {
-    "description": "Short message after the room code was copied."
-  },
-  "statusEnded": "Connection ended.",
-  "@statusEnded": {
-    "description": "Status text when the session ended without an error and without the other side leaving."
   },
   "captureNotificationTitle": "Sharing your screen",
   "@captureNotificationTitle": {
@@ -242,161 +37,9 @@
   "@captureNotificationStop": {
     "description": "Action button of the capture notification: stop sharing."
   },
-  "sendShareScreen": "Share this screen",
-  "@sendShareScreen": {
-    "description": "Switch on the send screen: send the picture of this computer."
-  },
-  "sendShareScreenHint": "Sends the picture of this computer until you stop.",
-  "@sendShareScreenHint": {
-    "description": "Subtitle of the \"Share this screen\" switch."
-  },
-  "sendShareScreenHintAndroid": "Android asks for your permission first. Sending ends when you stop it here or in the notification.",
-  "@sendShareScreenHintAndroid": {
-    "description": "Subtitle of the \"Share this screen\" switch on Android."
-  },
-  "sendCaptureWaitingForConsent": "Waiting for your permission to capture the screen …",
-  "@sendCaptureWaitingForConsent": {
-    "description": "Status text on Android while the system dialog that asks for permission to capture the screen is open."
-  },
-  "sendCaptureDenied": "Screen sharing was not allowed. Nothing is sent.",
-  "@sendCaptureDenied": {
-    "description": "Status text on Android after the person refused the system dialog for screen capture."
-  },
-  "sendCaptureStopped": "Screen sharing was stopped.",
-  "@sendCaptureStopped": {
-    "description": "Status text on Android when the system or the person ended the screen capture (for example with the notification button)."
-  },
-  "sendMonitorLabel": "What to share",
-  "@sendMonitorLabel": {
-    "description": "Label of the drop-down that lists the whole desktop and the monitors."
-  },
-  "sendMonitorWholeDesktop": "Whole desktop",
-  "@sendMonitorWholeDesktop": {
-    "description": "Entry of the monitor list: all monitors together."
-  },
-  "sendCaptureChecking": "Checking whether this screen can be shared …",
-  "@sendCaptureChecking": {
-    "description": "Shown while the capture check runs."
-  },
-  "sendCaptureUnsupportedSystem": "Sharing this screen is not supported on this system yet.",
-  "@sendCaptureUnsupportedSystem": {
-    "description": "Shown when the operating system has no screen capture in this version."
-  },
-  "sendCaptureUnsupportedWayland": "Sharing this screen is not supported on this system yet: it uses Wayland, and only X11 sessions can be shared.",
-  "@sendCaptureUnsupportedWayland": {
-    "description": "Shown when the desktop session is Wayland."
-  },
-  "sendCaptureNoDisplay": "Sharing this screen is not possible here: no graphical session was found.",
-  "@sendCaptureNoDisplay": {
-    "description": "Shown when no display is available."
-  },
-  "sendCaptureFailed": "The screen cannot be read: {message}",
-  "@sendCaptureFailed": {
-    "description": "Shown when the connection to the X11 display failed. The message is technical and in English.",
-    "placeholders": {
-      "message": {
-        "type": "String"
-      }
-    }
-  },
-  "sendStreamingScreen": "Sharing the screen: {frames} frames sent",
-  "@sendStreamingScreen": {
-    "description": "Status text of the sender while it shares the screen.",
-    "placeholders": {
-      "frames": {
-        "type": "int"
-      }
-    }
-  },
   "serverSuggestionsLabel": "Suggested servers",
   "@serverSuggestionsLabel": {
     "description": "Label above the chips with suggested server addresses."
-  },
-  "videoWaiting": "Waiting for the sender's screen …",
-  "@videoWaiting": {
-    "description": "Shown in the receiver while the sender is connected but no picture has arrived yet."
-  },
-  "videoCodecNotShown": "The sender uses {codec}. This version only shows H.264 pictures.",
-  "@videoCodecNotShown": {
-    "description": "Shown in the receiver when the video track is not H.264.",
-    "placeholders": {
-      "codec": {
-        "type": "String"
-      }
-    }
-  },
-  "fullscreenEnter": "Full screen (F11)",
-  "@fullscreenEnter": {
-    "description": "Tooltip of the button that makes the window full screen."
-  },
-  "fullscreenExit": "Leave full screen (Esc)",
-  "@fullscreenExit": {
-    "description": "Tooltip of the button that leaves full screen."
-  },
-  "videoViewLabel": "Shared screen of the sender",
-  "@videoViewLabel": {
-    "description": "Screen reader label of the received picture of the sender's screen."
-  },
-  "videoStatsLabel": "Video statistics",
-  "@videoStatsLabel": {
-    "description": "Screen reader label of the statistics shown over the received picture."
-  },
-  "videoStatsShow": "Show statistics (I)",
-  "@videoStatsShow": {
-    "description": "Tooltip of the button that shows the statistics over the picture."
-  },
-  "videoStatsHide": "Hide statistics (I)",
-  "@videoStatsHide": {
-    "description": "Tooltip of the button that hides the statistics over the picture."
-  },
-  "videoStatsSize": "Picture size",
-  "@videoStatsSize": {
-    "description": "Statistics label."
-  },
-  "videoStatsDisplayRate": "Display rate",
-  "@videoStatsDisplayRate": {
-    "description": "Statistics label: pictures drawn per second."
-  },
-  "videoStatsDecoded": "Decoded",
-  "@videoStatsDecoded": {
-    "description": "Statistics label: number of decoded pictures."
-  },
-  "videoStatsDropped": "Dropped",
-  "@videoStatsDropped": {
-    "description": "Statistics label: pictures that were replaced before they were drawn."
-  },
-  "videoStatsDecodeTime": "Decode time",
-  "@videoStatsDecodeTime": {
-    "description": "Statistics label: mean time to decode one picture."
-  },
-  "videoStatsKeyRequests": "Key frame requests",
-  "@videoStatsKeyRequests": {
-    "description": "Statistics label: how often a new key frame was requested."
-  },
-  "videoStatsDecodeErrors": "Decoder errors",
-  "@videoStatsDecodeErrors": {
-    "description": "Statistics label: how many pictures could not be decoded."
-  },
-  "videoStatsUiTime": "Hand-over to the picture: {fetch} ms, image: {image} ms",
-  "@videoStatsUiTime": {
-    "description": "Statistics line: mean time per picture to fetch it from the core and to turn it into an image.",
-    "placeholders": {
-      "fetch": {
-        "type": "String"
-      },
-      "image": {
-        "type": "String"
-      }
-    }
-  },
-  "videoStatsError": "Decoder: {message}",
-  "@videoStatsError": {
-    "description": "Statistics line with the last decoder problem (technical, in English).",
-    "placeholders": {
-      "message": {
-        "type": "String"
-      }
-    }
   },
   "serverLockedNote": "Your administrator has set the server.",
   "@serverLockedNote": {
@@ -466,35 +109,6 @@
   "@discoveryNoticeOther": {
     "description": "Note: a general problem while looking for servers."
   },
-  "nearbyTitle": "Nearby receivers",
-  "@nearbyTitle": {
-    "description": "Heading of the list of receivers found in the local network on the send screen."
-  },
-  "nearbyHint": "Select a receiver to use its server, then enter the room code shown on that screen. The code itself is never announced in the network.",
-  "@nearbyHint": {
-    "description": "Explains what a tap on a nearby receiver does."
-  },
-  "nearbyEmpty": "No receivers found yet.",
-  "@nearbyEmpty": {
-    "description": "Shown while the list of nearby receivers is empty."
-  },
-  "nearbyNoServer": "No server announced",
-  "@nearbyNoServer": {
-    "description": "Subtitle of a nearby receiver that announced no server."
-  },
-  "nearbyServer": "Server: {server}",
-  "@nearbyServer": {
-    "description": "Subtitle of a nearby receiver: the server it announced.",
-    "placeholders": {
-      "server": {
-        "type": "String"
-      }
-    }
-  },
-  "nearbyMore": "and more …",
-  "@nearbyMore": {
-    "description": "Shown under the list of nearby receivers when more were announced than the list can hold."
-  },
   "serverFieldSource": "Source of this address: {source}",
   "@serverFieldSource": {
     "description": "Shown next to the server field when the address was taken from a suggestion or a nearby receiver.",
@@ -504,278 +118,13 @@
       }
     }
   },
-  "nearbyUnavailable": "Receivers in the network cannot be listed on this device.",
-  "@nearbyUnavailable": {
-    "description": "Shown when listening for receivers is not possible."
-  },
-  "advertisedNote": "This device is visible to senders nearby as “{name}”.",
-  "@advertisedNote": {
-    "description": "Receive screen: the receiver is announced in the local network under this name.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "contentClose": "Close",
-  "@contentClose": {
-    "description": "Tooltip of the button that closes the shown image, page or link and goes back to waiting."
-  },
-  "contentReceiving": "Receiving “{name}” …",
-  "@contentReceiving": {
-    "description": "Status while a file from the sender arrives. The name was cleaned by the core.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "contentImageLabel": "Image from the sender",
-  "@contentImageLabel": {
-    "description": "Screen reader label of a received image."
-  },
-  "contentImageUndecodable": "This image cannot be shown.",
-  "@contentImageUndecodable": {
-    "description": "Note when a received image file cannot be decoded."
-  },
-  "contentImageTooBig": "This image is too large to show.",
-  "@contentImageTooBig": {
-    "description": "Note when a received image has too many pixels."
-  },
-  "contentPageLabel": "PDF page from the sender",
-  "@contentPageLabel": {
-    "description": "Screen reader label of a received PDF page."
-  },
-  "contentPageIndicator": "Page {page} of {pages}",
-  "@contentPageIndicator": {
-    "description": "Page indicator of a PDF.",
-    "placeholders": {
-      "page": {
-        "type": "int"
-      },
-      "pages": {
-        "type": "int"
-      }
-    }
-  },
-  "contentPageOpening": "Opening “{name}” …",
-  "@contentPageOpening": {
-    "description": "Shown while the first page of a received PDF is drawn.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "contentLinkTitle": "The sender wants to open {host}",
-  "@contentLinkTitle": {
-    "description": "Title of the link card. The host is shown in its punycode form for internationalised names.",
-    "placeholders": {
-      "host": {
-        "type": "String"
-      }
-    }
-  },
-  "contentLinkHint": "Nothing is opened until you choose Open. Check the address first.",
-  "@contentLinkHint": {
-    "description": "Explanation under the link card."
-  },
-  "contentLinkOpen": "Open",
-  "@contentLinkOpen": {
-    "description": "Button of the link card: open the link in the browser."
-  },
-  "contentLinkDismiss": "Dismiss",
-  "@contentLinkDismiss": {
-    "description": "Button of the link card: do not open the link."
-  },
-  "contentNoteHide": "Hide this note",
-  "@contentNoteHide": {
-    "description": "Tooltip of the button that hides a note about received content."
-  },
-  "contentNoteBadMessage": "The sender sent something that this app cannot use. It was ignored.",
-  "@contentNoteBadMessage": {
-    "description": "Note: a malformed or refused message."
-  },
-  "contentNoteIncomplete": "A transfer from the sender was not complete and was discarded.",
-  "@contentNoteIncomplete": {
-    "description": "Note: a transfer broke the rules (wrong sizes, interrupted)."
-  },
-  "contentNoteTooLarge": "The file is larger than this app accepts.",
-  "@contentNoteTooLarge": {
-    "description": "Note: a file was over the size limit."
-  },
-  "contentNoteDocumentRejected": "This PDF cannot be shown. It may be damaged, protected by a password or too large.",
-  "@contentNoteDocumentRejected": {
-    "description": "Note: the PDF was refused."
-  },
-  "contentNoteRenderFailed": "A page could not be drawn.",
-  "@contentNoteRenderFailed": {
-    "description": "Note: rendering a PDF page failed."
-  },
-  "contentNoteTooManyErrors": "The sender sent too many invalid messages. Further content is ignored.",
-  "@contentNoteTooManyErrors": {
-    "description": "Note: the receiver blocked the sender."
-  },
-  "contentNoteTimeout": "A transfer stalled and was cancelled.",
-  "@contentNoteTimeout": {
-    "description": "Note: a transfer received nothing for too long."
-  },
-  "contentNoteWorkerUnavailable": "PDF documents cannot be shown on this device because the PDF component was not found.",
-  "@contentNoteWorkerUnavailable": {
-    "description": "Note: the PDF render worker program is missing."
-  },
-  "contentNoteLinkOpenFailed": "The link could not be opened.",
-  "@contentNoteLinkOpenFailed": {
-    "description": "Note: the system refused to open the link."
-  },
-  "sendContentTitle": "Send file or link",
-  "@sendContentTitle": {
-    "description": "Title of the screen that sends an image, a PDF or a link."
-  },
-  "sendContentModeFile": "File",
-  "@sendContentModeFile": {
-    "description": "Segment: send a file."
-  },
-  "sendContentModeLink": "Link",
-  "@sendContentModeLink": {
-    "description": "Segment: send a web link."
-  },
-  "sendContentPick": "Choose image, PDF or Office file …",
-  "@sendContentPick": {
-    "description": "Button that opens the file dialog."
-  },
   "sendContentPickerTypes": "Images, PDF and Office files",
   "@sendContentPickerTypes": {
     "description": "Name of the file type filter in the file dialog."
   },
-  "sendContentNoFile": "No file chosen.",
-  "@sendContentNoFile": {
-    "description": "Shown while no file is chosen."
-  },
-  "sendContentChosen": "Chosen: {name}",
-  "@sendContentChosen": {
-    "description": "The file that was chosen.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "sendContentNeedFile": "Please choose a file first.",
-  "@sendContentNeedFile": {
-    "description": "Error when sending without a file."
-  },
-  "sendContentLinkLabel": "Link (http or https)",
-  "@sendContentLinkLabel": {
-    "description": "Label of the link field."
-  },
   "sendContentLinkInvalid": "Please enter a link that starts with http:// or https://.",
   "@sendContentLinkInvalid": {
     "description": "Error under the link field. The rules are checked by the Rust core."
-  },
-  "sendContentLinkPreview": "The receiver will be asked to open {host}.",
-  "@sendContentLinkPreview": {
-    "description": "Preview under the link field. The host is shown in its punycode form for internationalised names.",
-    "placeholders": {
-      "host": {
-        "type": "String"
-      }
-    }
-  },
-  "sendContentStart": "Send",
-  "@sendContentStart": {
-    "description": "Button that starts sending the file or link."
-  },
-  "sendContentPreparing": "Checking the content …",
-  "@sendContentPreparing": {
-    "description": "Status while the file is read and checked."
-  },
-  "sendContentSending": "Sending “{name}” … {percent} %",
-  "@sendContentSending": {
-    "description": "Status with the progress in percent.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "int"
-      }
-    }
-  },
-  "sendContentDone": "“{name}” was sent. The receiver keeps showing it while this screen stays open.",
-  "@sendContentDone": {
-    "description": "Status after an image or PDF was delivered.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "sendContentLinkDone": "The receiver was asked to open {host}. Nothing opens until the person there agrees.",
-  "@sendContentLinkDone": {
-    "description": "Status after a link was delivered.",
-    "placeholders": {
-      "host": {
-        "type": "String"
-      }
-    }
-  },
-  "sendContentStopped": "The content was closed on the receiver.",
-  "@sendContentStopped": {
-    "description": "Status after the stop command was delivered."
-  },
-  "sendContentStopShowing": "Stop showing",
-  "@sendContentStopShowing": {
-    "description": "Button that tells the receiver to close the content."
-  },
-  "sendContentProgress": "Progress of sending",
-  "@sendContentProgress": {
-    "description": "Screen reader label of the progress bar."
-  },
-  "sendPresenterTitle": "Presenter controls",
-  "@sendPresenterTitle": {
-    "description": "Heading of the page controls for a PDF."
-  },
-  "sendPresenterPrev": "Previous page",
-  "@sendPresenterPrev": {
-    "description": "Button: previous page."
-  },
-  "sendPresenterNext": "Next page",
-  "@sendPresenterNext": {
-    "description": "Button: next page."
-  },
-  "sendPresenterPageUnknown": "Page {page}",
-  "@sendPresenterPageUnknown": {
-    "description": "Page asked for, when the page count is not known.",
-    "placeholders": {
-      "page": {
-        "type": "int"
-      }
-    }
-  },
-  "sendPresenterGoto": "Go to page",
-  "@sendPresenterGoto": {
-    "description": "Label of the page number field."
-  },
-  "sendPresenterGo": "Go",
-  "@sendPresenterGo": {
-    "description": "Button that jumps to the page in the field."
-  },
-  "sendPresenterGotoInvalid": "Enter a page number of 1 or more.",
-  "@sendPresenterGotoInvalid": {
-    "description": "Error under the page number field."
-  },
-  "sendPresenterKeys": "Keys: arrow keys, Page Up and Page Down turn pages.",
-  "@sendPresenterKeys": {
-    "description": "Hint about the keyboard."
-  },
-  "sendPresenterNote": "The page is shown on the receiver; this screen does not draw it. The number here is the one you asked for.",
-  "@sendPresenterNote": {
-    "description": "Explains that the sender has no preview."
-  },
-  "sendPresenterCmdFailed": "The command was not accepted. Try again.",
-  "@sendPresenterCmdFailed": {
-    "description": "Note when a page command could not be queued."
   },
   "sendRejectUnreadable": "The file could not be read.",
   "@sendRejectUnreadable": {
@@ -804,19 +153,6 @@
   "sendRejectDocument": "A receiver could not show this PDF. It may be damaged or protected by a password.",
   "@sendRejectDocument": {
     "description": "Reason a PDF cannot be sent."
-  },
-  "sendContentConverting": "Converting “{name}” to PDF … This can take a few seconds.",
-  "@sendContentConverting": {
-    "description": "Status while an Office file is converted to a PDF on this device (before anything is sent).",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "sendContentConvertingLabel": "Conversion in progress",
-  "@sendContentConvertingLabel": {
-    "description": "Screen reader label of the indeterminate bar while an Office file is converted."
   },
   "sendRejectOfficeUnavailable": "Office files cannot be converted on this device because the conversion component was not found.",
   "@sendRejectOfficeUnavailable": {
@@ -914,18 +250,6 @@
   "@toolbarFrozenHint": {
     "description": "Shown while the image is frozen."
   },
-  "videoStatsHardware": "hardware decoder",
-  "@videoStatsHardware": {
-    "description": "Added to the picture size in the statistics when the device's own video decoder is used."
-  },
-  "homeReceiverOnlyTv": "This TV only receives. Start sharing on your phone, tablet or computer and enter the room code shown here.",
-  "@homeReceiverOnlyTv": {
-    "description": "Shown on a television instead of the send options."
-  },
-  "homeReceiveTvHint": "Show the room code and wait for a sender",
-  "@homeReceiveTvHint": {
-    "description": "Hint under the receive entry on a television."
-  },
   "codecTitle": "Video codec needed",
   "@codecTitle": {
     "description": "Title of the card that asks to download the H.264 codec."
@@ -970,10 +294,6 @@
   "@codecRetry": {
     "description": "Button after a failed download."
   },
-  "hardwareDecoderFailed": "The video decoder of this device failed. The picture is now decoded by the app itself, which needs the video codec below.",
-  "@hardwareDecoderFailed": {
-    "description": "Receiver, Android: the hardware (MediaCodec) decoder failed and the software decoder takes over."
-  },
   "codecFailed": "The video codec could not be downloaded: {reason}",
   "@codecFailed": {
     "description": "The download failed; reason is technical English text.",
@@ -1012,98 +332,6 @@
         "type": "String"
       }
     }
-  },
-  "codecRemembered": "Your consent is remembered; later downloads start without asking.",
-  "@codecRemembered": {
-    "description": "Note that consent is stored."
-  },
-  "sendShareScreenHintIos": "iOS asks you to start the broadcast in a list. Sending continues in the background until you stop it here or with the red bar at the top of the screen.",
-  "@sendShareScreenHintIos": {
-    "description": "Subtitle of the \"Share this screen\" switch on iPhone and iPad."
-  },
-  "iosBroadcastWaitingForStart": "Waiting for you to start the broadcast …",
-  "@iosBroadcastWaitingForStart": {
-    "description": "Status text on iOS while the system broadcast list is open and nothing has started yet."
-  },
-  "iosBroadcastInstructions": "In the list, choose \"Comet Cast\" and tap \"Start Broadcast\". If no list appeared: open Control Center, press and hold the record button, choose \"Comet Cast\" and start.",
-  "@iosBroadcastInstructions": {
-    "description": "Instructions shown on iOS while waiting for the person to start the broadcast. The quoted names are the names iOS shows."
-  },
-  "iosBroadcastPickerFailed": "The broadcast list could not be opened from the app. Open Control Center, press and hold the record button, choose \"Comet Cast\" and start. The room code is already handed over.",
-  "@iosBroadcastPickerFailed": {
-    "description": "Shown on iOS when the system list could not be opened by the app."
-  },
-  "iosBroadcastNotStarted": "The broadcast was not started. Nothing is sent.",
-  "@iosBroadcastNotStarted": {
-    "description": "Status text on iOS when nobody started the broadcast within the time limit."
-  },
-  "iosBroadcastWaitingForReceiver": "Connected to the server. Waiting for the receiver …",
-  "@iosBroadcastWaitingForReceiver": {
-    "description": "Status text on iOS: the broadcast extension joined the room and negotiates with the receiver."
-  },
-  "iosBroadcastReconnecting": "The connection was lost. Trying to reconnect …",
-  "@iosBroadcastReconnecting": {
-    "description": "Status text on iOS while the connection to the receiver is temporarily lost."
-  },
-  "iosBroadcastPaused": "The broadcast is paused, for example because of a call.",
-  "@iosBroadcastPaused": {
-    "description": "Status text on iOS while the system has paused the broadcast."
-  },
-  "iosErrorNoConfig": "The broadcast was started without a room code. Start it from the \"Send screen\" page of Comet Cast.",
-  "@iosErrorNoConfig": {
-    "description": "Error on iOS: the extension found no room code (started from Control Center)."
-  },
-  "iosErrorConfigExpired": "The broadcast was not started in time. Start it again.",
-  "@iosErrorConfigExpired": {
-    "description": "Error on iOS: the hand-over of the room code was too old."
-  },
-  "iosErrorInvalidRoomCode": "The room code is not valid.",
-  "@iosErrorInvalidRoomCode": {
-    "description": "Error on iOS: the extension rejected the room code."
-  },
-  "iosErrorInvalidRelay": "The server address is not valid.",
-  "@iosErrorInvalidRelay": {
-    "description": "Error on iOS: the extension rejected the server address."
-  },
-  "iosErrorRoomNotFound": "No receiver with this room code was found. Check the code on the receiving screen.",
-  "@iosErrorRoomNotFound": {
-    "description": "Error on iOS: the server knows no room with this code."
-  },
-  "iosErrorServerUnreachable": "The server cannot be reached. Check your network connection.",
-  "@iosErrorServerUnreachable": {
-    "description": "Error on iOS: the broadcast extension cannot reach the server."
-  },
-  "iosErrorConnectionLost": "The connection to the receiver was lost.",
-  "@iosErrorConnectionLost": {
-    "description": "Error on iOS: the connection failed or was closed."
-  },
-  "iosErrorEncoderFailed": "The screen could not be encoded on this device.",
-  "@iosErrorEncoderFailed": {
-    "description": "Error on iOS: the hardware video encoder failed."
-  },
-  "iosErrorMemory": "The broadcast was stopped because the device ran low on memory.",
-  "@iosErrorMemory": {
-    "description": "Error on iOS: the extension reached its memory limit."
-  },
-  "iosErrorInternal": "The broadcast ended because of an unexpected problem, or the system stopped it.",
-  "@iosErrorInternal": {
-    "description": "Error on iOS: unexpected failure, or the extension stopped reporting."
-  },
-  "codecNotNeededDevice": "The video is decoded by your device. No extra video codec is needed.",
-  "@codecNotNeededDevice": {
-    "description": "Shown in the receiver on iOS instead of the codec download card."
-  },
-  "videoDecoderFailedNoFallback": "This device could not decode the video. There is no other decoder on this system.",
-  "@videoDecoderFailedNoFallback": {
-    "description": "Shown in the receiver on iOS when the device decoder failed (no software fallback exists)."
-  },
-  "homeMiracast": "Receive via Miracast (Windows)",
-  "@homeMiracast": {
-    "description": "Home list row (Windows only): receive a screen from a phone or PC through Miracast."
-  },
-  "homeMiracastHint": "Show the screen of a phone or PC without an app",
-  "@homeMiracastHint": {
-    "description": "Subtitle of the Miracast row."
   },
   "miracastTitle": "Miracast receiver",
   "@miracastTitle": {
@@ -1319,280 +547,1173 @@
   "@miracastHintOther": {
     "description": "Hint: other failure."
   },
-  "joinPanelTitle": "Who may join",
-  "@joinPanelTitle": {
-    "description": "Receive screen: heading of the join settings."
+  "appBeDisplay": "Use this device as the screen",
+  "@appBeDisplay": {
+    "description": "Spec key app.beDisplay"
   },
-  "joinModeLabel": "Join mode",
-  "@joinModeLabel": {
-    "description": "Receive screen: accessibility label of the three-way choice."
+  "appCodeFromLink": "taken from your link",
+  "@appCodeFromLink": {
+    "description": "Spec key app.codeFromLink"
   },
-  "joinModeOpen": "Open",
-  "@joinModeOpen": {
-    "description": "Join mode: anyone with the code joins at once."
+  "appCodeScanned": "scanned",
+  "@appCodeScanned": {
+    "description": "Spec key app.codeScanned"
   },
-  "joinModeConfirm": "Ask first",
-  "@joinModeConfirm": {
-    "description": "Join mode: every join needs the host's decision."
+  "appConnect": "Connect",
+  "@appConnect": {
+    "description": "Spec key app.connect"
   },
-  "joinModeLocked": "Locked",
-  "@joinModeLocked": {
-    "description": "Join mode: nobody can join."
+  "appScanAgainBody": "Scan the QR code on the screen once more to continue.",
+  "@appScanAgainBody": {
+    "description": "Spec key app.scanAgainBody"
   },
-  "joinModeOpenHelp": "Anyone who knows the room code joins at once.",
-  "@joinModeOpenHelp": {
-    "description": "Explanation of the open join mode."
+  "appScanQr": "Scan QR code",
+  "@appScanQr": {
+    "description": "Spec key app.scanQr"
   },
-  "joinModeConfirmHelp": "Every join waits until you allow it here.",
-  "@joinModeConfirmHelp": {
-    "description": "Explanation of the ask-first join mode."
+  "appWelcome": "Welcome to Comet Cast",
+  "@appWelcome": {
+    "description": "Spec key app.welcome"
   },
-  "joinModeLockedHelp": "Nobody can join right now. The code stays the same.",
-  "@joinModeLockedHelp": {
-    "description": "Explanation of the locked join mode."
+  "appearanceAuto": "Automatic",
+  "@appearanceAuto": {
+    "description": "Spec key appearance.auto"
   },
-  "joinLockNow": "Lock room",
-  "@joinLockNow": {
-    "description": "Quick action: switch the join mode to locked."
+  "appearanceDark": "Dark",
+  "@appearanceDark": {
+    "description": "Spec key appearance.dark"
   },
-  "joinRequestsTitle": "Waiting to join",
-  "@joinRequestsTitle": {
-    "description": "Heading of the list of join requests."
+  "appearanceLight": "Light",
+  "@appearanceLight": {
+    "description": "Spec key appearance.light"
   },
-  "joinNobodyWaiting": "Nobody is waiting.",
-  "@joinNobodyWaiting": {
-    "description": "No join requests."
+  "appearanceOled": "OLED black",
+  "@appearanceOled": {
+    "description": "Spec key appearance.oled"
   },
-  "joinWantsToPresent": "wants to present",
-  "@joinWantsToPresent": {
-    "description": "After the quoted name of a sender: it asks to join."
+  "byeAgain": "Connect again",
+  "@byeAgain": {
+    "description": "Spec key bye.again"
   },
-  "joinNameBoxLabel": "Name entered by the sender (not checked)",
-  "@joinNameBoxLabel": {
-    "description": "Label above the untrusted name of a join request."
+  "byeBody": "You are no longer connected. You can close this tab.",
+  "@byeBody": {
+    "description": "Spec key bye.body"
   },
-  "joinCheckNumber": "Check number {check}. The same number is shown on the sender's screen.",
-  "@joinCheckNumber": {
-    "description": "Check number of a join request.",
-    "placeholders": {
-      "check": {
-        "type": "int"
-      }
-    }
+  "byeTitle": "Disconnected",
+  "@byeTitle": {
+    "description": "Spec key bye.title"
   },
-  "joinAllow": "Yes",
-  "@joinAllow": {
-    "description": "Button: allow a join (needs to be held)."
+  "commonBack": "Back",
+  "@commonBack": {
+    "description": "Spec key common.back"
   },
-  "joinDeny": "No",
-  "@joinDeny": {
-    "description": "Button: deny a join."
+  "commonCancel": "Cancel",
+  "@commonCancel": {
+    "description": "Spec key common.cancel"
   },
-  "joinDenyAll": "Deny all",
-  "@joinDenyAll": {
-    "description": "Button: deny all waiting join requests."
+  "commonNext": "Next",
+  "@commonNext": {
+    "description": "Spec key common.next"
   },
-  "joinMoreWaiting": "+{n} more waiting",
-  "@joinMoreWaiting": {
-    "description": "More join requests than shown.",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
+  "commonNoName": "No name",
+  "@commonNoName": {
+    "description": "Spec key common.noName"
   },
-  "joinSecondsLeft": "{s} s left",
-  "@joinSecondsLeft": {
-    "description": "Time left of a join request.",
-    "placeholders": {
-      "s": {
-        "type": "int"
-      }
-    }
+  "commonOr": "or",
+  "@commonOr": {
+    "description": "Spec key common.or"
   },
-  "joinConnectedTitle": "Connected",
-  "@joinConnectedTitle": {
-    "description": "Heading of the connected sender."
-  },
-  "joinNobodyConnected": "Nobody is connected.",
-  "@joinNobodyConnected": {
-    "description": "No sender connected."
-  },
-  "joinRemove": "Remove",
-  "@joinRemove": {
-    "description": "Button: remove the connected sender from the room."
-  },
-  "joinRemoveLabel": "Remove {name} from the room",
-  "@joinRemoveLabel": {
-    "description": "Accessibility label of the remove button.",
+  "commonQuoted": "“{name}”",
+  "@commonQuoted": {
+    "description": "Spec key common.quoted",
     "placeholders": {
       "name": {
         "type": "String"
       }
     }
   },
-  "joinChip": "Join: {mode}",
-  "@joinChip": {
-    "description": "Small chip while somebody presents: current join mode.",
+  "commonStepOf": "Step {n} of 4",
+  "@commonStepOf": {
+    "description": "Spec key common.stepOf",
     "placeholders": {
-      "mode": {
+      "n": {
         "type": "String"
       }
     }
   },
-  "joinPill": "{n} waiting",
-  "@joinPill": {
-    "description": "Small pill: number of waiting join requests.",
+  "errorActionAsk": "Ask again",
+  "@errorActionAsk": {
+    "description": "Spec key error.action.ask"
+  },
+  "errorActionAskIn": "Ask again in {n} s",
+  "@errorActionAskIn": {
+    "description": "Spec key error.action.askIn",
     "placeholders": {
       "n": {
-        "type": "int"
+        "type": "String"
       }
     }
   },
-  "joinOpenPanel": "Show join settings",
-  "@joinOpenPanel": {
-    "description": "Opens the join settings."
+  "errorActionGetApp": "Get the app",
+  "@errorActionGetApp": {
+    "description": "Spec key error.action.getApp"
   },
-  "joinClosePanel": "Hide join settings",
-  "@joinClosePanel": {
-    "description": "Closes the join settings."
-  },
-  "joinDismiss": "Dismiss",
-  "@joinDismiss": {
-    "description": "Dismisses a note."
-  },
-  "joinNoteLocked": "Room locked. {count} waiting request(s) were discarded.",
-  "@joinNoteLocked": {
-    "description": "Note after locking the room.",
+  "errorActionOpenDom": "Open {dom}",
+  "@errorActionOpenDom": {
+    "description": "Spec key error.action.openDom",
     "placeholders": {
-      "count": {
-        "type": "int"
+      "dom": {
+        "type": "String"
       }
     }
   },
-  "joinNoteOpenDisabled": "This server does not allow open rooms. \"Ask first\" is used instead.",
-  "@joinNoteOpenDisabled": {
-    "description": "Note: the server forbids open rooms."
+  "errorActionReload": "Reload page",
+  "@errorActionReload": {
+    "description": "Spec key error.action.reload"
   },
-  "joinAnnounce": "{name} is waiting to join. Check number {check}.",
-  "@joinAnnounce": {
-    "description": "Screen reader announcement of a new join request.",
+  "errorActionRescan": "Scan QR code again",
+  "@errorActionRescan": {
+    "description": "Spec key error.action.rescan"
+  },
+  "errorActionRetry": "Try again",
+  "@errorActionRetry": {
+    "description": "Spec key error.action.retry"
+  },
+  "errorActionRetype": "Retype code",
+  "@errorActionRetype": {
+    "description": "Spec key error.action.retype"
+  },
+  "errorActionShowFile": "Show photo or file",
+  "@errorActionShowFile": {
+    "description": "Spec key error.action.showFile"
+  },
+  "errorActionShowLink": "Show a link",
+  "@errorActionShowLink": {
+    "description": "Spec key error.action.showLink"
+  },
+  "errorBusyNow": "Wait a minute, then try again.",
+  "@errorBusyNow": {
+    "description": "Spec key error.busy.now"
+  },
+  "errorBusyTitle": "The server is busy",
+  "@errorBusyTitle": {
+    "description": "Spec key error.busy.title"
+  },
+  "errorBusyWhy": "Too many attempts from this network, or too many people at once.",
+  "@errorBusyWhy": {
+    "description": "Spec key error.busy.why"
+  },
+  "errorCodeNow": "Look at the screen again and retype the code.",
+  "@errorCodeNow": {
+    "description": "Spec key error.code.now"
+  },
+  "errorCodeTitle": "This code does not exist right now",
+  "@errorCodeTitle": {
+    "description": "Spec key error.code.title"
+  },
+  "errorCodeWhy": "Usually a typo. A code has 6 characters and never contains O, 0, I or 1.",
+  "@errorCodeWhy": {
+    "description": "Spec key error.code.why"
+  },
+  "errorDeniedNow": "Ask in person if you need to.",
+  "@errorDeniedNow": {
+    "description": "Spec key error.denied.now"
+  },
+  "errorDeniedTitle": "Not allowed",
+  "@errorDeniedTitle": {
+    "description": "Spec key error.denied.title"
+  },
+  "errorDeniedWhy": "“No” was chosen on the screen.",
+  "@errorDeniedWhy": {
+    "description": "Spec key error.denied.why"
+  },
+  "errorDisplayOffNow": "Is the code still on the screen? If not, ask the host to open Comet Cast there.",
+  "@errorDisplayOffNow": {
+    "description": "Spec key error.displayOff.now"
+  },
+  "errorDisplayOffTitle": "The screen does not answer",
+  "@errorDisplayOffTitle": {
+    "description": "Spec key error.displayOff.title"
+  },
+  "errorDisplayOffWhy": "The display device is off, asleep, or Comet Cast is closed there. Your request did not arrive.",
+  "@errorDisplayOffWhy": {
+    "description": "Spec key error.displayOff.why"
+  },
+  "errorDisplayOffWhyRelay": "The two devices could not reach each other, and the server could not help this time.",
+  "@errorDisplayOffWhyRelay": {
+    "description": "Spec key error.displayOff.whyRelay"
+  },
+  "errorEndedNow": "To continue, enter the new code or scan the QR code again.",
+  "@errorEndedNow": {
+    "description": "Spec key error.ended.now"
+  },
+  "errorEndedTitle": "Presentation ended",
+  "@errorEndedTitle": {
+    "description": "Spec key error.ended.title"
+  },
+  "errorEndedWhy": "The session was ended on the screen.",
+  "@errorEndedWhy": {
+    "description": "Spec key error.ended.why"
+  },
+  "errorExpiredNow": "Type the code the screen shows now, or scan the QR code again.",
+  "@errorExpiredNow": {
+    "description": "Spec key error.expired.now"
+  },
+  "errorExpiredTitle": "This code is no longer valid",
+  "@errorExpiredTitle": {
+    "description": "Spec key error.expired.title"
+  },
+  "errorExpiredWhy": "The screen has a new code by now. Codes change when the display device restarts or a session ends.",
+  "@errorExpiredWhy": {
+    "description": "Spec key error.expired.why"
+  },
+  "errorLockedNow": "Try again later or talk to the host.",
+  "@errorLockedNow": {
+    "description": "Spec key error.locked.now"
+  },
+  "errorLockedTitle": "Locked right now",
+  "@errorLockedTitle": {
+    "description": "Spec key error.locked.title"
+  },
+  "errorLockedWhy": "The code is right, but this screen is not taking anyone new right now.",
+  "@errorLockedWhy": {
+    "description": "Spec key error.locked.why"
+  },
+  "errorLockedWhyWhile": "The host locked the room while you were waiting. Your request was dropped.",
+  "@errorLockedWhyWhile": {
+    "description": "Spec key error.locked.whyWhile"
+  },
+  "errorNoInternetNow": "Turn on mobile data or join the room’s Wi-Fi. The page then retries by itself.",
+  "@errorNoInternetNow": {
+    "description": "Spec key error.noInternet.now"
+  },
+  "errorNoInternetNowBox": "For {dom} you must be on the same Wi-Fi as the screen. Ask for the room’s Wi-Fi.",
+  "@errorNoInternetNowBox": {
+    "description": "Spec key error.noInternet.nowBox",
+    "placeholders": {
+      "dom": {
+        "type": "String"
+      }
+    }
+  },
+  "errorNoInternetTitle": "No internet on this device",
+  "@errorNoInternetTitle": {
+    "description": "Spec key error.noInternet.title"
+  },
+  "errorNoInternetWhy": "Your device is offline, or the Wi-Fi only allows certain sites.",
+  "@errorNoInternetWhy": {
+    "description": "Spec key error.noInternet.why"
+  },
+  "errorNoScreenNow": "Show a photo, a file or a link instead. Or get the app, then the screen works too.",
+  "@errorNoScreenNow": {
+    "description": "Spec key error.noScreen.now"
+  },
+  "errorNoScreenNowNoApp": "Show a photo, a file or a link instead.",
+  "@errorNoScreenNowNoApp": {
+    "description": "Spec key error.noScreen.nowNoApp"
+  },
+  "errorNoScreenTitle": "Screen sharing does not work in this browser",
+  "@errorNoScreenTitle": {
+    "description": "Spec key error.noScreen.title"
+  },
+  "errorNoScreenWhy": "Phone browsers may not pass on your screen. That is the browser, not you.",
+  "@errorNoScreenWhy": {
+    "description": "Spec key error.noScreen.why"
+  },
+  "errorNow": "What now",
+  "@errorNow": {
+    "description": "Spec key error.now"
+  },
+  "errorOccupiedNow": "Ask that person to disconnect, or ask the host to press End. Then try again.",
+  "@errorOccupiedNow": {
+    "description": "Spec key error.occupied.now"
+  },
+  "errorOccupiedTitle": "Someone else is connected",
+  "@errorOccupiedTitle": {
+    "description": "Spec key error.occupied.title"
+  },
+  "errorOccupiedWhy": "This screen takes one person at a time.",
+  "@errorOccupiedWhy": {
+    "description": "Spec key error.occupied.why"
+  },
+  "errorOtherNow": "Try again. If it happens again, tell the host.",
+  "@errorOtherNow": {
+    "description": "Spec key error.other.now"
+  },
+  "errorOtherTitle": "Something went wrong",
+  "@errorOtherTitle": {
+    "description": "Spec key error.other.title"
+  },
+  "errorOutdatedNow": "Reload the page.",
+  "@errorOutdatedNow": {
+    "description": "Spec key error.outdated.now"
+  },
+  "errorOutdatedTitle": "This page is out of date",
+  "@errorOutdatedTitle": {
+    "description": "Spec key error.outdated.title"
+  },
+  "errorOutdatedWhy": "The server was updated in the meantime.",
+  "@errorOutdatedWhy": {
+    "description": "Spec key error.outdated.why"
+  },
+  "errorTimeoutNow": "Ask again and let the host know.",
+  "@errorTimeoutNow": {
+    "description": "Spec key error.timeout.now"
+  },
+  "errorTimeoutTitle": "No answer",
+  "@errorTimeoutTitle": {
+    "description": "Spec key error.timeout.title"
+  },
+  "errorTimeoutWhy": "Nobody answered your request in time.",
+  "@errorTimeoutWhy": {
+    "description": "Spec key error.timeout.why"
+  },
+  "errorWhy": "Why",
+  "@errorWhy": {
+    "description": "Spec key error.why"
+  },
+  "errorsAltchaExpired": "The browser check from the server had already expired. Please try again; if it keeps happening, check that the date and time of this device are correct.",
+  "@errorsAltchaExpired": {
+    "description": "Spec key errors.altcha_expired"
+  },
+  "errorsAltchaFailed": "The browser check could not be completed. Please try again.",
+  "@errorsAltchaFailed": {
+    "description": "Spec key errors.altcha_failed"
+  },
+  "errorsAltchaInvalid": "The browser check was not accepted (it may have expired). Please try again.",
+  "@errorsAltchaInvalid": {
+    "description": "Spec key errors.altcha_invalid"
+  },
+  "errorsAltchaRequired": "The server wants a short browser check before it creates a room. Please try again.",
+  "@errorsAltchaRequired": {
+    "description": "Spec key errors.altcha_required"
+  },
+  "errorsAltchaTooHard": "The server asked for a browser check that is too demanding for this device, so it was not started. Please try again later or contact the server operator.",
+  "@errorsAltchaTooHard": {
+    "description": "Spec key errors.altcha_too_hard"
+  },
+  "errorsApprovalTimeout": "Nobody answered your request in time. You can ask again.",
+  "@errorsApprovalTimeout": {
+    "description": "Spec key errors.approval_timeout"
+  },
+  "errorsBadHello": "The server did not accept the handshake. Please reload the page.",
+  "@errorsBadHello": {
+    "description": "Spec key errors.bad_hello"
+  },
+  "errorsBadMessage": "The server could not understand a message. Please reload the page.",
+  "@errorsBadMessage": {
+    "description": "Spec key errors.bad_message"
+  },
+  "errorsBanned": "This network is blocked for a while because of too many failed attempts. Please try again later.",
+  "@errorsBanned": {
+    "description": "Spec key errors.banned"
+  },
+  "errorsBlockListFull": "The block list is full. Unblock somebody first.",
+  "@errorsBlockListFull": {
+    "description": "Spec key errors.block_list_full"
+  },
+  "errorsCaptureDenied": "Screen sharing was cancelled or not allowed.",
+  "@errorsCaptureDenied": {
+    "description": "Spec key errors.capture_denied"
+  },
+  "errorsCaptureFailed": "The screen could not be captured by this browser.",
+  "@errorsCaptureFailed": {
+    "description": "Spec key errors.capture_failed"
+  },
+  "errorsConnectionLost": "The connection to the server was lost or could not be made.",
+  "@errorsConnectionLost": {
+    "description": "Spec key errors.connection_lost"
+  },
+  "errorsForbidden": "This network is not allowed to use this server.",
+  "@errorsForbidden": {
+    "description": "Spec key errors.forbidden"
+  },
+  "errorsJoinDenied": "The host did not allow you to join.",
+  "@errorsJoinDenied": {
+    "description": "Spec key errors.join_denied"
+  },
+  "errorsJoinPending": "Please wait until the host has allowed you to join.",
+  "@errorsJoinPending": {
+    "description": "Spec key errors.join_pending"
+  },
+  "errorsNoSuchBlock": "That block entry no longer exists.",
+  "@errorsNoSuchBlock": {
+    "description": "Spec key errors.no_such_block"
+  },
+  "errorsNoSuchRequest": "That request is no longer waiting.",
+  "@errorsNoSuchRequest": {
+    "description": "Spec key errors.no_such_request"
+  },
+  "errorsNotInRoom": "The other device is not connected anymore.",
+  "@errorsNotInRoom": {
+    "description": "Spec key errors.not_in_room"
+  },
+  "errorsOpenRoomsDisabled": "This server does not allow open rooms.",
+  "@errorsOpenRoomsDisabled": {
+    "description": "Spec key errors.open_rooms_disabled"
+  },
+  "errorsPeerFailed": "The direct connection to the other device failed. Without STUN/TURN servers this only works in the same local network.",
+  "@errorsPeerFailed": {
+    "description": "Spec key errors.peer_failed"
+  },
+  "errorsProtoMismatch": "This page and the server use different protocol versions. Please reload the page.",
+  "@errorsProtoMismatch": {
+    "description": "Spec key errors.proto_mismatch"
+  },
+  "errorsRateLimited": "Too many requests from this network. Please wait a moment and try again.",
+  "@errorsRateLimited": {
+    "description": "Spec key errors.rate_limited"
+  },
+  "errorsRemovedByHost": "The host removed you from the room.",
+  "@errorsRemovedByHost": {
+    "description": "Spec key errors.removed_by_host"
+  },
+  "errorsRoomFull": "This room already has a sender.",
+  "@errorsRoomFull": {
+    "description": "Spec key errors.room_full"
+  },
+  "errorsRoomLocked": "The room code is correct, but the room is locked right now. Ask the host to unlock it.",
+  "@errorsRoomLocked": {
+    "description": "Spec key errors.room_locked"
+  },
+  "errorsRoomLockedWaiting": "The room was locked while you were waiting. The code was right; ask the host to unlock it.",
+  "@errorsRoomLockedWaiting": {
+    "description": "Spec key errors.room_locked_waiting"
+  },
+  "errorsRoomNotFound": "No room with this code exists. Check the code on the receiver.",
+  "@errorsRoomNotFound": {
+    "description": "Spec key errors.room_not_found"
+  },
+  "errorsServerFull": "The server is full right now. Please try again later.",
+  "@errorsServerFull": {
+    "description": "Spec key errors.server_full"
+  },
+  "errorsUnknown": "An unknown error occurred.",
+  "@errorsUnknown": {
+    "description": "Spec key errors.unknown"
+  },
+  "errorsWrongRole": "This action is not allowed for this role.",
+  "@errorsWrongRole": {
+    "description": "Spec key errors.wrong_role"
+  },
+  "fileBody": "Recent on this device. Or “Other file” in the system dialog.",
+  "@fileBody": {
+    "description": "Spec key file.body"
+  },
+  "fileBodyWeb": "A PDF or an image from this device. It appears on the screen as soon as you pick it.",
+  "@fileBodyWeb": {
+    "description": "Spec key file.bodyWeb"
+  },
+  "filePick": "Choose file",
+  "@filePick": {
+    "description": "Spec key file.pick"
+  },
+  "fileTitle": "What would you like to show?",
+  "@fileTitle": {
+    "description": "Spec key file.title"
+  },
+  "idleAltAddress": "or {ip}",
+  "@idleAltAddress": {
+    "description": "Spec key idle.altAddress",
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "idleAppLine": "No download needed. Prefer an app: App Store · Google Play · {dom}/app",
+  "@idleAppLine": {
+    "description": "Spec key idle.appLine",
+    "placeholders": {
+      "dom": {
+        "type": "String"
+      }
+    }
+  },
+  "idleAppLineWeb": "No download needed.",
+  "@idleAppLineWeb": {
+    "description": "Spec key idle.appLineWeb"
+  },
+  "idleLocked": "Locked right now.",
+  "@idleLocked": {
+    "description": "Spec key idle.locked"
+  },
+  "idleOfflineBody": "This screen is offline right now. Code and QR code come back by themselves once the network is back.",
+  "@idleOfflineBody": {
+    "description": "Spec key idle.offline.body"
+  },
+  "idleOfflineBodyBusy": "The server is busy right now. This screen tries again by itself.",
+  "@idleOfflineBodyBusy": {
+    "description": "Spec key idle.offline.bodyBusy"
+  },
+  "idleOfflineBodyOutdated": "This page is out of date. Reload it to get a code.",
+  "@idleOfflineBodyOutdated": {
+    "description": "Spec key idle.offline.bodyOutdated"
+  },
+  "idleOfflineTitle": "No connection to {dom}",
+  "@idleOfflineTitle": {
+    "description": "Spec key idle.offline.title",
+    "placeholders": {
+      "dom": {
+        "type": "String"
+      }
+    }
+  },
+  "idleQrCaption": "Or scan",
+  "@idleQrCaption": {
+    "description": "Spec key idle.qrCaption"
+  },
+  "idleQrLocked": "Locked",
+  "@idleQrLocked": {
+    "description": "Spec key idle.qrLocked"
+  },
+  "idleStep1": "Open in your browser",
+  "@idleStep1": {
+    "description": "Spec key idle.step1"
+  },
+  "idleStep2": "Enter this code",
+  "@idleStep2": {
+    "description": "Spec key idle.step2"
+  },
+  "linkGo": "Open on the screen",
+  "@linkGo": {
+    "description": "Spec key link.go"
+  },
+  "linkHint": "The screen needs its own internet for this.",
+  "@linkHint": {
+    "description": "Spec key link.hint"
+  },
+  "linkLabel": "Page address",
+  "@linkLabel": {
+    "description": "Spec key link.label"
+  },
+  "modeApproval": "Approval on",
+  "@modeApproval": {
+    "description": "Spec key mode.approval"
+  },
+  "modeLocked": "Locked",
+  "@modeLocked": {
+    "description": "Spec key mode.locked"
+  },
+  "modeOpen": "Open",
+  "@modeOpen": {
+    "description": "Spec key mode.open"
+  },
+  "presentByline": "{name} is showing",
+  "@presentByline": {
+    "description": "Spec key present.byline",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "presentEnd": "End",
+  "@presentEnd": {
+    "description": "Spec key present.end"
+  },
+  "presentSas": "Security code {sas}",
+  "@presentSas": {
+    "description": "Spec key present.sas",
+    "placeholders": {
+      "sas": {
+        "type": "String"
+      }
+    }
+  },
+  "presentingFile": "You are showing a file",
+  "@presentingFile": {
+    "description": "Spec key presenting.file"
+  },
+  "presentingLink": "The screen shows your link",
+  "@presentingLink": {
+    "description": "Spec key presenting.link"
+  },
+  "presentingNextPage": "Next page",
+  "@presentingNextPage": {
+    "description": "Spec key presenting.nextPage"
+  },
+  "presentingPageOf": "Page {n} of {total}",
+  "@presentingPageOf": {
+    "description": "Spec key presenting.pageOf",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "presentingPrevPage": "Previous page",
+  "@presentingPrevPage": {
+    "description": "Spec key presenting.prevPage"
+  },
+  "presentingSas": "Security code {sas}. The screen shows the same code under your name.",
+  "@presentingSas": {
+    "description": "Spec key presenting.sas",
+    "placeholders": {
+      "sas": {
+        "type": "String"
+      }
+    }
+  },
+  "presentingScreen": "You are sharing your screen",
+  "@presentingScreen": {
+    "description": "Spec key presenting.screen"
+  },
+  "presentingStop": "Stop showing",
+  "@presentingStop": {
+    "description": "Spec key presenting.stop"
+  },
+  "presentingWhere": "On “{room}”.",
+  "@presentingWhere": {
+    "description": "Spec key presenting.where",
+    "placeholders": {
+      "room": {
+        "type": "String"
+      }
+    }
+  },
+  "receiveDocumentPageErrorBadSize": "This page has an unusable size.",
+  "@receiveDocumentPageErrorBadSize": {
+    "description": "Spec key receive.document.pageError.bad_size"
+  },
+  "receiveDocumentPageErrorFailed": "This page could not be shown.",
+  "@receiveDocumentPageErrorFailed": {
+    "description": "Spec key receive.document.pageError.failed"
+  },
+  "receiveDocumentPageErrorMemory": "This page needs too much memory.",
+  "@receiveDocumentPageErrorMemory": {
+    "description": "Spec key receive.document.pageError.memory"
+  },
+  "receiveDocumentPageErrorPageOutOfRange": "This page does not exist.",
+  "@receiveDocumentPageErrorPageOutOfRange": {
+    "description": "Spec key receive.document.pageError.page_out_of_range"
+  },
+  "receiveDocumentPageErrorTimeout": "Showing this page took too long.",
+  "@receiveDocumentPageErrorTimeout": {
+    "description": "Spec key receive.document.pageError.timeout"
+  },
+  "receiveLinkAddress": "Address",
+  "@receiveLinkAddress": {
+    "description": "Spec key receive.link.address"
+  },
+  "receiveLinkDismiss": "Dismiss",
+  "@receiveLinkDismiss": {
+    "description": "Spec key receive.link.dismiss"
+  },
+  "receiveLinkHint": "The sender asks you to open this link. Open it only if you expect it. It opens in a new tab, and only if you click “Open”.",
+  "@receiveLinkHint": {
+    "description": "Spec key receive.link.hint"
+  },
+  "receiveLinkHintTv": "This screen cannot open web pages. Open the address on your own device if you need it.",
+  "@receiveLinkHintTv": {
+    "description": "Spec key receive.link.hintTv"
+  },
+  "receiveLinkOpen": "Open",
+  "@receiveLinkOpen": {
+    "description": "Spec key receive.link.open"
+  },
+  "receiveLinkTitle": "{host} wants to open a link",
+  "@receiveLinkTitle": {
+    "description": "Spec key receive.link.title",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "receiveTransfer": "Receiving {name}… {percent} %",
+  "@receiveTransfer": {
+    "description": "Spec key receive.transfer",
     "placeholders": {
       "name": {
         "type": "String"
       },
-      "check": {
-        "type": "int"
+      "percent": {
+        "type": "String"
       }
     }
   },
-  "joinNameFieldLabel": "Your name (shown to the host)",
-  "@joinNameFieldLabel": {
-    "description": "Send screen: name field."
+  "receiveTransferErrorBadChunk": "Image data arrived in an unexpected form and was discarded.",
+  "@receiveTransferErrorBadChunk": {
+    "description": "Spec key receive.transferError.bad_chunk"
   },
-  "joinNameFieldHelper": "Shown to the host when it has to approve you. Optional; up to 40 characters.",
-  "@joinNameFieldHelper": {
-    "description": "Helper text of the name field."
+  "receiveTransferErrorBadMessage": "A message from the sender could not be understood and was ignored.",
+  "@receiveTransferErrorBadMessage": {
+    "description": "Spec key receive.transferError.bad_message"
   },
-  "sendWaitingTitle": "Waiting for the host",
-  "@sendWaitingTitle": {
-    "description": "Send screen: waiting for approval."
+  "receiveTransferErrorDocumentEncrypted": "The PDF is password protected and cannot be shown.",
+  "@receiveTransferErrorDocumentEncrypted": {
+    "description": "Spec key receive.transferError.document_encrypted"
   },
-  "sendWaitingText": "The host has to allow you to join. Nothing is sent from your device until then.",
-  "@sendWaitingText": {
-    "description": "Send screen: explanation while waiting for approval."
+  "receiveTransferErrorDocumentFailed": "The PDF could not be shown.",
+  "@receiveTransferErrorDocumentFailed": {
+    "description": "Spec key receive.transferError.document_failed"
   },
-  "sendWaitingCheck": "Check number",
-  "@sendWaitingCheck": {
-    "description": "Send screen: label of the check number."
+  "receiveTransferErrorDocumentInvalid": "The PDF is damaged or not supported and cannot be shown.",
+  "@receiveTransferErrorDocumentInvalid": {
+    "description": "Spec key receive.transferError.document_invalid"
   },
-  "sendWaitingCheckHelp": "If the host asks which request is yours, tell them this number.",
-  "@sendWaitingCheckHelp": {
-    "description": "Send screen: what the check number is for."
+  "receiveTransferErrorDocumentMemory": "The PDF needs more memory than allowed and was closed.",
+  "@receiveTransferErrorDocumentMemory": {
+    "description": "Spec key receive.transferError.document_memory"
   },
-  "sendWaitingCancel": "Cancel",
-  "@sendWaitingCancel": {
-    "description": "Send screen: cancel the wait."
+  "receiveTransferErrorDocumentRejected": "The PDF was refused by the safety check and is not shown.",
+  "@receiveTransferErrorDocumentRejected": {
+    "description": "Spec key receive.transferError.document_rejected"
   },
-  "sendWaitingStatus": "Waiting for the host to allow you to join. Nothing is sent until then.",
-  "@sendWaitingStatus": {
-    "description": "Send screen: status line while waiting for approval."
+  "receiveTransferErrorDocumentTimeout": "Showing the PDF took too long and it was closed.",
+  "@receiveTransferErrorDocumentTimeout": {
+    "description": "Spec key receive.transferError.document_timeout"
   },
-  "joinRefusalDenied": "The host did not allow you to join.",
-  "@joinRefusalDenied": {
-    "description": "Send screen: join denied."
+  "receiveTransferErrorDocumentTooLarge": "The PDF is too large to be shown.",
+  "@receiveTransferErrorDocumentTooLarge": {
+    "description": "Spec key receive.transferError.document_too_large"
   },
-  "joinRefusalLocked": "The room code is correct, but the room is locked right now. Ask the host to unlock it.",
-  "@joinRefusalLocked": {
-    "description": "Send screen: room locked."
+  "receiveTransferErrorDocumentTooManyPages": "The PDF has too many pages to be shown.",
+  "@receiveTransferErrorDocumentTooManyPages": {
+    "description": "Spec key receive.transferError.document_too_many_pages"
   },
-  "joinRefusalLockedWaiting": "The room was locked while you were waiting. The code was right; ask the host to unlock it.",
-  "@joinRefusalLockedWaiting": {
-    "description": "Send screen: room locked while waiting."
+  "receiveTransferErrorDocumentUnsupported": "The sender sent a PDF document. This app cannot show documents yet.",
+  "@receiveTransferErrorDocumentUnsupported": {
+    "description": "Spec key receive.transferError.document_unsupported"
   },
-  "joinRefusalTimedOut": "Nobody answered your request in time. You can ask again.",
-  "@joinRefusalTimedOut": {
-    "description": "Send screen: approval timed out."
+  "receiveTransferErrorNoTransfer": "An image transfer ended unexpectedly and was ignored.",
+  "@receiveTransferErrorNoTransfer": {
+    "description": "Spec key receive.transferError.no_transfer"
   },
-  "joinRefusalRemoved": "The host removed you from the room.",
-  "@joinRefusalRemoved": {
-    "description": "Send screen: removed by the host."
+  "receiveTransferErrorSizeMismatch": "The image arrived incomplete and was discarded.",
+  "@receiveTransferErrorSizeMismatch": {
+    "description": "Spec key receive.transferError.size_mismatch"
   },
-  "joinRetryIn": "You can ask again in {s} s.",
-  "@joinRetryIn": {
-    "description": "Send screen: pause after a denial.",
+  "receiveTransferErrorStalled": "The transfer from the sender stopped and was discarded.",
+  "@receiveTransferErrorStalled": {
+    "description": "Spec key receive.transferError.stalled"
+  },
+  "receiveTransferErrorTooLarge": "The image was larger than announced and was discarded.",
+  "@receiveTransferErrorTooLarge": {
+    "description": "Spec key receive.transferError.too_large"
+  },
+  "receiveTransferErrorUnexpectedChunk": "Unexpected image data was ignored.",
+  "@receiveTransferErrorUnexpectedChunk": {
+    "description": "Spec key receive.transferError.unexpected_chunk"
+  },
+  "relayConfirmBody": "A link asks this page to use the relay {host} instead of the default. Only continue if you know and trust its operator.",
+  "@relayConfirmBody": {
+    "description": "Spec key relay.confirm.body",
     "placeholders": {
-      "s": {
-        "type": "int"
+      "host": {
+        "type": "String"
       }
     }
   },
-  "joinDenyBlock": "No and block",
-  "@joinDenyBlock": {
-    "description": "Button: deny and block the sender for this session."
+  "relayConfirmCancel": "Cancel (use the default relay)",
+  "@relayConfirmCancel": {
+    "description": "Spec key relay.confirm.cancel"
   },
-  "joinLater": "Later",
-  "@joinLater": {
-    "description": "Button: hide the request for now without deciding."
+  "relayConfirmRisk": "The operator of this relay can see who connects, your room codes and network addresses, and can redirect the connection. Nothing is connected and no screen is captured before you decide.",
+  "@relayConfirmRisk": {
+    "description": "Spec key relay.confirm.risk"
   },
-  "joinTakeoverTitle": "Someone wants to join",
-  "@joinTakeoverTitle": {
-    "description": "Heading of the request that takes over the display."
+  "relayConfirmTitle": "Use this relay?",
+  "@relayConfirmTitle": {
+    "description": "Spec key relay.confirm.title"
   },
-  "joinEndPresentation": "End presentation",
-  "@joinEndPresentation": {
-    "description": "Button: remove the connected sender from the room."
+  "relayConfirmUse": "Use this relay",
+  "@relayConfirmUse": {
+    "description": "Spec key relay.confirm.use"
   },
-  "joinEndAndBlock": "End and block",
-  "@joinEndAndBlock": {
-    "description": "Button: remove the connected sender and block it for this session."
+  "relayErrorsCredentials": "The address must not contain a user name or password.",
+  "@relayErrorsCredentials": {
+    "description": "Spec key relay.errors.credentials"
   },
-  "joinBlockedTitle": "Blocked for this session",
-  "@joinBlockedTitle": {
-    "description": "Heading of the block list."
+  "relayErrorsEmpty": "Please enter an address.",
+  "@relayErrorsEmpty": {
+    "description": "Spec key relay.errors.empty"
   },
-  "joinNoneBlocked": "Nobody is blocked.",
-  "@joinNoneBlocked": {
-    "description": "Empty block list."
+  "relayErrorsInsecure": "Unencrypted ws:// is only allowed for localhost and local network addresses. Please use wss://.",
+  "@relayErrorsInsecure": {
+    "description": "Spec key relay.errors.insecure"
   },
-  "joinUnblock": "Unblock",
-  "@joinUnblock": {
-    "description": "Button: take a sender off the block list."
+  "relayErrorsInvalid": "This is not a valid relay address.",
+  "@relayErrorsInvalid": {
+    "description": "Spec key relay.errors.invalid"
   },
-  "joinBlockedHelp": "A blocked sender cannot join this room again until you unblock it or end the session. It is blocked by network address, so people on the same address are affected too.",
-  "@joinBlockedHelp": {
-    "description": "Explains the block list."
+  "relayErrorsMixed": "A page opened over https cannot use an unencrypted ws:// relay (the browser blocks it). Please use wss://.",
+  "@relayErrorsMixed": {
+    "description": "Spec key relay.errors.mixed"
   },
-  "joinEndSession": "End session",
-  "@joinEndSession": {
-    "description": "Button: end the room session."
+  "relayErrorsPath": "The address must not contain a path, query or fragment (only an optional /ws).",
+  "@relayErrorsPath": {
+    "description": "Spec key relay.errors.path"
   },
-  "joinEndSessionConfirm": "Press again to end the session",
-  "@joinEndSessionConfirm": {
-    "description": "The end-session button after the first press."
+  "requestAria": "Request: {name}",
+  "@requestAria": {
+    "description": "Spec key request.aria",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   },
-  "joinEndSessionHelp": "Removes everybody and creates a new room with a new code.",
-  "@joinEndSessionHelp": {
-    "description": "Explains ending the session."
+  "requestCheck": "Check",
+  "@requestCheck": {
+    "description": "Spec key request.check"
+  },
+  "requestNo": "No",
+  "@requestNo": {
+    "description": "Spec key request.no"
+  },
+  "requestNoBlock": "No and block",
+  "@requestNoBlock": {
+    "description": "Spec key request.noBlock"
+  },
+  "requestQueue": "+{n} waiting",
+  "@requestQueue": {
+    "description": "Spec key request.queue",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "requestSubtitle": "wants to connect",
+  "@requestSubtitle": {
+    "description": "Spec key request.subtitle"
+  },
+  "requestTitle": "Request",
+  "@requestTitle": {
+    "description": "Spec key request.title"
+  },
+  "requestYes": "Yes",
+  "@requestYes": {
+    "description": "Spec key request.yes"
+  },
+  "settingsAppearance": "Appearance",
+  "@settingsAppearance": {
+    "description": "Spec key settings.appearance"
+  },
+  "settingsClose": "Close",
+  "@settingsClose": {
+    "description": "Spec key settings.close"
+  },
+  "settingsCloseRemote": "Close (Back key)",
+  "@settingsCloseRemote": {
+    "description": "Spec key settings.closeRemote"
+  },
+  "settingsJoinApprovalText": "You let each person in one by one.",
+  "@settingsJoinApprovalText": {
+    "description": "Spec key settings.join.approvalText"
+  },
+  "settingsJoinLabel": "Joining",
+  "@settingsJoinLabel": {
+    "description": "Spec key settings.join.label"
+  },
+  "settingsJoinLockedText": "Nobody new can join. Connected stay.",
+  "@settingsJoinLockedText": {
+    "description": "Spec key settings.join.lockedText"
+  },
+  "settingsJoinOpenText": "Anyone with the code connects at once.",
+  "@settingsJoinOpenText": {
+    "description": "Spec key settings.join.openText"
+  },
+  "settingsOpen": "Settings",
+  "@settingsOpen": {
+    "description": "Spec key settings.open"
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Spec key settings.title"
+  },
+  "setupAddressBody": "This address is shown large on the screen and is inside the QR code.",
+  "@setupAddressBody": {
+    "description": "Spec key setup.address.body"
+  },
+  "setupAddressChange": "Other address",
+  "@setupAddressChange": {
+    "description": "Spec key setup.address.change"
+  },
+  "setupAddressFieldLabel": "Server address",
+  "@setupAddressFieldLabel": {
+    "description": "Spec key setup.address.fieldLabel"
+  },
+  "setupAddressOk": "Looks right",
+  "@setupAddressOk": {
+    "description": "Spec key setup.address.ok"
+  },
+  "setupAddressSourceBox": "In-house box found on this network.",
+  "@setupAddressSourceBox": {
+    "description": "Spec key setup.address.sourceBox"
+  },
+  "setupAddressSourceDefault": "Default server. Nothing to set up.",
+  "@setupAddressSourceDefault": {
+    "description": "Spec key setup.address.sourceDefault"
+  },
+  "setupAddressSourceOwn": "Found via the company network (DNS entry).",
+  "@setupAddressSourceOwn": {
+    "description": "Spec key setup.address.sourceOwn"
+  },
+  "setupAddressSourcePage": "Set by the server of this page.",
+  "@setupAddressSourcePage": {
+    "description": "Spec key setup.address.sourcePage"
+  },
+  "setupAddressSourceTyped": "Entered by hand.",
+  "@setupAddressSourceTyped": {
+    "description": "Spec key setup.address.sourceTyped"
+  },
+  "setupAddressTitle": "Which address will others use?",
+  "@setupAddressTitle": {
+    "description": "Spec key setup.address.title"
+  },
+  "setupDoneBodyPointer": "Open the settings any time with “Settings” at the bottom right: joining and appearance.",
+  "@setupDoneBodyPointer": {
+    "description": "Spec key setup.done.bodyPointer"
+  },
+  "setupDoneBodyRemote": "Open the settings any time with the Menu key or the Settings button: joining and appearance.",
+  "@setupDoneBodyRemote": {
+    "description": "Spec key setup.done.bodyRemote"
+  },
+  "setupDoneFinish": "Go to idle screen",
+  "@setupDoneFinish": {
+    "description": "Spec key setup.done.finish"
+  },
+  "setupDoneTitle": "Done.",
+  "@setupDoneTitle": {
+    "description": "Spec key setup.done.title"
+  },
+  "setupModeApprovalText": "Each person shows up here as a request and you let them in. For rooms many people use.",
+  "@setupModeApprovalText": {
+    "description": "Spec key setup.mode.approvalText"
+  },
+  "setupModeFewPeople": "Few people",
+  "@setupModeFewPeople": {
+    "description": "Spec key setup.mode.fewPeople"
+  },
+  "setupModeLater": "You can switch or lock any time later in the settings.",
+  "@setupModeLater": {
+    "description": "Spec key setup.mode.later"
+  },
+  "setupModeManyPeople": "Many people",
+  "@setupModeManyPeople": {
+    "description": "Spec key setup.mode.manyPeople"
+  },
+  "setupModeOpenText": "Anyone who sees the code connects at once. For small groups, teams and at home.",
+  "@setupModeOpenText": {
+    "description": "Spec key setup.mode.openText"
+  },
+  "setupModeTitle": "Who may connect?",
+  "@setupModeTitle": {
+    "description": "Spec key setup.mode.title"
+  },
+  "setupNameBody": "The name is shown large on the screen so people know they are in the right place.",
+  "@setupNameBody": {
+    "description": "Spec key setup.name.body"
+  },
+  "setupNameCustom": "Custom name",
+  "@setupNameCustom": {
+    "description": "Spec key setup.name.custom"
+  },
+  "setupNameS1": "Meeting room Elbe",
+  "@setupNameS1": {
+    "description": "Spec key setup.name.s1"
+  },
+  "setupNameS2": "Living room",
+  "@setupNameS2": {
+    "description": "Spec key setup.name.s2"
+  },
+  "setupNameS3": "Clubhouse",
+  "@setupNameS3": {
+    "description": "Spec key setup.name.s3"
+  },
+  "setupNameS4": "Workshop",
+  "@setupNameS4": {
+    "description": "Spec key setup.name.s4"
+  },
+  "setupNameS5": "Room 204",
+  "@setupNameS5": {
+    "description": "Spec key setup.name.s5"
+  },
+  "setupNameTitle": "What is this room called?",
+  "@setupNameTitle": {
+    "description": "Spec key setup.name.title"
+  },
+  "setupWelcomeBody": "Afterwards anyone in the room can show here what is on their phone or laptop. With a code, no account.",
+  "@setupWelcomeBody": {
+    "description": "Spec key setup.welcome.body"
+  },
+  "setupWelcomeStart": "Set up",
+  "@setupWelcomeStart": {
+    "description": "Spec key setup.welcome.start"
+  },
+  "setupWelcomeTitle": "Hi! This screen is about to become a display device.",
+  "@setupWelcomeTitle": {
+    "description": "Spec key setup.welcome.title"
+  },
+  "startCodeEmpty": "Please enter the code shown large on the screen.",
+  "@startCodeEmpty": {
+    "description": "Spec key start.codeEmpty"
+  },
+  "startCodeLabel": "Code from the screen",
+  "@startCodeLabel": {
+    "description": "Spec key start.codeLabel"
+  },
+  "startNameLabel": "Your name",
+  "@startNameLabel": {
+    "description": "Spec key start.nameLabel"
+  },
+  "toastAllowed": "{name} allowed",
+  "@toastAllowed": {
+    "description": "Spec key toast.allowed",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "toastBlocked": "{name} denied and blocked",
+  "@toastBlocked": {
+    "description": "Spec key toast.blocked",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "toastDenied": "{name} denied",
+  "@toastDenied": {
+    "description": "Spec key toast.denied",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "toastExpired": "Request from {name} expired",
+  "@toastExpired": {
+    "description": "Spec key toast.expired",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "toastJoined": "{name} connected",
+  "@toastJoined": {
+    "description": "Spec key toast.joined",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "toastLeft": "{name} disconnected",
+  "@toastLeft": {
+    "description": "Spec key toast.left",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "toastOpenDisabled": "This server only allows Approval on",
+  "@toastOpenDisabled": {
+    "description": "Spec key toast.openDisabled"
+  },
+  "toastSessionEnded": "Session ended · new code",
+  "@toastSessionEnded": {
+    "description": "Spec key toast.sessionEnded"
+  },
+  "toastWithdrawn": "{name} withdrew the request",
+  "@toastWithdrawn": {
+    "description": "Spec key toast.withdrawn",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "waitCheckHint": "Also shown on the screen.",
+  "@waitCheckHint": {
+    "description": "Spec key wait.checkHint"
+  },
+  "waitCheckLabel": "Your check number",
+  "@waitCheckLabel": {
+    "description": "Spec key wait.checkLabel"
+  },
+  "waitExpires": "The request expires in {n} s.",
+  "@waitExpires": {
+    "description": "Spec key wait.expires",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "waitTitle": "Waiting for approval",
+  "@waitTitle": {
+    "description": "Spec key wait.title"
+  },
+  "waitWithdraw": "Withdraw request",
+  "@waitWithdraw": {
+    "description": "Spec key wait.withdraw"
+  },
+  "whatConnected": "Connected",
+  "@whatConnected": {
+    "description": "Spec key what.connected"
+  },
+  "whatConnectedTo": "Connected to “{room}”",
+  "@whatConnectedTo": {
+    "description": "Spec key what.connectedTo",
+    "placeholders": {
+      "room": {
+        "type": "String"
+      }
+    }
+  },
+  "whatDisconnect": "Disconnect",
+  "@whatDisconnect": {
+    "description": "Spec key what.disconnect"
+  },
+  "whatFile": "Show a photo or file",
+  "@whatFile": {
+    "description": "Spec key what.file"
+  },
+  "whatFileSub": "PDF or image. You turn pages, everything else stays with you",
+  "@whatFileSub": {
+    "description": "Spec key what.fileSub"
+  },
+  "whatLink": "Show a link",
+  "@whatLink": {
+    "description": "Spec key what.link"
+  },
+  "whatLinkSub": "The screen asks before it opens the page",
+  "@whatLinkSub": {
+    "description": "Spec key what.linkSub"
+  },
+  "whatScreen": "Share screen",
+  "@whatScreen": {
+    "description": "Spec key what.screen"
+  },
+  "whatScreenApp": "Your whole phone display, live",
+  "@whatScreenApp": {
+    "description": "Spec key what.screenApp"
+  },
+  "whatScreenLaptop": "Whole screen or one window, live",
+  "@whatScreenLaptop": {
+    "description": "Spec key what.screenLaptop"
+  },
+  "whatScreenPhoneBrowser": "On a phone only with the app",
+  "@whatScreenPhoneBrowser": {
+    "description": "Spec key what.screenPhoneBrowser"
+  },
+  "whatScreenPhoneBrowserNoApp": "Not possible in a phone browser",
+  "@whatScreenPhoneBrowserNoApp": {
+    "description": "Spec key what.screenPhoneBrowserNoApp"
+  },
+  "whatTitle": "What would you like to show?",
+  "@whatTitle": {
+    "description": "Spec key what.title"
   }
 }

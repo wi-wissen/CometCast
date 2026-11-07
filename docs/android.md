@@ -324,3 +324,7 @@ All of this is compiled and unit tested only; every device behaviour is UNCERTAI
 ## What a real-device test must check
 
 The full checklist is [android-device-test-plan.md](android-device-test-plan.md): install and ABI (A), phone as sender (B, including rotation, background, lock, task removal, backpressure), phone as receiver and content (C, software against hardware decoding, PDF and Office workers, toolbar), Google TV as receiver with the remote only (D), network cases (E), edge cases (F), what to record and the criteria for the A2 and A7 fallbacks (G).
+
+## Designed UI (display and presenter) and the screen
+
+UNCERTAIN: never run on a device. Android TV and tablets in the display role follow docs/design/native-apps.md: the **screen is kept on only while a presentation runs** (`FLAG_KEEP_SCREEN_ON` through the existing channel `setKeepScreenOn`; set when a picture is shown, cleared when it stops, the session ends or the app goes to the background). It is **not** held on the idle screen any more (the old receive page held it for as long as it was open). Idle dimming is an overlay drawn by the app after 7 minutes; the system brightness is never changed. Back on the idle screen: first press consumed, second within 2 s leaves the app. Going to the background ends the session without a toast. Tablets in the display role use immersive mode and landscape (`SystemChrome`).
