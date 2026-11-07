@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Apple TV receiver (native SwiftUI, tvOS 17+)
 
-The Apple TV app is a **receiver only**: it shows a room code, answers the sender's WebRTC offer, plays the H.264 screen stream and shows the content the sender pushes (images, links, PDF pages). It is built **to specification without a Mac, an Xcode or an Apple TV**: the platform independent part is tested on Linux, the app target has never been compiled. Everything that needs the hardware is in [appletv-device-test-plan.md](appletv-device-test-plan.md). Decision (owner): native SwiftUI, the Rust core is **not** used on tvOS (the earlier plan with UniFFI is dropped for this app).
+The Apple TV app is a **display only** (never a presenter): it shows the screen of the room (idle screen with address, code and QR code, the setup wizard, Settings and About, the join request dialog), answers the sender's WebRTC offer, plays the H.264 screen stream and shows the content the sender pushes (images, links, PDF pages). Its screens are built as designed in [design/first-run-and-display.md](design/first-run-and-display.md) and [design/native-apps.md](design/native-apps.md); the questions that the implementer left to the designer are in [design/implementation-questions-appletv.md](design/implementation-questions-appletv.md). It is built **to specification without a Mac, an Xcode or an Apple TV**: the platform independent part is tested on Linux, the app target has never been compiled. Everything that needs the hardware is in [appletv-device-test-plan.md](appletv-device-test-plan.md). Decision (owner): native SwiftUI, the Rust core is **not** used on tvOS (the earlier plan with UniFFI is dropped for this app).
 
 Statements that rest on an assumption are marked **UNCERTAIN** (in the code `// UNCERTAIN:`) and linked to [measurement-points.md](measurement-points.md): assumptions [A13](measurement-points.md#1-beta-assumptions-a1-to-a20) (no background operation), A19 and A20 (new, below), spike 3.
 
@@ -9,16 +9,18 @@ Statements that rest on an assumption are marked **UNCERTAIN** (in the code `// 
 
 | Part | Where | Status |
 | --- | --- | --- |
-| Protocol, content parser and limits, ALTCHA, connection check code, relay rules, state machine | `apps/apple-tv/CometCastCore` (Swift package, no Apple-only imports) | **Built and tested on Linux** (Swift 6.0.3, swift-crypto): 62 XCTest cases, same vectors as the web client |
+| Protocol, content parser and limits, ALTCHA, connection check code, relay rules, state machine; and the rules of the screens (design numbers, wizard, key tables, reconnect schedule, QR code, licence list) | `apps/apple-tv/CometCastCore` (Swift package, no Apple-only imports) | **Built and tested on Linux** (Swift 6.0.3, swift-crypto): 140 XCTest cases, same vectors as the web client |
 | Shared test vectors | `tests/fixtures/*.json` | Checked by the web client (vitest), by the Rust crate `cc-files` (two tests) and by the Swift package |
-| SwiftUI app, WebRTC wrapper, discovery glue, ImageIO/CoreGraphics decoding, AVPlayer | `apps/apple-tv/Sources/CometCastTV` | **Written, syntax-checked only** (`swiftc -parse`); not compiled, not run |
-| XcodeGen project, Info.plist, string catalogs, app icon layers | `apps/apple-tv/project.yml`, `Resources/`, `Assets.xcassets` | Written; plist and YAML parse; `xcodegen` never run |
+| SwiftUI app (design tokens, components, screens), WebRTC wrapper, discovery glue, ImageIO/CoreGraphics decoding, AVPlayer | `apps/apple-tv/Sources/CometCastTV` | **Written, syntax-checked only** (`swiftc -parse`; the pure Foundation files also type-check against the built core); not compiled, not run |
+| XcodeGen project, Info.plist, string catalogs (du loaded, Sie alternate), fonts, licence copies, icons, logos, app icon layers | `apps/apple-tv/project.yml`, `Resources/`, `Assets.xcassets`, `Sources/CometCastTV/*.xcstrings` | Written; plist, YAML, JSON parse; `xcodegen` never run |
 | Release job `tvos` | `.github/workflows/release.yml` | Names match the project (see [below](#project-and-release-workflow)); never run |
 
 ## Architecture
 
 ```
 SwiftUI views ── AppModel (main actor) ── ReceiverMachine (pure state machine, CometCastCore)
+ (Design/, Views/)  │  also drives the pure screen rules of CometCastCore: WizardState, ConnectionTracker,
+                    │  ControlsReveal, IdleDimmer, InputGuard, ToastState, the key tables
                     │  performs the effects:
                     ├─ SignalingSocket      URLSessionWebSocketTask, JSON text frames (docs/protocol.md)
                     ├─ ServerHTTP           GET /altcha/challenge (solved in CometCastCore), GET /ice-servers
@@ -26,7 +28,10 @@ SwiftUI views ── AppModel (main actor) ── ReceiverMachine (pure state ma
                     ├─ Discovery            NWBrowser (mDNS), dns_sd (DNS-SRV)
                     ├─ ControlReceiver      content channel parser and reassembly (CometCastCore)
                     ├─ ImageDecoder         ImageIO
-                    └─ PDFRenderer          Core Graphics (CGPDFDocument)
+                    ├─ PDFRenderer          Core Graphics (CGPDFDocument)
+                    ├─ Announcer            NWListener service with the TXT record (spec 14.8)
+                    ├─ LicenceStore         About: parses the bundled licence files off the main actor
+                    └─ HostResolver         getaddrinfo, the IPv4 address of an in-house box
 ```
 
 `CometCastCore` has no UIKit, SwiftUI, WebRTC or Network imports. It uses CryptoKit on Apple platforms and swift-crypto (pinned 3.10.0) on Linux, so the logic can be tested without a Mac. Modules:
@@ -43,7 +48,15 @@ SwiftUI views ── AppModel (main actor) ── ReceiverMachine (pure state ma
 | `Relay.swift` | relay address validation | `relay.ts` |
 | `ServerList.swift` | managed policy, address rules, merge order, DNS-SRV ordering and rdata, announcement TXT | `crates/cc-discovery` |
 | `ReceiverMachine.swift` | connection state machine | `receiverSession.ts` |
-| `ContentController.swift` | what is shown, page turning, error mapping, PDF/image limits | `receiverSession.ts` |
+| `ContentController.swift` | what is shown, page turning, error mapping, PDF/image limits; the page message `{"kind":"page",...}` | `receiverSession.ts` |
+| `Design.swift` | the numbers of the design: the three display palettes (hex), the selected-tile blend, appearance choice and Automatic, the reference scale and safe-area padding, the type table with the PostScript names, timings, focus ring, surface metrics, join mode keys | spec 3, native-apps 11, 12, 14, 15 |
+| `DisplayText.swift` | room name cleaning, names of people (18 characters + "…", `common.noName`), the join address `{dom}` (`cometcast.de/app`, no `:443`), the QR URL and the in-house box rule, security code grouping, transfer pill shortening, `{placeholder}` filling | `clean_room_name`, `fitName.ts`, spec 4.2, 4.4 |
+| `ConnectionView.swift` | what the idle screen shows (connecting, online, offline), the reconnect schedule (1 s, 2 s, 3 s, then 4 s; busy 30 s; outdated never), the busy memory | `connectionView.ts`, `busyMemory.ts`, `DisplayRunning.vue` |
+| `Wizard.swift` | the setup wizard as a state machine (name chips and field, mode, address step with sources and "Other address", focus rows) | `displaySetup.ts` |
+| `Interaction.swift` | Siri Remote key tables (Back, Menu = Play/Pause, presenting keys), controls reveal (5 s), idle dimming (7 min), the 1 s input guard, the toast | `controlsReveal.ts`, `idleDim.ts`, `joinGuard.ts` |
+| `QR.swift` | QR code generator (byte mode, level M, versions 1 to 10), tested against the web display's encoder | `qr.ts` (`qrcode-generator`) |
+| `Licences.swift` | the licence list of About, parsed from `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES.md` | spec 15.9 |
+| `DisplayConfig.swift` | what is remembered: room name, default mode (never Locked), server, appearance | `loadSetup` |
 
 ## State machine
 
@@ -59,6 +72,7 @@ Phases are the web app's: `idle`, `connecting`, `checking` (ALTCHA), `waiting_se
 | `offer` | answer it (the answer is sent when ready); candidates are fed to the peer |
 | peer connected | `receiving`; the connection check code is computed from the final SDPs |
 | `peer_left` | `peer_left`; peer and content closed; the room and its code stay (a new sender may join) |
+| `room_ended` (after End) | a new room on the same connection, in the **default mode** (Open or Approval on): Locked lasts only until End (spec 4.3) |
 | `error not_in_room` after the room exists | ignored |
 | any other `error`, socket closed, peer failed, answer failed | `error` with the code; everything torn down |
 | messages before the ICE list is known | held (`peer_joined`, `offer`, `ice_candidate`) and processed afterwards |
@@ -81,7 +95,9 @@ Error codes and what the person sees (key `errors.<code>`, German and English in
 | `no_server`, `local_network_denied` | client (Apple TV only) | no server selected / the local network permission was refused |
 | anything else | | `errors.unknown` |
 
-A test checks that every code the core can produce, every transfer error, phase, relay source and media error has an English and a German entry in the catalog, and that placeholders agree.
+The display does not show the `errors.<code>` texts any more: when the connection fails the idle screen shows the offline box whose body is chosen by the code (network, busy: `rate_limited`, `banned`, `server_full`, `forbidden`; outdated: `proto_mismatch`, `bad_hello`) and the display tries again by itself (spec 4.2); the catalog has no `errors.*` keys. The machine also collects `HostEvent`s (request expired or withdrawn, sender joined or left, session ended) with `takeEvents()`, which the app turns into toasts.
+
+A test checks that every key the core names (transfer errors, relay errors, media errors, appearance and mode tiles, offline bodies, name suggestions, address sources) and every key the Swift views pass to `L.s` / `L.t` exists in both catalogs, in English and German, in the du set and in the Sie set, and that `{placeholders}` agree.
 
 ## Servers (relays)
 
@@ -89,17 +105,16 @@ Order of sources, the same as the owner's rule in [discovery.md](discovery.md):
 
 1. **Managed app configuration (MDM)**: the `com.apple.configuration.managed` dictionary in `UserDefaults`, with the keys of the desktop policy file (`servers`, `forbid_default_list`, `forbid_user_override`, `forbid_announcement`, `mode`, `version`). Unknown keys or wrong types make the whole configuration invalid and the app **fails closed**: no server, locked, a notice. With `forbid_user_override` only the managed servers are offered and the text field is hidden. **UNCERTAIN:** how a real MDM product delivers this to tvOS (Apple's managed app configuration and an Info.plist key `com.apple.configuration.managed` are used from memory); not tried.
 2. **DNS-SRV** `_cometcast._tcp`: `DNSServiceQueryRecord` (dns_sd). SRV rdata is parsed strictly (no compression pointer, label and name limits); ordering by priority and weighted random choice (RFC 2782); targets pass the same host rules as in Rust (no loopback, link-local, metadata addresses, no spelling of an IPv4 address as a name); `wss://` unless the target is a private IP or `.local`. **UNCERTAIN:** whether the system adds the network's search domains to this name; tvOS has no public API to read them (the Rust crate asks every search domain itself). Test plan G3.
-3. **Announcement by a display** (mDNS): `NWBrowser` with TXT records (`v`, `srv`, `tls`, `name`); first announcement per instance name wins; an announced server needs `tls=1` unless it is a private IP or `.local`. Needs `NSBonjourServices` and the local network permission (Info.plist). The Apple TV does not announce itself (the old plan to advertise through `NWListener` is not built).
+3. **Announcement by a display** (mDNS): `NWBrowser` with TXT records (`v`, `srv`, `tls`, `name`); first announcement per instance name wins; an announced server needs `tls=1` unless it is a private IP or `.local`. Needs `NSBonjourServices` and the local network permission (Info.plist). The browsing runs only while the setup wizard runs. The Apple TV announces itself too (`Announcer`, `NWListener` service, spec 14.8): only while Idle or Presenting with a code, in the foreground and when the policy allows it; the TXT record carries the room name of the wizard as `name`.
 4. **Build default**: Info.plist key `CCDefaultRelay`, filled from the build setting `CC_DEFAULT_RELAY` (empty by default), replaces the built-in list (`relay.cometcast.de:443`, which does not exist yet).
 
 Rules shared with the Flutter app and the web app:
 
-- The **pre-fill is never an announced server** (any device in the network can announce one and would receive the room code). It is the server used last (if it is still in the list, or was typed and confirmed), else the first entry that is not an announcement. A server that came from an announcement is not saved as "last used".
-- A server from an **announcement or typed by the person is confirmed once** (host, source, risk text) before anything connects, like the web app's confirmation for `?server=`. Confirmed servers are remembered (at most 16).
+- **The setup wizard chooses the server** (spec 4.1, step 3): the addresses found are offered in the order policy, DNS, announcement ("in-house box"), default; the first is shown with its source line (`setup.address.sourceOwn`, `sourceBox`, `sourcePolicy`, `sourceDefault`, or `sourceTyped` for an address typed into the field) and "Looks right" confirms it; "Other address" cycles the found ones and then opens the text field (not offered under a policy lock). Finish stores the server with the room name and the default mode (`DisplayConfig`); later launches use the stored server (under a policy lock the managed one) and open the room at once. A server chosen in the wizard counts as confirmed. This replaces the earlier rule "the pre-fill is never an announced server, an announced or typed server is confirmed on a separate page": there is no relay confirmation page on a native display (decision N19), and a link never names a server. Observation for the designer: an announcing device in the network can be the wizard's first suggestion (question B5 in [design/implementation-questions-appletv.md](design/implementation-questions-appletv.md)).
 - `ws://` only for local/private hosts (the web rule `parseRelay`); the idle and receive screens show an "unencrypted" note for those.
 - The source of the selected server is always shown.
 
-Differences from the web app: there is no `?server=` link, so no link-based relay; the web app's `config.json` has the managed configuration as counterpart.
+Differences from the web app: there is no `?server=` link, so no link-based relay; the web app's `config.json` has the managed configuration as counterpart. After setup there is no way to change the server in the app (spec 10: reset the app's data).
 
 ## ALTCHA
 
@@ -134,11 +149,10 @@ The Swift client speaks **protocol version 2** (`protoVersion = 2` in `Signaling
 - **Errors.** `no_such_request` and `no_such_block` are ignored, `block_list_full` sets the notice `blockListFull`, all other errors are terminal as before (and now also clear requests, blocks and sender name). `joinApprovalErrorCodes` lists the new codes; they have **no string-catalog entries** and so show the generic message (see TODO below). Deviation from the web client: the web client ends the session on `no_such_block` and `block_list_full`; the Swift machine does not, because the room is intact.
 - **Names.** `sanitizeDisplayName` repeats the server's rules (control, bidi, zero-width, invisible and private-use characters removed, white space collapsed, 40 Unicode scalars, `Guest N` when nothing is left; `N` is the request id, or the count of senders for `peer_joined`) as defence in depth. Markup is not removed: show every name as plain text.
 
-**App target** (`AppModel`, no views changed): `state` carries all of the above; `setJoinMode`, `decide`, `denyAll`, `removePeer`, `unblock`, `endRoom` and `dismissNotice` feed the machine; `requestArrivals` stamps when each request arrived for a possible countdown. `SignalingSocket` needed no change (the version check uses `protoVersion`).
+**App target** (`AppModel`): `state` carries all of the above and the views of the join request dialog, Settings and the presenting controls bind to it (see [User interface](#user-interface)): `allowCurrent`, `denyCurrent(block:)` (with the toasts `allowed`, `denied`, `blocked`), `chooseMode` (Settings; Open and Approval on become the stored default, Locked is never stored), `endRoom` (End on the presenting controls, no confirmation). The designed screens replaced the earlier TODO list (hold to allow, banner while presenting, block list menu, "deny all"), which spec section 10 excludes; `denyAll`, `removePeer` and `unblock` stay in the machine and are not bound to any screen. `SignalingSocket` needed no change (the version check uses `protoVersion`).
 
-**TODO, decisions for the design (not made here):** the screens for a request (takeover on the code page, banner while presenting, Yes / No / No and block, the Siri Remote rules such as "hold to allow", ignoring presses for about 700 ms, focus on "No"), the host menu (mode, block list, end presentation, end session), the wording and translations of all of it and of the new error codes (`errors.<code>` keys), whether the chosen mode is remembered (`ConfigStore`), and the mode the app asks for by default (today `open`, as everywhere). Join approval is not part of the tvOS device test plan yet.
+**Tests.** `JoinApprovalTests.swift` reads `tests/fixtures/join-approval/` (messages, flows replayed against the machine, error codes, name vectors); `FixtureTests.testSignalingDecode` uses the shared `signaling.json` without any `expect_apple_tv` deviation. `LicenceAndEventTests.swift` (`HostEventTests`) tests the host events, the default mode after End and the unnamed flags.
 
-**Tests.** `JoinApprovalTests.swift` reads `tests/fixtures/join-approval/` (messages, flows replayed against the machine, error codes, name vectors); `FixtureTests.testSignalingDecode` uses the shared `signaling.json` without any `expect_apple_tv` deviation.
 
 ## Content channel
 
@@ -219,15 +233,33 @@ Rendering: `LKRTCMTLVideoView` (a Metal view, `videoContentMode = .scaleAspectFi
 
 ## User interface
 
-- **Idle screen:** three steps, the server in use and its source, "Show room code", "Change server". No QR code and no code entry on the TV: the receiver shows the six character code and the **sender** types it. After an error the same screen shows the translated message and "Create new room".
-- **Receive screen:** the code in very large monospaced type (`ABC 234`, spoken letter by letter), status line, connection check code, server and unencrypted note, then the video full screen with the check code as a small badge. Content (image, PDF page, link card) is shown over the video with a Close button that has the default focus.
-- **Siri Remote:** Menu on the receive screen asks "Stop receiving?" (Menu with content open closes the content); left/right turn PDF pages; Select presses buttons; the server list and the typed-server field are reachable with the focus engine (text entry uses the system keyboard). `idle timer` is disabled while a room is open.
-- **Dark mode:** follows the system; only semantic colours and materials are used (no fixed light/dark colours except orange notices).
-- **Languages:** English and German through `Localizable.xcstrings` (136 keys) and `InfoPlist.xcstrings`; German addresses the person with "Sie". `node tools/check-i18n.mjs` checks the catalog; the Swift tests check every key the core can produce.
-- **Accessibility:** labels for the room code, check code, video, images and documents, progress as a percentage, headings, grouped elements; **UNCERTAIN:** never run with VoiceOver.
-- **Lifecycle:** tvOS does not run the app in the background ([A13](measurement-points.md#1-beta-assumptions-a1-to-a20)). When the app comes back to the foreground after having been running, it starts again with a **new** room code. Always-on use needs the app in the foreground, with Single App Mode (AppLock) through MDM.
+Built as designed: [design/first-run-and-display.md](design/first-run-and-display.md) (sections 3 to 6, 11, 14, 15; decisions N1 to N96 for the display role) and [design/native-apps.md](design/native-apps.md). The Apple TV is a display only. Everything is placed on the 960 x 540 canvas (`Ref`: `1 ref px = scale`, `scale = min(w / 960, h / 540)`, no `.scaleEffect`); the picture alone fills the screen. The rules live in CometCastCore and are tested on Linux; the SwiftUI files only draw and move the focus.
 
-Not built: toolbar and annotations (the web receiver has them; there is no touch or pointer on tvOS), mDNS announcement by the Apple TV, auto-start without a button, audio, receiving more than one sender, a QR code.
+| Part | File | What |
+| --- | --- | --- |
+| Tokens | `Design/DesignTokens.swift`, `Core/Design.swift` | `DisplayPalette` (Dark, Light, OLED black from hex values in sRGB; Automatic follows the system and never picks OLED black), `Ref`, `CanvasInsets` (safe area at the canvas edges: `max(spec padding, inset)`), the display type scale with `Font.custom(_:fixedSize:)`, `IconView`, `LogoView`. No SwiftUI semantic colours or materials |
+| Fonts | `Resources/Fonts`, `Info.plist` `UIAppFonts` | Atkinson Hyperlegible Next 400, 500, 700 and Mono 500, 700 (OFL, unmodified, from `apps/flutter/assets/fonts`); the Latin Extended files are not bundled (same PostScript names, question A1) |
+| Icons and logos | `Assets.xcassets/Icons`, `Logo`; source `assets/icons/*.svg` | The stroke icons of `Icon.vue`, template images with preserved vector data, generated by `node tools/gen-appletv-icons.mjs` (`--check`); the logos as vectors |
+| Components | `Design/Components.swift` | Focus ring of spec 3.5 (outline 4, offset 3, glow 9 at 18 %, scale 1.03 in 120 ms, no scale on text fields, reduced motion: no scale, no animation) drawn by `FocusRingModifier` with `.focusEffectDisabled()` (no tvOS lift or parallax); button looks (primary, secondary, ghost, chip, tile, card, menu, close, overlay); `DialogCard`, `Scrim`, `InfoLine`, `ToastView` |
+| Setup wizard | `Views/SetupView.swift`, `Core/Wizard.swift` | 5 steps, card 780 wide, top edge fixed at 40 from step 1, name chips and field (decision 13.39), Open / Approval on cards, address step with the source line and "Other address", step dots |
+| Idle | `Views/IdleView.swift`, `QRView.swift` | Logo, room name, mode pill; step 1 address (58/700, `idle.altAddress` for a box), step 2 code (80 mono), QR code at level M (`https://{dom}/{CODE}`; empty box while connecting and offline, 25 % when Locked), offline box (`idle.offline.*` by cause), footer line and Settings button; padding `max(spec, safe area)` |
+| Settings and About | `Views/SettingsView.swift`, `AboutView.swift` | Join mode tiles and description, appearance tiles, About button and Close (`settings.closeRemote`); About dialog and the licence viewer (list 300 wide, text pane, no search) |
+| Join request | `Views/JoinRequestView.swift` | Alert dialog over Idle or Presenting: name in quotes (18 characters + "…"), check number, queue, [Yes, No] and "No and block"; 1 s input guard; focus on Yes after each decision; Back and Menu do nothing |
+| Presenting | `Views/PresentingView.swift` | Full-bleed video (the existing `VideoSurface`), image or PDF page on black; name tag and End appear on any remote input for 5 s with 400 ms fades (the first input only reveals); transfer pill and page-error box at rest; nothing is focusable at rest except an invisible catcher |
+| Link card | `Views/LinkCardView.swift` | Never an "Open" button (tvOS has no browser): [Dismiss] or [Play, Dismiss] for media (AVPlayer rules unchanged), initial focus Dismiss (Play for media), 1 s guard, Back = Dismiss |
+| Toasts, dimming | `Views/RootView.swift`, `AppModel` | Toast above everything (3.2 s, a new one replaces the old); idle dimming after 7 minutes (overlay of `--bg` at 60 %, 2 s in, 200 ms out, the first input only restores) |
+
+**Siri Remote** (spec 7.1, native-apps.md 6.1): Menu / Back (`onExitCommand`) and Play/Pause as the spec's Menu (`onPlayPauseCommand`) are routed by the key tables of `Interaction.swift`: Idle: Back is the system's (leaves the app), Play/Pause opens Settings; Settings: both close; join request: both do nothing; link card: Back dismisses; wizard: Back goes one step back (step 0: system); presenting: Back shows or hides the controls, Play/Pause shows them. The remote's Settings, Home, voice and app keys are not bound. Rows are `HStack`s with `.focusSection()`; initial focus with `.defaultFocus` and `@FocusState`.
+
+**Wake lock and lifecycle.** `UIApplication.shared.isIdleTimerDisabled` is `true` only while presenting (never on Idle). When the app goes to the background the session ends without a toast and a new one with a new code starts on return (native-apps.md 15). The room opens by itself after setup and on every launch; there is no start button.
+
+**Announcement.** The display announces itself with the existing `Announcer` only while Idle or Presenting with a code, in the foreground and when the policy allows it; the record carries the room name as `name` (spec 14.8). AirPlay is tvOS's own receiver: nothing about AirPlay is shown (decision N84).
+
+**Languages.** English and German in `Localizable.xcstrings` (**du**, the shipped set) and `InfoPlist.xcstrings`; `Localizable-sie.xcstrings` is the formal set, complete and **not loaded** unless the build setting `CC_STRINGS_TABLE` (Info.plist `CCStringsTable`) is set to `Localizable-sie` (the German `InfoPlist` text has no address form). Keys are the dotted keys of the spec; `{name}` placeholders are filled by CometCastCore (`fillPlaceholders`). Both catalogs are generated by `node tools/gen-appletv-strings.mjs` (`--check`) from the web and Flutter locale files and the spec's table 15.13; `node tools/check-i18n.mjs` checks them (same keys and placeholders in du and Sie, no formal form in the loaded set).
+
+**Accessibility.** The join request is a modal alert dialog labelled "Request: “{name}”" (screen change posted when it appears and for the next request), tiles and chips carry the selected trait, toasts are announced (`AccessibilityNotification.Announcement`), the QR code is labelled "QR: {url}", the Settings button is labelled by its word. **UNCERTAIN:** never run with VoiceOver.
+
+Not built: AirPlay or Miracast switches (decision N84), About search (TVs have none), the toolbar and annotations (no pointer on tvOS), audio, receiving more than one sender, a way to change room name or server after setup (spec 10), the on-screen statistics badge (the statistics go to the log in debug builds).
 
 ## Project and release workflow
 
@@ -238,7 +270,8 @@ Not built: toolbar and annotations (the web receiver has them; there is no touch
 | Scheme | `CometCastTV` (build, run, test, archive) |
 | Packages | `CometCastCore` (local), `LiveKitWebRTC` (commit pin) |
 | Bundle ids | `de.cometcast.tv`, tests `de.cometcast.tv.tests` |
-| Info.plist | `Resources/Info.plist`: `NSLocalNetworkUsageDescription` (translated by `InfoPlist.xcstrings`), `NSBonjourServices` = `_cometcast._tcp`, `NSAppTransportSecurity` / `NSAllowsLocalNetworking`, `CCDefaultRelay`, `CFBundleLocalizations` en, de |
+| Info.plist | `Resources/Info.plist`: `NSLocalNetworkUsageDescription` (translated by `InfoPlist.xcstrings`), `NSBonjourServices` = `_cometcast._tcp`, `NSAppTransportSecurity` / `NSAllowsLocalNetworking`, `CCDefaultRelay`, `CCStringsTable` (`$(CC_STRINGS_TABLE)`), `UIAppFonts` (five Atkinson files), `CFBundleLocalizations` en, de |
+| Resources | `Resources/Fonts` and `Resources/Licenses` are resource folders of the app target (`buildPhase: resources`); `Resources/Licenses` holds copies of `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md` written by `node tools/gen-third-party.mjs` (`--check` fails when a copy differs) |
 | Version | `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` appear once, in the top level `settings`; `tools/set-version.mjs` rewrites them (tested on a copy with 1.2.3-rc.1 build 42) |
 
 The workflow job `tvos` runs `xcodegen generate`, then `xcodebuild archive -project CometCastTV.xcodeproj -scheme CometCastTV -configuration Release -destination 'generic/platform=tvOS'` and reads the first `PRODUCT_BUNDLE_IDENTIFIER` of `project.yml` for the export options. All three names match the new project (checked by reading both files; `actionlint` passes on the workflow, which was **not changed**). The first line of `project.yml` that has `PRODUCT_BUNDLE_IDENTIFIER` is the app's, which the job relies on. The job needs the network (SPM resolves the 686 MB WebRTC zip). Never run.
@@ -249,17 +282,18 @@ The workflow job `tvos` runs `xcodegen generate`, then `xcodebuild archive -proj
 
 | What | Command | Result today |
 | --- | --- | --- |
-| CometCastCore, Linux | `cd apps/apple-tv/CometCastCore && swift test` | 62 tests, 0 failures (Swift 6.0.3, x86_64 Ubuntu 24.04, swift-crypto 3.10.0), about 5 s |
+| CometCastCore, Linux | `cd apps/apple-tv/CometCastCore && swift test` | 140 tests, 0 failures (Swift 6.0.3, x86_64 Ubuntu 24.04, swift-crypto 3.10.0), about 6 s |
 | Same vectors, web | `cd apps/web && npx vitest run tests/fixtures.test.ts` (part of `npm test`) | 10 tests pass; the complete web suite (215) and `vue-tsc` pass |
 | Same vectors, Rust | `cargo test -p cc-files --test shared_fixtures` | 2 tests pass; `cargo fmt` and `clippy` clean for the new file |
-| i18n | `node tools/check-i18n.mjs`; `node --test tools/check-i18n.test.mjs` | pass |
-| Project files | Info.plist read with Python `plistlib`, `project.yml` with PyYAML; `tools/set-version.mjs` on a copy | parse; version rewritten |
-| App syntax | `swiftc -parse` on every file of `Sources/CometCastTV` | no errors; `ConfigStore.swift` also type-checks against the built core on Linux |
+| i18n | `node tools/check-i18n.mjs`; `node --test tools/check-i18n.test.mjs` | pass (du and Sie catalogs: same keys, same placeholders, no formal form in the loaded set) |
+| Generated files | `node tools/gen-appletv-strings.mjs --check`, `node tools/gen-appletv-icons.mjs --check`, `node tools/gen-third-party.mjs --check` | up to date |
+| Project files | Info.plist read with Python `plistlib`, `project.yml` with PyYAML, the `.xcstrings` and `Contents.json` files as JSON; `tools/set-version.mjs` on a copy | parse; version rewritten |
+| App syntax | `swiftc -parse` on every file of `Sources/CometCastTV` | no errors; `ConfigStore.swift` and `L.swift` also type-check against the built core on Linux (the SwiftUI files cannot: no SDK) |
 | CI | `.github/workflows/appletv-core.yml` (Linux in a `swift:6.0.3` container, macOS 15) | actionlint passes; **never run**; the macOS job would be the first run of the CryptoKit and CommonCrypto paths |
 | Xcode build, XCTest on the simulator, anything on a device | | **not run** |
 
-What the Linux tests cover: message parser and limits (107 vectors), chunk reassembly and stall (19 scenarios), link validation (131 vectors), connection check code (24 vectors), ALTCHA (solving, payload, limits, errors; SHA-256/384/512; the server-made puzzle of `crates/cc-transport/testdata`), PBKDF2 against OpenSSL results, relay parsing (72 vectors), signalling decode, ICE list parsing, the state machine (happy path, ALTCHA, every error class, stale events), the server list rules (merge, policy, address rules, SRV, TXT, pre-fill, confirmation), the content controller, the player state machine, the statistics summary, the string catalog.
+What the Linux tests cover: message parser and limits (107 vectors), chunk reassembly and stall (19 scenarios), link validation (131 vectors), connection check code (24 vectors), ALTCHA (solving, payload, limits, errors; SHA-256/384/512; the server-made puzzle of `crates/cc-transport/testdata`), PBKDF2 against OpenSSL results, relay parsing (72 vectors), signalling decode, ICE list parsing, the state machine (happy path, ALTCHA, every error class, stale events), the server list rules (merge, policy, address rules, SRV, TXT, pre-fill, confirmation), the content controller, the player state machine, the statistics summary, the string catalogs; and, for the designed screens: the palettes and the selected-tile blend, the scale and safe-area padding, the room name and person name rules, the join address and QR URL rules, the reconnect schedule and the busy memory, the wizard (steps, chips, address cycling, field validation, late discovery, policy lock), the key tables of the Siri Remote, controls reveal, idle dimming, the 1 s guard, the toast, the QR matrices (equal to the web display's encoder at the same mask, lowest penalty of the eight masks, structure), the licence list parsed from the real files and the bundled copies, the host events and the default mode after End, every key used by the Swift views.
 
 ## Not verified (summary)
 
-Everything under `Sources/CometCastTV` compiles and works: unknown. In particular: the XcodeGen keys (`revision`, scheme keys), SPM resolution of the binary package for tvOS, every `LKRTC` Swift name, the Network and dns_sd glue (including the search domain question), ImageIO WebP, Core Graphics PDF speed and memory, AVPlayer behaviour (cookies, Referer, formats), managed configuration delivery, the focus behaviour of the Siri Remote, VoiceOver, dark mode, German layout (long words), the local network permission flow, Single App Mode, the 12 MB slice's behaviour, the ALTCHA solver speed, and the build of the `tvos` release job.
+Everything under `Sources/CometCastTV` compiles and works: unknown. In particular (UI): `Font.custom(_:fixedSize:)` with the bundled files and `UIAppFonts`, `View.tracking`, `.focusEffectDisabled()` and `.defaultFocus` removing the tvOS focus look, `TextField` in the plain style with our ring, `onExitCommand(perform: nil)` leaving the app at Idle, the invisible catcher button receiving every remote event while presenting, safe area insets from a `GeometryReader` that ignores the safe area, the 1.03 scale and glow clipping, the SVG template images, `AccessibilityNotification`, the licence viewer's focus moves, the line heights (`lineSpacing`), the transfer pill width; the full list of questions is [design/implementation-questions-appletv.md](design/implementation-questions-appletv.md). Also: the XcodeGen keys (`revision`, scheme keys), SPM resolution of the binary package for tvOS, every `LKRTC` Swift name, the Network and dns_sd glue (including the search domain question), ImageIO WebP, Core Graphics PDF speed and memory, AVPlayer behaviour (cookies, Referer, formats), managed configuration delivery, the focus behaviour of the Siri Remote, VoiceOver, dark mode, German layout (long words), the local network permission flow, Single App Mode, the 12 MB slice's behaviour, the ALTCHA solver speed, and the build of the `tvos` release job.
