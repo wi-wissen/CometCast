@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Universal Links: https://relay.cometcast.de/{CODE} opens the app (native-apps.md 20.4).
+	     Only the built-in relay's host; needs deploy/well-known/apple-app-site-association on it.
+	     UNCERTAIN: "relay.cometcast.de" is the planned name only (crates/cc-discovery). -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:relay.cometcast.de</string>
+	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>$(COMETCAST_APP_GROUP)</string>

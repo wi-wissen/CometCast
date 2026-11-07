@@ -50,6 +50,14 @@
 	<array>
 		<string>_cometcast._tcp</string>
 	</array>
+	<!-- The app reads Universal Links itself (LinkBridge); Flutter's deep link routing would push
+	     the path of the link as a route name. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
+	<!-- Shown by the system when the QR scanner asks for the camera (spec 11, ios.cameraUsage);
+	     the translations are in InfoPlist.strings. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Comet Cast uses the camera only to scan the QR code on the screen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Comet Cast looks for receivers and the Comet Cast server in your local network so you can share your screen with them.</string>
 	<key>UIApplicationSceneManifest</key>

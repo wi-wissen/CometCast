@@ -19,6 +19,8 @@ import '../../content_sender_controller.dart';
 import '../../core/android_capture.dart';
 import '../../core/core_api.dart';
 import '../../core/ios_broadcast.dart';
+import '../../core/launch_intake.dart';
+import '../../core/link_target.dart';
 import '../../join_state.dart';
 import '../../sender_controller.dart';
 import '../../settings.dart';
@@ -90,6 +92,7 @@ class PresenterRoot extends StatefulWidget {
     this.initialCode,
     this.codeFromLink = true,
     this.relayToConfirm,
+    this.links,
     this.desktop,
     this.codec,
   });
@@ -110,6 +113,10 @@ class PresenterRoot extends StatefulWidget {
 
   /// A server address from a link that the app did not know: confirmed first (spec 7.2).
   final String? relayToConfirm;
+
+  /// Turns a scanned code or a link into a chip, a relay confirmation or nothing, and remembers
+  /// a confirmed relay (native-apps.md 20.4). Null in tests that do not scan.
+  final LinkHandler? links;
 
   /// Computers (subtitle `what.screenLaptop`); null = decide by platform.
   final bool? desktop;
@@ -232,13 +239,35 @@ class PresenterRootState extends State<PresenterRoot> {
     _go(PresenterPage.what);
   }
 
+  /// The scan found something that is not a code of ours (shown as `app.scanWrong` by the
+  /// first-run page, spec 5.3); cleared by the next scan.
+  bool scanWrong = false;
+
+  /// The server of a scanned code that waits for the relay confirmation page.
+  String? _scannedRelay;
+
   Future<void> _scan() async {
     final scanned = await widget.scanQr?.call();
-    if (scanned == null || !mounted) return;
-    final tail = scanned.split('/').last;
+    if (scanned == null || !mounted) return; // cancelled: nothing changes
+    final outcome = widget.links?.fromUrl(scanned);
     setState(() {
-      _chip = tail.toUpperCase();
-      _chipFromLink = false;
+      scanWrong = false;
+      switch (outcome) {
+        case LinkUse(:final target):
+          _chip = target.code;
+          _chipFromLink = false;
+          _roomCode = target.code;
+          widget.links?.useServer(target.server);
+        case LinkConfirm(:final target):
+          // Nothing connects before the person decided; the chip keeps the code.
+          _chip = target.code;
+          _chipFromLink = false;
+          _roomCode = target.code;
+          _scannedRelay = target.server;
+          _page = PresenterPage.relay;
+        case LinkNothing() || null:
+          scanWrong = true;
+      }
     });
   }
 
@@ -643,10 +672,20 @@ class PresenterRootState extends State<PresenterRoot> {
           onAction: _errorAction,
         );
       case PresenterPage.relay:
+        final relay = _scannedRelay ?? widget.relayToConfirm ?? '';
         return RelayConfirmPage(
-          host: widget.relayToConfirm ?? '',
-          onCancel: () => _go(PresenterPage.firstRun),
-          onUse: () => _go(PresenterPage.firstRun),
+          host: relay,
+          // Cancel continues with the server the app would use anyway (the chip stays).
+          onCancel: () {
+            _scannedRelay = null;
+            _go(PresenterPage.firstRun);
+          },
+          // Use remembers the server as confirmed on this device and takes it.
+          onUse: () async {
+            _scannedRelay = null;
+            await widget.links?.confirmAndUse(relay);
+            if (mounted) _go(PresenterPage.firstRun);
+          },
         );
     }
   }

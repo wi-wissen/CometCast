@@ -6,6 +6,8 @@ import UIKit
   // Kept alive for the life of the app: they own their channels.
   private var broadcastBridge: BroadcastBridge?
   private var videoBridge: VideoBridge?
+  private var linkBridge: LinkBridge?
+  private var qrBridge: QrBridge?
 
   override func application(
     _ application: UIApplication,
@@ -22,6 +24,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "CometCastBridges") {
       broadcastBridge = BroadcastBridge(messenger: registrar.messenger())
       videoBridge = VideoBridge(messenger: registrar.messenger(), textures: registrar.textures())
+      // Universal Links and the system QR scanner (native-apps.md 20.4, section 8).
+      linkBridge = LinkBridge(messenger: registrar.messenger())
+      qrBridge = QrBridge(messenger: registrar.messenger())
     }
   }
 }

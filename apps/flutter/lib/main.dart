@@ -14,7 +14,11 @@ import 'core/android_capture.dart';
 import 'core/android_platform.dart';
 import 'core/android_video.dart';
 import 'core/core_api.dart';
+import 'core/app_links.dart';
 import 'core/ios_broadcast.dart';
+import 'core/launch_intake.dart';
+import 'core/link_target.dart' show LinkOutcome;
+import 'core/qr_scanner.dart';
 import 'core/miracast.dart';
 import 'core/rust_loader.dart';
 import 'src/app_shell.dart';
@@ -22,6 +26,7 @@ import 'src/design/tokens.dart';
 import 'src/display/display_logic.dart' show DisplayStore, PrefsDisplayStore;
 import 'src/display/wake_lock.dart';
 import 'src/presenter/file_picker.dart';
+import 'src/presenter/presenter_root.dart' show ScanQr;
 import 'miracast_page.dart' show miracastSupportedHere;
 import 'src/display/launch.dart' show launchInBrowser;
 import 'receiver_controller.dart' show UrlOpener;
@@ -43,6 +48,18 @@ Future<void> main() async {
     captureDisplay: _env('COMETCAST_CAPTURE_DISPLAY'),
   );
   final android = await _androidSetup(core);
+  // Links, the install referrer and the QR scanner exist on phones and tablets only.
+  final mobile = Platform.isAndroid || Platform.isIOS;
+  final handler = LinkHandler(core: core, settings: settings);
+  final launch = mobile
+      ? await resolveLaunch(
+          links: ChannelAppLinks(),
+          handler: handler,
+          store: settings.store,
+        )
+      : null;
+  final scanner = mobile ? const ChannelQrScanner() : null;
+  final canScan = scanner != null && await scanner.isAvailable();
   runApp(
     CometCastApp(
       core: core,
@@ -62,6 +79,9 @@ Future<void> main() async {
       deviceName: android.deviceName,
       // Windows only: the DLL is loaded when the Miracast screen is first used.
       miracast: miracastSupportedHere() ? FfiMiracastCore() : null,
+      launch: launch,
+      links: handler,
+      scanQr: canScan ? scanner.scan : null,
     ),
   );
 }
@@ -139,6 +159,9 @@ class CometCastApp extends StatelessWidget {
     this.wakeLock,
     this.forceDisplayCapable,
     this.initialCode,
+    this.launch,
+    this.links,
+    this.scanQr,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   /// What the display remembers (a memory store in tests).
@@ -152,6 +175,15 @@ class CometCastApp extends StatelessWidget {
 
   /// A code from a link (tests).
   final String? initialCode;
+
+  /// What started the app: a link or the install referrer (null on computers and in most tests).
+  final LinkOutcome? launch;
+
+  /// Turns scanned codes and links into chips and relay confirmations.
+  final LinkHandler? links;
+
+  /// The system QR scanner; null where none exists (computers): no scan button.
+  final ScanQr? scanQr;
 
   final Locale? locale;
 
@@ -240,6 +272,9 @@ class CometCastApp extends StatelessWidget {
         wakeLock: wakeLock,
         forceDisplayCapable: forceDisplayCapable,
         initialCode: initialCode,
+        launch: launch,
+        links: links,
+        scanQr: scanQr,
       ),
     );
   }

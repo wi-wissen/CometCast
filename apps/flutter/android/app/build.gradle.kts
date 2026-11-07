@@ -80,6 +80,13 @@ android {
 }
 
 dependencies {
+    // The system QR scanner, a part of Google Play services (no camera permission in the app):
+    // GmsBarcodeScanning, native-apps.md section 8. Proprietary service, Google APIs terms; see
+    // THIRD_PARTY_NOTICES.md. Pinned.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // The Google Play install referrer (Apache-2.0): the code and server of the link that sent
+    // the person to the store, native-apps.md 20.4. Pinned.
+    implementation("com.android.installreferrer:installreferrer:2.2")
     // Plain JVM unit tests of the pure Kotlin helpers (`./gradlew testDebugUnitTest`).
     testImplementation("junit:junit:4.13.2")
 }

@@ -61,6 +61,21 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- App Links (native-apps.md 20.4): https://relay.cometcast.de/{CODE} opens the app on
+                 a phone or tablet that has it. Only the built-in relay's host; other hosts stay
+                 browser links. `/......` is a path of exactly six characters (the room code);
+                 /display and /app are longer or shorter and stay in the browser. autoVerify
+                 needs https://relay.cometcast.de/.well-known/assetlinks.json (deploy/well-known,
+                 docs/android.md). UNCERTAIN: "relay.cometcast.de" is the planned name only
+                 (crates/cc-discovery). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="relay.cometcast.de"
+                      android:pathPattern="/......"/>
+            </intent-filter>
             <!-- Android TV / Google TV launcher row. The banner (320x180 dp, drawable-xhdpi) is
                  also set on the activity because some launchers read it from there. -->
             <intent-filter>
@@ -77,6 +92,12 @@
             android:exported="false"
             android:stopWithTask="true"
             android:foregroundServiceType="mediaProjection"/>
+
+        <!-- The app reads links itself (LinkBridge): Flutter's own deep link routing would push
+             the path of the link as a route name, which the app does not have. -->
+        <meta-data
+            android:name="flutter_deeplinking_enabled"
+            android:value="false" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

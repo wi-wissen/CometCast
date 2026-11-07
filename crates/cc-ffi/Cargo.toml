@@ -36,7 +36,7 @@ all = { level = "warn", priority = -1 }
 # Which OpenH264 build mode is used (see docs/capture.md, "H.264 licensing"): `h264-source` builds
 # OpenH264 from source (development and CI only, UNCERTAIN patent situation); `h264-libloading`
 # loads Cisco's prebuilt library at run time (the variant intended for releases).
-default = ["h264-libloading"]
+default = ["h264-source"]
 h264 = ["dep:cc-media"]
 h264-source = ["h264", "cc-media/h264-source", "cc-sender/h264-source"]
 h264-libloading = ["h264", "cc-media/h264-libloading", "cc-sender/h264-libloading", "dep:cc-codec"]
