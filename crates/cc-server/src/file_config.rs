@@ -132,6 +132,7 @@ struct FileConfig {
     mode: Option<Mode>,
     listen: Option<SocketAddr>,
     web_dir: Option<PathBuf>,
+    allowed_origins: Option<StringList>,
     idle_room_secs: Option<u64>,
     hello_secs: Option<u64>,
     no_room_secs: Option<u64>,
@@ -180,6 +181,9 @@ impl FileConfig {
         }
         if let Some(v) = self.web_dir {
             c.web_dir = Some(v);
+        }
+        if let Some(v) = self.allowed_origins {
+            c.allowed_origins = v.items();
         }
         if let Some(v) = self.idle_room_secs {
             c.idle_room_timeout = secs(v);
@@ -383,7 +387,7 @@ pub fn apply_override(table: &mut toml::Table, key: &str, value: &str) -> Result
 /// Turn environment variables into overrides.
 ///
 /// - `COMETCAST__LIMITS__MAX_ROOMS=500` sets `limits.max_rooms` (double underscore = dot).
-/// - `COMETCAST_LISTEN`, `COMETCAST_MODE`, `COMETCAST_WEB_DIR` are short forms.
+/// - `COMETCAST_LISTEN`, `COMETCAST_MODE`, `COMETCAST_WEB_DIR`, `COMETCAST_ALLOWED_ORIGINS` (comma-separated) are short forms.
 ///
 /// `COMETCAST_CONFIG` (the config file path) is read by the caller, not here.
 pub fn overrides_from_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String, String)> {
@@ -395,6 +399,7 @@ pub fn overrides_from_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(
             "COMETCAST_LISTEN" => Some("listen"),
             "COMETCAST_MODE" => Some("mode"),
             "COMETCAST_WEB_DIR" => Some("web_dir"),
+            "COMETCAST_ALLOWED_ORIGINS" => Some("allowed_origins"),
             _ => None,
         } {
             out.push((short.to_string(), value));

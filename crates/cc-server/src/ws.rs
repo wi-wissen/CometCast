@@ -10,7 +10,7 @@ use std::time::Instant as StdInstant;
 use axum::Extension;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg, error_codes};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
@@ -29,8 +29,13 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) async fn ws_handler(
     State(state): State<AppState>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
+    // Browsers do not apply CORS to WebSockets, so the page's Origin is checked here.
+    if !state.origins.allows_ws(&headers) {
+        return (axum::http::StatusCode::FORBIDDEN, "origin not allowed\n").into_response();
+    }
     // Refuse before upgrading: banned, too many connections per minute, server full.
     let slot = match state.guard.admit_connection(ip, StdInstant::now()) {
         Ok(slot) => slot,

@@ -15,6 +15,12 @@ mode = "internal"
 listen = "127.0.0.1:8443"
 # Serve the web app (a directory) from the same address. Not set = no web files.
 # web_dir = "/srv/cometcast/web"
+# Web origins whose pages may use this relay from another site (web app hosted elsewhere, e.g.
+# GitHub Pages). Exact match, no path, no wildcard. Empty = same-origin only for the HTTP endpoints
+# and any browser origin on /ws. If set: CORS for /ice-servers, /altcha/challenge, /healthz and
+# /ws refuses other browser origins (add the relay's own origin if it serves the web app too).
+# "*" = any origin (internal mode only). Env: COMETCAST_ALLOWED_ORIGINS=a,b  CLI: --allowed-origins a,b
+allowed_origins = []
 
 # Time limits in seconds.
 idle_room_secs = 1800      # room without sender is removed after this

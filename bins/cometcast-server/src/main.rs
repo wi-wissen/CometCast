@@ -15,6 +15,7 @@ const USAGE: &str = "Usage: cometcast-server [options]\n\
   --mode <open|internal> operating mode (default internal)\n\
   --listen <addr:port>   address to listen on (default 127.0.0.1:8443)\n\
   --web-dir <path>       serve this directory (the web app) from the same address\n\
+  --allowed-origins <a,b> web origins that may use this relay from another site (CORS + /ws check)\n\
   --tls-cert <file>      certificate chain (PEM); use with --tls-key to serve HTTPS\n\
   --tls-key <file>       private key (PEM)\n\
   --tls-self-signed      DEVELOPMENT ONLY: make a throw-away self-signed certificate\n\
@@ -52,6 +53,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Cli, String> {
             "--mode" => cli.overrides.push(("mode".into(), value("--mode")?)),
             "--listen" => cli.overrides.push(("listen".into(), value("--listen")?)),
             "--web-dir" => cli.overrides.push(("web_dir".into(), value("--web-dir")?)),
+            "--allowed-origins" => cli
+                .overrides
+                .push(("allowed_origins".into(), value("--allowed-origins")?)),
             "--tls-cert" => cli
                 .overrides
                 .push(("tls.cert_file".into(), value("--tls-cert")?)),
@@ -108,6 +112,16 @@ fn describe(config: &ServerConfig, addr: std::net::SocketAddr) {
     }
     if config.turn.is_some() {
         println!("TURN credentials: on (GET /ice-servers)");
+    }
+    if !config.allowed_origins.is_empty() {
+        println!(
+            "allowed web origins: {} (CORS on /ice-servers, /altcha/challenge, /healthz; Origin check on /ws)",
+            config.allowed_origins.join(", ")
+        );
+    } else if config.mode == Mode::Open {
+        println!(
+            "note: allowed_origins is empty, so /ws accepts any browser origin. Public relays should list the web app origins."
+        );
     }
     if let Some(dir) = &config.web_dir {
         println!("serving web files from {}", dir.display());
