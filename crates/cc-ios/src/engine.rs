@@ -564,6 +564,7 @@ mod tests {
         // include/cc_ios.h and the Swift code use these literals.
         assert_eq!(State::Streaming as i32, 3);
         assert_eq!(State::Failed as i32, 6);
+        assert_eq!(State::Pending as i32, 7);
         assert_eq!(ErrorCode::RoomNotFound as i32, 3);
         assert_eq!(ErrorCode::AlreadyRunning as i32, 8);
         assert_eq!(PushCode::NoSender as i32, 6);

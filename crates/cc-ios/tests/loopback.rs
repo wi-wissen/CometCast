@@ -338,13 +338,15 @@ fn the_extension_joins_with_a_handover_token_and_asks_for_the_way_back() {
             .map(|s| (s.state, s.error, s.message.clone()))
     );
     assert!(log_has("joined Ana true"), "{:?}", events.lock().unwrap());
-    assert!(
-        !events
+    // Exactly one request ever reached the host: the app's own first join.
+    assert_eq!(
+        events
             .lock()
             .unwrap()
             .iter()
-            .any(|e| e == "request Ana" && false),
-        "unreachable guard keeps the closure simple"
+            .filter(|e| e.starts_with("request"))
+            .count(),
+        1
     );
     // Wait until the data channel is up, then ask for the token of the way back.
     let got = wait_for(Duration::from_secs(25), || engine::request_handover(BACK));
