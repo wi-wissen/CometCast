@@ -25,9 +25,10 @@
 //! [`ReceiverCore::next_event`].
 
 mod content;
+mod handover;
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime};
 pub use cc_proto::JoinMode;
@@ -36,6 +37,7 @@ use cc_transport::{
     ConnectionState, IceServerConfig, MediaSnapshot, ServerAddr, Session, SessionConfig,
     SessionEvent, SignalingClient, TlsTrust, TransportError, VideoCodec, altcha, ice,
 };
+pub use handover::{HANDOVER_TTL, HandoverStore};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -67,6 +69,9 @@ pub struct ReceiverOptions {
     /// Name of the room, shown to senders on their waiting and "connected" pages. The
     /// server cleans it and cuts it at 32 characters. `None` = no room name.
     pub room_name: Option<String>,
+    /// How long a hand-over token of a presenter stays valid (native-apps.md 20.5). Default
+    /// [`HANDOVER_TTL`] (60 s); shorter values are for tests.
+    pub handover_ttl: Duration,
 }
 
 impl ReceiverOptions {
@@ -79,6 +84,7 @@ impl ReceiverOptions {
             content: None,
             join_mode: JoinMode::Open,
             room_name: None,
+            handover_ttl: HANDOVER_TTL,
         }
     }
 }
@@ -117,7 +123,20 @@ pub enum ReceiverEvent {
     PeerJoined {
         /// Sanitised display name of the sender.
         name: String,
+        /// The join came with a hand-over token this display had issued and was let in
+        /// without a dialog (native-apps.md 20.5): the person was approved before, so the app
+        /// shows no "connected" notice.
+        handover: bool,
     },
+    /// A presenter asked this display to hold a hand-over token and the display stored it
+    /// (and answered `handover_ok`). If the presenter now leaves, that is not a leave for the
+    /// host (no notice) until the token is used or runs out ([`ReceiverEvent::HandoverExpired`]).
+    HandoverStored {
+        /// The presenter's name.
+        name: String,
+    },
+    /// A hand-over token ran out unused (60 s).
+    HandoverExpired,
     /// Join mode `confirm`: somebody waits for a decision. Answer with
     /// [`ReceiverCore::decide_join`]. The name is untrusted text (cleaned by the server):
     /// show it as plain text only.
@@ -305,6 +324,7 @@ impl ReceiverCore {
             }
         });
         let has_content = content.is_some();
+        let handover = Arc::new(HandoverStore::new(options.handover_ttl));
         let task = tokio::spawn(run(
             sig,
             Arc::clone(&session),
@@ -314,6 +334,7 @@ impl ReceiverCore {
             stop_rx,
             cmd_rx,
             content,
+            handover,
         ));
         Ok(Self {
             code,
@@ -493,6 +514,7 @@ async fn run(
     mut stop: oneshot::Receiver<()>,
     mut commands: mpsc::UnboundedReceiver<ClientMsg>,
     mut content: Option<ContentSetup>,
+    handover: Arc<HandoverStore>,
 ) {
     let mut session = Arc::clone(&shared_session.lock().unwrap_or_else(|p| p.into_inner()));
     let mut content_task: Option<tokio::task::JoinHandle<()>> = None;
@@ -505,6 +527,11 @@ async fn run(
     };
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut conn = Conn::default();
+    // The name of the connected presenter (the content task needs it for hand-over tokens) and
+    // the name of a join that was let in with a token and whose `peer_joined` is still to come.
+    let mut peer_name: Option<String> = None;
+    let mut admitted_by_token: Option<String> = None;
+    let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<ReceiverEvent>();
     // Why the loop ended: stop, a fatal error or the end of the room all close the session below.
     loop {
         // The sender is gone or its presentation ended: forget its connection and start
@@ -550,14 +577,32 @@ async fn run(
                 emit(ReceiverEvent::PresentationStopped);
                 reset = true;
             }
+            Some(e) = hand_rx.recv() => emit(e),
             msg = sig.recv() => match msg {
                 None => {
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
                     break;
                 }
-                Some(ServerMsg::PeerJoined { name }) => emit(ReceiverEvent::PeerJoined { name }),
-                Some(ServerMsg::JoinRequest { id, name, check }) => {
-                    emit(ReceiverEvent::JoinRequest { id, name, check })
+                Some(ServerMsg::PeerJoined { name, handover: token }) => {
+                    // A join that needed no decision (join mode open) carries its token here;
+                    // one that was allowed by us below was checked when the request came.
+                    let by_token = admitted_by_token.take().is_some_and(|n| n == name)
+                        || token.is_some_and(|t| handover.take(&t, &name, Instant::now()));
+                    peer_name = Some(name.clone());
+                    emit(ReceiverEvent::PeerJoined { name, handover: by_token });
+                }
+                Some(ServerMsg::JoinRequest { id, name, check, handover: token }) => {
+                    // A token this display issued to this person: let them in without asking.
+                    // Anything else (no token, expired, used, another name, another room) is
+                    // an ordinary request for the host.
+                    if token.is_some_and(|t| handover.take(&t, &name, Instant::now())) {
+                        admitted_by_token = Some(name);
+                        let _ = sig
+                            .send(ClientMsg::JoinDecision { id: Some(id), allow: true, block: false })
+                            .await;
+                    } else {
+                        emit(ReceiverEvent::JoinRequest { id, name, check });
+                    }
                 }
                 Some(ServerMsg::JoinRequestCancelled { id, reason }) => {
                     emit(ReceiverEvent::JoinRequestCancelled { id, reason })
@@ -617,6 +662,7 @@ async fn run(
                         t.abort();
                     }
                     task_widths = None;
+                    peer_name = None;
                     emit(ReceiverEvent::PeerLeft);
                     reset = true;
                 }
@@ -658,6 +704,11 @@ async fn run(
                             options,
                             wrx,
                             Arc::clone(&c.events),
+                            peer_name.clone().map(|name| content::HandoverHook {
+                                store: Arc::clone(&handover),
+                                name,
+                                notify: hand_tx.clone(),
+                            }),
                         ));
                     }
                     // Content is not wanted: refuse the channel.
@@ -669,6 +720,9 @@ async fn run(
                 }
             },
             _ = tick.tick() => {
+                if handover.expire(Instant::now()) > 0 {
+                    emit(ReceiverEvent::HandoverExpired);
+                }
                 if !conn.connected && conn.offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
                     emit(ReceiverEvent::Error(format!(
                         "no WebRTC connection {} s after the offer arrived",

@@ -14,7 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cc_files::{
-    ImageMime, Outgoing, SendError, cmd_message, document_transfer, image_transfer, link_message,
+    ImageMime, Message, Outgoing, SendError, cmd_message, document_transfer, handover_message,
+    image_transfer, link_message,
 };
 use cc_proto::{ClientMsg, ControlCmd, Role, RoomCode, ServerMsg};
 use cc_transport::JoinProgress;
@@ -47,6 +48,20 @@ pub enum ContentSendError {
     /// The channel failed.
     #[error("{0}")]
     Transport(#[from] TransportError),
+}
+
+/// What a presenter reads from the display on the `control` channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayMessage {
+    /// The display shows this PDF page of that many.
+    Page {
+        /// The shown page, from 1.
+        page: u32,
+        /// The page count, from 1.
+        pages: u32,
+    },
+    /// The display stored the hand-over token that was sent (`handover_ok`).
+    HandoverOk,
 }
 
 /// Sends content on an open `control` channel. Cheap to clone.
@@ -114,24 +129,46 @@ impl ControlSender {
         Ok(())
     }
 
-    /// The next `page` message of the display (the shown PDF page and the page count; decision
-    /// 13.31), validated like the web client does. Other messages are skipped. `None` when the
-    /// channel closed. Only one task should read the channel.
-    pub async fn recv_page(&self) -> Option<(u32, u32)> {
+    /// Ask the display to hold a single-use hand-over token (`{"kind":"handover","token":T}`,
+    /// native-apps.md 20.5). The answer is [`DisplayMessage::HandoverOk`] from
+    /// [`Self::recv_message`]. Refused here when `token` is not 1 to 64 base64url characters.
+    pub async fn send_handover(&self, token: &str) -> Result<(), ContentSendError> {
+        let m = handover_message(token).ok_or(SendError::BadToken)?;
+        self.channel.send_text(&m).await?;
+        Ok(())
+    }
+
+    /// The next message of the display that a presenter acts on, validated like the web client
+    /// does: a `page` message (the shown PDF page and the page count; decision 13.31) or the
+    /// answer to a hand-over token. Other messages are skipped. `None` when the channel closed.
+    /// Only one task should read the channel.
+    pub async fn recv_message(&self) -> Option<DisplayMessage> {
         loop {
             match self.channel.recv().await? {
                 cc_transport::ControlData::Text(t) => {
-                    if let Ok(cc_files::Message::Page { page, pages }) =
-                        cc_files::wire::parse_message(
-                            &t,
-                            cc_files::MAX_IMAGE_BYTES,
-                            cc_files::MAX_DOCUMENT_BYTES,
-                        )
-                    {
-                        return Some((page, pages));
+                    match cc_files::wire::parse_message(
+                        &t,
+                        cc_files::MAX_IMAGE_BYTES,
+                        cc_files::MAX_DOCUMENT_BYTES,
+                    ) {
+                        Ok(Message::Page { page, pages }) => {
+                            return Some(DisplayMessage::Page { page, pages });
+                        }
+                        Ok(Message::HandoverOk) => return Some(DisplayMessage::HandoverOk),
+                        _ => {}
                     }
                 }
                 cc_transport::ControlData::Binary(_) => {}
+            }
+        }
+    }
+
+    /// The next `page` message of the display (see [`Self::recv_message`]; a hand-over answer
+    /// is skipped here). `None` when the channel closed.
+    pub async fn recv_page(&self) -> Option<(u32, u32)> {
+        loop {
+            if let DisplayMessage::Page { page, pages } = self.recv_message().await? {
+                return Some((page, pages));
             }
         }
     }

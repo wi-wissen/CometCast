@@ -24,7 +24,9 @@ pub mod presenter;
 mod screen;
 
 pub use cc_transport::JoinProgress;
-pub use content::{ContentSendError, ContentSender, ContentSenderOptions, ControlSender};
+pub use content::{
+    ContentSendError, ContentSender, ContentSenderOptions, ControlSender, DisplayMessage,
+};
 pub use external::{ExternalInput, ExternalOptions, ExternalStats, PushOutcome};
 pub use presenter::{EndReason, Presentation, PresenterEvent, PresenterOptions, PresenterSession};
 pub use screen::{ScreenOptions, ScreenStats};
@@ -36,7 +38,7 @@ use bytes::Bytes;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
     ConnectionState, IceServerConfig, ServerAddr, Session, SessionConfig, SessionEvent,
-    SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice, join_room,
+    SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice, join_room_with,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -124,6 +126,10 @@ pub struct SenderOptions {
     pub name: Option<String>,
     /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
     pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
+    /// A single-use hand-over token the display issued to this person (iOS broadcast
+    /// extension, native-apps.md 20.5): the display admits the join without asking. `None` =
+    /// an ordinary join.
+    pub handover: Option<String>,
     /// Do not ask the server for its STUN/TURN list even if `session.ice_servers` is empty (the
     /// caller asked already and keeps the outcome). Default `false`.
     pub skip_ice_fetch: bool,
@@ -143,6 +149,7 @@ impl SenderOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+            handover: None,
             skip_ice_fetch: false,
         }
     }
@@ -235,10 +242,11 @@ impl SenderCore {
     pub async fn start(options: SenderOptions) -> Result<Self, TransportError> {
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        let room_name = join_room(
+        let room_name = join_room_with(
             &mut sig,
             options.code.clone(),
             options.name.clone(),
+            options.handover.clone(),
             options.join_progress.as_ref(),
         )
         .await?;

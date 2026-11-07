@@ -35,6 +35,9 @@ pub enum SendError {
     /// The link is not an acceptable http(s) URL.
     #[error("the link must be an http:// or https:// address")]
     BadLink,
+    /// A hand-over token must be 1 to 64 characters of the base64url alphabet.
+    #[error("the hand-over token is not valid")]
+    BadToken,
 }
 
 /// The messages of one transfer: the start message, the chunks, the end message.
@@ -136,6 +139,19 @@ pub fn link_message(url: &str) -> Result<String, SendError> {
 /// count (`{"kind":"page","page":n,"pages":m}`).
 pub fn page_message(page: u32, pages: u32) -> String {
     Message::Page { page, pages }.to_json()
+}
+
+/// The message with which a presenter asks the display to hold a hand-over token
+/// (`{"kind":"handover","token":T}`, native-apps.md 20.5). `None` when the token is not 1 to
+/// 64 base64url characters.
+pub fn handover_message(token: &str) -> Option<String> {
+    let token = cc_proto::sanitize_handover(Some(token))?;
+    Some(Message::Handover { token }.to_json())
+}
+
+/// The display's answer to a stored hand-over token (`{"kind":"handover_ok"}`).
+pub fn handover_ok_message() -> String {
+    Message::HandoverOk.to_json()
 }
 
 /// The message that sends a remote-control command.

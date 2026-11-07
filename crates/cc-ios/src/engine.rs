@@ -12,11 +12,12 @@ use std::time::Duration;
 
 use cc_proto::RoomCode;
 use cc_sender::{
-    ExternalInput, ExternalStats, PushOutcome, SenderCore, SenderEvent, SenderOptions,
+    ControlSender, DisplayMessage, ExternalInput, ExternalStats, JoinProgress, PushOutcome,
+    SenderCore, SenderEvent, SenderOptions,
 };
 use cc_transport::{ConnectionState, TransportError};
 use tokio::runtime::{Builder, Runtime};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::log::Log;
@@ -45,6 +46,9 @@ pub enum State {
     Ended = 5,
     /// Failed; see [`Status::error`].
     Failed = 6,
+    /// In a room that asks the host: waiting for the host's decision. [`Status::check`] and
+    /// [`Status::timeout_secs`] say what the waiting page shows (native-apps.md 20.5, step 6).
+    Pending = 7,
 }
 
 /// Why a start or the broadcast failed. The numbers are part of the C ABI.
@@ -124,14 +128,41 @@ pub struct Status {
     pub keyframes_sent: u64,
     /// Key frame requests (receiver PLI/FIR, new peer, drop policy).
     pub keyframe_requests: u64,
+    /// Two-digit check number of a join that waits for the host ([`State::Pending`]); 0 = none.
+    pub check: u8,
+    /// Seconds the host has to decide, with [`Status::check`]; 0 = none.
+    pub timeout_secs: u32,
+    /// The room name the display gave (empty = none), known once the join succeeded.
+    pub room_name: String,
+    /// The connection check code (`"123 456"`) of the broadcast, empty until connected.
+    pub sas: String,
     /// Technical English text for the log; never shown to the person (the extension has its own
     /// translated messages, chosen by [`Status::error`]).
     pub message: String,
 }
 
+/// What the status reports besides the state: it only grows while a broadcast runs.
+#[derive(Debug, Clone, Default)]
+struct Info {
+    check: u8,
+    timeout_secs: u32,
+    room_name: String,
+    sas: String,
+}
+
 impl Status {
-    fn new(state: State, error: ErrorCode, stats: &ExternalStats, message: &str) -> Self {
+    fn new(
+        state: State,
+        error: ErrorCode,
+        stats: &ExternalStats,
+        info: &Info,
+        message: &str,
+    ) -> Self {
         Self {
+            check: info.check,
+            timeout_secs: info.timeout_secs,
+            room_name: info.room_name.clone(),
+            sas: info.sas.clone(),
             state,
             error,
             pushed: stats.pushed,
@@ -159,6 +190,11 @@ pub struct Config {
     pub log_dir: Option<PathBuf>,
     /// Development and tests only: bind the WebRTC UDP socket to this local address.
     pub udp_bind: Option<String>,
+    /// The person's name, as shown on the display's request (`None` = "Guest N").
+    pub name: Option<String>,
+    /// The single-use hand-over token the app got from the display (native-apps.md 20.5): the
+    /// display admits the join without a dialog. `None` = an ordinary join.
+    pub handover: Option<String>,
 }
 
 struct Running {
@@ -167,6 +203,8 @@ struct Running {
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
     log: Arc<Log>,
+    /// The control channel of the broadcast, once it exists (for [`request_handover`]).
+    control: Arc<Mutex<Option<ControlSender>>>,
 }
 
 static CURRENT: Mutex<Option<Running>> = Mutex::new(None);
@@ -210,6 +248,7 @@ pub fn start(config: Config, sink: Sink) -> Result<(), ErrorCode> {
     let input = ExternalInput::default();
     let (stop_tx, stop_rx) = oneshot::channel();
     log.line(&format!("start: relay {}", config.relay_url));
+    let control = Arc::new(Mutex::new(None));
     let task = runtime.spawn(run(
         config,
         code,
@@ -217,6 +256,7 @@ pub fn start(config: Config, sink: Sink) -> Result<(), ErrorCode> {
         sink,
         Arc::clone(&log),
         stop_rx,
+        Arc::clone(&control),
     ));
     *guard = Some(Running {
         runtime,
@@ -224,6 +264,7 @@ pub fn start(config: Config, sink: Sink) -> Result<(), ErrorCode> {
         stop: Some(stop_tx),
         task,
         log,
+        control,
     });
     Ok(())
 }
@@ -250,6 +291,45 @@ pub fn keyframe_requested() -> bool {
 
 fn current_input() -> Option<ExternalInput> {
     slot().as_ref().map(|r| r.input.clone())
+}
+
+/// How long [`request_handover`] waits for the display's answer in all. UNCERTAIN: placeholder.
+const HANDOVER_WAIT: Duration = Duration::from_secs(4);
+
+/// Ask the display, on the broadcast's control channel, to hold `token` for the way back to the
+/// app (native-apps.md 20.5, step 5): the app joins with it after the broadcast and needs no new
+/// approval. Blocks for at most a few seconds; returns `true` when the display answered
+/// (`handover_ok`). `false` when nothing runs, the channel is not open, the token is not valid
+/// (1 to 64 base64url characters) or the display does not answer (an old or a web display): the
+/// app then joins the ordinary way. Call it before [`stop`], never from the status sink.
+pub fn request_handover(token: &str) -> bool {
+    let (handle, control) = {
+        let guard = slot();
+        let Some(r) = guard.as_ref() else {
+            return false;
+        };
+        let c = r.control.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        (r.runtime.handle().clone(), c)
+    };
+    let Some(control) = control else {
+        return false;
+    };
+    let token = token.to_owned();
+    handle.block_on(async move {
+        let wait = async {
+            control.send_handover(&token).await.ok()?;
+            loop {
+                match control.recv_message().await? {
+                    DisplayMessage::HandoverOk => return Some(()),
+                    DisplayMessage::Page { .. } => {}
+                }
+            }
+        };
+        matches!(
+            tokio::time::timeout(HANDOVER_WAIT, wait).await,
+            Ok(Some(()))
+        )
+    })
 }
 
 /// Stop the broadcast and release everything (threads, sockets). Safe when nothing runs.
@@ -288,10 +368,13 @@ async fn run(
     sink: Sink,
     log: Arc<Log>,
     mut stop_rx: oneshot::Receiver<()>,
+    control_slot: Arc<Mutex<Option<ControlSender>>>,
 ) {
+    let info = Mutex::new(Info::default());
     let emit = |state: State, error: ErrorCode, message: &str, input: &ExternalInput| {
         log.line(&format!("{state:?} {error:?} {message}"));
-        sink(&Status::new(state, error, &input.stats(), message));
+        let i = info.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        sink(&Status::new(state, error, &input.stats(), &i, message));
     };
     emit(
         State::Connecting,
@@ -301,14 +384,32 @@ async fn run(
     );
     let mut options = SenderOptions::new(config.relay_url.clone(), code);
     options.external = Some(input.clone());
+    // The control channel carries the hand-over of the way back (step 5).
+    options.control = true;
+    options.name = config.name.clone();
+    options.handover = config.handover.clone();
     if let Some(bind) = config.udp_bind {
         options.session.udp_bind = vec![bind];
     }
-    let started = tokio::select! {
-        r = SenderCore::start(options) => r,
-        _ = &mut stop_rx => {
-            input.close();
-            return;
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel::<JoinProgress>();
+    options.join_progress = Some(progress_tx);
+    let start = SenderCore::start(options);
+    tokio::pin!(start);
+    let started = loop {
+        tokio::select! {
+            r = &mut start => break r,
+            Some(JoinProgress::Pending { timeout_secs, check, .. }) = progress_rx.recv() => {
+                {
+                    let mut i = info.lock().unwrap_or_else(|p| p.into_inner());
+                    i.check = check;
+                    i.timeout_secs = u32::try_from(timeout_secs).unwrap_or(u32::MAX);
+                }
+                emit(State::Pending, ErrorCode::None, "waiting for the host", &input);
+            }
+            _ = &mut stop_rx => {
+                input.close();
+                return;
+            }
         }
     };
     let mut core = match started {
@@ -319,6 +420,13 @@ async fn run(
             return;
         }
     };
+    {
+        let mut i = info.lock().unwrap_or_else(|p| p.into_inner());
+        i.check = 0;
+        i.timeout_secs = 0;
+        i.room_name = core.room_name().unwrap_or_default().to_owned();
+    }
+    *control_slot.lock().unwrap_or_else(|p| p.into_inner()) = core.control();
     emit(
         State::Waiting,
         ErrorCode::None,
@@ -357,9 +465,16 @@ async fn run(
                         emit(State::Failed, ErrorCode::ConnectionLost, &format!("{s:?}"), &input);
                         break;
                     }
-                    SenderEvent::State(_)
-                    | SenderEvent::ConnectionCode(_)
-                    | SenderEvent::Streaming { .. } => {}
+                    SenderEvent::ConnectionCode(code) => {
+                        info.lock().unwrap_or_else(|p| p.into_inner()).sas = code;
+                        emit(
+                            if streaming { State::Streaming } else { State::Waiting },
+                            ErrorCode::None,
+                            "connection code",
+                            &input,
+                        );
+                    }
+                    SenderEvent::State(_) | SenderEvent::Streaming { .. } => {}
                     SenderEvent::Finished { .. } => {
                         input.close();
                         emit(State::Ended, ErrorCode::None, "finished", &input);
