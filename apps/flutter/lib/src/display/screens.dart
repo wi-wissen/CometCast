@@ -200,7 +200,8 @@ class IdleScreen extends StatelessWidget {
                     autofocus: settingsAutofocus,
                     suppressRing: ringSuppressed,
                     focusNode: settingsFocus,
-                    onPressed: onSettings,
+                    // Not focusable while a dialog is over it (one ring, rows of the dialog).
+                    onPressed: ringSuppressed ? null : onSettings,
                     child: Container(
                       key: const Key('settings-open'),
                       constraints: const BoxConstraints(minHeight: 46),

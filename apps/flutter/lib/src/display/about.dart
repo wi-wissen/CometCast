@@ -319,7 +319,7 @@ class _LicenceViewerState extends State<LicenceViewer> {
             entry: e,
             node: node,
             selected: identical(shown, e),
-            autofocus: i == (featured.isNotEmpty ? 1 : 0) && !widget.search,
+            autofocus: i == (featured.isNotEmpty ? 1 : 0),
             onFocused: () {
               _lastRow = node;
               _show(e);

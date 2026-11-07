@@ -1617,7 +1617,7 @@ class PresenterRootState extends State<PresenterRoot>
     }
     return _firstRunPage(
       t,
-      intro: shareIntro(context, view, converting: converting),
+      intro: shareIntro(view, converting: converting),
       primary: t.shareShow,
     );
   }

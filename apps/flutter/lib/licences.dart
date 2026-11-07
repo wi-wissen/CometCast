@@ -76,10 +76,9 @@ String licenceLine(String text) {
 }
 
 class _Section {
-  _Section(this.level, this.title, this.fenceDepthTitle);
+  _Section(this.level, this.title);
   final int level;
   final String title;
-  final String fenceDepthTitle;
   final lines = <String>[];
   // Parents' titles at the time the section started.
   String parent2 = '';
@@ -109,7 +108,7 @@ List<_Section> _sections(String md) {
       } else if (level == 3) {
         h3 = title;
       }
-      cur = _Section(level, title, '')
+      cur = _Section(level, title)
         ..parent2 = h2
         ..parent3 = h3;
       out.add(cur);
@@ -146,6 +145,8 @@ String _bodyText(List<String> lines) {
 String _plainBody(List<String> lines) =>
     lines.where((l) => !l.startsWith('```')).join('\n').trim();
 
+/// The sections of THIRD_PARTY_NOTICES.md that are listed, by the start of their heading (some
+/// carry the crate in brackets: `PDFium Foxit font notice (hayro-font)`).
 const _noticeNames = {
   'OpenH264 notice': 'Cisco OpenH264',
   'Atkinson Hyperlegible notice': 'Atkinson Hyperlegible',
@@ -153,6 +154,13 @@ const _noticeNames = {
   'PDFium Foxit font notice': 'PDFium Foxit font',
   'Adobe CMap notice': 'Adobe CMap',
 };
+
+String? _noticeKey(String title) {
+  for (final k in _noticeNames.keys) {
+    if (title.startsWith(k)) return k;
+  }
+  return null;
+}
 
 /// Builds the list by the rules of spec 15.9. Featured order: Cisco OpenH264, UxPlay, Atkinson
 /// Hyperlegible, Liberation/Carlito/Caladea, then the rest in file order.
@@ -167,10 +175,14 @@ LicenceSet parseLicences(LicenceInput input) {
 
   final notices = <String, LicenceEntry>{};
   for (final s in _sections(input.notices)) {
-    final name = _noticeNames[s.title];
-    if (s.level != 2 || name == null) continue;
-    if (s.title == 'Open Screen Library notice' && !input.desktop) continue;
-    notices[s.title] = entry(name, _plainBody(s.lines), featured: true);
+    final key = _noticeKey(s.title);
+    if (s.level != 2 || key == null) continue;
+    if (key == 'Open Screen Library notice' && !input.desktop) continue;
+    notices[key] = entry(
+      _noticeNames[key]!,
+      _plainBody(s.lines),
+      featured: true,
+    );
   }
 
   LicenceEntry? fonts;

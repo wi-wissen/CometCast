@@ -150,44 +150,39 @@ class _AddressLineState extends State<AddressLine> {
       autofocus: true,
       onSubmitted: (_) => _use(),
     );
+    Widget block(bool sideBySide) => Column(
+      key: const Key('address-field-block'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (sideBySide)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: field),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 21),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [buttons[0], const SizedBox(width: 8), buttons[1]],
+                ),
+              ),
+            ],
+          )
+        else ...[
+          field,
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: buttons),
+        ],
+      ],
+    );
+    // Laptop: on the field's right in one row if it fits, otherwise below (spec 15.7). The phone
+    // page measures its height (intrinsics), so a layout builder is only used on the laptop.
     return CallbackShortcuts(
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): _cancel},
-      child: LayoutBuilder(
-        builder: (context, box) {
-          // Laptop: on the field's right in one row if it fits, otherwise below (spec 15.7).
-          final sideBySide = s.laptop && box.maxWidth >= 480;
-          return Column(
-            key: const Key('address-field-block'),
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (sideBySide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: field),
-                    const SizedBox(width: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 21),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          buttons[0],
-                          const SizedBox(width: 8),
-                          buttons[1],
-                        ],
-                      ),
-                    ),
-                  ],
-                )
-              else ...[
-                field,
-                const SizedBox(height: 8),
-                Wrap(spacing: 8, runSpacing: 8, children: buttons),
-              ],
-            ],
-          );
-        },
-      ),
+      child: s.laptop
+          ? LayoutBuilder(builder: (context, box) => block(box.maxWidth >= 480))
+          : block(false),
     );
   }
 }

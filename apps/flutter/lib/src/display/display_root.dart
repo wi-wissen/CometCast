@@ -694,8 +694,11 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _aboutOpen = false;
       _licencesOpen = false;
     });
+    // After the frame that builds Settings again (its initial focus is taken in that frame).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _aboutNode.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _aboutNode.requestFocus();
+      });
     });
   }
 

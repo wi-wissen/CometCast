@@ -17,6 +17,7 @@ import '../core/link_target.dart';
 import '../core/miracast.dart';
 import '../core/nearby_platform.dart';
 import '../core/share_intake.dart';
+import '../licences.dart' show LicenceSet;
 import '../miracast_page.dart';
 import '../receiver_controller.dart' show UrlOpener;
 import '../settings.dart';
@@ -51,7 +52,12 @@ class AppShell extends StatefulWidget {
     this.nearbyPlatform,
     this.pickFileFor,
     this.shareIntake,
+    this.offerWays,
+    this.licenceLoader,
   });
+
+  final bool? offerWays;
+  final Future<LicenceSet> Function()? licenceLoader;
 
   final PickFileFor? pickFileFor;
   final ShareIntake? shareIntake;
@@ -139,6 +145,8 @@ class _AppShellState extends State<AppShell> {
           wakeLock: widget.wakeLock,
           canOpenLinks: widget.canOpenLinks,
           miracast: widget.miracast,
+          offerWays: widget.offerWays,
+          licenceLoader: widget.licenceLoader,
           setFullscreenOnSetupDone: !(Platform.isAndroid || Platform.isIOS),
         );
       case AppRole.presenter:

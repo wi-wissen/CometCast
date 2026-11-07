@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
+import 'package:cometcast/core/miracast.dart' show MiracastCore;
+import 'package:cometcast/licences.dart' show LicenceSet;
 import 'package:cometcast/main.dart';
 import 'package:cometcast/receiver_controller.dart' show UrlOpener;
 import 'package:cometcast/settings.dart';
@@ -60,6 +62,9 @@ Future<DisplayHarness> pumpDisplay(
   bool canOpen = false,
   AppSettings? settingsOverride,
   String server = 'cast.example.org',
+  MiracastCore? miracast,
+  bool? offerWays,
+  Future<LicenceSet> Function()? licenceLoader,
 }) async {
   await tester.runAsync(loadAppFonts);
   final c = core ?? FakeCoreApi();
@@ -86,6 +91,9 @@ Future<DisplayHarness> pumpDisplay(
       forceDisplayCapable: true,
       openUrl: openUrl ?? (_) async => true,
       canOpenLinks: () async => canOpen,
+      miracast: miracast,
+      offerWays: offerWays,
+      licenceLoader: licenceLoader,
     ),
   );
   for (var i = 0; i < 40; i++) {

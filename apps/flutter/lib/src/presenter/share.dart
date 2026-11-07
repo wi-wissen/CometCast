@@ -205,26 +205,30 @@ class ShareView {
   final bool isLink;
 }
 
-/// The not-connected variant's heading and card (`FirstRunPage.intro`).
-List<Widget> shareIntro(
-  BuildContext context,
-  ShareView v, {
-  String? converting,
-}) {
-  final s = PresenterScope.of(context);
-  final t = AppLocalizations.of(context);
-  return [
-    Text(t.shareTitle, key: const Key('share-heading'), style: s.type.heading),
-    ShareCard(
-      kind: v.kind,
-      title: v.title,
-      meta: v.meta,
-      error: v.error,
-      converting: converting,
-      isLink: v.isLink,
-    ),
-  ];
+/// The heading of the share page.
+class ShareHeading extends StatelessWidget {
+  const ShareHeading({super.key});
+
+  @override
+  Widget build(BuildContext context) => Text(
+    AppLocalizations.of(context).shareTitle,
+    key: const Key('share-heading'),
+    style: PresenterScope.of(context).type.heading,
+  );
 }
+
+/// The not-connected variant's heading and card (`FirstRunPage.intro`).
+List<Widget> shareIntro(ShareView v, {String? converting}) => [
+  const ShareHeading(),
+  ShareCard(
+    kind: v.kind,
+    title: v.title,
+    meta: v.meta,
+    error: v.error,
+    converting: converting,
+    isLink: v.isLink,
+  ),
+];
 
 /// Connected (Android, the app holds a join) and refused variants.
 class SharePage extends StatelessWidget {
@@ -273,7 +277,7 @@ class SharePage extends StatelessWidget {
             onPressed: onCancel,
           ),
       ],
-      children: shareIntro(context, view, converting: converting),
+      children: shareIntro(view, converting: converting),
     );
   }
 }

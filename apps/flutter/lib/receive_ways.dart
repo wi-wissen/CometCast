@@ -113,6 +113,9 @@ class ReceiveWays extends ChangeNotifier {
   bool _mcStarted = false;
   bool _mcProbed = false;
   String? _mcConnectedName;
+
+  /// The app ended the Miracast session itself (Comet Cast first, End): no `toast.left`.
+  bool _mcEndedByUs = false;
   int? _seenId;
   MiracastRequest? _lastPending;
 
@@ -260,6 +263,7 @@ class ReceiveWays extends ChangeNotifier {
         onNotice?.call(const RxEnded(RxWay.airplay));
       }
       if (miracastConnected) {
+        _mcEndedByUs = true;
         unawaited(_mc!.disconnect());
         onNotice?.call(const RxEnded(RxWay.miracast));
       }
@@ -322,6 +326,7 @@ class ReceiveWays extends ChangeNotifier {
 
   /// End (the host) while Miracast mirrors: the mirror stops.
   Future<void> endMiracast() async {
+    _mcEndedByUs = true;
     await _mc?.disconnect();
   }
 
@@ -464,7 +469,8 @@ class ReceiveWays extends ChangeNotifier {
         phase != MiracastPhase.connected) {
       // The device stopped: Idle, `toast.left` with its name.
       final name = _mcConnectedName;
-      if (name != null) onNotice?.call(RxLeft(name));
+      if (name != null && !_mcEndedByUs) onNotice?.call(RxLeft(name));
+      _mcEndedByUs = false;
       _mcConnectedName = null;
       if (_mode == DisplayJoinMode.locked) unawaited(_stopMiracast());
     }

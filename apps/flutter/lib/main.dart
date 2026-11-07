@@ -36,6 +36,7 @@ import 'src/display/launch.dart' show launchInBrowser;
 import 'receiver_controller.dart' show UrlOpener;
 import 'settings.dart';
 import 'core/native_announce.dart';
+import 'licences.dart' show LicenceSet;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -190,6 +191,8 @@ class CometCastApp extends StatelessWidget {
     this.nearbyPlatform,
     this.pickFileFor,
     this.shareIntake,
+    this.offerWays,
+    this.licenceLoader,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   /// The file dialog by kind (spec 15.6); null: [pickFile] for every kind (tests).
@@ -197,6 +200,12 @@ class CometCastApp extends StatelessWidget {
 
   /// The item of the Android share sheet; null elsewhere and in most tests.
   final ShareIntake? shareIntake;
+
+  /// Tests: offer AirPlay and Miracast on the display (null: by platform).
+  final bool? offerWays;
+
+  /// Tests: reads the licence list without an isolate.
+  final Future<LicenceSet> Function()? licenceLoader;
 
   /// What the display remembers (a memory store in tests).
   final DisplayStore displayStore;
@@ -324,6 +333,8 @@ class CometCastApp extends StatelessWidget {
         nearbyPlatform: nearbyPlatform,
         pickFileFor: pickFileFor,
         shareIntake: shareIntake,
+        offerWays: offerWays,
+        licenceLoader: licenceLoader,
       ),
     );
   }
