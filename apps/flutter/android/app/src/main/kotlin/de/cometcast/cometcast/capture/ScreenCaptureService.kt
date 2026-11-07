@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.PowerManager
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.hardware.display.DisplayManager
@@ -39,16 +41,41 @@ import de.cometcast.cometcast.R
  *   system may stop the projection at any time (user taps "stop sharing", screen lock, ...); that
  *   ends the session via [MediaProjection.Callback.onStop].
  *
- * TODO (not wired): the encoded frames only reach Dart (EventChannel, see [CaptureEvents]).
- * `cc-sender` currently sends a synthetic VP8 test stream only; there is no H.264 path into the
- * Rust core (no RTP packetisation for H.264, no way to pass external frames through
- * `crates/cc-ffi`). Until that exists the captured video goes nowhere useful.
+ * Since the M6 wiring the encoded frames reach the Rust sender through Dart (see
+ * docs/android.md); this class only produces them.
+ *
+ * Size changes (rotation, Android 14 single-app resize): a `DisplayListener` and
+ * `onCapturedContentResize` call [scheduleResize], which after a short debounce builds a new
+ * encoder for the new size, points the existing VirtualDisplay at its surface (`resize` +
+ * `setSurface`) and releases the old encoder. The new encoder emits a new config event and starts
+ * with a key frame. UNCERTAIN: whether `resize` + `setSurface` on a MediaProjection display behave
+ * like this on all devices; not run.
+ *
+ * Background: the foreground service keeps the process alive while the app is in the background;
+ * a partial wake lock and a Wi-Fi lock keep the CPU and the network running while the screen is
+ * off (the projection itself usually stops on lock, see [MediaProjection.Callback.onStop]).
+ * UNCERTAIN: not run.
  */
 class ScreenCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
     private var encoder: ScreenEncoder? = null
     private val main = Handler(Looper.getMainLooper())
+    private var captureW = 0
+    private var captureH = 0
+    private var maxDimension = 1280
+    private var fps = 30
+    private var bitrate = 4_000_000
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var displayListener: DisplayManager.DisplayListener? = null
+
+    /** Size of the shared window in single-app mode (Android 14+), once the system reported it. */
+    private var contentSize: Pair<Int, Int>? = null
+
+    /** Size wanted by the last resize trigger; applied by [applyResize] after the debounce. */
+    private var pendingSource: Pair<Int, Int>? = null
+    private val resizeRunnable = Runnable { applyResize() }
 
     private val projectionCallback =
         object : MediaProjection.Callback() {
@@ -58,14 +85,18 @@ class ScreenCaptureService : Service() {
                 stopSelf()
             }
 
-            // Android 14+. NOT implemented beyond this comment: the encoder surface has a fixed
-            // size chosen at the start, so following a resized capture (single-app sharing) would
-            // need a new encoder or a scaling step. The VirtualDisplay keeps its size and the
-            // system scales the content into it. UNCERTAIN: letterboxing on a device not verified.
+            // Android 14+. UNCERTAIN: not run; the callback may arrive with the size of the
+            // captured window or of the display, whichever the platform reports.
             override fun onCapturedContentResize(
                 width: Int,
                 height: Int,
-            ) = Unit
+            ) {
+                // Single-app sharing: the shared window changed its size. Follow its aspect ratio.
+                if (width > 0 && height > 0) {
+                    contentSize = Pair(width, height)
+                    scheduleResize(Pair(width, height))
+                }
+            }
 
             // Not implemented: a hidden captured app is simply not drawn (frames repeat).
             override fun onCapturedContentVisibilityChanged(isVisible: Boolean) = Unit
@@ -117,6 +148,10 @@ class ScreenCaptureService : Service() {
             return START_NOT_STICKY
         }
         CaptureEvents.beginSession()
+        contentSize = null
+        maxDimension = intent.getIntExtra(EXTRA_MAX_DIMENSION, 1280)
+        fps = intent.getIntExtra(EXTRA_FPS, 30)
+        bitrate = intent.getIntExtra(EXTRA_BITRATE, 4_000_000)
 
         try {
             // 2. Projection from the one-time consent result, 3. callback, 4. virtual display.
@@ -127,17 +162,18 @@ class ScreenCaptureService : Service() {
             projection = p
             p.registerCallback(projectionCallback, main)
 
-            val (w, h) = captureSize(intent.getIntExtra(EXTRA_MAX_DIMENSION, 1280))
-            val fps = intent.getIntExtra(EXTRA_FPS, 30)
-            val enc = ScreenEncoder(w, h, fps, intent.getIntExtra(EXTRA_BITRATE, 4_000_000))
+            val (w, h) = captureSize(screenSize())
+            val enc = ScreenEncoder(w, h, fps, bitrate)
             enc.start() // releases its own resources if it throws
             encoder = enc
+            captureW = enc.width // the encoder may have rounded the size to its alignment
+            captureH = enc.height
 
             display =
                 p.createVirtualDisplay(
                     "cometcast-capture",
-                    w,
-                    h,
+                    captureW,
+                    captureH,
                     densityDpi(),
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     enc.inputSurface,
@@ -145,6 +181,8 @@ class ScreenCaptureService : Service() {
                     main,
                 )
             instance = this
+            acquireLocks()
+            watchDisplay()
         } catch (e: Exception) {
             // SecurityException (consent invalid or reused), MediaCodec errors, ...
             // onDestroy (after stopSelf) releases whatever was already created.
@@ -154,8 +192,17 @@ class ScreenCaptureService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // The user swiped the app away: the Dart side that consumes the frames is gone.
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         instance = null
+        main.removeCallbacks(resizeRunnable)
+        unwatchDisplay()
+        releaseLocks()
         display?.release()
         display = null
         encoder?.stop()
@@ -172,6 +219,105 @@ class ScreenCaptureService : Service() {
     /** Asks the encoder for a key frame (for example after a receiver joined). */
     fun requestKeyFrame() {
         encoder?.requestKeyFrame()
+    }
+
+    // --- size changes ----------------------------------------------------------------------
+
+    private fun watchDisplay() {
+        val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val l =
+            object : DisplayManager.DisplayListener {
+                override fun onDisplayAdded(displayId: Int) = Unit
+
+                override fun onDisplayRemoved(displayId: Int) = Unit
+
+                override fun onDisplayChanged(displayId: Int) {
+                    if (displayId == android.view.Display.DEFAULT_DISPLAY) scheduleResize(contentSize ?: screenSize())
+                }
+            }
+        displayListener = l
+        dm.registerDisplayListener(l, main)
+    }
+
+    private fun unwatchDisplay() {
+        val l = displayListener ?: return
+        displayListener = null
+        (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).unregisterDisplayListener(l)
+    }
+
+    /** Remembers the wanted source size and applies it after 300 ms of quiet (rotations fire often). */
+    private fun scheduleResize(source: Pair<Int, Int>) {
+        pendingSource = source
+        main.removeCallbacks(resizeRunnable)
+        main.postDelayed(resizeRunnable, 300)
+    }
+
+    private fun applyResize() {
+        val source = pendingSource ?: return
+        val d = display ?: return
+        val old = encoder ?: return
+        val (w, h) = captureSize(source)
+        // The encoder may round the size (alignment), so this only filters the obvious case; the
+        // exact comparison happens below, with the size the new encoder really got.
+        if (!CaptureGeometry.needsResize(captureW, captureH, w, h)) return
+        try {
+            val next = ScreenEncoder(w, h, fps, bitrate)
+            next.start()
+            if (!CaptureGeometry.needsResize(captureW, captureH, next.width, next.height)) {
+                // Rounded to the same size as now: nothing changes.
+                next.stop()
+                return
+            }
+            d.resize(next.width, next.height, densityDpi())
+            d.surface = next.inputSurface
+            encoder = next
+            captureW = next.width
+            captureH = next.height
+            old.stop()
+        } catch (e: Exception) {
+            // The old encoder keeps running at the old size; report and carry on.
+            CaptureEvents.emitError("Could not follow the size change: ${e.message}")
+        }
+    }
+
+    // --- wake locks --------------------------------------------------------------------------
+
+    @Suppress("DEPRECATION")
+    private fun acquireLocks() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock =
+                pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "cometcast:capture").also {
+                    it.setReferenceCounted(false)
+                    // A safety timeout: a forgotten lock must not drain the battery for ever.
+                    it.acquire(WAKE_LOCK_MS)
+                }
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val mode =
+                if (Build.VERSION.SDK_INT >= 29) {
+                    WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                } else {
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                }
+            wifiLock =
+                wm.createWifiLock(mode, "cometcast:capture").also {
+                    it.setReferenceCounted(false)
+                    it.acquire()
+                }
+        } catch (e: Exception) {
+            // SecurityException (permission) or no Wi-Fi service (Ethernet-only TV): not fatal.
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            wakeLock?.takeIf { it.isHeld }?.release()
+            wifiLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {
+            // Already released.
+        }
+        wakeLock = null
+        wifiLock = null
     }
 
     /** Guarded [startAsForeground]: SecurityException and friends must not crash the process. */
@@ -218,16 +364,31 @@ class ScreenCaptureService : Service() {
             builder
                 .setContentTitle(title)
                 .setContentText(text)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_capture)
                 .setOngoing(true)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setContentIntent(openAppIntent())
                 .addAction(
                     Notification.Action.Builder(null, stopLabel, stopIntent).build(),
-                ).build()
+                ).also {
+                    // Android 12+ delays the notification of a foreground service by up to 10 s
+                    // unless asked otherwise. UNCERTAIN: not run.
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        it.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+                    }
+                }.build()
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    /** Tapping the notification brings the app back. */
+    private fun openAppIntent(): PendingIntent? {
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return null
+        launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        return PendingIntent.getActivity(this, 1, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
     @Suppress("DEPRECATION")
@@ -239,15 +400,15 @@ class ScreenCaptureService : Service() {
 
     private fun densityDpi(): Int = displayMetrics().densityDpi
 
-    /** Scales the screen so its longer side is at most [maxDimension]; both sides even (H.264). */
-    private fun captureSize(maxDimension: Int): Pair<Int, Int> {
+    /** Current size of the default display in pixels (what the projection would capture). */
+    private fun screenSize(): Pair<Int, Int> {
         val m = displayMetrics()
-        val longSide = maxOf(m.widthPixels, m.heightPixels)
-        val scale = if (longSide > maxDimension) maxDimension.toFloat() / longSide else 1f
-        val w = (m.widthPixels * scale).toInt() and 1.inv()
-        val h = (m.heightPixels * scale).toInt() and 1.inv()
-        return Pair(maxOf(w, 2), maxOf(h, 2))
+        return Pair(m.widthPixels, m.heightPixels)
     }
+
+    /** [source] scaled to [maxDimension] and made even (H.264); the encoder may round further. */
+    private fun captureSize(source: Pair<Int, Int>): Pair<Int, Int> =
+        CaptureGeometry.fit(source.first, source.second, maxDimension)
 
     companion object {
         const val ACTION_STOP = "de.cometcast.cometcast.capture.STOP"
@@ -261,6 +422,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_STOP_LABEL = "stopLabel"
         private const val CHANNEL_ID = "cometcast_capture"
         private const val NOTIFICATION_ID = 4711
+        private const val WAKE_LOCK_MS = 4L * 60 * 60 * 1000
 
         /** The running service, or null. Used to reach [requestKeyFrame]. */
         @Volatile

@@ -5,6 +5,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+fun releaseSecret(name: String): String? =
+    (System.getenv(name) ?: project.findProperty(name) as String?)?.takeIf { it.isNotEmpty() }
+
+val releaseKeystore: String? = releaseSecret("COMETCAST_KEYSTORE")
+val releaseSigningConfigured: Boolean =
+    releaseKeystore != null &&
+        releaseSecret("COMETCAST_KEYSTORE_PASSWORD") != null &&
+        releaseSecret("COMETCAST_KEY_ALIAS") != null
+
 android {
     namespace = "de.cometcast.cometcast"
     compileSdk = flutter.compileSdkVersion
@@ -25,15 +34,54 @@ android {
         versionName = flutter.versionName
     }
 
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signed with the DEBUG key for now. That is fine for local tests only, never for
-            // distribution, so the build refuses unless it is allowed explicitly (see the
-            // checkReleaseSigning task at the end of this file).
-            signingConfig = signingConfigs.getByName("debug")
+    // Release signing comes from the environment (or Gradle properties of the person building,
+    // for example ~/.gradle/gradle.properties); nothing secret is in the repository:
+    //   COMETCAST_KEYSTORE            path of the keystore file
+    //   COMETCAST_KEYSTORE_PASSWORD   store password
+    //   COMETCAST_KEY_ALIAS           key alias
+    //   COMETCAST_KEY_PASSWORD        key password (defaults to the store password)
+    // Without all of the first three the release build type uses the debug key and the guard
+    // task `checkReleaseSigning` (end of this file) refuses unless it is allowed explicitly.
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = releaseSecret("COMETCAST_KEYSTORE_PASSWORD")
+                keyAlias = releaseSecret("COMETCAST_KEY_ALIAS")
+                keyPassword = releaseSecret("COMETCAST_KEY_PASSWORD") ?: releaseSecret("COMETCAST_KEYSTORE_PASSWORD")
+            }
         }
     }
+
+    buildTypes {
+        release {
+            signingConfig =
+                if (releaseSigningConfigured) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // The PDF and Office workers are executables shipped as lib*.so (see the worker
+            // tasks below). They can only be started from a real file, so the libraries must be
+            // extracted to nativeLibraryDir at install time (android:extractNativeLibs=true).
+            // Costs install size (the libraries exist twice: in the APK and on disk).
+            useLegacyPackaging = true
+        }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+}
+
+dependencies {
+    // Plain JVM unit tests of the pure Kotlin helpers (`./gradlew testDebugUnitTest`).
+    testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {
@@ -139,11 +187,94 @@ registerCargoNdk("profile", release = true)
 registerCargoNdk("release", release = true)
 
 // ---------------------------------------------------------------------------------------------
-// Release signing guard. The release build type is signed with the debug key (no keystore is
-// configured yet). Building a release therefore fails unless the property
-// cometcastAllowDebugSigning=true is set: `-PcometcastAllowDebugSigning=true` for Gradle, or
+// PDF and Office workers. cc-docs-worker and cc-office-worker are separate *programs* (resource
+// limited child processes). Android cannot start a binary from the app's data directory (since
+// Android 10 exec from there is blocked for apps that target API 29+), but it can start a file in
+// the app's nativeLibraryDir. So each worker is built as an ordinary executable for Android with
+// cargo-ndk, copied into jniLibs as lib<name>.so (the package manager only extracts files called
+// lib*.so), and extracted at install time because useLegacyPackaging is on. Dart finds the folder
+// through the platform channel (`nativeLibraryDir`) and gives the paths to the Rust core
+// (`set_docs_worker`, `set_office_worker`). See docs/android.md, "PDF and Office on Android".
+//
+// Each worker is built in its own cargo invocation: building them together would unify their
+// features and put the Typst engine into the PDF worker (same reason as in linux/CMakeLists.txt).
+// ---------------------------------------------------------------------------------------------
+val ndkTriples =
+    mapOf(
+        "arm64-v8a" to "aarch64-linux-android",
+        "armeabi-v7a" to "armv7-linux-androideabi",
+        "x86_64" to "x86_64-linux-android",
+    )
+val rustWorkersRoot = layout.buildDirectory.dir("rust-workers")
+
+fun registerWorkers(
+    buildType: String,
+    release: Boolean,
+) {
+    val cap = buildType.replaceFirstChar { it.uppercase() }
+    val outDir = rustWorkersRoot.get().dir(buildType).asFile
+    val coreTask = tasks.named("cargoNdk$cap")
+    val profileDir = if (release) "release" else "debug"
+    val workerTasks =
+        listOf("cc-docs" to "cc-docs-worker", "cc-office" to "cc-office-worker").map { (crate, bin) ->
+            val so = "lib" + bin.replace('-', '_') + ".so"
+            tasks.register<Exec>("cargoNdkWorker$cap${bin.replace("-", "")}") {
+                group = "cometcast"
+                description = "Builds $bin ($buildType) for $rustAbis as $so"
+                workingDir = workspaceRoot
+                dependsOn(coreTask) // the core task wipes its own output directory first
+                inputs.files(fileTree(workspaceRoot.resolve("crates")) { include("**/*.rs", "**/Cargo.toml") })
+                inputs.files(workspaceRoot.resolve("Cargo.toml"), workspaceRoot.resolve("Cargo.lock"))
+                inputs.property("abis", rustAbis.joinToString(","))
+                outputs.dir(outDir)
+                doFirst {
+                    val cargoBin = System.getProperty("user.home") + "/.cargo/bin"
+                    val oldPath = System.getenv("PATH")
+                    environment("PATH", if (oldPath.isNullOrEmpty()) cargoBin else cargoBin + File.pathSeparator + oldPath)
+                    environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+                    environment("CARGO_PROFILE_DEV_DEBUG", "0")
+                }
+                val args = mutableListOf("cargo", "ndk", "--platform", flutter.minSdkVersion.toString())
+                rustAbis.forEach { args += listOf("-t", it) }
+                args += listOf("build", "-p", crate, "--bin", bin, "--target-dir", cargoTargetDir.get().asFile.absolutePath)
+                if (release) args += "--release"
+                commandLine(args)
+                doLast {
+                    rustAbis.forEach { abi ->
+                        val triple = ndkTriples.getValue(abi)
+                        val from = cargoTargetDir.get().asFile.resolve("$triple/$profileDir/$bin")
+                        val to = File(outDir, "$abi/$so")
+                        to.parentFile.mkdirs()
+                        from.copyTo(to, overwrite = true)
+                    }
+                }
+            }
+        }
+    android.sourceSets.getByName(buildType).jniLibs.srcDir(outDir)
+    // Workers are cleaned together with the first one of a build so an ABI that is no longer
+    // built cannot stay behind.
+    workerTasks.first().configure { doFirst { outDir.deleteRecursively() } }
+    workerTasks.drop(1).forEach { t -> t.configure { mustRunAfter(workerTasks.first()) } }
+    tasks
+        .matching {
+            it.name.startsWith("merge") &&
+                it.name.contains(buildType, ignoreCase = true) &&
+                (it.name.endsWith("JniLibFolders") || it.name.endsWith("NativeLibs"))
+        }.configureEach { dependsOn(workerTasks) }
+}
+
+registerWorkers("debug", release = false)
+registerWorkers("profile", release = true)
+registerWorkers("release", release = true)
+
+// ---------------------------------------------------------------------------------------------
+// Release signing guard. With the keystore from the environment (COMETCAST_KEYSTORE,
+// COMETCAST_KEYSTORE_PASSWORD, COMETCAST_KEY_ALIAS, optional COMETCAST_KEY_PASSWORD) the release
+// build type is signed with it. Without it the build type falls back to the debug key, and then
+// building a release fails unless cometcastAllowDebugSigning=true is set:
+// `-PcometcastAllowDebugSigning=true` for Gradle, or
 // `ORG_GRADLE_PROJECT_cometcastAllowDebugSigning=true` in the environment for
-// `flutter build apk --release` (flutter does not forward -P options). A release APK built this
+// `flutter build apk --release` (flutter does not forward -P options). A release APK built that
 // way must not be distributed. See docs/android.md.
 // ---------------------------------------------------------------------------------------------
 val checkReleaseSigning =
@@ -151,11 +282,14 @@ val checkReleaseSigning =
         group = "cometcast"
         description = "Fails release builds that would be signed with the debug key unless allowed."
         val allowed = project.findProperty("cometcastAllowDebugSigning") == "true"
+        val configured = releaseSigningConfigured
         doLast {
+            if (configured) return@doLast
             if (!allowed) {
                 throw GradleException(
-                    "The release build is signed with the DEBUG key (no release keystore is " +
-                        "configured). Pass -PcometcastAllowDebugSigning=true (or set " +
+                    "The release build would be signed with the DEBUG key (no release keystore is " +
+                        "configured: set COMETCAST_KEYSTORE, COMETCAST_KEYSTORE_PASSWORD and " +
+                        "COMETCAST_KEY_ALIAS). Or pass -PcometcastAllowDebugSigning=true (or set " +
                         "ORG_GRADLE_PROJECT_cometcastAllowDebugSigning=true) for a local test " +
                         "build; never distribute the result. See docs/android.md.",
                 )

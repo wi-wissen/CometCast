@@ -20,19 +20,28 @@
          a device; the service still runs when the user denies it, but the notification is then
          hidden. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- While sharing: a partial wake lock and a Wi-Fi lock keep the CPU and the network alive
+         when the app is in the background (ScreenCaptureService). Both are normal permissions. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 
     <!-- Android TV / Google TV: the app must be installable on devices that have no touch screen,
          and must not require the leanback feature (it is also a phone and tablet app). -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <uses-feature android:name="android.software.leanback" android:required="false"/>
+    <!-- ACCESS_WIFI_STATE would imply a required Wi-Fi feature; an Ethernet-only TV box must
+         still be able to install the app. -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false"/>
 
     <application
         android:label="Comet Cast"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:banner="@drawable/tv_banner">
+        android:banner="@drawable/tv_banner"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
+            android:banner="@drawable/tv_banner"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -52,7 +61,8 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Android TV / Google TV launcher row. -->
+            <!-- Android TV / Google TV launcher row. The banner (320x180 dp, drawable-xhdpi) is
+                 also set on the activity because some launchers read it from there. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
@@ -65,6 +75,7 @@
         <service
             android:name=".capture.ScreenCaptureService"
             android:exported="false"
+            android:stopWithTask="true"
             android:foregroundServiceType="mediaProjection"/>
 
         <!-- Don't delete the meta-data below.

@@ -19,11 +19,20 @@ import android.view.Surface
  * frames; a repeat-previous-frame setting is used, see below), and the bitrate quality.
  */
 class ScreenEncoder(
-    private val width: Int,
-    private val height: Int,
+    requestedWidth: Int,
+    requestedHeight: Int,
     private val fps: Int,
     private val bitrate: Int,
 ) {
+    /**
+     * Size the encoder really uses: the requested size rounded down to what the chosen encoder
+     * supports (alignment). Valid after [start]; the VirtualDisplay must use it.
+     */
+    var width: Int = requestedWidth
+        private set
+    var height: Int = requestedHeight
+        private set
+
     private var codec: MediaCodec? = null
 
     /** Surface the VirtualDisplay renders into. Valid after [start]. */
@@ -40,7 +49,10 @@ class ScreenEncoder(
     private var needKeyFrame = false
     private var lastKeyRequestMs = 0L
 
-    private fun makeFormat(withProfile: Boolean): MediaFormat {
+    private fun makeFormat(
+        withProfile: Boolean,
+        cbr: Boolean,
+    ): MediaFormat {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
         format.setInteger(
             MediaFormat.KEY_COLOR_FORMAT,
@@ -49,10 +61,19 @@ class ScreenEncoder(
         format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
         format.setInteger(MediaFormat.KEY_FRAME_RATE, fps)
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
-        format.setInteger(
-            MediaFormat.KEY_BITRATE_MODE,
-            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
-        )
+        if (cbr) {
+            format.setInteger(
+                MediaFormat.KEY_BITRATE_MODE,
+                MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 23) {
+            format.setInteger(MediaFormat.KEY_PRIORITY, 0) // real time
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            // Hint for low latency; encoders may ignore it. UNCERTAIN: effect not measured.
+            format.setInteger(MediaFormat.KEY_LATENCY, 1)
+        }
         // With surface input the encoder only gets frames when the screen changes. Repeat the last
         // frame after 1 s so that a still screen still produces output (key for a receiver that
         // joins late). Value in microseconds.
@@ -74,21 +95,35 @@ class ScreenEncoder(
         return format
     }
 
-    /** Starts the encoder. If this throws, everything it created has been released again. */
+    /**
+     * Starts the encoder. If this throws, everything it created has been released again.
+     *
+     * Configuration attempts, in this order, until one is accepted: Baseline + CBR, no profile +
+     * CBR, no profile + the encoder's default rate control. UNCERTAIN: which of them real
+     * hardware accepts is not known; the first that works wins, and the output profile may then be
+     * higher than the offer's Constrained Baseline.
+     */
     fun start() {
         try {
-            var c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            codec = c
-            try {
-                c.configure(makeFormat(withProfile = true), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            } catch (e: RuntimeException) {
-                // Baseline not supported (IllegalArgumentException or CodecException): try again
-                // without a profile on a fresh codec. UNCERTAIN: never run on a device.
-                c.release()
-                c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            val attempts = listOf(true to true, false to true, false to false)
+            var lastError: RuntimeException? = null
+            for ((withProfile, cbr) in attempts) {
+                val c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
                 codec = c
-                c.configure(makeFormat(withProfile = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                try {
+                    alignSize(c)
+                    c.configure(makeFormat(withProfile, cbr), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                    lastError = null
+                    break
+                } catch (e: RuntimeException) {
+                    // IllegalArgumentException or CodecException: try the next, simpler attempt.
+                    lastError = e
+                    c.release()
+                    codec = null
+                }
             }
+            lastError?.let { throw it }
+            val c = codec ?: throw IllegalStateException("no encoder")
             inputSurface = c.createInputSurface()
             surfaceCreated = true
             c.start()
@@ -104,6 +139,29 @@ class ScreenEncoder(
             stop()
             throw e
         }
+    }
+
+    /**
+     * Rounds the size down to the encoder's alignment and fails early (with a readable message)
+     * when the encoder cannot do that size at all. UNCERTAIN: VideoCapabilities as remembered
+     * from the documentation (`getWidthAlignment`, `isSizeSupported`).
+     */
+    private fun alignSize(c: MediaCodec) {
+        val caps =
+            try {
+                c.codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
+            } catch (e: IllegalArgumentException) {
+                null
+            } ?: return
+        val aw = maxOf(caps.widthAlignment, 2)
+        val ah = maxOf(caps.heightAlignment, 2)
+        val w = maxOf(width - width % aw, aw)
+        val h = maxOf(height - height % ah, ah)
+        if (!caps.isSizeSupported(w, h)) {
+            throw IllegalArgumentException("The H.264 encoder does not support ${w}x$h")
+        }
+        width = w
+        height = h
     }
 
     /** Asks the encoder for a key frame soon (for example when a receiver joins). */
