@@ -201,6 +201,20 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${APPLICATION_ID}.desktop"
   DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications"
   COMPONENT Runtime)
 
+# Its icon (decision N68): the app icon of assets/logo, unchanged, under the application id.
+set(CC_LOGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../assets/logo")
+set(CC_ICON_DIR "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor")
+install(FILES "${CC_LOGO_DIR}/cometcast-app-icon.svg"
+  DESTINATION "${CC_ICON_DIR}/scalable/apps"
+  RENAME "${APPLICATION_ID}.svg"
+  COMPONENT Runtime)
+foreach(cc_icon_size 32 64 512)
+  install(FILES "${CC_LOGO_DIR}/cometcast-app-icon-${cc_icon_size}.png"
+    DESTINATION "${CC_ICON_DIR}/${cc_icon_size}x${cc_icon_size}/apps"
+    RENAME "${APPLICATION_ID}.png"
+    COMPONENT Runtime)
+endforeach()
+
 # The PDF render worker, a program next to the executable (bundle/cc-docs-worker). Not in lib/:
 # cc-docs and the Rust core look for it in the directory of the running executable.
 install(PROGRAMS "${CC_DOCS_WORKER}" DESTINATION "${CMAKE_INSTALL_PREFIX}"

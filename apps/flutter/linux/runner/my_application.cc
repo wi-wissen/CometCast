@@ -83,10 +83,12 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
-  // Window icon: the same assets/icon.png the Flutter app bundles, found next to the
-  // executable (bundle/data/flutter_assets/assets/icon.png). If it is missing, the window
-  // simply has no custom icon.
-  {
+  // Window icon: the icon name of the desktop entry (decision N68), installed in hicolor. When
+  // the theme does not have it (running from the build directory), the same assets/icon.png the
+  // Flutter app bundles, found next to the executable (bundle/data/flutter_assets/assets/
+  // icon.png). If that is missing too, the window simply has no custom icon.
+  gtk_window_set_icon_name(window, APPLICATION_ID);
+  if (!gtk_icon_theme_has_icon(gtk_icon_theme_get_default(), APPLICATION_ID)) {
     g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
     if (exe_path != nullptr) {
       g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
