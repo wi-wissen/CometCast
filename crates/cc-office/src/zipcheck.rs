@@ -103,7 +103,7 @@ pub fn check(
     check_names(&entries)?;
     check_layout(bytes, &mut entries, cd_start)?;
     let total = check_sizes_and_inflate(bytes, &entries, limits)?;
-    check_main_part(bytes, &entries, format)?;
+    check_main_part(&entries, format)?;
     Ok(ZipReport {
         entries: entries.len(),
         total_uncompressed: total,
@@ -501,30 +501,15 @@ fn check_sizes_and_inflate(
     Ok(actual_total)
 }
 
-fn check_main_part(
-    bytes: &[u8],
-    entries: &[CenEntry],
-    format: OfficeFormat,
-) -> Result<(), OfficeError> {
-    if let Some(part) = format.main_part() {
-        let has_types = entries.iter().any(|e| e.name == "[Content_Types].xml");
-        let has_main = entries.iter().any(|e| e.name == part);
-        if !has_types || !has_main {
-            return Err(bad(format!(
-                "the content does not match .{} (missing [Content_Types].xml or {part})",
-                format.extension()
-            )));
-        }
-    }
-    if let Some(mime) = format.odf_mimetype() {
-        let m = entries.iter().find(|e| e.name == "mimetype");
-        let ok = m.is_some_and(|e| e.method == 0 && data_of(bytes, e) == mime.as_bytes());
-        if !ok {
-            return Err(bad(format!(
-                "the content does not match .{} (missing or wrong mimetype entry)",
-                format.extension()
-            )));
-        }
+fn check_main_part(entries: &[CenEntry], format: OfficeFormat) -> Result<(), OfficeError> {
+    let part = format.main_part();
+    let has_types = entries.iter().any(|e| e.name == "[Content_Types].xml");
+    let has_main = entries.iter().any(|e| e.name == part);
+    if !has_types || !has_main {
+        return Err(bad(format!(
+            "the content does not match .{} (missing [Content_Types].xml or {part})",
+            format.extension()
+        )));
     }
     Ok(())
 }
@@ -564,17 +549,6 @@ mod tests {
             let r = check(&b, f, &lim()).expect("fixture must pass");
             assert!(r.entries >= 3);
         }
-    }
-
-    #[test]
-    fn accepts_an_opendocument_shape() {
-        let b = zw::build(&[
-            Entry::stored("mimetype", b"application/vnd.oasis.opendocument.text"),
-            Entry::deflated("content.xml", b"<x/>"),
-        ]);
-        check(&b, OfficeFormat::Odt, &lim()).expect("odt shape");
-        // The same file under another extension is a mismatch.
-        expect_container(check(&b, OfficeFormat::Ods, &lim()), "does not match");
     }
 
     #[test]

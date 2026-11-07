@@ -2,8 +2,7 @@
 //! Office documents to PDF on the sender side (docs/documents.md, "Office documents").
 //!
 //! * `office convert FILE --out FILE.pdf` converts one file;
-//! * `office engines` says which engines this machine has;
-//! * `send-file` calls [`convert_for_send`] for `.docx .pptx .xlsx .odt .odp .ods`.
+//! * `send-file` calls [`convert_for_send`] for `.docx .pptx .xlsx`.
 //!
 //! The conversion runs in a resource-limited child process of this program: it starts itself
 //! with the hidden argument `office-worker` (decided in `main` before any async runtime
@@ -13,23 +12,18 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use cc_office::{Engine, OfficeFormat, Options, WorkerSpec};
+use cc_office::{OfficeFormat, Options, WorkerSpec};
 
 /// Text for `--help` of this command (added to the main usage text).
 pub const USAGE: &str = "\
 office (see docs/documents.md):
-  cometcast-cli office convert <file> --out <file.pdf> [--engine auto|rust|soffice] [--force]
-  cometcast-cli office engines
-  Converts .docx .pptx .xlsx (and .odt .odp .ods with LibreOffice) to PDF on this machine, in a
+  cometcast-cli office convert <file> --out <file.pdf> [--force]
+  Converts .docx .pptx .xlsx to PDF on this machine with the built-in pure-Rust converter, in a
   child process with time, memory and size limits. send-file does the same before sending,
-  so the receiver only ever gets a PDF. --engine: auto (default: the built-in pure-Rust
-  converter for .docx .pptx .xlsx, LibreOffice for .odt .odp .ods), rust, or soffice.
-  Choose soffice yourself only for documents you trust: LibreOffice can read any file you can
-  read (linked images, included text) into the PDF; the child process is limited, not
-  sandboxed. LibreOffice is found in the usual places or through COMETCAST_SOFFICE (full
-  path). Fidelity on real documents has not been measured, and neither engine order is
-  based on a comparison. The command warns when the limits or the network block were not
-  in effect.";
+  so the receiver only ever gets a PDF. OpenDocument (.odt .odp .ods) and old binary
+  formats (.doc .ppt .xls) are not supported. The child process is limited, not sandboxed.
+  Fidelity on real documents has not been measured. The command warns when the limits or
+  the network block were not in effect.";
 
 /// What `office` was asked to do.
 pub enum OfficeArgs {
@@ -37,35 +31,23 @@ pub enum OfficeArgs {
     Convert {
         file: PathBuf,
         out: PathBuf,
-        engine: Engine,
         force: bool,
     },
-    /// `office engines`.
-    Engines,
-}
-
-/// Parse a `--engine` value.
-pub fn parse_engine(v: &str) -> Result<Engine, String> {
-    Engine::parse(v).ok_or_else(|| format!("bad engine {v:?} (auto, rust or soffice)"))
 }
 
 /// Parse the arguments after `office`. `Ok(None)` means help was asked for.
 pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<OfficeArgs>, String> {
     match args
         .next()
-        .ok_or("office needs a subcommand: convert or engines")?
+        .ok_or("office needs a subcommand: convert")?
         .as_str()
     {
         "--help" | "-h" | "help" => Ok(None),
-        "engines" => Ok(Some(OfficeArgs::Engines)),
         "convert" => {
-            let (mut file, mut out, mut engine, mut force) = (None, None, Engine::Auto, false);
+            let (mut file, mut out, mut force) = (None, None, false);
             while let Some(a) = args.next() {
                 match a.as_str() {
                     "--out" => out = Some(args.next().ok_or("--out needs a value")?),
-                    "--engine" => {
-                        engine = parse_engine(&args.next().ok_or("--engine needs a value")?)?;
-                    }
                     "--force" => force = true,
                     "--help" | "-h" => return Ok(None),
                     s if s.starts_with("--") => return Err(format!("unknown option {s:?}")),
@@ -76,7 +58,6 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<OfficeArgs
             Ok(Some(OfficeArgs::Convert {
                 file: file.ok_or("office convert needs a file")?.into(),
                 out: out.ok_or("office convert needs --out")?.into(),
-                engine,
                 force,
             }))
         }
@@ -96,11 +77,10 @@ pub fn is_office(name: &str) -> bool {
     OfficeFormat::from_name(name).is_some()
 }
 
-fn options(engine: Engine) -> Result<Options, String> {
+fn options() -> Result<Options, String> {
     let spec = WorkerSpec::current_exe_with_arg("office-worker")
         .map_err(|e| format!("cannot find this program to start the conversion worker: {e}"))?;
     Ok(Options {
-        engine,
         worker: Some(spec),
         ..Options::default()
     })
@@ -108,8 +88,8 @@ fn options(engine: Engine) -> Result<Options, String> {
 
 /// Convert for sending. Returns the name to send (`<stem>.pdf`) and the PDF bytes (at most
 /// the transfer limit for documents). Blocking: call it from a blocking context.
-pub fn convert_for_send(path: &Path, engine: Engine) -> Result<(String, Vec<u8>), String> {
-    let conv = cc_office::convert_file(path, &options(engine)?).map_err(|e| e.to_string())?;
+pub fn convert_for_send(path: &Path) -> Result<(String, Vec<u8>), String> {
+    let conv = cc_office::convert_file(path, &options()?).map_err(|e| e.to_string())?;
     if conv.pdf.len() as u64 > cc_files::MAX_DOCUMENT_BYTES {
         return Err(format!(
             "the converted PDF is {} bytes, more than the {} byte limit for documents",
@@ -118,8 +98,7 @@ pub fn convert_for_send(path: &Path, engine: Engine) -> Result<(String, Vec<u8>)
         ));
     }
     println!(
-        "Converted to PDF with {} in {:.1} s ({} bytes).",
-        conv.engine.name(),
+        "Converted to PDF in {:.1} s ({} bytes).",
         conv.elapsed.as_secs_f32(),
         conv.pdf.len()
     );
@@ -138,7 +117,7 @@ pub fn convert_for_send(path: &Path, engine: Engine) -> Result<(String, Vec<u8>)
 
 /// Lines to show about the isolation the conversion really had: what was in effect, and a
 /// warning when something expected was not (no Landlock on an old kernel, a platform without
-/// limits), or when LibreOffice, which can read any file, did the work.
+/// limits).
 fn protection_notes(conv: &cc_office::Converted) -> Vec<String> {
     let mut v = Vec::new();
     if conv.protections.is_empty() {
@@ -161,14 +140,6 @@ fn protection_notes(conv: &cc_office::Converted) -> Vec<String> {
             ));
         }
     }
-    if conv.engine == cc_office::Concrete::Soffice {
-        v.push(
-            "Note: LibreOffice can read any file you can read when the document links or \
-             includes it, and can print its content into the PDF. Check the PDF before \
-             sending it, and use it only for documents you trust."
-                .to_string(),
-        );
-    }
     v
 }
 
@@ -185,36 +156,8 @@ pub fn run(a: OfficeArgs) -> ExitCode {
 
 fn run_inner(a: OfficeArgs) -> Result<(), String> {
     match a {
-        OfficeArgs::Engines => {
-            match cc_office::find_soffice(None) {
-                Some(p) => println!("soffice: {}", p.display()),
-                None => println!(
-                    "soffice: not found (set {} to its full path)",
-                    cc_office::SOFFICE_ENV
-                ),
-            }
-            println!(
-                "rust (office2pdf): {}",
-                if cc_office::rust_engine_compiled() {
-                    "compiled in (.docx .pptx .xlsx)"
-                } else {
-                    "not compiled in"
-                }
-            );
-            println!(
-                "auto: .docx .pptx .xlsx use the rust engine when compiled in; .odt .odp .ods \
-                 use LibreOffice; --engine soffice forces LibreOffice (it can read any file you \
-                 can read)"
-            );
-            Ok(())
-        }
-        OfficeArgs::Convert {
-            file,
-            out,
-            engine,
-            force,
-        } => {
-            let (_, pdf) = convert_for_send(&file, engine)?;
+        OfficeArgs::Convert { file, out, force } => {
+            let (_, pdf) = convert_for_send(&file)?;
             write_output(&out, &pdf, force)
         }
     }
@@ -262,25 +205,23 @@ mod tests {
 
     #[test]
     fn parses_convert() {
-        let Ok(Some(OfficeArgs::Convert { engine, force, .. })) =
-            p("convert a.docx --out a.pdf --engine rust --force")
+        let Ok(Some(OfficeArgs::Convert { force, .. })) = p("convert a.docx --out a.pdf --force")
         else {
             panic!("did not parse");
         };
-        assert_eq!(engine, Engine::Rust);
         assert!(force);
         assert!(p("convert a.docx").is_err());
         assert!(p("convert --out a.pdf").is_err());
-        assert!(p("convert a.docx --out a.pdf --engine word").is_err());
+        assert!(p("convert a.docx --out a.pdf --engine rust").is_err());
         assert!(p("convert a.docx b.docx --out a.pdf").is_err());
         assert!(p("frobnicate").is_err());
-        assert!(matches!(p("engines"), Ok(Some(OfficeArgs::Engines))));
+        assert!(p("engines").is_err());
         assert!(matches!(p("help"), Ok(None)));
     }
 
     #[test]
     fn office_names() {
-        assert!(is_office("a.DOCX") && is_office("b.ods"));
-        assert!(!is_office("a.pdf") && !is_office("a.doc"));
+        assert!(is_office("a.DOCX") && is_office("b.xlsx"));
+        assert!(!is_office("a.pdf") && !is_office("a.doc") && !is_office("b.ods"));
     }
 }

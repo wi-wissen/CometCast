@@ -7,9 +7,7 @@ use std::time::Duration;
 #[derive(Debug, thiserror::Error)]
 pub enum OfficeError {
     /// The file extension is not one of the accepted formats.
-    #[error(
-        "unsupported file type: only .docx .pptx .xlsx (and .odt .odp .ods with LibreOffice) can be converted"
-    )]
+    #[error("unsupported file type: only .docx .pptx .xlsx can be converted")]
     UnsupportedFormat,
     /// An old binary format or an encrypted OOXML file (both are OLE containers, not ZIP).
     #[error(
@@ -34,9 +32,6 @@ pub enum OfficeError {
     /// The document looks like a decompression bomb.
     #[error("the document was refused because it would expand too much: {0}")]
     TooMuchData(String),
-    /// No engine can convert this file (feature off, LibreOffice not found).
-    #[error("no conversion engine is available: {0}")]
-    NoEngine(String),
     /// The worker program was not found.
     #[error("the conversion worker program was not found: {0}")]
     WorkerUnavailable(String),
@@ -68,12 +63,8 @@ pub struct Limits {
     pub timeout: Duration,
     /// Largest PDF the conversion may produce (also the per-file write limit of the worker).
     pub max_output_bytes: u64,
-    /// Address-space limit of the worker with the pure-Rust engine (Linux, other Unix).
-    pub rust_engine_memory_bytes: u64,
-    /// Address-space limit for the worker that supervises LibreOffice (which is a big
-    /// program). UNCERTAIN: 4 GiB worked for the small test files on one machine; large
-    /// real files may need more or less.
-    pub soffice_memory_bytes: u64,
+    /// Address-space limit of the worker (Linux, other Unix).
+    pub memory_bytes: u64,
 }
 
 impl Default for Limits {
@@ -86,8 +77,7 @@ impl Default for Limits {
             max_ratio: 200,
             timeout: Duration::from_secs(120),
             max_output_bytes: 64 * 1024 * 1024,
-            rust_engine_memory_bytes: 4 * 1024 * 1024 * 1024,
-            soffice_memory_bytes: 4 * 1024 * 1024 * 1024,
+            memory_bytes: 4 * 1024 * 1024 * 1024,
         }
     }
 }

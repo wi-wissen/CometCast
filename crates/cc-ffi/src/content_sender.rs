@@ -647,9 +647,7 @@ mod tests {
     fn office_files_are_converted_and_refused_with_their_own_reasons() {
         let d = tempfile::tempdir().unwrap();
         let none = cc_office::Options {
-            engine: cc_office::Engine::Rust,
             worker: Some(cc_office::WorkerSpec::new(d.path().join("no-such-worker"))),
-            rust_engine_in_worker: true,
             ..cc_office::Options::default()
         };
         // Legacy binary Office files and OpenDocument files are not accepted here.

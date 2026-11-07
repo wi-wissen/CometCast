@@ -52,7 +52,7 @@ cc-docs.workspace = true
 # Office to PDF on the sender (docs/documents.md). No default features: only the worker spec,
 # the checks and the types are needed here, so the pure-Rust engine (Typst) is not linked into
 # libcc_ffi.so; the conversion runs in the separate `cc-office-worker` program, which has it
-# (`Options::rust_engine_in_worker`). The worker must be built in its own cargo invocation
+# (the `cc-office-worker` program). The worker must be built in its own cargo invocation
 # (apps/flutter/linux/CMakeLists.txt), or feature unification would put the engine back.
 cc-office = { path = "../cc-office", default-features = false }
 cc-discovery = { path = "../cc-discovery" }
