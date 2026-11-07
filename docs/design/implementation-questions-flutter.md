@@ -374,3 +374,26 @@ Answered in spec 13, "Decisions after the third Flutter round" (N60–N72); work
 6. Windows links 12 below Connect, 44 apart: **Answered:** accepted, correct (N60).
 7. Expiry, multicast lock, picker owner not visible: **Answered:** accepted; device test plans (N69).
 
+
+## K. Questions from the fourth UI round
+
+Work of [fix-list-flutter-4.md](fix-list-flutter-4.md) (A1 to A6). Nothing here blocks; each item was built the plain way and is listed for a decision.
+
+1. **Shot names of the 720-wide laptop pair (A6, N71).**
+   - **Found:** N71 names `nearby-laptop-light-de-found` and `-de-connecting` for the 720-wide window, but the 1100-wide German shots already have these names, and `nearby-phone-light-de-found` (360 wide) has the name of the 400-wide shot of the German loop.
+   - **Done meanwhile:** the 720-wide pair is written as `nearby-laptop-720-light-de-found` and `-de-connecting`; the 360-wide phone shot keeps the name `nearby-phone-light-de-found` and replaces the 400-wide one of that name (it is written later in the same run).
+   - **Question:** keep these names, or should the 400-wide phone shot and the 1100-wide pair get a size in their names too?
+2. **Gap between the subtitle and the code when it moves below (N62).**
+   - **Found:** N62 says "same style, left-aligned with the title" and names no gap.
+   - **Done meanwhile:** no extra gap; the code line (height at least 20, the spinner's height) follows the subtitle directly.
+   - **Question:** is that right, or should it be 2 or 4 px lower?
+3. **At a 720-wide window the code is under the subtitle in the first two rows.**
+   - **Found:** at 720 the card is 338 wide, the row 304, the text column 156 (under 160), so the N62 rule puts the code below. N62 says this does not happen "at the widths of 7.3 and N61"; whether 720 belongs to them is not stated. At 1100 the column is 167 and the code stays on the right.
+   - **Done meanwhile:** the rule as written (under 160, code below).
+   - **Question:** is the code below at 720 intended?
+4. **Dots of an IP address (A2).**
+   - **Found:** the break opportunity is added after every dot of the inserted value, so `10.0.0.5:8443` can also break after its dots, when the host alone is wider than the line.
+   - **Done meanwhile:** as written; no special case.
+5. **When the dot breaks are used (A2, N62).**
+   - **Found:** a break opportunity after every dot, always present, makes a host that fits on a line split at a dot in the middle of the line ("über cast." / "musterfirma.de" although "über cast.musterfirma.de" fits on the second line); that contradicts the acceptance of A1 ("with the host whole").
+   - **Done meanwhile:** the app adds the U+200B characters only when the run around the host (the host with the "über" or "via" glued to it by the no-break space) is wider than the line alone; otherwise the text is drawn without them (`HostText`, `lib/src/presenter/host_text.dart`). Same for the relay page body.

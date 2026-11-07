@@ -1,0 +1,2 @@
+/* Wird von macOS im Berechtigungsdialog angezeigt: Text von ios.localNetworkUsage (du). Eine Sie-Fassung nimmt den Text aus lib/l10n/sie/app_de.arb. */
+"NSLocalNetworkUsageDescription" = "Comet Cast sucht Bildschirme im selben WLAN, damit du keinen Code tippen musst.";

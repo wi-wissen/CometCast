@@ -3,18 +3,25 @@
 // (spec 14 of docs/design/first-run-and-display.md, native-apps.md 4.1). The state lives in
 // NearbyController; what a tap does lives in PresenterRoot. Only tokens of spec 3.3 are used.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../core/core_api.dart';
 import '../../nearby_controller.dart';
 import '../design/icons.dart';
+import 'host_text.dart';
 import 'kit.dart';
 import '../display/display_logic.dart' show formatCode;
 
 /// The host that `nearby.via` names for [screen], or null when the row says nothing about the
 /// server (the default relay, a policy server or a DNS-SRV server, spec 14.3).
+/// Row text column minimum (decision N62): below it the code moves under the subtitle.
+const double _minTitleColumn = 160;
+
 typedef NearbyVia = String? Function(NearbyScreenInfo screen);
 
 /// A secondary button of the section (spec 14.2, "Compact button"): `p-surface`, 1 px
@@ -400,6 +407,22 @@ class _NearbyRowTileState extends State<NearbyRowTile> {
             height: 1.25,
             color: locked ? p.fg3 : p.fg,
           );
+    final codeText = !locked && code != null ? formatCode(code) : null;
+    final codeStyle = s.type.smallDigits.copyWith(
+      fontSize: 15,
+      color: p.fg2,
+      letterSpacing: .06 * 15,
+    );
+    // The slot is as wide and high as the code in every state (N64); the spinner (20) sits in it.
+    final codePainter = codeText == null
+        ? null
+        : (TextPainter(
+            text: TextSpan(text: codeText, style: codeStyle),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout());
+    final slotWidth = codePainter?.width ?? 0.0;
+    final slotHeight = math.max(codePainter?.height ?? 0.0, 20.0);
     final content = Container(
       constraints: BoxConstraints(minHeight: s.laptop ? 50 : 58),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -414,43 +437,38 @@ class _NearbyRowTileState extends State<NearbyRowTile> {
               ),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: _RowLayout(
+        slotWidth: slotWidth,
         children: [
           CcIcon(
             locked ? CcIconName.locked : CcIconName.screen,
             color: locked ? p.fg3 : p.primary,
             size: 22,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: titleStyle,
-                ),
-                Text(subtitle, style: s.type.optionSub),
-              ],
-            ),
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: titleStyle,
           ),
-          if (widget.connecting) ...[
-            const SizedBox(width: 12),
-            const PSpinner(),
-          ] else if (!locked && code != null) ...[
-            const SizedBox(width: 12),
-            Text(
-              formatCode(code),
-              key: Key('nearby-code-${row.id}'),
-              style: s.type.smallDigits.copyWith(
-                fontSize: 15,
-                color: p.fg2,
-                letterSpacing: .06 * 15,
+          (!widget.connecting && !locked && widget.via != null)
+              ? HostText(subtitle, host: widget.via!, style: s.type.optionSub)
+              : Text(subtitle, style: s.type.optionSub),
+          if (codeText != null)
+            SizedBox(
+              height: slotHeight,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: 1,
+                child: widget.connecting
+                    ? const PSpinner()
+                    : Text(
+                        codeText,
+                        key: Key('nearby-code-${row.id}'),
+                        style: codeStyle,
+                      ),
               ),
             ),
-          ],
         ],
       ),
     );
@@ -518,4 +536,175 @@ class _DashedBorder extends CustomPainter {
   @override
   bool shouldRepaint(_DashedBorder old) =>
       old.color != color || old.radius != radius;
+}
+
+/// The inside of a row (decisions N62, N64): icon, title and subtitle, and the code in a slot on
+/// the right. When the text column (width minus icon, gaps and slot) would be under
+/// [_minTitleColumn] the code moves under the subtitle, left-aligned with the title. The
+/// children are, in order: icon, title, subtitle and optionally the code (or the spinner, which
+/// then sits at the slot's right edge). Written as a render object because the page sizes itself
+/// with `IntrinsicHeight`, which a `LayoutBuilder` cannot answer.
+class _RowLayout extends MultiChildRenderObjectWidget {
+  const _RowLayout({required this.slotWidth, required super.children});
+
+  /// Width of the code (0: no code or spinner).
+  final double slotWidth;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderRowLayout(slotWidth);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderRowLayout r) {
+    r.slotWidth = slotWidth;
+  }
+}
+
+class _RowParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderRowLayout extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _RowParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _RowParentData> {
+  _RenderRowLayout(this._slotWidth);
+
+  static const double _icon = 22;
+  static const double _gap = 12;
+
+  double _slotWidth;
+  set slotWidth(double v) {
+    if (v == _slotWidth) return;
+    _slotWidth = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _RowParentData) {
+      child.parentData = _RowParentData();
+    }
+  }
+
+  List<RenderBox> get _kids {
+    final out = <RenderBox>[];
+    for (var c = firstChild; c != null; c = childAfter(c)) {
+      out.add(c);
+    }
+    return out;
+  }
+
+  bool _below(double width, List<RenderBox> k) =>
+      k.length > 3 &&
+      width - _icon - _gap - _gap - _slotWidth < _minTitleColumn;
+
+  /// Sizes of the title, subtitle and code and the total height for [width].
+  ({double textW, double h, bool below, Size title, Size sub, Size code}) _plan(
+    double width,
+    Size Function(RenderBox, BoxConstraints) measure,
+  ) {
+    final k = _kids;
+    final below = _below(width, k);
+    final hasCode = k.length > 3;
+    final textW = math.max(
+      0.0,
+      width - _icon - _gap - (hasCode && !below ? _gap + _slotWidth : 0),
+    );
+    final loose = BoxConstraints(maxWidth: textW);
+    final title = measure(k[1], loose);
+    final sub = measure(k[2], loose);
+    final code = hasCode ? measure(k[3], const BoxConstraints()) : Size.zero;
+    final col = title.height + sub.height + (below ? code.height : 0);
+    final h = math.max<double>(
+      math.max<double>(_icon, col),
+      hasCode && !below ? code.height : 0,
+    );
+    return (
+      textW: textW,
+      h: h,
+      below: below,
+      title: title,
+      sub: sub,
+      code: code,
+    );
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    final w = constraints.maxWidth;
+    final p = _plan(w, (c, bc) => c.getDryLayout(bc));
+    return constraints.constrain(Size(w, p.h));
+  }
+
+  @override
+  void performLayout() {
+    final w = constraints.maxWidth;
+    final k = _kids;
+    k[0].layout(
+      BoxConstraints.tight(const Size(_icon, _icon)),
+      parentUsesSize: true,
+    );
+    final p = _plan(w, (c, bc) {
+      c.layout(bc, parentUsesSize: true);
+      return c.size;
+    });
+    size = constraints.constrain(Size(w, p.h));
+    final h = size.height;
+    double centre(double ch) => (h - ch) / 2;
+    (k[0].parentData! as _RowParentData).offset = Offset(0, centre(_icon));
+    const textX = _icon + _gap;
+    final col = p.title.height + p.sub.height + (p.below ? p.code.height : 0);
+    final top = centre(col);
+    (k[1].parentData! as _RowParentData).offset = Offset(textX, top);
+    (k[2].parentData! as _RowParentData).offset = Offset(
+      textX,
+      top + p.title.height,
+    );
+    if (k.length > 3) {
+      (k[3].parentData! as _RowParentData).offset = p.below
+          ? Offset(textX, top + p.title.height + p.sub.height)
+          : Offset(w - p.code.width, centre(p.code.height));
+    }
+  }
+
+  double _heightFor(double width) => _plan(
+    width,
+    (c, bc) => Size(bc.maxWidth, c.getMinIntrinsicHeight(bc.maxWidth)),
+  ).h;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _heightFor(width);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _heightFor(width);
+
+  @override
+  double computeMinIntrinsicWidth(double height) {
+    final k = _kids;
+    return _icon +
+        _gap +
+        math.max(
+          k[1].getMinIntrinsicWidth(double.infinity),
+          k[2].getMinIntrinsicWidth(double.infinity),
+        );
+  }
+
+  @override
+  double computeMaxIntrinsicWidth(double height) {
+    final k = _kids;
+    return _icon +
+        _gap +
+        math.max(
+          k[1].getMaxIntrinsicWidth(double.infinity),
+          k[2].getMaxIntrinsicWidth(double.infinity),
+        ) +
+        (k.length > 3 ? _gap + _slotWidth : 0);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
 }

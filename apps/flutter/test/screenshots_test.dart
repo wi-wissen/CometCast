@@ -767,6 +767,9 @@ void main() {
           ),
         );
         for (final kind in ErrorKind.values) {
+          // `error.capture` is shown by the real variants `capture-*` and
+          // `error-capture-unavailable`; this loop would show a placeholder "why" (N71).
+          if (kind == ErrorKind.capture) continue;
           await page(
             'error-${kind.name}',
             ErrorPage(
@@ -1147,9 +1150,39 @@ void main() {
     }
   }
 
+  // A 720-wide laptop window (N61, N62): the columns 4 : 5, no word split inside.
+  shotTest('nearby laptop-light-de at 720: found, connecting (du)', (t) async {
+    final n = await pumpNearby(
+      t,
+      size: const Size(720, 800),
+      device: PresenterDevice.computer,
+      desktop: true,
+      locale: const Locale('de'),
+      platform: FakeNearbyPlatform(),
+    );
+    await found(t, n, [
+      screen('a', name: 'Besprechungsraum Elbe', code: 'K7QM2W'),
+      screen(
+        'b',
+        name: 'Raum 204',
+        mode: NearbyMode.approval,
+        code: 'P4X9TR',
+        server: 'wss://cast.musterfirma.de:443',
+      ),
+      screen('c', name: 'Vereinsheim', mode: NearbyMode.locked),
+    ]);
+    await shot(t, 'nearby-laptop-720-light-de-found');
+    await t.tap(find.byKey(const Key('nearby-row-a')));
+    await t.pump(const Duration(milliseconds: 100));
+    await shot(t, 'nearby-laptop-720-light-de-connecting');
+    await done(t, n);
+  });
+
+  // The phone at 360 wide (N71); it replaces the 400-wide shot of the same name written above.
   shotTest('nearby phone-light-de: found and relay (du)', (t) async {
     final n = await pumpNearby(
       t,
+      size: const Size(360, 800),
       locale: const Locale('de'),
       platform: FakeNearbyPlatform(native: true),
     );

@@ -2,6 +2,14 @@
 Type=Application
 Version=1.0
 Name=Comet Cast
+GenericName=Screen sharing
+GenericName[de]=Bildschirm teilen
+Comment=Show your screen, files and links on the room screen
+Comment[de]=Bildschirm, Dateien und Links auf dem Raumbildschirm zeigen
+Icon=de.cometcast.cometcast
 Exec=cometcast
 Terminal=false
+Categories=Office;Presentation;
+Keywords=cast;present;presentation;screen;display;miracast;
+Keywords[de]=präsentieren;Präsentation;Bildschirm;teilen;Beamer;
 StartupWMClass=de.cometcast.cometcast

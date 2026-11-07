@@ -13,6 +13,7 @@ import '../../core/core_api.dart';
 import '../design/icons.dart';
 import '../design/spans.dart';
 import 'kit.dart';
+import 'host_text.dart';
 import 'nearby.dart' show NearbyCard, PDividerOr;
 
 /// What kind of device the presenter runs on (spec 5.5, decision N15: by device kind, not by
@@ -237,16 +238,23 @@ class FirstRunPage extends StatelessWidget {
       );
       return PPage(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 100,
-                child: column([...brand, ...code, ...actions]),
-              ),
-              const SizedBox(width: 32),
-              Expanded(flex: 105, child: NearbyCard(child: nearby!)),
-            ],
+          // Columns 4 : 5 after the 32 gap, left at least 260 (N61).
+          LayoutBuilder(
+            builder: (context, box) {
+              final avail = box.maxWidth - 32;
+              final left = (avail * 4 / 9).clamp(260.0, avail);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: left,
+                    child: column([...brand, ...code, ...actions]),
+                  ),
+                  const SizedBox(width: 32),
+                  Expanded(child: NearbyCard(child: nearby!)),
+                ],
+              );
+            },
           ),
         ],
       );
@@ -1007,10 +1015,11 @@ class RelayConfirmPage extends StatelessWidget {
           child: PIconDisc(icon: CcIconName.info, tone: PTone.warn),
         ),
         Text(t.relayConfirmTitle, style: s.type.heading),
-        Text(
+        HostText(
           nearbyName == null
               ? t.relayConfirmBodyApp(host)
               : t.relayConfirmBodyNearby(nearbyName!, host),
+          host: host,
           style: s.type.body,
         ),
         Text(host, key: const Key('relay-host'), style: s.type.host),
