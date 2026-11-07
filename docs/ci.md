@@ -164,3 +164,11 @@ Before switching on, start every workflow once by hand and check that it is gree
   with the same toolchain before pushing: `cargo clippy --workspace --all-targets -- -D warnings`.
 - 32-bit ARM Android libraries are not 16 KB aligned by default: `.cargo/config.toml` passes
   `-Wl,-z,max-page-size=16384` for `armv7-linux-androideabi`.
+
+## Docker image without a release
+
+`docker-image.yml` (manual only) builds `deploy/Dockerfile` for linux/amd64 and pushes
+`ghcr.io/<owner>/cometcast-server:edge` and `:sha-<commit>`. Inputs: `branding` (empty = default,
+`branding/cometcast.json` = official) and `push` (off = build only). Versioned multi-arch images and
+`latest` still come only from `release.yml` and `promote-latest.yml`. UNCERTAIN: the workflow never ran
+on GitHub. A package on ghcr.io is private at first; make it public in the package settings once.
