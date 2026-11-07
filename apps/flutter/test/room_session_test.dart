@@ -15,6 +15,100 @@ import 'fake_core.dart';
 Future<void> tick() => Future<void>.delayed(const Duration(milliseconds: 10));
 
 void main() {
+  group('receiver: the iOS hand-over (native-apps.md 20.5)', () {
+    Future<(FakeCoreApi, ReceiverController, List<ReceiverNotice>)>
+    rig() async {
+      final core = FakeCoreApi();
+      final notices = <ReceiverNotice>[];
+      final c = ReceiverController(
+        core: core,
+        keepRoomOnPeerLeft: true,
+        onNotice: notices.add,
+      );
+      addTearDown(c.dispose);
+      c.start('s:1', joinMode: UiJoinMode.confirm);
+      core.receiverEvents.add(
+        const ReceiverUiEvent.roomCode(
+          code: 'K7QM2W',
+          joinMode: UiJoinMode.confirm,
+        ),
+      );
+      await tick();
+      return (core, c, notices);
+    }
+
+    test(
+      'a hand-over join is no "connected" notice, a normal one is',
+      () async {
+        final (core, c, notices) = await rig();
+        core.receiverEvents.add(
+          const ReceiverUiEvent.peerJoined(name: 'Ada', handover: true),
+        );
+        await tick();
+        expect(c.senderJoined, isTrue);
+        expect(notices, isEmpty);
+        core.receiverEvents.add(
+          const ReceiverUiEvent.peerJoined(name: 'Bo', handover: false),
+        );
+        await tick();
+        expect(notices.single, isA<NoticeJoined>());
+      },
+    );
+
+    test('leaving with a token stored is no "left" notice; the picture goes, black stays', () async {
+      final (core, c, notices) = await rig();
+      core.receiverEvents
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Ada', handover: false))
+        ..add(
+          const ReceiverUiEvent.contentLink(
+            url: 'https://example.org/',
+            host: 'example.org',
+          ),
+        )
+        ..add(const ReceiverUiEvent.handoverStored(name: 'Ada'))
+        ..add(const ReceiverUiEvent.peerLeft());
+      await tick();
+      expect(notices.whereType<NoticeLeft>(), isEmpty);
+      expect(c.senderJoined, isFalse);
+      expect(c.shown, isNull);
+      expect(c.handoverHold, isTrue, reason: 'Presenting on black');
+      // The person is back with the token: normal rules again, still no notice.
+      core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Ada', handover: true),
+      );
+      await tick();
+      expect(c.handoverHold, isFalse);
+      expect(c.handoverPending, isFalse);
+      // Only the first, ordinary join was announced.
+      expect(notices.whereType<NoticeJoined>(), hasLength(1));
+    });
+
+    test(
+      'nothing was shown: Idle at once, and an expired token ends the hold',
+      () async {
+        final (core, c, notices) = await rig();
+        core.receiverEvents
+          ..add(const ReceiverUiEvent.peerJoined(name: 'Ada', handover: false))
+          ..add(const ReceiverUiEvent.handoverStored(name: 'Ada'))
+          ..add(const ReceiverUiEvent.peerLeft());
+        await tick();
+        expect(c.handoverHold, isFalse);
+        expect(notices.whereType<NoticeLeft>(), isEmpty);
+        // The token ran out: a later leave is a leave like any other.
+        core.receiverEvents
+          ..add(const ReceiverUiEvent.handoverExpired())
+          ..add(const ReceiverUiEvent.peerJoined(name: 'Bo', handover: false))
+          ..add(const ReceiverUiEvent.peerLeft());
+        await tick();
+        expect(notices.whereType<NoticeLeft>(), hasLength(1));
+      },
+    );
+
+    test('a hold ends by itself after 60 s', () async {
+      await fakeAsyncHold();
+    });
+  });
+
   group('receiver: the room outlives the presenter', () {
     test('the room name goes to the core', () {
       final core = FakeCoreApi();
@@ -70,7 +164,9 @@ void main() {
       expect(starts, 1);
 
       // A second presenter joins with that code.
-      core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Bo', handover: false));
+      core.receiverEvents.add(
+        const ReceiverUiEvent.peerJoined(name: 'Bo', handover: false),
+      );
       await tick();
       expect(c.peerName, 'Bo');
       expect(c.roomCode, 'K7QM2W');
@@ -386,4 +482,30 @@ void main() {
       expect(errorKindForCode('capture_denied'), isNull);
     });
   });
+}
+
+Future<void> fakeAsyncHold() async {
+  final core = FakeCoreApi();
+  final c = ReceiverController(core: core, keepRoomOnPeerLeft: true);
+  c.start('s:1', joinMode: UiJoinMode.confirm);
+  core.receiverEvents
+    ..add(
+      const ReceiverUiEvent.roomCode(
+        code: 'K7QM2W',
+        joinMode: UiJoinMode.confirm,
+      ),
+    )
+    ..add(const ReceiverUiEvent.peerJoined(name: 'Ada', handover: false))
+    ..add(
+      const ReceiverUiEvent.contentLink(
+        url: 'https://example.org/',
+        host: 'example.org',
+      ),
+    )
+    ..add(const ReceiverUiEvent.handoverStored(name: 'Ada'))
+    ..add(const ReceiverUiEvent.peerLeft());
+  await tick();
+  expect(c.handoverHold, isTrue);
+  expect(ReceiverController.handoverHoldSeconds, 60);
+  c.dispose();
 }

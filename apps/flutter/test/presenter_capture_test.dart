@@ -258,28 +258,119 @@ void main() {
   });
 
   group('iOS broadcast', () {
-    testWidgets('the extension joins on its own: the session is left first', (
-      t,
-    ) async {
-      final ios = FakeIosBroadcast();
-      final r = await pump(t, ios: ios);
-      await toWhat(t, r);
-      await t.tap(find.byKey(const Key('what-screen')));
-      await settle(t);
-      expect(r.core.stopPresenterCalls, greaterThanOrEqualTo(1));
-      expect(ios.prepared!.code, 'K7QM2W');
-      expect(ios.prepared!.relay, 'relay.cometcast.de');
-      expect(ios.showPickerCalls, 1);
-      ios.controller.add(
-        const IosBroadcastStatus(state: IosBroadcastState.streaming),
-      );
-      await settle(t);
-      expect(find.text('You are sharing your screen'), findsOneWidget);
-      await t.tap(find.text('Stop showing'));
-      await settle(t);
-      expect(ios.stopCalls, greaterThanOrEqualTo(1));
-      expect(find.text('Welcome to Comet Cast'), findsOneWidget);
-    });
+    testWidgets(
+      'the extension joins on its own: the approval is handed over first',
+      (t) async {
+        final ios = FakeIosBroadcast();
+        final r = await pump(t, ios: ios);
+        // The person has a name: the display binds the token to it.
+        await t.enterText(find.byKey(const Key('name-field')), 'Lena');
+        await toWhat(t, r);
+        await t.tap(find.byKey(const Key('what-screen')));
+        await settle(t);
+        // 1. The display is asked to hold a single-use token (128 bits, base64url).
+        expect(r.core.handoverRequests, hasLength(1));
+        final token = r.core.handoverRequests.single;
+        expect(token, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
+        // 2. The extension gets the room, the name and the same token.
+        expect(r.core.stopPresenterCalls, greaterThanOrEqualTo(1));
+        expect(ios.prepared!.code, 'K7QM2W');
+        expect(ios.prepared!.relay, 'relay.cometcast.de');
+        expect(ios.prepared!.name, 'Lena');
+        expect(ios.prepared!.handover, token);
+        expect(ios.showPickerCalls, 1);
+        ios.controller.add(
+          const IosBroadcastStatus(
+            state: IosBroadcastState.streaming,
+            roomName: 'Room 204',
+            sas: '171 852',
+          ),
+        );
+        await settle(t);
+        // 3. The Presenting page shows the extension's room and security code.
+        expect(find.text('You are sharing your screen'), findsOneWidget);
+        expect(find.textContaining('Room 204'), findsWidgets);
+        expect(find.textContaining('171 852'), findsWidgets);
+        // 4. Stop writes the stop file; the extension's last report carries the way back.
+        await t.tap(find.text('Stop showing'));
+        await settle(t);
+        expect(ios.stopCalls, greaterThanOrEqualTo(1));
+        ios.controller.add(
+          const IosBroadcastStatus(
+            state: IosBroadcastState.ended,
+            nextHandover: 'wayBackToken0123456789',
+          ),
+        );
+        await settle(t);
+        // 5. The app joins again with that token and lands on "What to show".
+        expect(r.core.startPresenterCalls, 2);
+        expect(r.core.presenterHandover, 'wayBackToken0123456789');
+        expect(r.core.presenterName, 'Lena');
+        r.core.presenterEvents.add(
+          const PresenterUiEvent.joined(roomName: 'Room 204'),
+        );
+        await settle(t);
+        expect(find.text('What would you like to show?'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a display that does not answer: no token, ordinary join, plain rejoin',
+      (t) async {
+        final ios = FakeIosBroadcast();
+        final core = FakeCoreApi()..handoverAnswer = false;
+        final r = await pump(t, ios: ios, core: core);
+        await toWhat(t, r);
+        await t.tap(find.byKey(const Key('what-screen')));
+        await settle(t);
+        expect(ios.prepared!.handover, isNull);
+        ios.controller.add(
+          const IosBroadcastStatus(state: IosBroadcastState.streaming),
+        );
+        await settle(t);
+        await t.tap(find.text('Stop showing'));
+        await settle(t);
+        // No token of the way back (an old display): Connect again with the code.
+        ios.controller.add(
+          const IosBroadcastStatus(state: IosBroadcastState.ended),
+        );
+        await settle(t);
+        expect(r.core.startPresenterCalls, 2);
+        expect(r.core.presenterHandover, isNull);
+        expect(r.core.presenterCode, 'K7QM2W');
+      },
+    );
+
+    testWidgets(
+      'a join the display did not accept: the waiting page with the extension\'s number',
+      (t) async {
+        final ios = FakeIosBroadcast();
+        final r = await pump(t, ios: ios);
+        await toWhat(t, r);
+        await t.tap(find.byKey(const Key('what-screen')));
+        await settle(t);
+        ios.controller.add(
+          const IosBroadcastStatus(
+            state: IosBroadcastState.pending,
+            check: 42,
+            timeoutSecs: 60,
+          ),
+        );
+        await settle(t);
+        expect(find.text('Waiting for approval'), findsOneWidget);
+        expect(find.text('42'), findsOneWidget);
+        // The host denies: the normal page of a denied join.
+        ios.controller.add(
+          const IosBroadcastStatus(
+            state: IosBroadcastState.failed,
+            error: IosBroadcastError.joinDenied,
+          ),
+        );
+        await settle(t);
+        expect(find.text('Waiting for approval'), findsNothing);
+        expect(find.text('Welcome to Comet Cast'), findsNothing);
+      },
+    );
 
     testWidgets('a room that is gone is the code page, by code', (t) async {
       final ios = FakeIosBroadcast();

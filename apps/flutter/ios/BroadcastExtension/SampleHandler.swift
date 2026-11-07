@@ -70,18 +70,27 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
 
         stopObservation = DarwinNotifier.observe(BroadcastIdentity.stopNotification) { [weak self] in
             guard let self, self.store?.stopRequested() == true else { return }
-            self.fail(.stoppedByApp, "stop requested by the app")
+            // A clean end, not a failure: the way back to the app is prepared first (20.5, step 5).
+            self.finishBroadcast(error: .stoppedByApp, wayBack: true)
         }
         startTimerAndMemoryWatch()
 
         publish(.connecting)
         let relay = c.relay
         let dir = store.logDirectory.path
+        // The name goes to the display's request; the token, when the app got one, lets this
+        // join in without a dialog (docs/design/native-apps.md 20.5). Both may be empty.
+        let personName = c.name ?? ""
+        let token = (c.handover.flatMap { HandoverToken.isValid($0) ? $0 : nil }) ?? ""
         let result = c.code.withCString { code in
             relay.withCString { relay in
                 dir.withCString { dir in
-                    cc_ios_start(code, relay, dir, statusCallback,
-                                 Unmanaged.passUnretained(self).toOpaque())
+                    personName.withCString { personName in
+                        token.withCString { token in
+                            cc_ios_start(code, relay, dir, personName, token, statusCallback,
+                                         Unmanaged.passUnretained(self).toOpaque())
+                        }
+                    }
                 }
             }
         }
@@ -100,7 +109,10 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
     }
 
     override func broadcastFinished() {
-        teardown()
+        // The person ended the broadcast (red status pill, Control Center): ask the display for
+        // the way back before the connection goes (20.5, step 5). Not when it already ended or
+        // failed.
+        teardown(wayBack: !isFinished && connectedNow)
         publish(.ended, error: lastStatus.error)
     }
 
@@ -193,6 +205,7 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
         let state: BroadcastStateName
         var error = BroadcastErrorName.none
         switch s.state {
+        case Int32(CC_IOS_STATE_PENDING): state = .pending
         case Int32(CC_IOS_STATE_STREAMING): state = .streaming
         case Int32(CC_IOS_STATE_RECONNECTING): state = .reconnecting
         case Int32(CC_IOS_STATE_WAITING): state = .waiting
@@ -208,6 +221,9 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
             case Int32(CC_IOS_ERR_CONNECTION_LOST): error = .connectionLost
             case Int32(CC_IOS_ERR_INVALID_ROOM_CODE): error = .invalidRoomCode
             case Int32(CC_IOS_ERR_INVALID_RELAY): error = .invalidRelay
+            case Int32(CC_IOS_ERR_JOIN_DENIED): error = .joinDenied
+            case Int32(CC_IOS_ERR_APPROVAL_TIMEOUT): error = .approvalTimeout
+            case Int32(CC_IOS_ERR_ROOM_LOCKED): error = .roomLocked
             default: error = .internalError
             }
         }
@@ -218,9 +234,16 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
         let bytes = Int(s.bytes_sent), keys = Int(s.keyframes_sent)
         stateLock.unlock()
         if state == .streaming, !wasConnected { encoder.requestKeyFrame() }
+        let check = Int(s.check), timeout = Int(s.timeout_secs)
+        let room = s.room_name.map { String(cString: $0) } ?? ""
+        let sas = s.sas.map { String(cString: $0) } ?? ""
         update { st in
             st.state = state; st.error = error
             st.sent = sent; st.dropped = dropped; st.bytes = bytes; st.keyframes = keys
+            st.check = check > 0 ? check : nil
+            st.timeoutSecs = timeout > 0 ? timeout : nil
+            st.roomName = room.isEmpty ? nil : room
+            st.sas = sas.isEmpty ? nil : sas
         }
         if state == .ended || state == .failed {
             finishBroadcast(error: error)
@@ -243,13 +266,18 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
     /// Callable from any thread, including the Rust status callback and the VideoToolbox output
     /// callback. The work moves to a global queue: `cc_ios_stop` must not run inside the Rust
     /// callback, and invalidating the encoder inside its own output callback would deadlock.
-    private func finishBroadcast(error: BroadcastErrorName) {
+    private func finishBroadcast(error: BroadcastErrorName, wayBack: Bool = false) {
         stateLock.lock()
+        let wasConnected = connected
         if finished { stateLock.unlock(); return }
         finished = true
         stateLock.unlock()
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            teardown()
+            teardown(wayBack: wayBack && wasConnected)
+            if wayBack {
+                // A clean end: the app reads "ended" and joins again with the token.
+                update { $0.state = .ended; $0.error = .none }
+            }
             flushStatus()
             let nsError = NSError(domain: "de.cometcast.broadcast", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: localizedMessage(for: error),
@@ -258,14 +286,27 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
         }
     }
 
-    private func teardown() {
+    private func teardown(wayBack: Bool = false) {
+        // First: no more status writes from the timer while the way back is prepared.
         timer?.cancel(); timer = nil
         memoryPressure?.cancel(); memoryPressure = nil
         stopObservation = nil
         encoder.invalidate()
         held = nil
         scaler?.reset()
+        if wayBack { prepareWayBack() }
         cc_ios_stop()
+    }
+
+    /// Ask the display to hold a new single-use token for the app's way back (20.5, step 5) and
+    /// put it into the status. The display answering nothing (an old or a web display) leaves
+    /// the token out: the app then joins with the code like Connect.
+    private func prepareWayBack() {
+        let token = HandoverToken.make()
+        guard HandoverToken.isValid(token) else { return }
+        if token.withCString({ cc_ios_request_handover($0) }) == 1 {
+            update { $0.nextHandover = token }
+        }
     }
 
     private func localizedMessage(for error: BroadcastErrorName) -> String {

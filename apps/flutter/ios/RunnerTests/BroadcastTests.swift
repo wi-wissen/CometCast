@@ -25,6 +25,49 @@ final class BroadcastStoreTests: XCTestCase {
         XCTAssertNil(store.readConfig())
     }
 
+    func testConfigCarriesNameAndHandoverAndOldFilesStillDecode() throws {
+        let store = makeStore()
+        let c = BroadcastConfig(code: "ABC234", relay: "r", requestedAt: 1, maxDimension: 1280, fps: 30,
+                                bitrate: 1_000_000, name: "Lena", handover: "q3Zx9_-Lm0AbCdEfGhIjKl")
+        try store.writeConfig(c)
+        XCTAssertEqual(store.readConfig()?.name, "Lena")
+        XCTAssertEqual(store.readConfig()?.handover, "q3Zx9_-Lm0AbCdEfGhIjKl")
+        // A config written by the app before the hand-over existed has neither field.
+        let old = #"{"version":1,"code":"ABC234","relay":"r","requestedAt":1,"maxDimension":1280,"fps":30,"bitrate":1}"#
+        let decoded = try JSONDecoder().decode(BroadcastConfig.self, from: Data(old.utf8))
+        XCTAssertNil(decoded.name)
+        XCTAssertNil(decoded.handover)
+    }
+
+    func testStatusCarriesTheFallbackFieldsAndTheWayBack() throws {
+        let store = makeStore()
+        var s = BroadcastStatus(seq: 1, state: .pending, error: .none, sent: 0, dropped: 0, bytes: 0, keyframes: 0,
+                                width: 0, height: 0, freeMemoryMB: -1, updatedAt: 5)
+        s.check = 42; s.timeoutSecs = 60; s.roomName = "Room 204"; s.sas = "171 852"; s.nextHandover = "abc"
+        try store.writeStatus(s)
+        XCTAssertEqual(store.readStatus(), s)
+        XCTAssertTrue(s.isStale(now: Date(timeIntervalSince1970: 100)), "pending counts as active")
+        // A status written without the new fields still decodes.
+        let old = #"{"seq":1,"state":"waiting","error":"none","sent":0,"dropped":0,"bytes":0,"keyframes":0,"width":0,"height":0,"freeMemoryMB":-1,"updatedAt":5}"#
+        let d = try JSONDecoder().decode(BroadcastStatus.self, from: Data(old.utf8))
+        XCTAssertNil(d.check)
+        XCTAssertNil(d.nextHandover)
+    }
+
+    func testHandoverTokens() {
+        // 16 bytes make 22 base64url characters without padding.
+        let t = HandoverToken.make(bytes: [UInt8](repeating: 0xfb, count: 16))
+        XCTAssertEqual(t.count, 22)
+        XCTAssertEqual(t, "-_v7-_v7-_v7-_v7-_v7-w")
+        XCTAssertTrue(HandoverToken.isValid(t))
+        XCTAssertTrue(HandoverToken.isValid(HandoverToken.make()))
+        XCTAssertNotEqual(HandoverToken.make(), HandoverToken.make())
+        XCTAssertFalse(HandoverToken.isValid(""))
+        XCTAssertFalse(HandoverToken.isValid(String(repeating: "a", count: 65)))
+        XCTAssertTrue(HandoverToken.isValid(String(repeating: "a", count: 64)))
+        for bad in ["a b", "a+b", "a/b", "a=", "ä"] { XCTAssertFalse(HandoverToken.isValid(bad), bad) }
+    }
+
     func testConfigFreshness() {
         let now = Date(timeIntervalSince1970: 1_000_000)
         func config(age: Double) -> BroadcastConfig {

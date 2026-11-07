@@ -125,8 +125,15 @@ class PresenterSessionController extends ChangeNotifier {
       phase == PresenterSessionPhase.joined ||
       phase == PresenterSessionPhase.presenting;
 
-  /// Join the room once. Replaces a running session.
-  void connect({required String code, required String server, String? name}) {
+  /// Join the room once. Replaces a running session. [handover] is a single-use token that
+  /// the display holds for this person (iOS, native-apps.md 20.5): the display lets the join in
+  /// without a dialog; without it, or when the display does not know it, the host is asked.
+  void connect({
+    required String code,
+    required String server,
+    String? name,
+    String? handover,
+  }) {
     _cancel();
     _reset();
     phase = PresenterSessionPhase.connecting;
@@ -136,6 +143,7 @@ class PresenterSessionController extends ChangeNotifier {
           code: code,
           server: server.trim(),
           name: name,
+          handover: handover,
           udpBind: udpBind,
         )
         .listen(
@@ -183,6 +191,7 @@ class PresenterSessionController extends ChangeNotifier {
   }
 
   void _fail(String code, String message) {
+    _answerHandover(false);
     phase = PresenterSessionPhase.failed;
     errorCode = code;
     errorMessage = message;
@@ -238,6 +247,8 @@ class PresenterSessionController extends ChangeNotifier {
         this.total = total.toInt();
       case PresenterUiEvent_ContentSent():
         contentPhase = PresenterContentPhase.sent;
+      case PresenterUiEvent_HandoverResult(:final ok):
+        _answerHandover(ok);
       case PresenterUiEvent_Presenting():
         phase = PresenterSessionPhase.presenting;
         startFailure = null;
@@ -246,6 +257,7 @@ class PresenterSessionController extends ChangeNotifier {
         phase = PresenterSessionPhase.joined;
         _resetPresentation();
       case PresenterUiEvent_Ended(:final code):
+        _answerHandover(false);
         phase = PresenterSessionPhase.ended;
         endedCode = code;
         _cancel();
@@ -305,8 +317,42 @@ class PresenterSessionController extends ChangeNotifier {
   /// joined (`PresentingStopped` brings the phase back to [PresenterSessionPhase.joined]).
   bool stopPresenting() => core.stopPresenting();
 
+  Completer<bool>? _handover;
+
+  void _answerHandover(bool ok) {
+    final c = _handover;
+    _handover = null;
+    if (c != null && !c.isCompleted) c.complete(ok);
+  }
+
+  /// iOS hand-over (native-apps.md 20.5, step 1): ask the display to hold the single-use
+  /// [token] for the broadcast extension. True when the display answered; false when it did
+  /// not (an old or a web display, no session, a lost connection, [timeout]): the extension then
+  /// joins the ordinary way and the host is asked.
+  Future<bool> requestHandover(
+    String token, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    if (!isJoined) return false;
+    _answerHandover(false);
+    final c = Completer<bool>();
+    _handover = c;
+    if (!core.requestHandover(token)) {
+      _answerHandover(false);
+      return false;
+    }
+    return c.future.timeout(
+      timeout,
+      onTimeout: () {
+        if (identical(_handover, c)) _handover = null;
+        return false;
+      },
+    );
+  }
+
   /// Leave the room (Disconnect, withdraw while waiting). Ends the session at once.
   Future<void> disconnect() async {
+    _answerHandover(false);
     _cancel();
     final was = phase;
     _reset();

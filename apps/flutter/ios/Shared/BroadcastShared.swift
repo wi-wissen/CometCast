@@ -8,6 +8,7 @@
 // covered by RunnerTests/BroadcastSharedTests.swift, which was never run either.
 
 import Foundation
+import Security
 
 /// What the app hands to the extension before the person starts the broadcast.
 struct BroadcastConfig: Codable, Equatable {
@@ -24,6 +25,12 @@ struct BroadcastConfig: Codable, Equatable {
     var fps: Int
     /// Target bit rate in bit/s.
     var bitrate: Int
+    /// The person's name as the display shows it on its request (docs/design/native-apps.md
+    /// 20.5). Nil or empty: the display says "Guest N".
+    var name: String? = nil
+    /// Single-use hand-over token that the display issued to the app (20.5, step 1): a display
+    /// that holds it lets the extension in without a dialog. Nil: an ordinary join.
+    var handover: String? = nil
 
     /// A configuration is only used for a few minutes: the person has to start the broadcast
     /// right after pressing the button in the app. An old file must never start a broadcast
@@ -48,7 +55,9 @@ struct BroadcastConfig: Codable, Equatable {
 
 /// Where the broadcast is, written by the extension, read by the app.
 enum BroadcastStateName: String, Codable {
-    case starting, connecting, waiting, streaming, reconnecting, paused, ended, failed
+    /// `pending`: the join waits for the host's decision (a join without a token, or with one
+    /// the display did not accept); `check` and `timeoutSecs` of the status say what to show.
+    case starting, connecting, pending, waiting, streaming, reconnecting, paused, ended, failed
 }
 
 /// Why it ended or failed. The app has a translated text for each (ARB keys `iosError*`), the
@@ -67,6 +76,9 @@ enum BroadcastErrorName: String, Codable {
     case memory            // memory budget exhausted
     case stoppedByApp
     case internalError
+    case joinDenied        // the host denied the join
+    case approvalTimeout   // nobody decided in time
+    case roomLocked        // the room is locked (a hand-over join is refused like any join)
 }
 
 struct BroadcastStatus: Codable, Equatable {
@@ -84,12 +96,25 @@ struct BroadcastStatus: Codable, Equatable {
     var freeMemoryMB: Int
     /// Unix time in seconds; the app treats a status older than `staleAfter` as "lost".
     var updatedAt: Double
+    // What the Presenting page and the fallbacks of 20.5 need. Optional so that a status
+    // written without them still decodes.
+    /// Check number while the join waits for the host (`pending`).
+    var check: Int? = nil
+    /// Seconds the host has to decide, with `check`.
+    var timeoutSecs: Int? = nil
+    /// The display's room name ("" or nil = none).
+    var roomName: String? = nil
+    /// Connection check code `123 456` of the broadcast, once connected.
+    var sas: String? = nil
+    /// The token of the way back (20.5, step 5): the display holds it; the app joins with it
+    /// after the broadcast. Nil or empty: the app joins the ordinary way.
+    var nextHandover: String? = nil
 
     /// The extension writes at least once per second while it runs.
     static let staleAfter: TimeInterval = 5
 
     func isStale(now: Date = Date()) -> Bool {
-        let active: [BroadcastStateName] = [.starting, .connecting, .waiting, .streaming, .reconnecting, .paused]
+        let active: [BroadcastStateName] = [.starting, .connecting, .pending, .waiting, .streaming, .reconnecting, .paused]
         return active.contains(state) && now.timeIntervalSince1970 - updatedAt > BroadcastStatus.staleAfter
     }
 
@@ -200,5 +225,28 @@ final class DarwinObservation {
         let observer = Unmanaged.passUnretained(self).toOpaque()
         CFNotificationCenterRemoveObserver(
             CFNotificationCenterGetDarwinNotifyCenter(), observer, CFNotificationName(name as CFString), nil)
+    }
+}
+
+/// A hand-over token: 128 random bits as base64url without padding (22 characters of
+/// `A-Z a-z 0-9 - _`), the form the display accepts (docs/design/native-apps.md 20.5).
+enum HandoverToken {
+    static func make(bytes: [UInt8]? = nil) -> String {
+        var b = bytes ?? [UInt8](repeating: 0, count: 16)
+        if bytes == nil {
+            let status = SecRandomCopyBytes(kSecRandomDefault, b.count, &b)
+            // No secure randomness: no token (the way back then joins the ordinary way).
+            if status != errSecSuccess { return "" }
+        }
+        return Data(b).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// The display's rule: 1 to 64 characters of the base64url alphabet.
+    static func isValid(_ t: String) -> Bool {
+        !t.isEmpty && t.utf8.count <= 64
+            && t.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5a) || ($0 >= 0x61 && $0 <= 0x7a) || $0 == 0x2d || $0 == 0x5f }
     }
 }

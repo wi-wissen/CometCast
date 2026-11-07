@@ -40,6 +40,18 @@ pub struct HandoverStore {
     entries: Mutex<Vec<Entry>>,
 }
 
+/// Is `a` the same person as `b`? Names are cleaned by the server, so equal text is the same
+/// person. A person who gave no name is called `Guest N` with a number that differs from join to
+/// join, so two such labels count as the same person (the secret token is what carries the
+/// trust; the name only keeps a token with the presenter it was made for).
+fn same_person(a: &str, b: &str) -> bool {
+    let guest = |n: &str| {
+        n.strip_prefix("Guest ")
+            .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()))
+    };
+    a == b || (guest(a) && guest(b))
+}
+
 /// Compare without stopping at the first difference (the tokens are secrets for 60 s).
 fn same(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -71,7 +83,7 @@ impl HandoverStore {
         if e.iter().any(|x| same(&x.token, token)) {
             return false;
         }
-        e.retain(|x| x.name != name);
+        e.retain(|x| !same_person(&x.name, name));
         if e.len() >= MAX_TOKENS {
             return false;
         }
@@ -92,7 +104,7 @@ impl HandoverStore {
         let Some(i) = e.iter().position(|x| same(&x.token, token)) else {
             return false;
         };
-        if e[i].name != name {
+        if !same_person(&e[i].name, name) {
             return false;
         }
         e.remove(i);
@@ -103,7 +115,7 @@ impl HandoverStore {
     pub fn pending_for(&self, name: &str, now: Instant) -> bool {
         self.lock()
             .iter()
-            .any(|x| x.name == name && x.expires > now)
+            .any(|x| same_person(&x.name, name) && x.expires > now)
     }
 
     /// Drop the tokens that ran out; returns how many did.
@@ -146,9 +158,9 @@ mod tests {
         assert!(s.pending_for("Ana", t0 + HANDOVER_TTL - Duration::from_millis(1)));
         let late = t0 + HANDOVER_TTL + Duration::from_millis(1);
         assert!(!s.pending_for("Ana", late));
-        assert!(!s.take("tok1", "Ana", late));
         assert_eq!(s.expire(late), 1);
         assert_eq!(s.expire(late), 0);
+        assert!(!s.take("tok1", "Ana", late));
     }
 
     #[test]
@@ -176,6 +188,16 @@ mod tests {
         assert!(!s.insert("tx", "E", t0), "full");
         s.clear();
         assert!(s.insert("tx", "E", t0));
+    }
+
+    #[test]
+    fn people_without_a_name_are_the_same_person_across_joins() {
+        let (s, t0) = store();
+        assert!(s.insert("tok1", "Guest 1", t0));
+        assert!(!s.take("tok1", "Ana", t0));
+        assert!(!s.take("tok1", "Guest", t0));
+        assert!(!s.take("tok1", "Guest x", t0));
+        assert!(s.take("tok1", "Guest 2", t0));
     }
 
     #[test]
