@@ -16,6 +16,7 @@ workspace = true
 cc-airplay.workspace = true
 cc-docs.workspace = true
 cc-files.workspace = true
+cc-office.workspace = true
 cc-cast.workspace = true
 cc-airplay-sender.workspace = true
 cc-miracast.workspace = true
@@ -39,3 +40,6 @@ cc-media.workspace = true
 default = ["h264-source"]
 h264-source = ["cc-media/h264-source", "cc-sender/h264-source", "cc-cast/h264-source", "cc-airplay-sender/h264-source"]
 h264-libloading = ["cc-media/h264-libloading", "cc-sender/h264-libloading", "cc-cast/h264-libloading", "cc-airplay-sender/h264-libloading"]
+
+[dev-dependencies]
+flate2.workspace = true

@@ -7,7 +7,7 @@ Status: PDF part implemented and tested on generated files only. Rendering runs 
 seccomp where the kernel allows it (since the security reviews, see "Limits and safety"). It is
 **not a sandbox in the full sense**: read "What this protects and what it does not" before
 relying on it.
-Office conversion and speaker notes are **not** done. The WASM build exists (`crates/cc-docs-wasm`) and is used by the web receiver, see [In the web client](#in-the-web-client). The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
+Office conversion on the **sender** is implemented in `cc-office` and the command line, see [Office documents](#office-documents-sender-side-cc-office); it is not in the Flutter app or the web client. Speaker notes are **not** done. The WASM build exists (`crates/cc-docs-wasm`) and is used by the web receiver, see [In the web client](#in-the-web-client). The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
 
 ## Idea (from the plan)
 
@@ -30,7 +30,7 @@ the page number travels, as `ControlCmd` from `cc-proto` (`NextPage`, `PrevPage`
 | `page_count()`, `page_size(i)` | Pages (at least 1) and size in points after rotation and crop box. Indices are 0-based |
 | `render_page(i, width_px)` | RGBA picture on opaque white; height follows the page shape. `render_page_with` adds a timeout override and a cancel flag |
 | `thumbnail(i, max_side)` | Picture that fits into a square; both sides are at most `max_side` also for extreme shapes (a 10 x 10 000 pt page into 64 gives 1 x 64, distorted rather than too big) |
-| `notes(i)` | Always `None` for a PDF. Speaker notes come from PPTX later (`cc-office`, not built) |
+| `notes(i)` | Always `None` for a PDF. Speaker notes from PPTX are not done (`cc-office` only converts to PDF) |
 | `DocumentSession` | Receiver page state (1-based). `apply(&ControlCmd)` returns `PageChanged(n)`, `Unchanged`, `Stopped` or `Ignored`. Out-of-range pages are **clamped** (0 becomes 1, too large becomes the last page); after `Stop` every command is ignored |
 | `encode_png`, `encode_webp_lossless`, `validate_webp` | Picture helpers, pure Rust (see below) |
 | `abandoned_renders()` | How many timed-out renders still run inside hayro (in-process engine only; always 0 with worker processes, which are killed) |
@@ -499,6 +499,133 @@ it may keep rendering pages for the sender's commands until `stop`).
 Where the worker comes from, which platforms have it, and the limits of this section are in
 [flutter-bridge.md](flutter-bridge.md) ("Content" and "Build integration").
 
+## Office documents (sender side, `cc-office`)
+
+Status: implemented for `cometcast-cli` (`send-file`, `office convert`), tested on **tiny
+generated files only** (Linux, one machine). **Fidelity on real classroom files has not been
+measured** (measurement point 7 still needs its five Office files). Not in `cc-ffi`, the Flutter
+app or the web client.
+
+### Idea and security model
+
+The sender converts an Office file to a PDF **before** the transfer, then sends the PDF exactly
+as before. The receiver never sees an Office file, so its security model (a PDF is hostile and is
+rendered in a limited child process, see above) does not change. The Office file comes from the
+sender's own user, so it is not "remote hostile input" in the way a PDF is for the receiver; it
+can still be a file somebody mailed to the teacher, so the converter is treated as an untrusted
+parser anyway.
+
+### Engines: what was looked at (2026-11-07)
+
+| | `office2pdf` (pure Rust) | LibreOffice (`soffice`, separate process) |
+| --- | --- | --- |
+| Licence | Apache-2.0 (crate metadata); built on the Typst crates (Apache-2.0); compatible with GPL-3.0-or-later. Needs no installation. Bundles fonts under OFL, GUST, Bitstream Vera and BSD-3-Clause (listed in `THIRD_PARTY_NOTICES.md`; **the full texts still have to ship with a release**) | MPL-2.0 for the core (as remembered, **not checked**); not linked and not shipped, we only start the program the user installed |
+| Formats | `.docx .pptx .xlsx` (no `.odt .odp .ods`, no legacy `.doc .ppt .xls`) | all of those, and legacy files too (we still refuse legacy files, see below) |
+| Offline | yes | yes (no network is needed; the worker also blocks TCP where Landlock allows) |
+| Maintenance | crate created 2026-02, about 12 000 downloads, a release every 1 to 3 weeks, one author (checked on crates.io on 2026-11-07). Young | very mature project; the version on the test machine was not recorded |
+| Cost | about 250 extra crates, larger binary (fonts), first build takes minutes | 300 MB to 1 GB install on the sender machine |
+| Seen speed (tiny files, debug build) | 0.5 to 0.8 s | 1.5 to 2.1 s (start-up dominated) |
+| Fidelity | unmeasured; the crate reports what it left out as warnings (for example "Aptos rendered as Noto Sans") | unmeasured; generally seen as the reference for layout |
+
+`Engine::Auto` (the default) uses LibreOffice if it is found and the pure-Rust engine otherwise.
+UNCERTAIN: this order is a judgement (LibreOffice is the long-standing reference), not a
+measurement; change it once point 7 has data. A failure of the chosen engine is **not** retried with
+the other one (a file that one parser calls broken is not handed to a second parser behind the
+user's back); `--engine rust|soffice` chooses explicitly. The `engine-rust` feature of `cc-office`
+can be turned off to leave out the large dependency tree.
+
+LibreOffice is found through `COMETCAST_SOFFICE` (absolute path), then `/usr/bin/soffice`,
+`/usr/local/bin/soffice`, `/usr/lib/libreoffice/program/soffice`, `/opt/libreoffice/program/soffice`,
+the macOS and Windows default paths, then `PATH`. UNCERTAIN: only Linux was run. Flatpak and Snap
+installs are not looked for.
+
+### Pipeline and limits
+
+1. **Input**: a regular file only (a device or FIFO is refused), at most **50 MiB**, read with a
+   `take(limit + 1)` bound. The extension chooses the format. A legacy binary or password-protected
+   file (an OLE container, not ZIP) gets a clear "save as .docx without a password" message.
+2. **ZIP pre-flight** (`zipcheck.rs`, our own reader of the central directory; nothing is extracted to disk):
+   at most **4000 entries**; no absolute names, `..`, backslash, NUL, control character or drive
+   letter; no duplicate names (case-insensitive); no encryption, ZIP64, multi-disk, or methods other than
+   stored and deflate; local header and central directory must agree; entries must not overlap;
+   each entry at most **128 MiB** and all together at most **512 MiB** uncompressed; ratio
+   at most **200:1** for entries over 1 MiB; and every entry is **really inflated** (and discarded) to
+   check that the real size equals the declared size, so a lying header is caught. The content
+   must match the extension (`word/document.xml`, `ppt/presentation.xml`, `xl/workbook.xml`, or the
+   OpenDocument `mimetype` entry). This is a screen against bombs and path tricks, not proof that the
+   XML parser behind it is safe.
+3. **Private work directory** (`$TMPDIR/cometcast-office-<pid>-<random>`, mode 0700, created with
+   `create` so an existing name is never reused, removed on drop). The input is copied there under a fixed
+   name (`input.<ext>`); the user's own file name never reaches an engine or a command line.
+4. **Worker child** (`cc-office-worker`, or `cometcast-cli office-worker`): empty environment (LibreOffice gets
+   only `PATH`, `HOME`, `TMPDIR`, `LANG` and a render setting, with `HOME` and `TMPDIR` inside the work directory), own process
+   group, stdin closed. The worker sets, **fail closed on Linux**: `RLIMIT_CPU` (timeout + 2 s), `RLIMIT_CORE`
+   0, `RLIMIT_FSIZE` (the output cap, which also limits what LibreOffice may write per file) and
+   `RLIMIT_AS` (4 GiB for either engine). Best effort: Landlock **blocks TCP connect and bind**
+   (kernel 6.7+, ABI 4), reported as `landlock-no-tcp`. It does **not** restrict the file system, UDP or Unix
+   sockets, and there is **no seccomp** (LibreOffice needs far too many system calls; the pure-Rust
+   worker could get the allowlist treatment of `cc-docs`, not done). So this is a **resource-limited
+   child process, not a sandbox**: a code-execution bug in a parser would run as the user.
+5. **LibreOffice call**: `soffice --headless --invisible --norestore --nologo --nodefault --nolockcheck
+   --nofirststartwizard -env:UserInstallation=<work>/profile --convert-to pdf --outdir <work>/out <work>/in/input.<ext>`, with a
+   profile that sets the macro security level to 3, disables macro execution and sets "update links" to
+   "never" for Calc and Writer. UNCERTAIN: those profile keys are from memory of the configuration schema;
+   their effect was not tested (headless conversion does not run document macros by default either).
+   Fonts are whatever the machine has; no font is bundled for this engine.
+6. **Deadline**: 120 s by default (the worker times itself; the parent kills the **whole process group**
+   at timeout + 2 s, and again after a normal exit to remove helper processes). Tested with a fake worker
+   that starts a grandchild and sleeps.
+7. **Result checks**: a regular file (not a link) in the output directory, at most **64 MiB** (the document
+   transfer limit), starting with `%PDF-` and with `%%EOF` in the last 2 KiB. The CLI test also opens the result with
+   `docs info`, the receiver's renderer.
+
+### Use
+
+```
+cometcast-cli send-file <CODE> report.docx [--office-engine auto|rust|soffice]
+cometcast-cli office convert slides.pptx --out slides.pdf [--engine rust] [--force]
+cometcast-cli office engines
+```
+
+`send-file` converts first, prints the engine and the time, prints up to ten conversion
+warnings, and sends `<name>.pdf`. Library: `cc_office::convert_file(path, &Options)`; the application must
+provide the worker (`WorkerSpec::discover()` finds `cc-office-worker` next to the executable, or pass
+`WorkerSpec::current_exe_with_arg("office-worker")`). Unlike `cc-docs` there is **no environment variable
+that replaces the worker program**.
+
+### Why not in `cc-ffi` / Flutter yet
+
+The Flutter send dialog rejects by type through the generated `UiSendRejection` enum and shows
+the page count after a "prepared" step. Accepting Office files there needs a new rejection
+reason, a conversion step and progress UI (a conversion takes seconds). That means changing
+generated bridge code and the Dart screens, which was judged not low-risk for this change and was
+not done. The worker would also have to be packaged next to the app (as `cc-docs-worker` is on Linux).
+
+### Tests (what was run)
+
+- `cargo test -p cc-office`: format and engine selection; the ZIP pre-flight with generated archives (valid
+  docx, xlsx, pptx and an ODF shape; bombs by ratio, by per-entry size and by total size; a lying header; too many
+  entries; seven kinds of unsafe name; duplicates; the encryption flag; overlap; corrupt files: every
+  truncation length, every single-byte flip without a panic, garbage in the data; legacy OLE); output
+  checks (fake, huge, missing, symbolic link); the private work directory; input checks; conversion of the three
+  generated fixtures through the **real worker** with the pure-Rust engine and with LibreOffice
+  (**skipped loudly with a `SKIPPED:` line if `soffice` is absent**; `COMETCAST_REQUIRE_OFFICE_ENGINE=1` turns a skip into a failure);
+  a hanging fake worker killed at the deadline together with its child; fake workers that write a non-PDF,
+  nothing, an oversized file, or fail.
+- `cargo test -p cometcast-cli --test office`: `office convert` end to end, a refused overwrite, the result opened by `docs info`,
+  and six hostile or wrong files (corrupt, not a zip, legacy OLE, path traversal, a 200 MiB bomb, a docx under a `.pdf` name)
+  that fail with a message and leave no output.
+- The fixtures are text-only documents written by the test code (`tests/common/zipwriter.rs`); nothing was copied from any real or third-party
+  document.
+
+### Not done / uncertain
+
+- No measurement of layout fidelity, fonts, charts, tables or embedded media on real documents; no comparison of the two engines.
+- The Windows and macOS code paths (soffice locations, the `file://` profile URL, no limits on Windows except the timeout) were not run.
+- No seccomp or file-system sandbox for either engine; `RLIMIT_AS` is not enforced by the macOS kernel.
+- Memory and time on large inputs (50 MiB files, big workbooks) were not measured; the 4 GiB address-space limit and the 120 s deadline are guesses.
+- Speaker notes from PPTX are not extracted.
+
 ## Not done
 
 - 20 real PDFs (point 7), fidelity comparison with another viewer, WASM speed on weak devices (the WASM file size is in [In the web client](#in-the-web-client)).
@@ -507,7 +634,7 @@ Where the worker comes from, which platforms have it, and the limits of this sec
   call, which costs a few milliseconds per page); a job object on Windows.
 - A page cache (every page change renders again); a local preview or thumbnail on the presenter's
   side (the Flutter sender only knows the page count); a receiver that turns pages itself.
-- Office to PDF (`office2pdf`), notes from PPTX.
+- Office to PDF in the Flutter app (`cc-ffi`) and the web client; notes from PPTX; fidelity and speed of Office conversion on real files (see the Office section).
 - Annotations (`lopdf` in the plan).
 
 The generated test files and their provenance are in

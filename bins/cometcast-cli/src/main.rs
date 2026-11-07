@@ -18,6 +18,7 @@ mod cast;
 mod content;
 mod discover;
 mod docs;
+mod office;
 
 use cc_airplay::{AirplayConfig, AirplayEvent, AirplayStatus, Supervisor, SupervisorOptions};
 use cc_proto::RoomCode;
@@ -39,6 +40,7 @@ Usage:
                     [--insecure-skip-device-auth]
   cometcast-cli discover [--seconds N] [--policy-file PATH] [--announce HOST:PORT]
   cometcast-cli docs info|render ... (PDF pages, see `docs --help`)
+  cometcast-cli office convert|engines ... (Office to PDF, see `office --help`)
   cometcast-cli --version
 
 Options:
@@ -108,6 +110,10 @@ enum Command {
     Content(content::Cmd),
     /// Hidden: the render worker process of `cc-docs` (started by `docs`, see docs/documents.md).
     DocsWorker,
+    Office(office::OfficeArgs),
+    /// Hidden: the conversion worker process of `cc-office`.
+    OfficeWorker,
+    OfficeHelp,
     AirplaySend(airplay_send::Sub),
     Miracast {
         name: Option<String>,
@@ -217,6 +223,9 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
         "discover" => return Ok(discover::parse(args)?.map_or(Command::Help, Command::Discover)),
         "docs" => return Ok(docs::parse(args)?.map_or(Command::DocsHelp, Command::Docs)),
         "docs-worker" => return Ok(Command::DocsWorker),
+        "office" => return Ok(office::parse(args)?.map_or(Command::OfficeHelp, Command::Office)),
+        // Hidden: handled in `main` before the runtime exists.
+        "office-worker" => return Ok(Command::OfficeWorker),
         "send-file" | "send-link" => {
             return content::parse(cmd == "send-link", args).map(Command::Content);
         }
@@ -305,6 +314,12 @@ fn main() -> ExitCode {
     {
         return docs::worker();
     }
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == "office-worker")
+    {
+        return office::worker();
+    }
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -331,7 +346,12 @@ async fn async_main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Help => {
-            println!("{USAGE}\n{}\n\n{}", content::USAGE, airplay_send::USAGE);
+            println!(
+                "{USAGE}\n{}\n\n{}\n\n{}",
+                content::USAGE,
+                office::USAGE,
+                airplay_send::USAGE
+            );
             ExitCode::SUCCESS
         }
         Command::DocsHelp => {
@@ -339,6 +359,15 @@ async fn async_main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Docs(d) => docs::run(d),
+        Command::OfficeHelp => {
+            println!("{}", office::USAGE);
+            ExitCode::SUCCESS
+        }
+        // The conversion blocks (child process); keep it off the async threads.
+        Command::Office(o) => tokio::task::spawn_blocking(move || office::run(o))
+            .await
+            .unwrap_or(ExitCode::FAILURE),
+        Command::OfficeWorker => office::worker(),
         Command::Content(c) => content::run(c).await,
         // Handled in `main` before the runtime exists; kept so the argument parses.
         Command::DocsWorker => docs::worker(),
