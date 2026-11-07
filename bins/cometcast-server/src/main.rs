@@ -124,6 +124,9 @@ fn describe(config: &ServerConfig, addr: std::net::SocketAddr) {
             "TLS: off (plain HTTP). Browsers need HTTPS for screen sharing except on localhost."
         );
     }
+    if !config.all_stun_urls().is_empty() {
+        println!("STUN list: on (GET /ice-servers, no credentials)");
+    }
     if config.turn.is_some() {
         println!("TURN credentials: on (GET /ice-servers)");
     }

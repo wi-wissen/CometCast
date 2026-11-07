@@ -121,7 +121,8 @@ UNCERTAIN: every number is a placeholder.
 | `altcha.base_counter` | 1000 | 1000 | Size of the search; doubles per pressure level. |
 | `altcha.max_difficulty_factor` | 8 | 8 | Upper limit of the multiplier. |
 | `altcha.ttl_secs` | 300 | 300 | Puzzle lifetime. |
-| `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. |
+| `stun.urls` | `[]` | `[]` | Public STUN servers listed at `/ice-servers`, **allowed in both modes**. At most 4, only `stun:` / `stuns:` URLs (lowercase) as `host[:port]` (port 1-65535, IPv6 as `[addr]`), no credentials (`@`), path or query; checked at start. Env `COMETCAST__STUN__URLS=stun:a:3478,stun:b:3478` (comma-separated), CLI `--set stun.urls=...`. |
+| `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. `turn.stun_urls` follows the same rules as `stun.urls`; both are listed (without duplicates) in one STUN entry. |
 | `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |
 | `turn.ttl_secs` | | 3600 | Credential lifetime. |
 
@@ -145,6 +146,7 @@ The two modes follow the planning page ("Offen und intern"). What is built so fa
 | Purpose | Public server, mediation only | A server inside an organisation, for its own devices |
 | ALTCHA for `create_room` | Always required; cannot be switched off (the server refuses to start otherwise) | Optional: checked when a client sends it; can be required with `altcha.mode = "always"` |
 | Rate limits and caps | Strict defaults | Larger defaults (6 to 10 times for most numbers) |
+| STUN list (`/ice-servers`, `[stun]`) | Available when `[stun]` is configured; no credentials | same |
 | TURN credentials (`/ice-servers`) | Not available; the server refuses to start with a `[turn]` section | Available when `[turn]` is configured |
 | IP allowlist | Empty (everybody) | Normally the organisation's networks (you set it) |
 | Images and files through the server | Never | **Not built yet** (planned: checked images with expiry) |
@@ -159,7 +161,7 @@ Both modes: rooms live in memory only; nothing is written to disk.
 | `GET /ws` | WebSocket signalling ([protocol.md](protocol.md)). With `allowed_origins` set, a browser `Origin` that is not listed gets `403`. |
 | `GET /healthz` | `200 ok`. Always allowed for a request that comes from the same computer (loopback) and is not forwarded for somebody else, even if `allow` would refuse it, so health checks keep working. A request that a trusted proxy forwards with `X-Forwarded-For` is checked like any other request against its forwarded client address (a denied client gets `403` on `/healthz` too). |
 | `GET /altcha/challenge` | A new puzzle (JSON), `Cache-Control: no-store`. |
-| `GET /ice-servers` | TURN credentials (JSON); `404` when TURN is not configured. |
+| `GET /ice-servers` | STUN list and, with `[turn]`, TURN credentials (JSON array); `404` when neither `[stun]` nor `[turn]` is configured. |
 | anything else | Static files from `web_dir`, if set. |
 
 Refusals: `403` (not allowed or banned; banned answers carry `Retry-After`), `429`
@@ -368,12 +370,42 @@ Independent check: the puzzle was solved by a
 small separate Node.js script that implements the PBKDF2 step from the description above,
 against a running server over WSS.
 
+## STUN list and ICE servers
+
+The intended connection order is: direct WebRTC first, then an internal server (TURN/SFU), then
+the receiver's own Wi-Fi. For the first step across NATs the browser needs a STUN server, so a
+public open relay can hand out STUN **without TURN**: STUN only tells a client its own public
+address and relays no media (open TURN would be an abuse risk and stays internal-only).
+
+`[stun] urls = ["stun:relay.example.org:3478"]` is allowed in both modes. `GET /ice-servers` then
+returns, without any username or credential (the shape is `RTCIceServer`, a bare JSON array, as the
+clients already parse it; there is no `ttl` field because nothing expires):
+
+```json
+[{"urls": ["stun:relay.example.org:3478"]}]
+```
+
+- No `[turn]`: the answer is just that STUN entry (open or internal mode).
+- With `[turn]` (internal mode only): STUN entry first (`[stun] urls` plus `[turn] stun_urls`, no
+  duplicates), then the TURN entry with REST credentials, as below.
+- Neither configured: `404`. Clients (web, Rust cores, Swift core) read `404`, and any other failure,
+  as "no ICE servers" and connect without them.
+- Open mode keeps its rules: `[turn]` is refused, ALTCHA is required to create rooms. The
+  `/ice-servers` call itself needs **no ALTCHA** (a public STUN list is no secret and costs nothing
+  to hand out), but it obeys the allow/deny lists, bans and the per-address `limits.http_per_min`
+  (shared with `/altcha/challenge`), and CORS applies as for the other browser-called endpoints
+  (`allowed_origins`, see [Web app on another origin](#web-app-on-another-origin)).
+- The server only lists the URLs. The STUN service itself is a separate program (for example a
+  STUN-only coturn; see the relay repository). STUN responses are small, but UDP source addresses can
+  be spoofed, so a public STUN server is a (small) reflection/amplification helper. Operators should
+  rate-limit it at the firewall and keep the response size small. UNCERTAIN: no measurements here.
+
 ## TURN credentials and coturn
 
 TURN relays media when a direct connection is impossible (network separates devices).
 coturn runs as a **separate process** and is not built here.
 
-`GET /ice-servers` (only if `[turn]` is configured, internal mode only) returns a JSON
+`GET /ice-servers` with `[turn]` configured (internal mode only) returns a JSON
 array shaped like the browser's `RTCIceServer` list:
 
 ```json

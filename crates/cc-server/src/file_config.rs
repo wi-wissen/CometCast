@@ -148,6 +148,12 @@ struct FileTurn {
     ttl_secs: Option<u64>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileStun {
+    urls: Option<StringList>,
+}
+
 /// The file layout. Everything is optional; missing values keep the default of the mode.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -169,6 +175,7 @@ struct FileConfig {
     limits: Option<FileLimits>,
     altcha: Option<FileAltcha>,
     turn: Option<FileTurn>,
+    stun: Option<FileStun>,
 }
 
 /// Read a secret from a file (trailing newline removed).
@@ -384,6 +391,9 @@ impl FileConfig {
                 // UNCERTAIN: 1 hour is the plan's "about 1 h".
                 ttl: secs(t.ttl_secs.unwrap_or(3600)),
             });
+        }
+        if let Some(s) = self.stun {
+            c.stun_urls = s.urls.map(StringList::items).unwrap_or_default();
         }
         c.validate()?;
         Ok(c)
@@ -678,6 +688,25 @@ mod tests {
         assert!(
             load_config(None, &[("turn.urls".into(), "turn:x".into())]).is_err(),
             "secret missing"
+        );
+    }
+
+    #[test]
+    fn stun_section_is_allowed_in_open_mode() {
+        let c = load_config_from_str(
+            "mode = \"open\"\n[stun]\nurls = [\"stun:relay.example.org:3478\"]\n",
+        )
+        .unwrap();
+        assert_eq!(c.stun_urls, ["stun:relay.example.org:3478"]);
+        assert!(c.turn.is_none());
+        assert_eq!(c.all_stun_urls(), c.stun_urls);
+        assert!(
+            load_config_from_str("[stun]\nurls = [\"turn:x\"]\n").is_err(),
+            "scheme"
+        );
+        assert!(
+            load_config_from_str("[stun]\nbogus = 1\n").is_err(),
+            "unknown key"
         );
     }
 

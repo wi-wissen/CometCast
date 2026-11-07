@@ -94,6 +94,20 @@ describe('ICE servers', () => {
     expect(await fetchIceServers('http://h', { fetchImpl: async () => { throw new TypeError('x') } })).toEqual([])
   })
 
+  it('takes a plain STUN answer of an open relay (no username, credential or ttl) as it is', async () => {
+    const list = await fetchIceServers('http://h', {
+      fetchImpl: async () => json([{ urls: ['stun:relay.example.org:3478'] }]),
+    })
+    expect(list).toEqual([{ urls: ['stun:relay.example.org:3478'] }])
+    expect(list[0]).not.toHaveProperty('username')
+    expect(list[0]).not.toHaveProperty('credential')
+  })
+
+  it('reads the 404 of a relay without any ICE server as "no list" and does not fail', async () => {
+    const res = () => new Response('no ICE servers configured\n', { status: 404 })
+    expect(await fetchIceServers('http://h', { fetchImpl: async () => res() })).toEqual([])
+  })
+
   it('returns the list from a 200 answer', async () => {
     let url = ''
     const list = await fetchIceServers('http://h', {

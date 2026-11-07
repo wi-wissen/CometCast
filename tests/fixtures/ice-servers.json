@@ -28,6 +28,34 @@
       ]
     },
     {
+      "input": "[{\"urls\":[\"stun:relay.example.org:3478\"]}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:relay.example.org:3478"
+          ]
+        }
+      ]
+    },
+    {
+      "input": "[{\"urls\":[\"stun:relay.example.org:3478\",\"stuns:relay.example.org:5349\"]},{\"urls\":[\"turn:relay.example.org:3478?transport=udp\"],\"username\":\"1793985394:deec920ccf0cda4a\",\"credential\":\"SLw5VvvBZMywXQoq1rfKEBSlcwE=\",\"ttl\":3600}]",
+      "expect": [
+        {
+          "urls": [
+            "stun:relay.example.org:3478",
+            "stuns:relay.example.org:5349"
+          ]
+        },
+        {
+          "urls": [
+            "turn:relay.example.org:3478?transport=udp"
+          ],
+          "username": "1793985394:deec920ccf0cda4a",
+          "credential": "SLw5VvvBZMywXQoq1rfKEBSlcwE="
+        }
+      ]
+    },
+    {
       "input": "[{\"urls\":[\"stun:a.example\",\"STUNS:b.example\"]}]",
       "expect": [
         {

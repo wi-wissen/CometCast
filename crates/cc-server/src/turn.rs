@@ -66,20 +66,34 @@ fn client_id(secret: &str, client_key: &str, bucket: u64) -> String {
         .collect()
 }
 
-/// Build the list for one client. `now_unix` and `client_key` are parameters so tests can
-/// fix them. The expiry is the end of the NEXT `ttl` bucket, so a credential lives at least
-/// `ttl` and less than `2 * ttl`, and all calls of one client within a bucket are identical.
+/// Build the list for one client from one TURN section (its own `stun_urls` included).
+/// `now_unix` and `client_key` are parameters so tests can fix them. The expiry is the end of
+/// the NEXT `ttl` bucket, so a credential lives at least `ttl` and less than `2 * ttl`, and all
+/// calls of one client within a bucket are identical.
 pub fn ice_servers(cfg: &TurnConfig, now_unix: u64, client_key: &str) -> Vec<IceServer> {
+    ice_servers_for(&cfg.stun_urls, Some(cfg), now_unix, client_key)
+}
+
+/// The general form: a STUN entry for `stun_urls` (no `username`/`credential`/`ttl` on the
+/// wire) when there are any, then, with `turn`, a TURN entry with REST credentials.
+pub fn ice_servers_for(
+    stun_urls: &[String],
+    turn: Option<&TurnConfig>,
+    now_unix: u64,
+    client_key: &str,
+) -> Vec<IceServer> {
     let mut list = Vec::new();
-    if !cfg.stun_urls.is_empty() {
+    if !stun_urls.is_empty() {
         list.push(IceServer {
-            urls: cfg.stun_urls.clone(),
+            urls: stun_urls.to_vec(),
             username: None,
             credential: None,
             ttl: None,
         });
     }
-    if !cfg.urls.is_empty() {
+    if let Some(cfg) = turn
+        && !cfg.urls.is_empty()
+    {
         let ttl = cfg.ttl.as_secs().max(1);
         let bucket = now_unix / ttl;
         let expiry = bucket.saturating_add(2).saturating_mul(ttl);
@@ -94,14 +108,18 @@ pub fn ice_servers(cfg: &TurnConfig, now_unix: u64, client_key: &str) -> Vec<Ice
     list
 }
 
-/// `GET /ice-servers`. 404 when TURN is not configured.
+/// `GET /ice-servers`. 404 when neither `[stun]` nor `[turn]` is configured. A plain STUN
+/// list is public information (no credentials), so it needs no ALTCHA, but it obeys the access
+/// lists and the per-address `http_per_min` limit like every other HTTP endpoint.
 pub(crate) async fn ice_servers_handler(
     State(state): State<AppState>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
 ) -> Response {
-    let Some(cfg) = &state.config.turn else {
-        return (StatusCode::NOT_FOUND, "TURN is not configured\n").into_response();
-    };
+    let stun = state.config.all_stun_urls();
+    let turn = state.config.turn.as_ref();
+    if stun.is_empty() && turn.is_none() {
+        return (StatusCode::NOT_FOUND, "no ICE servers configured\n").into_response();
+    }
     if let Err(deny) = state.guard.check_http(ip, Instant::now()) {
         return crate::deny_response(deny);
     }
@@ -113,7 +131,7 @@ pub(crate) async fn ice_servers_handler(
     let key = crate::limits::limit_key(ip).to_string();
     (
         [(header::CACHE_CONTROL, "no-store")],
-        Json(ice_servers(cfg, now, &key)),
+        Json(ice_servers_for(&stun, turn, now, &key)),
     )
         .into_response()
 }
@@ -165,6 +183,16 @@ mod tests {
         );
         let ttl = ice_servers(&cfg, 1_700_003_599, "x")[0].ttl.unwrap();
         assert!(ttl > 3600 && ttl <= 7200, "{ttl}");
+    }
+
+    #[test]
+    fn stun_only_list_has_no_credential_fields() {
+        let list = ice_servers_for(&["stun:relay.example.org:3478".into()], None, 1, "k");
+        assert_eq!(
+            serde_json::to_value(&list).unwrap(),
+            serde_json::json!([{"urls": ["stun:relay.example.org:3478"]}])
+        );
+        assert!(ice_servers_for(&[], None, 1, "k").is_empty());
     }
 
     #[test]
