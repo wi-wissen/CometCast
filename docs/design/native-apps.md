@@ -1,6 +1,6 @@
 # Native apps: platform guidance
 
-Status: **final for this round (2026-11-07); revised after the Flutter review (spec decisions N1–N28, section 20 added).** Companion to [first-run-and-display.md](first-run-and-display.md) (the spec). This file adds **no new design** (the list of screens on the same network is designed in spec 14; section 4.1 below says how each platform builds it). It says, for each native platform, how the screens and states of the spec are built, what is shared, and where a platform needs a variant because of what the platform can or cannot do. Where this file and the spec disagree, the spec wins; tell the designer.
+Status: **final for this round (2026-11-07); revised after the Flutter review (spec decisions N1–N28, section 20 added) and after the second Flutter review (N29–N47: sections 3, 4, 20.5, 20.6).** Companion to [first-run-and-display.md](first-run-and-display.md) (the spec). This file adds **no new design** (the list of screens on the same network is designed in spec 14; section 4.1 below says how each platform builds it). It says, for each native platform, how the screens and states of the spec are built, what is shared, and where a platform needs a variant because of what the platform can or cannot do. Where this file and the spec disagree, the spec wins; tell the designer.
 
 Platforms of this round:
 
@@ -51,7 +51,7 @@ Engineers must not change these per platform. A difference is a bug.
 | 3.1 canvas | Full screen, landscape. Scale `min(w/960, h/540)`, rest `--bg` | Same | Same; the app is locked to landscape while in the display role; in portrait (iPad in split view) the 16:9 canvas is letterboxed (spec 7.2) | Same, in a window or full screen |
 | 4.1 wizard | Same. Text fields open the system keyboard on OK only (section 8) | Same; text fields use the full-screen tvOS keyboard on Select | Same; touch keyboard; `setup.done.bodyPointer` | Same; `setup.done.bodyPointer` |
 | 4.1 address step | Detects own server (DNS) and in-house box: `sourceOwn`, `sourceBox`; administrator policy: `sourcePolicy` (N13); `{dom}` without `:443` (N12); "Other address" cycles the found ones, then opens the field | Same | Same | Same |
-| 4.2 idle | Same. `idle.altAddress` with the box IP when the box is used | Same | Same | Same |
+| 4.2 idle | Same. `idle.altAddress` with the box IP when the box is used (N40: the server came from the box announcement, `sourceBox`; the IPv4 of its resolution; only when `{dom}` is a host name) | Same | Same | Same |
 | 4.2 connecting / offline | Same (empty QR box of spec 3.2) | Same | Same | Same |
 | 4.3 settings | Opened by focus on the Settings button, or Menu key; close label `settings.closeRemote` | Play/Pause = Menu; `settings.closeRemote` | Tap; `settings.close` | Click, `M` key; `settings.close` |
 | 4.4 join request | Same; Back does nothing while open | Menu (Back) does nothing while open | Same | Same; Escape does nothing while open |
@@ -59,7 +59,7 @@ Engineers must not change these per platform. A difference is a bug.
 | 4.5 content states | Same: transfer pill one line, max 340, name shortened in the middle, then `receive.document.loading` in the same pill (spec 3.5); the display sends the page message `{"kind":"page","page":n,"pages":m}` (spec 5.6, decision 13.58) | Same | Same | Same |
 | 4.5 link card | Open only if the system can open web links (Flutter `canLaunchUrl`), hint `receive.link.hintApp`; otherwise the no-browser variant (`receive.link.hintTv`, [Dismiss]). Address 18 mono `--fg` | Always the no-browser variant (tvOS has no browser) | Open opens the system browser; `receive.link.hintApp` | Open opens the default browser; `receive.link.hintApp` |
 | 4.5 media in link card | Not this round (spec N11): plain link card, no Play | AVPlayer; same rules (see `docs/appletv.md`) | Not this round: plain link card | Not this round: plain link card |
-| 4.7 video codec dialog | n/a (system decoders) | n/a | n/a | Linux, Windows: spec 4.7 (over Presenting, once per presentation); macOS: n/a |
+| 4.7 video codec dialog | n/a (system decoders) | n/a | n/a | Linux, Windows: spec 4.7 (780 wide, over Presenting without a picture, once per presentation, `codec.stageHint` after Not now; N30, N31); macOS: n/a |
 | 4.6 toasts | Same | Same | Same | Same |
 | 7.2 relay confirmation | Not used: a display app gets no server from a link (spec N19) | Not used | Not used | Not used |
 
@@ -72,12 +72,14 @@ Presenter pages use the phone layout below 720 logical px of window width and th
 | 5.2 start page | Not in the app (web only) | Not in the app | Not in the app |
 | 5.3 app first-run page | Order of spec 5.3 (N22): brand row, `app.welcome`, name field, then the code chip (`app.codeFromLink` from an app link or the install referrer, `app.codeScanned` after a scan) or `app.scanQr` (system scanner, section 8) with the code field of spec 5.2 below it, `app.connect`; tablets: `app.beDisplay` after Connect. `app.scanAgainBody` only on the first launch without a code | Same (iPhone, iPad) | No scanning: brand row, `app.welcome`, name field, code field (`start.codeLabel`, placeholder `XXX XXX`), `app.connect`, then `app.beDisplay`; Windows: `app.miracast` below it (spec N18) |
 | 5.4 waiting | Same | Same | Same |
-| 5.5 what to show: Screen | Phone `what.screenApp`, tablet `what.screenTablet` (by device kind, not width); opens the system capture consent (section 8) | iPhone `what.screenApp`, iPad `what.screenTablet`; opens the system broadcast picker | `what.screenLaptop`; opens the system window/screen picker (Linux, Windows: the codec page of spec 5.8 first when the encoder is missing) |
+| 5.5 what to show: Screen | Phone `what.screenApp`, tablet `what.screenTablet` (by device kind, not width); opens the system capture consent (section 8) | iPhone `what.screenApp`, iPad `what.screenTablet`; opens the system broadcast picker; the join is handed to the broadcast extension and back (section 20.5, N32) | `what.screenLaptop`; opens the system window/screen picker (Linux, Windows: the codec page of spec 5.8 first when the encoder is missing) |
 | 5.5 file page | The browser variant of spec 5.5 (N16): `what.file`, `file.bodyWeb`, primary `file.pick` (system document picker), progress line, inline error, `common.back`. No recent-files grid | Same | Same; `file.bodyApp` where Office conversion is available, progress line `file.converting` while converting |
 | 5.5 link page | Same | Same | Same |
 | 5.6 presenting | Same; no 76 px reserve (no Chrome bar). The system's own capture indicator (status bar chip) is drawn by the system | Same; the red status pill is drawn by the system | Same; no 76 px reserve. The OS draws its own indicator (Windows yellow border, macOS menu bar icon) |
 | 5.7 disconnected | `bye.title` and `bye.again` only (note below) | Same | Same |
 | 6 error pages | Same; "Scan QR code again" only where the system scanner exists; `error.outdated` with `titleApp` / `nowApp` / Try again; `error.noScreen` never | Same | No rescan button; otherwise as Android |
+
+Windows Miracast page (N39): presenter kit; pairing as three single-choice option rows; phone: content scrolls above the pinned [Start receiving, Back] with ≥ 24 free above the action area; laptop: [Start receiving, Back] in one row under the content; consent page in the relay-page layout with the PIN digits (only) in mono, [Decline, Allow], initial focus Decline.
 
 Note on 5.7: `bye.body` says "You can close this tab", which is wrong in an app. In the apps, the disconnected page shows `bye.title` and the button only; the body line is omitted. (No new copy.)
 
@@ -413,3 +415,23 @@ Screen sharing on Linux, Windows and macOS opens the system picker directly (sec
 - **Android install referrer:** `code` and `server` parameters, same rules (spec 12: still an assumption; without it Android behaves like iOS).
 - **Trust:** a server that is the built-in relay, the policy server, the DNS server, the in-house box or confirmed on this device before is used at once (chip). Any other server opens the relay confirmation page (spec 7.2, `relay.confirm.bodyApp`) before anything connects; Use stores it as confirmed. A link never changes the stored "last used" server until a join succeeded.
 - **Scanner:** section 8; result handling spec 5.3 (`app.scanWrong` for anything else).
+
+### 20.5 iOS screen sharing: hand-over of the join (N32)
+
+The ReplayKit extension must make its own connection (the app is suspended while another app is in front; docs/ios.md, design A). The host must still approve a person once per connection (N5). Behaviour (binding; carrier names are proposals):
+
+1. **Before the broadcast** (person taps Screen, the system picker is confirmed): the app's presenter session asks the display for a hand-over over the content control channel, `{"kind":"handover","token":T}`; T is 128 random bits (base64url), valid 60 s and once. The display stores T with the presenter's name and answers `{"kind":"handover_ok"}`. The app writes T, the name, the code and the server into `config.json` (App Group, as today), then leaves the room.
+2. **Leaving with a pending hand-over** is not a leave for the display: no `toast.left`; the display stays in Presenting on black (or Idle if nothing was shown) for at most 60 s.
+3. **The extension joins** with the person's name and T in an optional join field (`handover`, at most 64 characters, relayed unchanged by the server in `join_request` to the host). A display that holds T admits the join at once without the request dialog (in Open and Approval on), with no `toast.connected`, and drops T. A display without T (expired, End, another display, an old server that drops the field) handles it as a normal join request; the presenter then sees the normal waiting flow (step 6).
+4. **While the extension runs**, the app shows the Presenting page (5.6, `presenting.screen`) from the extension's status (`streaming`), with `presenting.where` and `presenting.sas` from the status file (the extension writes `room_name` and `sas`). Stop in the app writes `stop`; the red status pill or Control Center stop the same way.
+5. **After the broadcast** the extension asks the display for a new token the same way before it leaves and writes it to `status.json`; the app, when active again, joins with it and lands on "What to show" (connected, header with the room name), with no dialog on the display.
+6. **Fallbacks, no new copy:** if a hand-over join is not admitted at once, the app shows the waiting page (5.4) with the check number and countdown the extension writes to the status file, and the normal error pages for `join_denied`, `approval_timeout`, `room_locked` (Locked refuses hand-over joins; accepted). If the rejoin after the broadcast fails, the app joins with the code like Connect (waiting page in Approval on).
+7. **Until 1–5 ship** (test builds only): option (a) of F2 with the fixes of N32 (name sent, waiting page with the extension's check number, rejoin with the same code to "What to show" after the broadcast).
+
+The web display must accept the same `handover` messages to keep the promise against web displays; until it does, iOS against a web display uses step 6.
+
+### 20.6 Rules from the second Flutter review
+
+- Error and failure lines show the key's text only; technical reasons (`message`, "network error", "no library") go to the log (N46).
+- `capture_unavailable` on a desktop without a capture backend: `error.other` with `errors.capture_unavailable`, action `common.back` (N33).
+

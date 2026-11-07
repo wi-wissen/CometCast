@@ -2,7 +2,9 @@
 
 Asked by the Flutter implementer. Each item: what was found, the options, and what was done meanwhile (the minimal neutral behaviour). Nothing here was decided by the implementer.
 
-**Answered by the designer on 2026-11-07** after reviewing main 66de24c and its 198 screenshots (`/tmp/shots-flutter`, compared with the web screenshots `/tmp/shots3`). The decisions are N1–N27 in [first-run-and-display.md](first-run-and-display.md) section 13 ("Decisions after the Flutter review") and in [native-apps.md](native-apps.md) (sections 3, 4, 8, 9, 10, 20); the work items are in [fix-list-flutter.md](fix-list-flutter.md) (part A: Flutter UI only, part B: needs core, protocol or platform work).
+**Section F and the second list of differences answered by the designer on 2026-11-07** after reviewing main f250cc2 and its 362 screenshots (`/tmp/shots-flutter2`, compared with the web's `/tmp/shots4`): decisions N29–N47 in [first-run-and-display.md](first-run-and-display.md) section 13 ("Decisions after the second Flutter review"), native-apps.md 20.5–20.6, work items in [fix-list-flutter-2.md](fix-list-flutter-2.md).
+
+**Sections C and D answered by the designer on 2026-11-07** after reviewing main 66de24c and its 198 screenshots (`/tmp/shots-flutter`, compared with the web screenshots `/tmp/shots3`). The decisions are N1–N27 in [first-run-and-display.md](first-run-and-display.md) section 13 ("Decisions after the Flutter review") and in [native-apps.md](native-apps.md) (sections 3, 4, 8, 9, 10, 20); the work items are in [fix-list-flutter.md](fix-list-flutter.md) (part A: Flutter UI only, part B: needs core, protocol or platform work).
 
 ## Core and protocol gaps (not design, but they change what the screens can show)
 
@@ -101,31 +103,59 @@ Questions found while implementing part A of `fix-list-flutter.md` and the wirin
   - **Found:** the acceptance line asks for two things that cannot both hold: the box is "vertically centred in the main row like the steps it replaces" and "its vertical centre within 10 ref of the QR box centre". The QR column holds the QR box (212) and, below it, the caption line (kept in the layout so that nothing jumps), so the QR box sits about 14 ref above the row centre. The web has the same geometry.
   - **Options:** (a) centre the box in the main row (as built), 14 ref from the QR box centre; (b) align the box with the QR box (it then sits 14 ref above the centre of the row); (c) drop the invisible caption while offline (the QR box then moves down 14 ref and the code and QR jump when the connection returns).
   - **Done meanwhile:** (a). The test allows 16 ref.
+  - **Answered (N29):** (a) is right and stays; the acceptance line of A1 was wrong and is withdrawn. Box centred in the main row, its centre about 14 ref below the QR box centre (the caption line stays in the layout), body on two lines: all as the web. Keep the test at 16 ref.
 - **F2 B6 and iOS: the broadcast extension joins on its own connection.**
   - **Found:** the iOS extension (ReplayKit) makes its own signalling connection with the code and the relay that the app hands over. With a presenter session that joined once, a second sender in the same room would be refused (`room_full`) or asked of the host again.
   - **Options:** (a) the app leaves its session before the extension starts, the extension asks the host again (as built); after the broadcast the person is back at the first page with the same code; (b) the extension joins through the app's session (needs a shared connection or a hand-over of the session, core work); (c) the extension reports into the app, which presents the encoded frames inside the session (a new transport between the two processes).
   - **Done meanwhile:** (a). The "approve once" promise of N5 does not hold for iOS screen sharing; files and links on iOS use the session as everywhere else.
+  - **Answered (N32, native-apps.md 20.5):** the promise holds on iOS too. Neither (b) nor (c) as described: the extension keeps its own connection (the app is suspended while the person shows another app), and the approval is handed over: before the broadcast the app gets a single-use token from the display over the control channel, puts it into `config.json`, leaves; the extension joins with the name and the token in an optional `handover` join field, which the display admits without a dialog and without `toast.left` / `toast.connected`; after the broadcast the same hand-over brings the app back to "What to show", still connected. What the iOS user sees: tap Screen → system "Start Broadcast" → the Presenting page (with room and security code from the extension's status) → Stop or the red pill → "What to show". Fallback without a token (old server, End, timeout): the waiting page with the extension's check number, then the normal pages; Locked refuses (accepted). Until it ships, (a) is acceptable in test builds only, with three fixes (no new copy): the extension sends the name; the app shows the waiting page with the extension's check number while it waits; after the broadcast the app joins again with the same code and lands on "What to show" (not the first-run page). Fix list 2 item B1.
 - **F3 A8 and B7: the Screen row on desktops still uses the X11 capture.**
   - **Found:** the system picker (E1 of the core round) is not built, `present_screen(None)` answers `capture_unavailable`.
   - **Done meanwhile:** the Screen row calls `present_screen` with the existing `ScreenRequest` (X11, whole desktop); on a system without X11 the person gets `error.other`. The codec page of 5.8 comes first when the encoder is missing, then the same call.
+  - **Answered (N33):** acceptable in test builds; release still needs the system picker (B7 stays open). Without X11, `error.other` gets the new `errors.capture_unavailable` as its "why" (spec 11.9) and `common.back` (to "What to show", still connected) instead of Try again; never a technical text.
 - **F4 4.7: what the display shows while an H.264 presentation waits for the decoder.**
   - **Found:** the spec places the codec dialog "over Presenting", but without a decoder no picture exists, so nothing makes the display Presenting.
   - **Done meanwhile:** the display counts as Presenting from the moment a presenter is in the room and its track is H.264 and no decoder is ready: black stage, the controls under the scrim (visible, inert), the wake lock held. After "Not now" it stays in that state (the person can still use the controls and End) until the presenter leaves or the decoder is ready.
+  - **Answered (N31, spec 4.7):** confirmed, with three changes. The dialog does not reveal the controls (visible ones stay under the scrim and fade on their timer; hidden ones stay hidden). Toasts stay above the scrim, uncovered (toast over anything); the card's top edge never goes above 66 ref so they do not touch. After "Not now", and while a download runs after it, the stage shows the new state line `codec.stageHint` (15/400 `--onblack`, centred, no box) until the picture appears, the presenter stops or leaves, or End (a stop returns the display to Idle as usual).
 - **F5 4.5: the single-page error box has one trigger only.**
   - **Found:** `receive.document.pageError.*` has five texts (bad size, failed, memory, page out of range, timeout) but the core reports no per-page error: a page that cannot be taken is `ContentNote.renderFailed` in the controller. The other four have no trigger.
   - **Done meanwhile:** `receive.document.pageError.failed` is shown in the box when a page of the open document cannot be taken. The other four keys stay in the three files for when the core reports reasons.
+  - **Answered (N41):** accepted; no core work this round.
 - **F6 5.3: "first launch without a code" for `app.scanAgainBody`.**
   - **Found:** the spec says "only on the first launch after an install that brought no code". The only durable signal is the install-referrer flag (`referrerRead`), which is written on the first launch on both platforms.
   - **Done meanwhile:** the line is shown on the first launch (the referrer was not read before) when no link or referrer gave a code, and only where a scanner exists. It does not come back on later launches.
+  - **Answered (N42):** accepted as built; a data reset counts as a first launch.
 - **F7 B8: links while the app runs.**
   - **Found:** `AppLinks.links` (links that arrive while the app is open) had no consumer.
   - **Done meanwhile:** on the first-run, error and disconnected pages such a link is handled like the one that started the app (chip, or the relay page for an unknown server); while somebody is connected it is ignored.
+  - **Answered (N43):** accepted; "connected" includes waiting and presenting; ignored silently (no prompt, no toast).
 - **F8 12 / A8: the in-house box line `idle.altAddress` is not wired.**
   - **Found:** the idle screen can show the IP address of an in-house box, but nothing tells `DisplayRoot` that the server in use is a box or what its IP address is (the announcement only gives a name and a server).
   - **Done meanwhile:** the widget takes `altAddress`; the screenshot sets it by hand; the app passes none.
+  - **Answered (N40):** wire it. The display's server came from the box when its source is `sourceBox` (the box announcement chosen in setup); `altAddress` = the IPv4 address that announcement resolved to (the A record of its host), passed only when `{dom}` is a host name, and the QR uses it. Re-shoot `display-*-idle-box` from the app path, not by hand (fix list 2 item A9).
 - **F9 A14: Office conversion is "available" when the worker is found.**
   - **Done meanwhile:** `file.bodyApp` is used when `officeWorkerPath()` is not null, on every platform that has one; otherwise `file.bodyWeb`.
+  - **Answered (N44):** accepted.
 - **F10 A9: Windows Miracast page was rebuilt; the pairing choice is three option rows.**
   - **Found:** the old page used a Material dropdown for the pairing method; the presenter kit has no dropdown.
   - **Done meanwhile:** three selectable option rows (selected: 2 px `p-primary` border and a tick). The text and the flow are unchanged. A screenshot of both states is in the set.
+  - **Answered (N39):** accepted (single-choice option rows: selected 2 px `p-primary` border, `check` 16 in `p-primary` before the title). Fix the layout around it (fix list 2 items A7, A8): phone actions pinned with ≥ 24 free above them, laptop actions in one row; consent page with only the PIN digits in mono.
 - **F11 Strings deleted as unused.** Twenty-six keys that no screen uses any more were deleted from all three files: the web-only texts `bye.body`, `error.outdated.title` and `.now` (the page variants), `error.action.reload`, `error.action.getApp`, `error.action.openDom`, `error.noScreen.nowNoApp`, `file.title`, `file.body`, `receive.link.hint`, `receive.link.address`, `relay.confirm.body`, `relay.errors.mixed`, `setup.address.sourcePage`, `what.screenPhoneBrowser` and `.screenPhoneBrowserNoApp`, `common.or`, `common.cancel`, `idle.offline.bodyOutdated`, and the six `receive.transferError.document*` texts the display never uses (it maps the content errors to the shorter ones). The five `receive.document.pageError.*` texts of the spec were kept (F5). If any other should stay for a later round, restore it from git history.
+  - **Answered (N45):** accepted for the Flutter ARB files (the web keeps its own keys).
+
+## G. Visible differences listed in the UI-round hand-off
+
+| # | Difference | Answer |
+| --- | --- | --- |
+| 1 | Offline box centre about 14 ref off the QR box centre; body on two lines | Accepted (N29, F1); the old acceptance line is withdrawn |
+| 2 | Codec dialog about 760 px high at 1920 × 1080 (explain 4 lines, admin note 3) | Fix (N30, fix list 2 A2): 780 wide, explain 3 lines, source 1, admin note 2 in EN, ≈ 626 px; top edge ≥ 66 ref in every state, EN and DE |
+| 3 | Codec dialog over a black stage, controls dimmed but visible, "connected" toast not under the scrim | Black stage and toast above the scrim are correct; the dialog must not reveal the controls; `codec.stageHint` after Not now (N31, A2, A3) |
+| 4 | Laptop layout: Stop content width 160, left-aligned under the page row | Accepted, it is spec 7.4 and the web (N38) |
+| 5 | Phone Miracast page: Start right after the notes | Fix (N39, A7): content scrolls, ≥ 24 free above the pinned actions |
+| 6 | Security digits `123  456` look widely spaced in the mono font | Accepted: one mono space, as the web and the join code (N34) |
+| 7 | End icon is the plain square stop icon | Accepted: that is the specified icon (N35) |
+| 8 | Tablet/TV presenting: 16:9 picture on a 16:10 window with black bars | Accepted: picture letterboxed on black, controls on the canvas (N36) |
+| 9 | Presenter tablet: content top-left in the 744 column | Accepted: the column is centred in the window, items left-aligned, as the web (N38) |
+| 10 | Windows first-run links: left-aligned on the laptop layout, centred on the phone layout | Accepted; fix the spacing: 44-high tap areas without a gap, 12 (laptop) / 8 (phone) below Connect (N37, A6) |
+| 11 | In-house box idle shot made by hand; setup shots by key navigation | Wire `altAddress` (N40, A9); key navigation for setup shots is fine |
+
