@@ -57,9 +57,12 @@ async fn open_server_refuses_create_room_without_altcha() {
     let mut sig = SignalingClient::connect(&server, Role::Receiver)
         .await
         .unwrap();
-    sig.send(ClientMsg::CreateRoom { altcha: None })
-        .await
-        .unwrap();
+    sig.send(ClientMsg::CreateRoom {
+        altcha: None,
+        join_mode: None,
+    })
+    .await
+    .unwrap();
     match sig.recv().await {
         Some(ServerMsg::Error { code, .. }) => assert_eq!(code, "altcha_required"),
         other => panic!("expected altcha_required, got {other:?}"),
@@ -67,6 +70,7 @@ async fn open_server_refuses_create_room_without_altcha() {
     // A made-up payload is refused as invalid; the connection stays usable.
     sig.send(ClientMsg::CreateRoom {
         altcha: Some("bm90IGFsdGNoYQ==".into()),
+        join_mode: None,
     })
     .await
     .unwrap();
@@ -110,6 +114,7 @@ async fn a_puzzle_can_be_used_only_once() {
         .unwrap();
     sig.send(ClientMsg::CreateRoom {
         altcha: Some(payload.clone()),
+        join_mode: None,
     })
     .await
     .unwrap();
@@ -123,6 +128,7 @@ async fn a_puzzle_can_be_used_only_once() {
         .unwrap();
     sig2.send(ClientMsg::CreateRoom {
         altcha: Some(payload),
+        join_mode: None,
     })
     .await
     .unwrap();

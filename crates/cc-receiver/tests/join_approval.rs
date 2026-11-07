@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Native clients and join approval against a real `cc-server` (all on 127.0.0.1).
+
+use std::time::Duration;
+
+use cc_proto::JoinMode;
+use cc_receiver::{ReceiverCore, ReceiverEvent, ReceiverOptions};
+use cc_sender::{JoinProgress, SenderCore, SenderOptions};
+use cc_server::{ServerConfig, run};
+use cc_transport::SessionConfig;
+use tokio::net::TcpListener;
+
+async fn start(config: ServerConfig) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(run(listener, config, std::future::pending()));
+    addr.to_string()
+}
+
+fn local_session() -> SessionConfig {
+    SessionConfig {
+        udp_bind: vec!["127.0.0.1:0".into()],
+        ..SessionConfig::default()
+    }
+}
+
+async fn receiver(server: &str, mode: JoinMode) -> ReceiverCore {
+    let mut o = ReceiverOptions::new(server);
+    o.session = local_session();
+    o.join_mode = mode;
+    ReceiverCore::start(o).await.unwrap()
+}
+
+async fn next_matching<T>(
+    r: &mut ReceiverCore,
+    mut f: impl FnMut(ReceiverEvent) -> Option<T>,
+) -> T {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let ev = r.next_event().await.expect("receiver ended");
+            if let Some(v) = f(ev) {
+                return v;
+            }
+        }
+    })
+    .await
+    .expect("timeout")
+}
+
+#[tokio::test]
+async fn confirm_allow_and_deny_with_native_cores() {
+    let server = start(ServerConfig::default()).await;
+    let mut rx = receiver(&server, JoinMode::Confirm).await;
+    assert_eq!(rx.join_mode(), JoinMode::Confirm);
+    let code = rx.room_code().clone();
+
+    // First sender is denied.
+    let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel();
+    let mut o = SenderOptions::new(&server, code.clone());
+    o.session = local_session();
+    o.name = Some("Ana".into());
+    o.join_progress = Some(ptx);
+    let denied = tokio::spawn(SenderCore::start(o));
+    let (id, name, check) = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinRequest { id, name, check } => Some((id, name, check)),
+        _ => None,
+    })
+    .await;
+    assert_eq!(name, "Ana");
+    let JoinProgress::Pending {
+        timeout_secs,
+        check: sender_check,
+    } = prx.recv().await.unwrap();
+    assert_eq!(timeout_secs, 60);
+    assert_eq!(check, sender_check);
+    rx.decide_join(id, false);
+    let err = denied.await.unwrap().err().expect("must be denied");
+    assert!(err.to_string().contains("join_denied"), "{err}");
+
+    // Second sender is allowed and streams.
+    let mut o = SenderOptions::new(&server, code);
+    o.session = local_session();
+    let allowed = tokio::spawn(SenderCore::start(o));
+    let id = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinRequest { id, name, .. } => {
+            assert_eq!(name, "Guest 2");
+            Some(id)
+        }
+        _ => None,
+    })
+    .await;
+    rx.decide_join(id, true);
+    let sender = allowed.await.unwrap().expect("allowed");
+    next_matching(&mut rx, |e| match e {
+        ReceiverEvent::PeerJoined { name } => Some(name),
+        _ => None,
+    })
+    .await;
+    // Switching modes is confirmed by the server.
+    rx.set_join_mode(JoinMode::Locked);
+    let m = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinModeChanged(m) => Some(m),
+        _ => None,
+    })
+    .await;
+    assert_eq!(m, JoinMode::Locked);
+    drop(sender);
+    rx.stop().await;
+}
+
+#[tokio::test]
+async fn locked_room_refuses_native_sender_and_kick_ends_the_session() {
+    let server = start(ServerConfig::default()).await;
+    let mut rx = receiver(&server, JoinMode::Locked).await;
+    let code = rx.room_code().clone();
+    let mut o = SenderOptions::new(&server, code.clone());
+    o.session = local_session();
+    let err = SenderCore::start(o).await.err().expect("locked");
+    assert!(err.to_string().contains("room_locked"), "{err}");
+
+    rx.set_join_mode(JoinMode::Open);
+    next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinModeChanged(JoinMode::Open) => Some(()),
+        _ => None,
+    })
+    .await;
+    let mut o = SenderOptions::new(&server, code);
+    o.session = local_session();
+    let mut sender = SenderCore::start(o).await.unwrap();
+    next_matching(&mut rx, |e| match e {
+        ReceiverEvent::PeerJoined { .. } => Some(()),
+        _ => None,
+    })
+    .await;
+    rx.remove_peer();
+    let ev = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            match sender.next_event().await {
+                Some(cc_sender::SenderEvent::RemovedByHost) => return true,
+                Some(_) => {}
+                None => return false,
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+    assert!(ev, "sender must learn that it was removed");
+    rx.stop().await;
+}

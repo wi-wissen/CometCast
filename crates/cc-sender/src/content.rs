@@ -17,18 +17,15 @@ use cc_files::{
     ImageMime, Outgoing, SendError, cmd_message, document_transfer, image_transfer, link_message,
 };
 use cc_proto::{ClientMsg, ControlCmd, Role, RoomCode, ServerMsg};
+use cc_transport::JoinProgress;
 use cc_transport::{
     ConnectionState, ControlChannel, ServerAddr, Session, SessionConfig, SessionEvent,
-    SignalingClient, TlsTrust, TransportError, ice,
+    SignalingClient, TlsTrust, TransportError, ice, join_room,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::SenderEvent;
-
-/// How long we wait for the server to confirm that we joined.
-/// UNCERTAIN: placeholder, not measured.
-const JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long [`ControlSender::wait_ready`] callers typically wait for the channel to open.
 /// UNCERTAIN: placeholder, not measured.
@@ -141,6 +138,10 @@ pub struct ContentSenderOptions {
     pub session: SessionConfig,
     /// Extra trusted certificates for `wss://` / `https://`.
     pub trust: TlsTrust,
+    /// Name shown on the display device when it has to approve the join.
+    pub name: Option<String>,
+    /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
+    pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
 }
 
 impl ContentSenderOptions {
@@ -151,6 +152,8 @@ impl ContentSenderOptions {
             code,
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
+            name: None,
+            join_progress: None,
         }
     }
 }
@@ -170,24 +173,13 @@ impl ContentSender {
         let addr = ServerAddr::parse(&options.server)?;
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        sig.send(ClientMsg::JoinRoom {
-            code: options.code.clone(),
-        })
+        join_room(
+            &mut sig,
+            options.code.clone(),
+            options.name.clone(),
+            options.join_progress.as_ref(),
+        )
         .await?;
-        tokio::time::timeout(JOIN_TIMEOUT, async {
-            match sig.recv().await {
-                Some(ServerMsg::Joined) => Ok(()),
-                Some(ServerMsg::Error { code, message }) => {
-                    Err(TransportError::Server { code, message })
-                }
-                Some(other) => Err(TransportError::Protocol(format!(
-                    "expected joined, got {other:?}"
-                ))),
-                None => Err(TransportError::Closed),
-            }
-        })
-        .await
-        .map_err(|_| TransportError::Timeout("waiting for joined"))??;
 
         // No video codecs at all: the offer has only the application section.
         options.session.video_codecs = Some(Vec::new());
@@ -275,6 +267,10 @@ async fn run(
                 }
                 Some(ServerMsg::PeerLeft) => {
                     emit(SenderEvent::PeerLeft);
+                    break;
+                }
+                Some(ServerMsg::Error { code, .. }) if code == "removed_by_host" => {
+                    emit(SenderEvent::RemovedByHost);
                     break;
                 }
                 Some(ServerMsg::Error { code, message }) => {

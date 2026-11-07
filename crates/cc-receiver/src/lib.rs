@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime};
+pub use cc_proto::JoinMode;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
     ConnectionState, IceServerConfig, MediaSnapshot, ServerAddr, Session, SessionConfig,
@@ -52,6 +53,9 @@ pub struct ReceiverOptions {
     /// `None` (default): the channel is closed. The application must then read
     /// [`ReceiverCore::take_content_events`]; when it does not, the sender is slowed down.
     pub content: Option<ContentOptions>,
+    /// Who may join the room from the start (docs/protocol.md, "Join approval"). Default
+    /// `open`. Can be changed at any time with [`ReceiverCore::set_join_mode`].
+    pub join_mode: JoinMode,
 }
 
 impl ReceiverOptions {
@@ -62,6 +66,7 @@ impl ReceiverOptions {
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
             content: None,
+            join_mode: JoinMode::Open,
         }
     }
 }
@@ -96,8 +101,31 @@ const CONTENT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 /// What the receiver reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReceiverEvent {
-    /// A sender joined the room.
-    PeerJoined,
+    /// A sender joined the room (it is a normal peer from now on).
+    PeerJoined {
+        /// Sanitised display name of the sender.
+        name: String,
+    },
+    /// Join mode `confirm`: somebody waits for a decision. Answer with
+    /// [`ReceiverCore::decide_join`]. The name is untrusted text (cleaned by the server):
+    /// show it as plain text only.
+    JoinRequest {
+        /// Request id for `decide_join`.
+        id: u64,
+        /// Sanitised display name.
+        name: String,
+        /// Two-digit check number; the sender's waiting screen shows the same number.
+        check: u8,
+    },
+    /// A waiting request is gone: `left`, `cancelled`, `timeout`, `locked` or `room_full`.
+    JoinRequestCancelled {
+        /// Request id.
+        id: u64,
+        /// Why.
+        reason: String,
+    },
+    /// The join mode now in force (confirmed by the server after `set_join_mode`).
+    JoinModeChanged(JoinMode),
     /// WebRTC connection state changed.
     State(ConnectionState),
     /// The sender's video track arrived.
@@ -118,7 +146,7 @@ pub enum ReceiverEvent {
 
 /// The server's answer to `create_room`.
 enum RoomReply {
-    Created(RoomCode),
+    Created(RoomCode, JoinMode),
     AltchaRequired,
 }
 
@@ -126,7 +154,9 @@ enum RoomReply {
 async fn next_room_reply(sig: &mut SignalingClient) -> Result<RoomReply, TransportError> {
     tokio::time::timeout(ROOM_TIMEOUT, async {
         match sig.recv().await {
-            Some(ServerMsg::RoomCreated { code }) => Ok(RoomReply::Created(code)),
+            Some(ServerMsg::RoomCreated { code, join_mode }) => {
+                Ok(RoomReply::Created(code, join_mode))
+            }
             Some(ServerMsg::Error { code, .. }) if code == "altcha_required" => {
                 Ok(RoomReply::AltchaRequired)
             }
@@ -146,6 +176,8 @@ async fn next_room_reply(sig: &mut SignalingClient) -> Result<RoomReply, Transpo
 /// A running receiver.
 pub struct ReceiverCore {
     code: RoomCode,
+    join_mode: JoinMode,
+    commands: mpsc::UnboundedSender<ClientMsg>,
     ice_servers: Vec<IceServerConfig>,
     session: Arc<Session>,
     events: mpsc::UnboundedReceiver<ReceiverEvent>,
@@ -161,19 +193,24 @@ impl ReceiverCore {
         let addr = ServerAddr::parse(&options.server)?;
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Receiver, &options.trust).await?;
-        sig.send(ClientMsg::CreateRoom { altcha: None }).await?;
-        let code = match next_room_reply(&mut sig).await? {
-            RoomReply::Created(code) => code,
+        sig.send(ClientMsg::CreateRoom {
+            altcha: None,
+            join_mode: Some(options.join_mode),
+        })
+        .await?;
+        let (code, join_mode) = match next_room_reply(&mut sig).await? {
+            RoomReply::Created(code, mode) => (code, mode),
             // Open servers always want a solved puzzle (docs/server.md). The connection
             // stays open after `altcha_required`, so we ask again on the same one.
             RoomReply::AltchaRequired => {
                 let payload = altcha::fetch_and_solve(&addr, &options.trust).await?;
                 sig.send(ClientMsg::CreateRoom {
                     altcha: Some(payload),
+                    join_mode: Some(options.join_mode),
                 })
                 .await?;
                 match next_room_reply(&mut sig).await? {
-                    RoomReply::Created(code) => code,
+                    RoomReply::Created(code, mode) => (code, mode),
                     RoomReply::AltchaRequired => {
                         return Err(TransportError::Server {
                             code: "altcha_required".into(),
@@ -195,6 +232,7 @@ impl ReceiverCore {
         let session = Arc::new(session);
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (width_tx, width_rx) = mpsc::unbounded_channel();
         let (content_tx, content_rx) = content::event_queue();
         let content = options.content.map(|o| ContentSetup {
@@ -209,10 +247,13 @@ impl ReceiverCore {
             session_events,
             events_tx,
             stop_rx,
+            cmd_rx,
             content,
         ));
         Ok(Self {
             code,
+            join_mode,
+            commands: cmd_tx,
             ice_servers,
             session,
             events: events_rx,
@@ -232,6 +273,42 @@ impl ReceiverCore {
     /// The code the sender must enter.
     pub fn room_code(&self) -> &RoomCode {
         &self.code
+    }
+
+    /// The join mode the room was created with (changes are reported as
+    /// [`ReceiverEvent::JoinModeChanged`]).
+    pub fn join_mode(&self) -> JoinMode {
+        self.join_mode
+    }
+
+    /// Change who may join, at any time. Switching to `locked` also refuses everybody who
+    /// waits. The server confirms with [`ReceiverEvent::JoinModeChanged`].
+    pub fn set_join_mode(&self, mode: JoinMode) {
+        let _ = self
+            .commands
+            .send(ClientMsg::SetJoinMode { join_mode: mode });
+    }
+
+    /// Allow or deny a waiting request (`id` from [`ReceiverEvent::JoinRequest`]).
+    pub fn decide_join(&self, id: u64, allow: bool) {
+        let _ = self.commands.send(ClientMsg::JoinDecision {
+            id: Some(id),
+            allow,
+        });
+    }
+
+    /// Deny everybody who waits.
+    pub fn deny_all_joins(&self) {
+        let _ = self.commands.send(ClientMsg::JoinDecision {
+            id: None,
+            allow: false,
+        });
+    }
+
+    /// Remove the connected sender. UNCERTAIN: one sender per core in this version, so the
+    /// core ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+    pub fn remove_peer(&self) {
+        let _ = self.commands.send(ClientMsg::RemovePeer);
     }
 
     /// Ask the sender for a new key frame (picture loss indication), for example after a
@@ -297,6 +374,7 @@ async fn run(
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<ReceiverEvent>,
     mut stop: oneshot::Receiver<()>,
+    mut commands: mpsc::UnboundedReceiver<ClientMsg>,
     mut content: Option<ContentSetup>,
 ) {
     let mut content_task: Option<tokio::task::JoinHandle<()>> = None;
@@ -310,12 +388,31 @@ async fn run(
     loop {
         tokio::select! {
             _ = &mut stop => break,
+            cmd = commands.recv() => {
+                // The core itself holds the sender of this channel, so `None` cannot happen
+                // before it is dropped (which stops the loop too).
+                if let Some(cmd) = cmd
+                    && sig.send(cmd).await.is_err()
+                {
+                    emit(ReceiverEvent::Error("signalling connection closed".into()));
+                    break;
+                }
+            }
             msg = sig.recv() => match msg {
                 None => {
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
                     break;
                 }
-                Some(ServerMsg::PeerJoined) => emit(ReceiverEvent::PeerJoined),
+                Some(ServerMsg::PeerJoined { name }) => emit(ReceiverEvent::PeerJoined { name }),
+                Some(ServerMsg::JoinRequest { id, name, check }) => {
+                    emit(ReceiverEvent::JoinRequest { id, name, check })
+                }
+                Some(ServerMsg::JoinRequestCancelled { id, reason }) => {
+                    emit(ReceiverEvent::JoinRequestCancelled { id, reason })
+                }
+                Some(ServerMsg::JoinModeChanged { join_mode }) => {
+                    emit(ReceiverEvent::JoinModeChanged(join_mode))
+                }
                 Some(ServerMsg::Offer { sdp }) => {
                     offer_at.get_or_insert_with(tokio::time::Instant::now);
                     let answer = match session.accept_offer(sdp).await {

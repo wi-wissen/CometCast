@@ -61,6 +61,8 @@ impl Tx {
 /// is told the sanitised `name` and the room-local `req` id, nothing else.
 struct Pending {
     req: u64,
+    /// Two-digit number shown to both sides.
+    check: u8,
     conn_id: u64,
     tx: Tx,
     /// Address the joiner is counted under (for the per-address pending limit).
@@ -128,7 +130,12 @@ pub(crate) enum Joined {
     /// The sender is in the room now.
     Member { receiver: Tx, name: String },
     /// The sender waits for the owner's decision.
-    Pending { owner: Tx, req: u64, name: String },
+    Pending {
+        owner: Tx,
+        req: u64,
+        check: u8,
+        name: String,
+    },
 }
 
 /// Where a connection stands in a room it tried to join.
@@ -295,8 +302,10 @@ impl Rooms {
                 let name = sanitize_display_name(raw_name, room.guests);
                 let req = room.next_req;
                 room.next_req += 1;
+                let check = fresh_check(&room.pending);
                 room.pending.push(Pending {
                     req,
+                    check,
                     conn_id: id,
                     tx,
                     ip,
@@ -306,6 +315,7 @@ impl Rooms {
                 Ok(Joined::Pending {
                     owner: room.receiver.clone(),
                     req,
+                    check,
                     name,
                 })
             }
@@ -535,3 +545,14 @@ impl Rooms {
 
 /// The room is gone (removed or expired).
 pub(crate) struct Gone;
+
+/// A two-digit number (10..=99) that no waiting request of the room uses yet.
+fn fresh_check(pending: &[Pending]) -> u8 {
+    let mut rng = rand::rng();
+    loop {
+        let n: u8 = rng.random_range(10..=99);
+        if pending.iter().all(|p| p.check != n) {
+            return n;
+        }
+    }
+}

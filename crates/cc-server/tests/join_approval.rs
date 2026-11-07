@@ -569,3 +569,23 @@ async fn invalid_code_and_valid_code_with_bad_name_are_told_apart() {
     .await;
     assert_eq!(code_of(&recv(&mut s).await), "bad_message");
 }
+
+#[tokio::test]
+async fn check_numbers_are_unique_among_waiting_requests() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut seen = std::collections::HashSet::new();
+    let mut senders = Vec::new();
+    for i in 0..8 {
+        let mut s = sender(addr).await;
+        join(&mut s, &code, Some(&format!("S{i}"))).await;
+        let p = recv(&mut s).await;
+        let req = recv(&mut r).await;
+        assert_eq!(p["check"], req["check"]);
+        assert!(
+            seen.insert(req["check"].as_u64().unwrap()),
+            "duplicate check number"
+        );
+        senders.push(s);
+    }
+}

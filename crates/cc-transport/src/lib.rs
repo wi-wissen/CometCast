@@ -35,7 +35,7 @@ pub use session::{
     ConnectionState, Session, SessionConfig, SessionEvent, VIDEO_TAP_CAPACITY, VideoPacket,
     VideoSender, VideoTap,
 };
-pub use signaling::{SignalingClient, ws_url};
+pub use signaling::{JoinProgress, SignalingClient, join_room, ws_url};
 
 /// The ways a sender can reach a receiver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

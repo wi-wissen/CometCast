@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Signalling client: talks to the Comet Cast server over a WebSocket.
 //!
-//! Same protocol as the web app (docs/protocol.md, version 1). The message types
+//! Same protocol as the web app (docs/protocol.md, version 2). The message types
 //! come from `cc-proto`. A small background task owns the socket; this struct only
 //! holds two channels, so it is easy to use from `select!` loops.
 
 use std::time::Duration;
 
-use cc_proto::{ClientMsg, PROTO_VERSION, Role, ServerMsg};
+use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -146,6 +146,71 @@ impl SignalingClient {
     /// Next message from the server, or `None` when the connection has ended.
     pub async fn recv(&mut self) -> Option<ServerMsg> {
         self.rx.recv().await
+    }
+}
+
+/// What a sender learns while its join waits for the display device's decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JoinProgress {
+    /// The room needs approval: the host has to allow the join (server gives up after
+    /// `timeout_secs`).
+    Pending {
+        /// Seconds until the server answers `approval_timeout`.
+        timeout_secs: u64,
+        /// Two-digit check number; the display shows the same number on the request.
+        check: u8,
+    },
+}
+
+/// UNCERTAIN: 10 s is a placeholder for the server's first answer to `join_room`.
+const JOIN_ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
+/// Extra time on top of the server's approval timeout before the client gives up itself.
+const APPROVAL_SLACK: Duration = Duration::from_secs(15);
+
+/// Join a room as a sender and wait until the server says `joined`.
+///
+/// In a room that needs approval the server first answers `join_pending`; this is reported
+/// on `progress` and the wait continues until the host decides (`joined` or an error such as
+/// `join_denied`, `room_locked`, `approval_timeout`). Dropping the returned future (or the
+/// whole [`SignalingClient`]) cancels the request: the server then tells the host.
+pub async fn join_room(
+    sig: &mut SignalingClient,
+    code: RoomCode,
+    name: Option<String>,
+    progress: Option<&mpsc::UnboundedSender<JoinProgress>>,
+) -> Result<(), TransportError> {
+    sig.send(ClientMsg::JoinRoom { code, name }).await?;
+    let mut deadline = tokio::time::Instant::now() + JOIN_ANSWER_TIMEOUT;
+    loop {
+        let msg = tokio::time::timeout_at(deadline, sig.recv())
+            .await
+            .map_err(|_| TransportError::Timeout("waiting for joined"))?;
+        match msg {
+            Some(ServerMsg::Joined) => return Ok(()),
+            Some(ServerMsg::JoinPending {
+                timeout_secs,
+                check,
+            }) => {
+                if let Some(p) = progress {
+                    let _ = p.send(JoinProgress::Pending {
+                        timeout_secs,
+                        check,
+                    });
+                }
+                deadline = tokio::time::Instant::now()
+                    + Duration::from_secs(timeout_secs)
+                    + APPROVAL_SLACK;
+            }
+            Some(ServerMsg::Error { code, message }) => {
+                return Err(TransportError::Server { code, message });
+            }
+            Some(other) => {
+                return Err(TransportError::Protocol(format!(
+                    "expected joined, got {other:?}"
+                )));
+            }
+            None => return Err(TransportError::Closed),
+        }
     }
 }
 

@@ -340,6 +340,10 @@ pub enum ServerMsg {
     JoinPending {
         /// Seconds after which the server gives up (`approval_timeout`).
         timeout_secs: u64,
+        /// Two-digit check number (10..=99) that the server picked for this request. The
+        /// display device shows the same number on the request, so the host can match the
+        /// person in the room with the request. Not a secret.
+        check: u8,
     },
     /// Sent to the receiver: somebody wants to join (join mode `confirm`).
     JoinRequest {
@@ -347,6 +351,8 @@ pub enum ServerMsg {
         id: u64,
         /// Sanitised display name; nothing else about the joiner is passed on.
         name: String,
+        /// The check number the joiner sees on its waiting screen (see `join_pending`).
+        check: u8,
     },
     /// Sent to the receiver: a waiting request is gone (joiner left, cancelled, timed out,
     /// or the mode became `locked`).
@@ -494,10 +500,14 @@ mod tests {
             },
             ServerMsg::Joined,
             ServerMsg::PeerJoined { name: "Ana".into() },
-            ServerMsg::JoinPending { timeout_secs: 60 },
+            ServerMsg::JoinPending {
+                timeout_secs: 60,
+                check: 42,
+            },
             ServerMsg::JoinRequest {
                 id: 1,
                 name: "Ana".into(),
+                check: 42,
             },
             ServerMsg::JoinRequestCancelled {
                 id: 1,
@@ -587,13 +597,17 @@ mod tests {
         assert_eq!(
             s(&ServerMsg::JoinRequest {
                 id: 7,
-                name: "Ana".into()
+                name: "Ana".into(),
+                check: 42
             }),
-            r#"{"type":"join_request","id":7,"name":"Ana"}"#
+            r#"{"type":"join_request","id":7,"name":"Ana","check":42}"#
         );
         assert_eq!(
-            s(&ServerMsg::JoinPending { timeout_secs: 60 }),
-            r#"{"type":"join_pending","timeout_secs":60}"#
+            s(&ServerMsg::JoinPending {
+                timeout_secs: 60,
+                check: 42,
+            }),
+            r#"{"type":"join_pending","timeout_secs":60,"check":42}"#
         );
         assert_eq!(
             s(&ServerMsg::JoinModeChanged {

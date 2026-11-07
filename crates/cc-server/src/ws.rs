@@ -560,7 +560,12 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         conn.send(ServerMsg::Joined);
                         receiver.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
                     }
-                    Ok(Joined::Pending { owner, req, name }) => {
+                    Ok(Joined::Pending {
+                        owner,
+                        req,
+                        check,
+                        name,
+                    }) => {
                         let wait = state.config.join_approval_timeout;
                         conn.pending = Some(PendingJoin {
                             code,
@@ -568,8 +573,13 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         });
                         conn.send(ServerMsg::JoinPending {
                             timeout_secs: wait.as_secs().max(1),
+                            check,
                         });
-                        owner.send(Outgoing::Msg(ServerMsg::JoinRequest { id: req, name }));
+                        owner.send(Outgoing::Msg(ServerMsg::JoinRequest {
+                            id: req,
+                            name,
+                            check,
+                        }));
                     }
                     Err(JoinError::NotFound) => {
                         return failed_join(

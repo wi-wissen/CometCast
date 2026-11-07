@@ -22,6 +22,7 @@ pub mod content;
 pub mod external;
 mod screen;
 
+pub use cc_transport::JoinProgress;
 pub use content::{ContentSendError, ContentSender, ContentSenderOptions, ControlSender};
 pub use external::{ExternalInput, ExternalOptions, ExternalStats, PushOutcome};
 pub use screen::{ScreenOptions, ScreenStats};
@@ -33,17 +34,13 @@ use bytes::Bytes;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
     ConnectionState, IceServerConfig, ServerAddr, Session, SessionConfig, SessionEvent,
-    SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice,
+    SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice, join_room,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 /// The built-in test frames (IVF file with VP8 key frames).
 const TEST_FRAMES_IVF: &[u8] = include_bytes!("../assets/test-frames.ivf");
-
-/// How long we wait for the server to confirm that we joined.
-/// UNCERTAIN: placeholder, not measured.
-const JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Pre-made VP8 frames and their frame rate.
 #[derive(Debug, Clone)]
@@ -120,6 +117,11 @@ pub struct SenderOptions {
     pub session: SessionConfig,
     /// Extra trusted certificates for `wss://` / `https://` (default: system store only).
     pub trust: TlsTrust,
+    /// Name shown on the display device when it has to approve the join (the server cleans
+    /// it up; `None` = "Guest N").
+    pub name: Option<String>,
+    /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
+    pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
 }
 
 impl SenderOptions {
@@ -134,6 +136,8 @@ impl SenderOptions {
             control: false,
             session: SessionConfig::default(),
             trust: TlsTrust::system(),
+            name: None,
+            join_progress: None,
         }
     }
 }
@@ -155,6 +159,8 @@ pub enum SenderEvent {
     },
     /// The receiver left. The core stops after this event.
     PeerLeft,
+    /// The host removed this sender from the room. The core stops after this event.
+    RemovedByHost,
     /// Something failed. The core stops after this event.
     Error(String),
 }
@@ -177,24 +183,13 @@ impl SenderCore {
         let addr = ServerAddr::parse(&options.server)?;
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        sig.send(ClientMsg::JoinRoom {
-            code: options.code.clone(),
-        })
+        join_room(
+            &mut sig,
+            options.code.clone(),
+            options.name.clone(),
+            options.join_progress.as_ref(),
+        )
         .await?;
-        tokio::time::timeout(JOIN_TIMEOUT, async {
-            match sig.recv().await {
-                Some(ServerMsg::Joined) => Ok(()),
-                Some(ServerMsg::Error { code, message }) => {
-                    Err(TransportError::Server { code, message })
-                }
-                Some(other) => Err(TransportError::Protocol(format!(
-                    "expected joined, got {other:?}"
-                ))),
-                None => Err(TransportError::Closed),
-            }
-        })
-        .await
-        .map_err(|_| TransportError::Timeout("waiting for joined"))??;
 
         if options.screen.is_some() && options.external.is_some() {
             return Err(TransportError::Invalid(
@@ -380,6 +375,10 @@ async fn run(
                 }
                 Some(ServerMsg::PeerLeft) => {
                     emit(SenderEvent::PeerLeft);
+                    break;
+                }
+                Some(ServerMsg::Error { code, .. }) if code == "removed_by_host" => {
+                    emit(SenderEvent::RemovedByHost);
                     break;
                 }
                 Some(ServerMsg::Error { code, message }) => {
