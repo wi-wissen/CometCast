@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Conversion through the real worker process, with generated fixtures.
 //!
-//! The pure-Rust engine always runs. The LibreOffice tests are **skipped loudly** (a
-//! `SKIPPED:` line on stderr, visible with `--nocapture`) where `soffice` is not installed;
-//! set `COMETCAST_REQUIRE_OFFICE_ENGINE=1` to turn a skip into a failure (for CI that is
-//! supposed to have it).
 #![allow(missing_docs)]
 
 mod common {
@@ -16,32 +12,21 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use cc_office::{
-    Concrete, Engine, Limits, OfficeError, OfficeFormat, Options, WorkerSpec, convert_bytes,
-    convert_file, find_soffice,
+    Limits, OfficeError, OfficeFormat, Options, WorkerSpec, convert_bytes, convert_file,
 };
 
 fn worker() -> WorkerSpec {
     WorkerSpec::new(env!("CARGO_BIN_EXE_cc-office-worker"))
 }
 
-fn opts(engine: Engine) -> Options {
+fn opts() -> Options {
     Options {
-        engine,
         worker: Some(worker()),
         limits: Limits {
             timeout: Duration::from_secs(90),
             ..Limits::default()
         },
-        ..Options::default()
     }
-}
-
-fn skip_or_fail(what: &str) -> bool {
-    if std::env::var_os("COMETCAST_REQUIRE_OFFICE_ENGINE").is_some_and(|v| v == "1") {
-        panic!("{what} is required (COMETCAST_REQUIRE_OFFICE_ENGINE=1) but missing");
-    }
-    eprintln!("SKIPPED: {what} not available; this test did NOT run");
-    true
 }
 
 fn assert_pdf(c: &cc_office::Converted) {
@@ -61,12 +46,11 @@ fn fixtures() -> Vec<(OfficeFormat, Vec<u8>)> {
 #[test]
 fn rust_engine_converts_the_generated_fixtures() {
     for (f, bytes) in fixtures() {
-        let r = convert_bytes(&bytes, f, &opts(Engine::Rust));
+        let r = convert_bytes(&bytes, f, &opts());
         let c = match r {
             Ok(c) => c,
             Err(e) => panic!("{f:?}: {e}"),
         };
-        assert_eq!(c.engine, Concrete::Rust);
         assert_pdf(&c);
         eprintln!(
             "rust engine {f:?}: {} bytes in {:?}, protections {:?}, warnings {:?}",
@@ -84,26 +68,6 @@ fn rust_engine_converts_the_generated_fixtures() {
 }
 
 #[test]
-fn soffice_converts_the_generated_fixtures() {
-    if find_soffice(None).is_none() {
-        skip_or_fail("LibreOffice (soffice)");
-        return;
-    }
-    for (f, bytes) in fixtures() {
-        let c = convert_bytes(&bytes, f, &opts(Engine::Soffice))
-            .unwrap_or_else(|e| panic!("{f:?}: {e}"));
-        assert_eq!(c.engine, Concrete::Soffice);
-        assert_pdf(&c);
-        eprintln!(
-            "soffice {f:?}: {} bytes in {:?}, protections {:?}",
-            c.pdf.len(),
-            c.elapsed,
-            c.protections
-        );
-    }
-}
-
-#[test]
 fn convert_file_reads_from_disk_and_checks_the_extension() {
     let dir = std::env::temp_dir().join(format!("cc-office-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -113,27 +77,20 @@ fn convert_file_reads_from_disk_and_checks_the_extension() {
     let wrong = dir.join("wrong.docx");
     std::fs::write(&wrong, zw::xlsx("x")).unwrap();
     assert!(matches!(
-        convert_file(&wrong, &opts(Engine::Auto)),
+        convert_file(&wrong, &opts()),
         Err(OfficeError::BadContainer(_))
     ));
-    let have_engine = find_soffice(None).is_some() || cc_office::rust_engine_compiled();
-    if have_engine {
-        let c = convert_file(&p, &opts(Engine::Auto)).expect("convert");
-        assert_pdf(&c);
-    }
+    let c = convert_file(&p, &opts()).expect("convert");
+    assert_pdf(&c);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn missing_worker_is_an_error_not_a_panic() {
     let o = Options {
-        engine: Engine::Auto,
         worker: Some(WorkerSpec::new("/nonexistent/cc-office-worker")),
         ..Options::default()
     };
-    if find_soffice(None).is_none() && !cc_office::rust_engine_compiled() {
-        return;
-    }
     assert!(matches!(
         convert_bytes(&zw::docx("x"), OfficeFormat::Docx, &o),
         Err(OfficeError::WorkerUnavailable(_))
@@ -163,17 +120,12 @@ fn a_hanging_worker_is_killed_at_the_deadline_with_its_children() {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let o = Options {
-        engine: Engine::Rust,
         worker: Some(WorkerSpec::new(&script)),
         limits: Limits {
             timeout: Duration::from_secs(1),
             ..Limits::default()
         },
-        ..Options::default()
     };
-    if !cc_office::rust_engine_compiled() {
-        return;
-    }
     let t = std::time::Instant::now();
     let r = convert_bytes(&zw::docx("x"), OfficeFormat::Docx, &o);
     assert!(matches!(r, Err(OfficeError::Timeout(_))), "{r:?}");
@@ -226,9 +178,6 @@ fn process_alive(pid: i32) -> bool {
 #[test]
 fn a_worker_that_writes_a_fake_or_huge_result_is_refused() {
     use std::os::unix::fs::PermissionsExt;
-    if !cc_office::rust_engine_compiled() {
-        return;
-    }
     let dir = std::env::temp_dir().join(format!("cc-office-fake-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     // The fake worker finds its work dir in the `--work` argument (after the 8th word).
@@ -243,13 +192,11 @@ fn a_worker_that_writes_a_fake_or_huge_result_is_refused() {
     };
     let run = |s: &PathBuf, cap: u64| {
         let o = Options {
-            engine: Engine::Rust,
             worker: Some(WorkerSpec::new(s)),
             limits: Limits {
                 max_output_bytes: cap,
                 ..Limits::default()
             },
-            ..Options::default()
         };
         convert_bytes(&zw::docx("x"), OfficeFormat::Docx, &o)
     };
@@ -306,13 +253,11 @@ fn hostile_files_never_reach_an_engine() {
     // Even with a worker that does not exist: the container check fails first, so the error
     // is about the container and not about the worker.
     let o = Options {
-        engine: Engine::Auto,
         worker: Some(WorkerSpec::new("/nonexistent/cc-office-worker")),
         limits: Limits {
             max_entry_bytes: 4 * 1024 * 1024,
             ..Limits::default()
         },
-        ..Options::default()
     };
     let bomb = zw::build(&[
         zw::Entry::deflated("[Content_Types].xml", b"<Types/>"),
@@ -336,4 +281,22 @@ fn hostile_files_never_reach_an_engine() {
         convert_bytes(corrupt, OfficeFormat::Docx, &o),
         Err(OfficeError::BadContainer(_))
     ));
+}
+
+#[test]
+fn opendocument_and_legacy_files_are_refused_by_type() {
+    let dir = std::env::temp_dir().join(format!("cc-office-odf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in ["a.odt", "a.odp", "a.ods", "a.doc", "a.ppt", "a.xls"] {
+        let p = dir.join(name);
+        std::fs::write(&p, zw::docx("x")).unwrap();
+        assert!(
+            matches!(
+                convert_file(&p, &opts()),
+                Err(OfficeError::UnsupportedFormat)
+            ),
+            "{name}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -524,42 +524,23 @@ sender's own user, so it is not "remote hostile input" in the way a PDF is for t
 can still be a file somebody mailed to the teacher, so the converter is treated as an untrusted
 parser anyway.
 
-### Engines: what was looked at (2026-11-07)
+### Engine
 
-| | `office2pdf` (pure Rust) | LibreOffice (`soffice`, separate process) |
-| --- | --- | --- |
-| Licence | Apache-2.0 (crate metadata); built on the Typst crates (Apache-2.0); compatible with GPL-3.0-or-later. Needs no installation. Bundles fonts under OFL, GUST, Bitstream Vera and BSD-3-Clause (listed in `THIRD_PARTY_NOTICES.md`; **the full texts still have to ship with a release**) | MPL-2.0 for the core (as remembered, **not checked**); not linked and not shipped, we only start the program the user installed |
-| Formats | `.docx .pptx .xlsx` (no `.odt .odp .ods`, no legacy `.doc .ppt .xls`) | all of those, and legacy files too (we still refuse legacy files, see below) |
-| Offline | yes | yes (no network is needed; the worker also blocks TCP where Landlock allows) |
-| Maintenance | crate created 2026-02, about 12 000 downloads, a release every 1 to 3 weeks, one author (checked on crates.io on 2026-11-07). Young | very mature project; the version on the test machine was not recorded |
-| Cost | about 250 extra crates, larger binary (fonts), first build takes minutes | 300 MB to 1 GB install on the sender machine |
-| Seen speed (tiny files, debug build) | 0.5 to 0.8 s | 1.5 to 2.1 s (start-up dominated) |
-| Fidelity | unmeasured; the crate reports what it left out as warnings (for example "Aptos rendered as Noto Sans") | unmeasured; generally seen as the reference for layout |
+The only engine is the pure-Rust **`office2pdf`** (Apache-2.0 crate metadata; built on the Typst crates,
+Apache-2.0; compatible with GPL-3.0-or-later). It needs no installation, works offline, and bundles fonts
+under OFL, GUST, Bitstream Vera and BSD-3-Clause (listed in `THIRD_PARTY_NOTICES.md`; **the full texts
+still have to ship with a release**). Formats: `.docx .pptx .xlsx`. OpenDocument (`.odt .odp .ods`) and
+legacy binary files (`.doc .ppt .xls`) are refused as an unsupported type (`UnsupportedFormat` in the
+library, `UnsupportedType` in the app). Cost: about 250 extra crates and a larger binary (fonts). Seen speed
+on tiny files (debug build): 0.5 to 0.8 s. Maintenance: crate created 2026-02, about 12 000 downloads, a
+release every 1 to 3 weeks, one author (checked on crates.io on 2026-11-07); young. Fidelity is
+**unmeasured**; the crate reports what it left out as warnings (for example "Aptos rendered as Noto
+Sans"). UNCERTAIN: whether `office2pdf` follows any file links in a document was not checked. The
+`engine-rust` feature of `cc-office` can be turned off in a process that only needs the checks and the
+types and starts a worker that has the engine (see "Office files in the Flutter app").
 
-`Engine::Auto` (the default) uses the **pure-Rust engine for `.docx .pptx .xlsx`** when it is compiled in,
-and LibreOffice only for `.odt .odp .ods` (which the Rust engine cannot read), or for OOXML when the
-Rust engine was left out of the build. `--engine soffice` asks for LibreOffice explicitly. UNCERTAIN:
-this order is a **security judgement, not a fidelity measurement**: LibreOffice is the long-standing
-reference for layout and may well produce better PDFs, but it is a large program with helper processes
-that can also read any file the user can read (next paragraph). Change the order once point 7 has
-data on both. A failure of the chosen engine is **not** retried with the other one (a file that one
-parser calls broken is not handed to a second parser behind the user's back); `--engine rust|soffice`
-chooses explicitly. The `engine-rust` feature of `cc-office` can be turned off to leave out the large
-dependency tree.
-
-**Risk with LibreOffice: linked content.** A document can link or include a local file (a linked image,
-an included text section, an OLE link). LibreOffice running as the user can read such a file and print
-its content into the PDF, which the sender then transfers. Nothing in this design stops that: the worker
-has **no file-system restriction** (Landlock only blocks TCP) and the profile switches below are best
-effort and unverified. Use `--engine soffice` only for documents you trust, and look at the PDF before
-sending. The CLI prints a note whenever LibreOffice did the conversion. UNCERTAIN: whether
-`office2pdf` follows any file links was not checked; it has no feature that the author of this note
-knows of for it, which is not a test.
-
-LibreOffice is found through `COMETCAST_SOFFICE` (absolute path), then `/usr/bin/soffice`,
-`/usr/local/bin/soffice`, `/usr/lib/libreoffice/program/soffice`, `/opt/libreoffice/program/soffice`,
-the macOS and Windows default paths, then `PATH`. UNCERTAIN: only Linux was run. Flatpak and Snap
-installs are not looked for.
+**Owner decision: LibreOffice is deliberately not used**, in any form, as an engine, an optional helper or
+a fallback. There is no second engine and no engine choice.
 
 ### Pipeline and limits
 
@@ -592,8 +573,8 @@ installs are not looked for.
    - an entry over **128 MiB**, all entries together over **512 MiB** uncompressed; a ratio over
      **200:1** for entries over 1 MiB; and every entry is **really inflated** (and discarded) to check
      that the real size equals the declared size, so a lying header is caught;
-   - content that does not match the extension (`word/document.xml`, `ppt/presentation.xml`,
-     `xl/workbook.xml`, or the OpenDocument `mimetype` entry).
+   - content that does not match the extension (`word/document.xml`, `ppt/presentation.xml` or
+     `xl/workbook.xml` missing).
 
    Not checked: the CRC-32 of the data is compared between headers but **never recomputed**; gaps between
    entries and prepended data are not looked for beyond the local header at offset 0; the offsets and
@@ -608,42 +589,31 @@ installs are not looked for.
    loss) the directory is left behind; the next conversion removes directories with this name prefix
    that are real directories (not links), owned by the user and **older than one day**, best effort.
    A crash therefore leaks at most up to a day's worth of work directories (each holds a copy of the
-   document and possibly a LibreOffice profile).
-4. **Worker child** (`cc-office-worker`, or `cometcast-cli office-worker`): empty environment (LibreOffice gets
-   only `PATH`, `HOME`, `TMPDIR`, `LANG` and a render setting, with `HOME` and `TMPDIR` inside the work directory), own process
+   document).
+4. **Worker child** (`cc-office-worker`, or `cometcast-cli office-worker`): empty environment, own process
    group, stdin closed. The worker sets, **fail closed on Linux**: `RLIMIT_CPU` (timeout + 2 s), `RLIMIT_CORE`
-   0, `RLIMIT_FSIZE` (the output cap, which also limits what LibreOffice may write per file) and
-   `RLIMIT_AS` (4 GiB for either engine). Best effort (a failure is not fatal; it is reported by name
-   and warned about by the CLI): `RLIMIT_NOFILE` 2048 for either engine, and `RLIMIT_NPROC` 8192 for the
-   LibreOffice supervisor only. **No limit is ever raised**: each is set to the smaller of the wish and
+   0, `RLIMIT_FSIZE` (the output cap) and
+   `RLIMIT_AS` (4 GiB). Best effort (a failure is not fatal; it is reported by name
+   and warned about by the CLI): `RLIMIT_NOFILE` 2048. **No limit is ever raised**: each is set to the smaller of the wish and
    the limit already in force, so a stricter inherited soft limit is kept (tested). Be clear about what
    these are: `RLIMIT_AS`, `RLIMIT_CPU` and `RLIMIT_FSIZE` are **per process**, not totals for the process tree
-   (LibreOffice with helpers can use several times the address-space figure and write several output-sized
-   files); `RLIMIT_NPROC` counts all processes and threads of the **user**, so it is a fork-bomb brake and
-   is exempt for root and `CAP_SYS_RESOURCE`, and it was not set for the Rust engine because that engine
-   uses threads. UNCERTAIN: neither the NOFILE nor the NPROC value was tuned beyond tiny files.
+   (the engine runs in the worker process itself and starts no helper). `RLIMIT_NPROC` is not set: it
+   counts all processes and threads of the **user**, and the engine uses threads. UNCERTAIN: the NOFILE
+   value was not tuned beyond tiny files.
    Landlock **blocks TCP connect and bind** (best effort, kernel 6.7+, ABI 4), reported as
    `landlock-no-tcp`. It does **not** restrict the file system, UDP or Unix
-   sockets, and there is **no seccomp** (LibreOffice needs far too many system calls; the pure-Rust
-   worker could get the allowlist treatment of `cc-docs`, not done). So this is a **resource-limited
+   sockets, and there is **no seccomp** (the worker could get the allowlist treatment of
+   `cc-docs`, not done). So this is a **resource-limited
    child process, not a sandbox**: a code-execution bug in a parser would run as the user.
    `Converted::protections` lists what took effect; `Converted::missing_protections()` lists what this
    platform should have given and did not (`expected_protections()`); the CLI prints both after every
    conversion and warns when something is missing (for example no Landlock on a kernel older than 6.7), or
    when nothing at all was in effect (non-Unix).
-5. **LibreOffice call**: `soffice --headless --invisible --norestore --nologo --nodefault --nolockcheck
-   --nofirststartwizard -env:UserInstallation=<work>/profile --convert-to pdf --outdir <work>/out <work>/in/input.<ext>`, with a
-   profile that sets the macro security level to 3, disables macro execution and sets "update links" to
-   "never" for Calc, Writer, Impress and Draw. UNCERTAIN: those profile keys are from memory of the
-   configuration schema; their effect was not tested, and the **Impress and Draw keys are the least certain**
-   (they may not exist, in which case LibreOffice ignores them and links in presentations and drawings are
-   not switched off). Headless conversion does not run document macros by default either. None of this
-   stops a document from making LibreOffice read a local file into the PDF (see the risk above).
-   Fonts are whatever the machine has; no font is bundled for this engine.
+5. **Conversion**: `office2pdf` runs in-process in the worker on `<work>/in/input.<ext>` and the worker
+   writes `<work>/out/input.pdf`. Fonts are the ones bundled with the engine.
 6. **Deadline**: 120 s by default (the worker times itself; the parent kills the **whole process group**
-   at timeout + 2 s, and again after a normal exit to remove helper processes). A helper that calls
-   `setsid` (or `setpgid`) **leaves the group and survives the kill**; LibreOffice's own `oosplash` /
-   `soffice.bin` are not known to do that, but that was not verified. Tested with a fake worker that starts
+   at timeout + 2 s, and again after a normal exit to remove anything left behind). A helper that calls
+   `setsid` (or `setpgid`) **leaves the group and survives the kill**; the engine starts no helper. Tested with a fake worker that starts
    a grandchild, records its pid, and sleeps: after the timeout the grandchild must not exist any more.
 7. **Result checks**: the output file is opened with `O_NOFOLLOW | O_NONBLOCK` and the *open* file is
    checked with `fstat` (a link, a FIFO or any other special file is refused without blocking); it must be a
@@ -657,14 +627,13 @@ installs are not looked for.
 ### Use
 
 ```
-cometcast-cli send-file <CODE> report.docx [--office-engine auto|rust|soffice]
-cometcast-cli office convert slides.pptx --out slides.pdf [--engine rust] [--force]
-cometcast-cli office engines
+cometcast-cli send-file <CODE> report.docx
+cometcast-cli office convert slides.pptx --out slides.pdf [--force]
 ```
 
-`send-file` converts first, prints the engine and the time, prints up to ten conversion
+`send-file` converts first, prints the time, prints up to ten conversion
 warnings, prints the protections that were in effect (and a warning on stderr when Landlock or a limit
-was not, or a note when LibreOffice did the work), and sends `<name>.pdf`. Library: `cc_office::convert_file(path, &Options)`; the application must
+was not), and sends `<name>.pdf`. Library: `cc_office::convert_file(path, &Options)`; the application must
 provide the worker (`WorkerSpec::discover()` finds `cc-office-worker` next to the executable, or pass
 `WorkerSpec::current_exe_with_arg("office-worker")`). Unlike `cc-docs` there is **no environment variable
 that replaces the worker program**.
@@ -678,13 +647,11 @@ a PDF named `<file name without extension>.pdf` and nothing in the protocol chan
 
 - **Picker.** The file dialog lists the three extensions (and their MIME types and UTIs) next to images and
   PDF. OpenDocument (`.odt .odp .ods`) and legacy files are not offered and are refused as
-  `UnsupportedType`: the app never starts LibreOffice, because of the linked-file risk above.
-- **Engine.** Always the pure-Rust engine (`Engine::Rust`). A build without it, or without the worker program,
-  refuses Office files with `OfficeUnavailable`. `cc-ffi` depends on `cc-office` with `default-features = false`:
+  `UnsupportedType`.
+- **Engine.** The pure-Rust engine, in the worker program. A build without the worker program refuses
+  Office files with `OfficeUnavailable`. `cc-ffi` depends on `cc-office` with `default-features = false`:
   only the worker spec, the container checks and the types are needed in the app process, so the engine (the
-  Typst tree) is **not linked into `libcc_ffi.so`**; it lives in `cc-office-worker`. The parent is told that
-  the worker has the engine (`Options::rust_engine_in_worker`), otherwise it would refuse `Engine::Rust` as not
-  compiled in. The CMake step therefore builds the worker with its own `cargo build -p cc-office`: one command
+  Typst tree) is **not linked into `libcc_ffi.so`**; it lives in `cc-office-worker`. The CMake step therefore builds the worker with its own `cargo build -p cc-office`: one command
   for `-p cc-ffi -p cc-office` would unify the features and put the engine back.
 - **One at a time.** A global gate (`office::GATE`, a semaphore of one) lets a single conversion run: a further
   request waits for its turn without holding a thread, and is dropped without converting if the person started
@@ -717,8 +684,8 @@ a PDF named `<file name without extension>.pdf` and nothing in the protocol chan
 
 ### Tests (what was run)
 
-- `cargo test -p cc-office`: format and engine selection; the ZIP pre-flight with generated archives (valid
-  docx, xlsx, pptx and an ODF shape; bombs by ratio, by per-entry size and by total size; a lying header; too many
+- `cargo test -p cc-office`: format parsing (OpenDocument and legacy names refused); the ZIP pre-flight with generated archives (valid
+  docx, xlsx, pptx; bombs by ratio, by per-entry size and by total size; a lying header; too many
   entries; seven kinds of unsafe name; duplicates, also by Unicode case; the encryption flags; a **real**
   overlap (a second entry's local header hidden inside the first entry's data, with matching names and
   headers) and an entry reaching into the central directory; data after the end record, wrong and
@@ -729,10 +696,9 @@ a PDF named `<file name without extension>.pdf` and nothing in the protocol chan
   local offset; corrupt files: every truncation length, every single-byte flip without a panic, garbage in
   the data; legacy OLE); output checks (fake, huge, missing, symbolic link, FIFO without blocking); input
   FIFO; the private work directory (also under a relative base) and the removal of stale work directories;
-  `lower` never raising a limit; control-character stripping; the engine order; dotless names; the missing-protections list;
+  `lower` never raising a limit; control-character stripping; dotless names; the missing-protections list;
   conversion of the three
-  generated fixtures through the **real worker** with the pure-Rust engine and with LibreOffice
-  (**skipped loudly with a `SKIPPED:` line if `soffice` is absent**; `COMETCAST_REQUIRE_OFFICE_ENGINE=1` turns a skip into a failure);
+  generated fixtures through the **real worker** with the pure-Rust engine; `.odt .odp .ods .doc .ppt .xls` refused by type;
   a hanging fake worker killed at the deadline together with its grandchild (checked through a pid file
   and `/proc`; a zombie counts as dead); fake workers that write a non-PDF,
   nothing, an oversized file, fail, or print terminal escape sequences in warnings and stderr.
@@ -744,9 +710,9 @@ a PDF named `<file name without extension>.pdf` and nothing in the protocol chan
 
 ### Not done / uncertain
 
-- No measurement of layout fidelity, fonts, charts, tables or embedded media on real documents; no comparison of the two engines.
-- The Windows and macOS code paths (soffice locations, the `file://` profile URL, no limits on Windows except the timeout) were not run.
-- No seccomp or file-system sandbox for either engine, so LibreOffice can read any user file that a document links; `RLIMIT_AS` is not enforced by the macOS kernel; the resource limits are per process; a helper that calls `setsid` escapes the group kill.
+- No measurement of layout fidelity, fonts, charts, tables or embedded media on real documents.
+- The Windows and macOS code paths (no limits on Windows except the timeout) were not run.
+- No seccomp or file-system sandbox so a parser bug could read any user file; `RLIMIT_AS` is not enforced by the macOS kernel; the resource limits are per process; a helper that calls `setsid` escapes the group kill.
 - The unsigned 12-byte data descriptor form and a 32-bit build of the ZIP reader were not tested; the CRC-32 of the data is not recomputed.
 - Memory and time on large inputs (50 MiB files, big workbooks) were not measured; the 4 GiB address-space limit and the 120 s deadline are guesses.
 - Speaker notes from PPTX are not extracted.
