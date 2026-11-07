@@ -8,10 +8,13 @@
 //   * Flutter: apps/flutter/pubspec.lock; licence files are read from the pub cache when the package is there.
 // The header records the SHA-256 of the three lock files. `tools/release-guard.sh licenses-fresh` fails
 // when one of them changed after the file was generated.
+// The Apple TV app shows the licence list in About (docs/design/native-apps.md 21.7): after writing, the two root
+// files THIRD_PARTY_LICENSES.md and THIRD_PARTY_NOTICES.md are copied unchanged to apps/apple-tv/Resources/Licenses
+// (a resource folder of the app target); --check fails when a copy differs.
 // Usage: node tools/gen-third-party.mjs [--check]     (--check: do not write, fail when out of date)
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -205,12 +208,21 @@ ${pg.groups.length ? renderGroups({ groups: pg.groups, without: [] }) : '\nNo pu
   return { text: s, missing: r.items.filter((i) => !i.files.length), pubNoText: pubNoText.length, total: { rust: r.items.length, npm: n.length, pub: p.length } };
 }
 
+const APPLE_TV_COPIES = join(repo, 'apps/apple-tv/Resources/Licenses');
+const ROOT_FILES = ['THIRD_PARTY_LICENSES.md', 'THIRD_PARTY_NOTICES.md'];
 const res = build();
 if (process.argv.includes('--check')) {
   const cur = existsSync(OUT) ? readFileSync(OUT, 'utf8') : '';
   if (cur !== res.text) { console.error('THIRD_PARTY_LICENSES.md is out of date: run node tools/gen-third-party.mjs'); process.exit(1); }
+  for (const f of ROOT_FILES) {
+    const copy = join(APPLE_TV_COPIES, f);
+    const want = f === 'THIRD_PARTY_LICENSES.md' ? res.text : readFileSync(join(repo, f), 'utf8');
+    if (!existsSync(copy) || readFileSync(copy, 'utf8') !== want) { console.error(`apps/apple-tv/Resources/Licenses/${f} differs from ${f}: run node tools/gen-third-party.mjs`); process.exit(1); }
+  }
   console.log('THIRD_PARTY_LICENSES.md is up to date');
 } else {
   writeFileSync(OUT, res.text);
-  console.log(`wrote THIRD_PARTY_LICENSES.md (${(res.text.length / 1024).toFixed(0)} KiB): ${res.total.rust} crates, ${res.total.npm} npm, ${res.total.pub} pub; ${res.missing.length} crates without licence file${res.missing.length ? ': ' + res.missing.map((m) => m.name).join(', ') : ''}; ${res.pubNoText} pub packages without text`);
+  mkdirSync(APPLE_TV_COPIES, { recursive: true });
+  for (const f of ROOT_FILES) writeFileSync(join(APPLE_TV_COPIES, f), readFileSync(join(repo, f), 'utf8'));
+  console.log(`wrote THIRD_PARTY_LICENSES.md (${(res.text.length / 1024).toFixed(0)} KiB): ${res.total.rust} crates, ${res.total.npm} npm, ${res.total.pub} pub; ${res.missing.length} crates without licence file${res.missing.length ? ': ' + res.missing.map((m) => m.name).join(', ') : ''}; ${res.pubNoText} pub packages without text; copies for the Apple TV app written`);
 }

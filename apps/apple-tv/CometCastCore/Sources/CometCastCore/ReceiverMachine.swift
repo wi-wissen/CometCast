@@ -38,6 +38,9 @@ public struct ReceiverState: Equatable, Sendable {
     public var requests: [JoinRequest] = []
     /// Cleaned name of the connected sender.
     public var peerName: String?
+    /// The sender's name was empty after cleaning (`peerName` is then the fallback "Guest N"): the screens show
+    /// `common.noName` (spec 4.4).
+    public var peerUnnamed = false
     /// Blocked senders; the host can unblock them.
     public var blocks: [BlockedEntry] = []
     public var notice: JoinNotice?
@@ -51,6 +54,23 @@ public struct JoinRequest: Equatable, Sendable {
     public var name: String
     /// Two-digit number (10 to 99) that the waiting sender sees too.
     public var check: Int
+    /// The name was empty after cleaning (`name` is then the fallback "Guest N"): the screens show `common.noName`.
+    public var unnamed = false
+}
+
+/// Something the host should be told about with a toast (spec 4.6). The machine collects them; the app takes them
+/// with `takeEvents()` after every input. They are not part of `ReceiverState`.
+public enum HostEvent: Equatable, Sendable {
+    /// The server ended a waiting request after `join_approval_secs` (`toast.expired`).
+    case requestExpired(name: String, unnamed: Bool)
+    /// The person who asked left or withdrew the request (`toast.withdrawn`).
+    case requestWithdrawn(name: String, unnamed: Bool)
+    /// A sender joined (`toast.joined`, unless the host just allowed it: `toast.allowed` then says it).
+    case senderJoined(name: String, unnamed: Bool)
+    /// The sender left (`toast.left`); the room and its code stay.
+    case senderLeft(name: String, unnamed: Bool)
+    /// The room session ended on the host's request (`toast.sessionEnded`).
+    case sessionEnded
 }
 
 /// An entry of the room's block list (blocked for the rest of the room session).
@@ -129,14 +149,26 @@ public struct ReceiverMachine: Sendable {
     private var hasPeer = false
     /// The mode asked for (survives `start`, `stop` and room changes), like the web client's `mode`.
     private var mode: JoinMode
+    /// The default mode (Open or Approval on): what a new session after End starts with. Locked is never the
+    /// default; it lasts until End (spec 4.3).
+    private var defaultMode: JoinMode
     private var altchaPayload: String?
     private var peersSeen = 0
     /// The room name sent with `create_room` (nil = none). No UI sets it yet.
     private var roomName: String?
+    private var events: [HostEvent] = []
+
+    /// The events since the last call (see `HostEvent`).
+    public mutating func takeEvents() -> [HostEvent] {
+        let e = events
+        events = []
+        return e
+    }
 
     public init(joinMode: JoinMode = .open, roomName: String? = nil) {
         self.roomName = roomName
         mode = joinMode
+        defaultMode = joinMode == .locked ? .open : joinMode
         state.joinMode = joinMode
     }
 
@@ -201,6 +233,7 @@ public struct ReceiverMachine: Sendable {
             return []
         case .setJoinMode(let m):
             mode = m
+            if m != .locked { defaultMode = m }
             return state.code != nil ? [.send(.setJoinMode(m))] : []
         case .decide(let id, let allow, let block):
             guard state.code != nil, state.requests.contains(where: { $0.id == id }) else { return [] }
@@ -240,6 +273,7 @@ public struct ReceiverMachine: Sendable {
         state.sas = nil
         state.requests = []
         state.peerName = nil
+        state.peerUnnamed = false
         state.blocks = []
         return fx
     }
@@ -271,9 +305,14 @@ public struct ReceiverMachine: Sendable {
             return mode != joinMode ? [.send(.setJoinMode(mode))] : []
         case .joinRequest(let id, let name, let check):
             if state.requests.contains(where: { $0.id == id }) { return [] }
-            state.requests.append(JoinRequest(id: id, name: sanitizeDisplayName(name, guestNumber: id), check: check))
+            state.requests.append(JoinRequest(id: id, name: sanitizeDisplayName(name, guestNumber: id), check: check,
+                                              unnamed: sanitizedDisplayNameOrNil(name) == nil))
             return []
         case .joinRequestCancelled(let id, let reason):
+            if let r = state.requests.first(where: { $0.id == id }) {
+                if reason == "timeout" { events.append(.requestExpired(name: r.name, unnamed: r.unnamed)) }
+                else if reason == "left" || reason == "cancelled" { events.append(.requestWithdrawn(name: r.name, unnamed: r.unnamed)) }
+            }
             state.requests.removeAll { $0.id == id }
             if reason == "locked" {
                 var count = 1
@@ -295,17 +334,21 @@ public struct ReceiverMachine: Sendable {
             state.blocks.removeAll { $0.id == id }
             return []
         case .roomEnded:
+            events.append(.sessionEnded)
             // The room and its code are gone; the connection stays, so ask for a new room at once.
             var fx: [ReceiverEffect] = [.closePeer, .resetContent]
             hasPeer = false
             altchaPayload = nil
             altchaTried = false
             peersSeen = 0
+            // End: the next session starts in the default mode, not in Locked (spec 4.3).
+            mode = defaultMode
             state.phase = .connecting
             state.code = nil
             state.hasVideo = false
             state.sas = nil
             state.peerName = nil
+            state.peerUnnamed = false
             state.requests = []
             state.blocks = []
             state.notice = nil
@@ -319,6 +362,8 @@ public struct ReceiverMachine: Sendable {
             state.hasVideo = false
             state.sas = nil
             state.peerName = sanitizeDisplayName(name, guestNumber: peersSeen)
+            state.peerUnnamed = sanitizedDisplayNameOrNil(name) == nil
+            events.append(.senderJoined(name: state.peerName ?? "", unnamed: state.peerUnnamed))
             return fx
         case .offer(let sdp):
             var fx: [ReceiverEffect] = []
@@ -329,11 +374,13 @@ public struct ReceiverMachine: Sendable {
         case .iceCandidate(let c):
             return hasPeer ? [.addIceCandidate(c)] : []
         case .peerLeft:
+            if let n = state.peerName { events.append(.senderLeft(name: n, unnamed: state.peerUnnamed)) }
             hasPeer = false
             state.phase = .peerLeft
             state.hasVideo = false
             state.sas = nil
             state.peerName = nil
+            state.peerUnnamed = false
             return [.closePeer, .resetContent]
         case .error(let code, _):
             // Open servers answer the first create_room with altcha_required; the connection stays open.

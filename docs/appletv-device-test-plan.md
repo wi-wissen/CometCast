@@ -56,16 +56,18 @@ The app target was written without a compiler. Plan for fixes; **write every fix
 
 | Id | Steps | Expected | Look for |
 | --- | --- | --- | --- |
-| A1 | `cd apps/apple-tv/CometCastCore && swift test` on the Mac | 62 tests pass (the Linux result). On the Mac this is the first run of the CryptoKit path and of the CommonCrypto PBKDF2 path | `testPlatformPathEqualsPortable` failing means the CommonCrypto call is wrong (UNCERTAIN, never compiled) |
+| A1 | `cd apps/apple-tv/CometCastCore && swift test` on the Mac | 140 tests pass (the Linux result). On the Mac this is the first run of the CryptoKit path and of the CommonCrypto PBKDF2 path | `testPlatformPathEqualsPortable` failing means the CommonCrypto call is wrong (UNCERTAIN, never compiled) |
 | A2 | `cd apps/apple-tv && xcodegen generate && open CometCastTV.xcodeproj` | The project opens with the targets `CometCastTV` and `CometCastTVTests`, the scheme `CometCastTV`, and two packages | List of errors |
 | A3 | Build for an Apple TV Simulator: `xcodebuild -project CometCastTV.xcodeproj -scheme CometCastTV -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation)' build` | Builds after your fixes | Record the fixes |
-| A4 | Run the XCTest bundle in the Simulator (Cmd+U) | The same 62 tests pass. They read `tests/fixtures` through `#filePath` | If they cannot find the fixtures: the Simulator's file access; run `swift test` instead and note it |
+| A4 | Run the XCTest bundle in the Simulator (Cmd+U) | The same 140 tests pass. They read `tests/fixtures`, the string catalogs, the app's Swift files and the licence files through `#filePath` | If they cannot find the fixtures: the Simulator's file access; run `swift test` instead and note it |
 | A5 | Release archive like the workflow: `xcodebuild archive -project CometCastTV.xcodeproj -scheme CometCastTV -configuration Release -destination 'generic/platform=tvOS' -archivePath /tmp/c.xcarchive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""` | Succeeds. This is exactly the unsigned path of the `tvos` job | The embedded `LiveKitWebRTC.framework` is present in the archive (`Frameworks/`); size of the archive |
 | A6 | Install on the Apple TV (Run, destination: the paired Apple TV) | The app icon shows with the layered logo; the app starts | **A19 first check:** the app launches at all with the 12 MB tvOS slice. A crash at launch with a dyld message means the framework is not embedded or signed |
 | A7 | Check the icon layers: Home screen, focus the icon | Three layers move against each other; no black edges; small and large icon both look right | Replace the placeholder artwork later |
 | A8 | `node tools/set-version.mjs 1.2.3 --build-number 5 --root <scratch copy>`, then generate and archive | The archive has version 1.2.3 (5) | `CFBundleShortVersionString` in the archive's Info.plist |
 
 ## B. First start, screens, languages (M1)
+
+> **Superseded by section M** (the designed screens): B2 (idle screen), B3 to B7 (the screens are now the wizard, the idle screen with QR code, Settings; there is no "Show room code" button, no server list, the room opens by itself). B1 (local network prompt) still applies: it now appears when the announcement starts or the wizard browses.
 
 | Id | Steps | Expected | UNCERTAIN / look for |
 | --- | --- | --- | --- |
@@ -79,6 +81,8 @@ The app target was written without a compiler. Plan for fixes; **write every fix
 
 ## C. Pairing with a room code (M1, A1, A18)
 
+> **Superseded by section M** (the designed screens): C6 and C7 (there is no stop confirmation; Menu leaves the app at Idle, End on the presenting controls ends the session), and every place that says "the code screen": the code is on the idle screen. The connection check code is the second line of the name tag, visible only with the controls.
+
 | Id | Steps | Expected | UNCERTAIN / look for |
 | --- | --- | --- | --- |
 | C1 | In the web app (Send), choose the same server and type the code | The Apple TV changes to "A sender joined…", then "Receiving the screen." The sender's screen appears | Time to first picture; whether `peer_joined` is handled before the ICE list arrives |
@@ -91,6 +95,8 @@ The app target was written without a compiler. Plan for fixes; **write every fix
 | C8 | Type the code in lower case on the sender | Accepted by the sender; the TV unaffected | |
 
 ## D. Video (M1, A19, spike 3)
+
+> The statistics are no longer on screen: **Play/Pause is the Menu key now.** In a Debug build the log has a `stats video ...` line every 2 s while a picture is received (codec, size, frame rate, decoder, frames, rate, jitter, route, round trip); filter the console for `stats`. Release builds log no statistics.
 
 Press **Play/Pause** on the receive screen to see the statistics; record them for each test.
 
@@ -107,6 +113,8 @@ Press **Play/Pause** on the receive screen to see the statistics; record them fo
 | D9 | The sender sends audio (screen share with system audio in Chrome) | No sound is expected (audio is not handled); no crash | Honest "not done" check |
 
 ## E. Content channel (M2, A20, measurement point 7)
+
+> **Superseded by section M** (the designed screens): E1 to E3, E6, E10 to E12 and E16 where they describe the screens: images and PDF pages have **no Close button** (the presenter stops, or the host presses End; a PDF's pages are turned on the presenter's page); the link card has [Dismiss] or [Play, Dismiss], initial focus Dismiss (Play for a playable media link), no Open; progress is the pill at the bottom centre. See M30 to M40.
 
 Sender: the web app's "Send content" (image, link, PDF). Keep the statistics overlay off for these.
 
@@ -144,6 +152,8 @@ Sender: the web app's "Send content" (image, link, PDF). Keep the statistics ove
 
 ## G. Server selection and discovery (A8, measurement point 6)
 
+> **Superseded by section M** (the designed screens): G1, G2, G9, G11 and K4: the server is chosen in the setup wizard (step 3), not on the idle screen, and cannot be changed afterwards without resetting the app's data; the local network refusal has no orange notice any more. G3 to G8, G10 and G12 still apply to what the wizard offers (M5 to M9).
+
 | Id | Steps | Expected | UNCERTAIN / look for |
 | --- | --- | --- | --- |
 | G1 | No configuration: idle screen | The server is the built-in default (`relay.cometcast.de`, which does not exist yet) unless the build default `CC_DEFAULT_RELAY` was set; source "Default list". Starting shows `connection_lost` | Set `CC_DEFAULT_RELAY` in `project.yml` to your server and rebuild once |
@@ -161,6 +171,8 @@ Sender: the web app's "Send content" (image, link, PDF). Keep the statistics ove
 
 ## H. Siri Remote and focus (measurement point 4)
 
+> **Superseded by section M** (the designed screens): H2 to H5: see M12 to M16 and M30 to M40 for the designed key behaviour.
+
 | Id | Steps | Expected | UNCERTAIN / look for |
 | --- | --- | --- | --- |
 | H1 | Walk through every screen with the remote only, including the text field of the server list and the system keyboard | No screen needs a pointer; the keyboard types; Menu goes back | Focus lost after a state change (for example after `peer_left`) |
@@ -172,6 +184,8 @@ Sender: the web app's "Send content" (image, link, PDF). Keep the statistics ove
 | H7 | Use the Remote app on an iPhone or a CEC TV remote instead of the Siri Remote | Same behaviour | |
 
 ## I. Errors (A12, measurement point 8)
+
+> The display no longer shows the `errors.<code>` texts or a "Create new room" button: a failed connection shows the offline box on the idle screen and the display tries again by itself (M22 to M26). The server cases of this table are still the way to produce them.
 
 Make the server produce each case ([server.md](server.md) for the limits) and check that the **translated** text appears, the app stays usable and "Create new room" works.
 
@@ -193,6 +207,8 @@ Make the server produce each case ([server.md](server.md) for the limits) and ch
 
 ## J. Lifecycle and always-on use (A13, measurement point 4)
 
+> J2 and J3 changed: the idle timer is disabled **only while presenting**, never on Idle (the system screensaver may follow its own timer on Idle). J1: the session now ends without a toast when the app goes to the background and a new code is made on return, whether or not someone presented.
+
 | Id | Steps | Expected | UNCERTAIN / look for |
 | --- | --- | --- | --- |
 | J1 | Receiving, press the TV button (home) and return after 1 minute | The connection is gone; on return the app starts a **new** room with a **new** code automatically (the room was running before) | tvOS may keep the app suspended for a while: record what happens at 10 seconds, 1 minute, 10 minutes |
@@ -205,6 +221,8 @@ Make the server produce each case ([server.md](server.md) for the limits) and ch
 | J8 | Change the network (Wi-Fi to Ethernet) while the idle screen is shown | Discovery continues to work | |
 
 ## K. Security spot checks
+
+> K1: the log has `phase ...` lines and, in Debug builds, `stats ...` lines; still no room code, SDP, link, file name, ALTCHA payload.
 
 | Id | Steps | Expected | Why |
 | --- | --- | --- | --- |
@@ -225,13 +243,74 @@ Make the server produce each case ([server.md](server.md) for the limits) and ch
 | L4 | A 200-page PDF, page through 50 pages quickly | time per page, memory, whether the watchdog fires |
 | L5 | Start and stop receiving 20 times | memory flat; no thread or socket leak (Instruments, Leaks) |
 
+## M. The designed screens (spec 3 to 6, 11, 14, 15; native-apps.md)
+
+Everything in this section is **UNCERTAIN: the SwiftUI views were never compiled or run.** Expected results come from [design/first-run-and-display.md](design/first-run-and-display.md) and [design/native-apps.md](design/native-apps.md); the questions already asked are in [design/implementation-questions-appletv.md](design/implementation-questions-appletv.md). Take a screenshot of every state at 1920 x 1080 points in Dark, Light and OLED black, English and German (du), and compare with the web display's screenshots of the same state: layout, tokens, type, copy (font rendering may differ, no other difference is accepted). Reset the app's data (delete and reinstall) for M1 to M11.
+
+| Id | Steps | Expected | UNCERTAIN / look for |
+| --- | --- | --- | --- |
+| **Fonts, tokens, ring** | | | |
+| M1 | Launch; look at every screen | Atkinson Hyperlegible Next and Mono are used (not San Francisco) for the Latin text; digits of the code, check number and security code are mono | The five fonts register under their PostScript names; `Font.custom(_:fixedSize:)` falls back silently when a name is wrong (the text then looks like SF) |
+| M2 | Move the focus over every kind of control (button, chip, tile, card, text field, licence row) | Exactly one control has the ring: outline 4 in the focus colour, offset 3, glow 9, scale 1.03 in 120 ms (no scale on text fields and rows); **no** tvOS lift, parallax or highlight anywhere | `.focusEffectDisabled()` on every focusable view; a system effect on `TextField` |
+| M3 | Settings, Appearance: Dark, Light, OLED black, Automatic; switch the system appearance (Settings, General, Appearance) with Automatic selected | The three palettes match spec 3.2 (colour-pick a few pixels: Dark bg `#0E1630`, Light `#FFFFFF`, OLED `#000000`); Automatic follows the system and never shows OLED black; the selected tile fill is `#3E4053` (Dark), `#D7D3CF` (Light), none in OLED | sRGB, not Display P3; the logo is the light file on Light only |
+| M4 | System setting Reduce Motion on | Fades are instant, the ring does not scale | `accessibilityReduceMotion` |
+| **Setup wizard (first launch)** | | | |
+| M5 | First launch | Welcome card centred vertically, "Set up" focused; no step dots | |
+| M6 | Press Select; step 1 | Card top edge at 40 ref (does not move on steps 2 to 4); chips (the first selected), custom field empty, Next focused; Back/Next row | Chips wrap onto two lines in German and stay one row for the focus |
+| M7 | Choose a chip, type a name in the field (Select opens the full-screen keyboard), clear it again | Typing deselects the chips; clearing it selects the chip that was selected before typing; after Done on the keyboard the focus is on Next; 32 characters at most | The keyboard flow of `TextField` on tvOS; `onSubmit` |
+| M8 | Step 2 | Two cards (Few people / Many people), the selected one with the accent border and tile fill, initial focus on it (Open by default); a focused unselected card does not look selected | |
+| M9 | Step 3 on a network with no special server | One card: globe, the join address, "Default server. Nothing to set up."; the buttons [Back, Other address, Looks right], focus on Looks right. With a DNS-SRV record or an announcing in-house box (G3, G8): that address first with its source line; "Other address" cycles, then opens the field; an invalid address shows the info line (no red); Back closes the field with focus on Other address; with a managed `forbid_user_override` there is no Other address and the source says "Set by the administrator" | The late answers of DNS (about 3 s) and the announcement refine the list |
+| M10 | Step 4, Finish | Idle screen with the chosen name and mode, the room opens at once; the app remembers: kill it and relaunch, no wizard | |
+| M11 | Menu on steps 1 to 4 and on step 0 | Steps 1 to 4: one step back; step 0: the system leaves the app | `onExitCommand(perform: nil)` hands Menu to the system |
+| **Idle screen** | | | |
+| M12 | Look at the idle screen after the code arrives | Logo 46, room name, mode pill (Open / Approval on / Locked with its icon); step 1 with `cometcast.de/app` (the built-in relay) or the server's host; step 2 with the code as `XXX XXX` (80 mono); the QR box with "Or scan"; footer "No download needed." and the Settings button (gear + word) focused | Margins: top 30, bottom 30, sides 40 ref at 1920 x 1080 (safe area); nothing inside the overscan |
+| M13 | Scan the QR code with an iPhone camera | The system chip offers `https://cometcast.de/app/CODE` (or `https://{host}/CODE`); the web page opens with the code filled in | The QR is the app's own generator (level M, version 3 or 4); compare against a code from the web display for the same URL: same modules except possibly the mask |
+| M14 | Right after launch (before the code) | The code line is empty but keeps its height, the QR box is empty (no modules, no caption), no spinner | |
+| M15 | Switch Wi-Fi off or pull the cable and wait | After about 3 s (the attempt at 3 s failed) the dashed box "No connection to {dom}" with the wifi-off icon and the body text; the QR box stays empty; no flicker for a drop shorter than 3 s; when the network is back the code and QR return by themselves (within 4 s) | The schedule 1 s, 2 s, 3 s, then every 4 s; the log shows the phases |
+| M16 | A server that answers `rate_limited` / `banned` / `server_full`; one with another protocol version | Box at once with the busy text, retry after 30 s; box with the "app out of date" text and no retry | |
+| M17 | In a network with an in-house box announcement (G8): finish setup with it | `idle.altAddress` "or 192.168.x.x" under the host name and the QR code with that IP | `getaddrinfo` on `.local` names |
+| M18 | Locked (Settings): look at the idle screen | Code at 35 %, "Locked right now." under it (indented), QR at 25 % (the Light border stays), caption "Locked" | |
+| M19 | Leave the idle screen untouched for 7 minutes | The whole screen fades to 40 % over 2 s; the first press of any key only restores it (200 ms) and does nothing else; a join, a request or a mode change also restores it | Time with a stopwatch; the system screensaver may follow later (no wake lock on Idle) |
+| **Settings and About** | | | |
+| M20 | On Idle press Play/Pause, and Select on the Settings button | Settings opens over a 55 % scrim, focus on the tile of the current mode; rows [About, Close (Back key)] · [Open, Approval on, Locked] · [Dark, Light, OLED black, Automatic] | Play/Pause is `onPlayPauseCommand` |
+| M21 | Choose Approval on, then Locked, then Open; choose an appearance | Applies at once, the dialog stays open; the pill and the description line change; Open and Approval on are remembered after a relaunch, **Locked is not** (a relaunch starts in the last Open or Approval on) | |
+| M22 | Menu or Play/Pause while Settings is open | Settings closes, focus on the Settings button | |
+| M23 | Select About | The About card: logo, version, GPL, publisher, source, web; [Licences, Close]; focus on Licences; Back closes About and Settings shows with focus on About | The version is `CFBundleShortVersionString` |
+| M24 | Licences | Full-canvas viewer: list (300 wide) with "With their own notice" first (Cisco OpenH264, Atkinson Hyperlegible, ...) and "All parts"; the text pane shows the focused entry; Right moves the ring to the pane, Up/Down scroll by half a pane, Left returns; Back closes the viewer | Parsing 1.4 MB off the main thread (time to first list); focus returns to the selected row (`onMoveCommand`) |
+| **Join request** | | | |
+| M25 | Approval on; a web sender joins | A card over the idle screen: "Request", the name in quotes, "wants to connect", the check number (same as on the sender), Yes focused; Back and Menu do nothing | The accessibility label "Request: “{name}”" |
+| M26 | Press Select on Yes within 1 s of the dialog appearing, then after 1 s | Within 1 s nothing happens; after 1 s Yes allows (toast "allowed"); a second request: the dialog shows "+1 waiting" and, after a decision, the next request with focus on Yes and the 1 s guard again | |
+| M27 | No; No and block; the same sender tries again | Toasts "denied" / "denied and blocked"; a blocked device is not shown again until End | |
+| M28 | A request while Settings is open; a request while a picture is shown | Settings closes (changes stay); over a picture the picture stays visible behind the scrim and the name tag and End are under the scrim | |
+| M29 | Let a request wait for the server's timeout (60 s); let the sender withdraw one | Toast "Request from … expired" / "… withdrew the request"; a name of only invisible characters shows "No name" | |
+| **Presenting** | | | |
+| M30 | A web sender shares a screen | Full-bleed picture on black, aspect fit; **nothing else** at rest; `isIdleTimerDisabled` is true (the screen does not sleep, checked past the screensaver time) and false again on Idle | Wake lock only while presenting |
+| M31 | Press any key (swipe, click, Menu, Play/Pause) | The name tag (bottom left, with the security code as the second line) and End (bottom right, stop icon) fade in together (400 ms), End has the ring; **the first input never activates anything**; after 5 s without input they fade out together | The invisible catcher gets the focus again after the fade; nothing else is focusable at rest |
+| M32 | Controls shown: arrows, Select, Back, Menu | Arrows keep them (restart 5 s), Select activates End (the session ends: toast "Session ended · new code", Idle with a new code, presenters see "Presentation ended"), Back hides them, Menu does nothing | |
+| M33 | Controls hidden: Back; Menu | Both show the controls | |
+| M34 | The security code on the name tag vs the sender's page | Same six digits as `ddd ddd`, digits mono | |
+| M35 | The presenter stops sharing but stays connected | **Expected by the spec:** the display returns to Idle with the same code. Likely **not** implemented (question B3): the last frame stays until the presenter leaves; record what happens | Detection of the end of the track |
+| M36 | The presenter disconnects | Idle, toast "… disconnected", same code | |
+| M37 | Send a PNG, a JPEG; a PDF of several pages | The image fills the screen on black, **no Close button**; the PDF page is drawn on black, the presenter's Next/Previous turn pages, the presenter's page shows "Page n of m" (the display sends the page message); while the PDF opens the pill "Opening …" at the bottom centre | The pill is one line, at most 340 ref, the name shortened in the middle keeping the extension; measure the width |
+| M38 | A large image transfer | The pill "Receiving {name} … n %" at the bottom centre with a black stage; the screen is kept awake | Question B2 |
+| M39 | A damaged PDF, an encrypted PDF, a PDF with a page that cannot be drawn | A toast with the existing text; for one bad page the text in a name-tag-look box in the centre and the document stays | |
+| M40 | Send a link, a media link (MP4 on HTTPS), an HLS link, a WebM, a `http://` media link, a LAN IP | The card: section label "{host} wants to open a link", the address in mono, the hint "This screen cannot open web pages…", **no Open button**; [Dismiss] focused for a plain link; [Play, Dismiss] with Play focused for a playable media link; warning lines with the info icon for a LAN address or an unplayable format; Play shows the header "Playing from {host}", [Stop] and the player; Stop, Back and Dismiss close the card; 1 s guard on every button | Back while the AVPlayer has the focus (question C3) |
+| **Announcement, languages, lifecycle** | | | |
+| M41 | With a presenter app or `cometcast-cli discover` browse the network | The Apple TV appears with its room name only while Idle or Presenting with a code; it disappears (goodbye) in setup, offline, Locked keeps name and mode without a code; a managed `forbid_announcement` stops it | `name` key in the TXT record |
+| M42 | System language German | Every string is German in the du form ("Du lässt jede Person einzeln zu."); Settings' Back key text "Schließen (Zurück-Taste)"; long German texts do not clip or overlap (wizard step 3 with a long host, the offline box, the request name) | |
+| M43 | Build with `CC_STRINGS_TABLE=Localizable-sie` | German addresses the person with "Sie"; nothing else changes | |
+| M44 | Home button while presenting or on Idle, return after a minute | No toast; a new session with a new code | |
+| M45 | VoiceOver on | The idle screen reads the room name, mode, address and code; the join request is announced as a modal alert; toasts are announced; the QR code reads "QR: {url}" | |
+| M46 | Idle for a long time at 4K output | Layout identical (scale 4); no blur on text | No `.scaleEffect` for the canvas |
+
 ## Pass criteria
 
-- **Build (A):** the project generates, builds for the Simulator and as a release archive; the 62 core tests pass on a Mac. Every fix is recorded.
+- **Build (A):** the project generates, builds for the Simulator and as a release archive; the 140 core tests pass on a Mac. Every fix is recorded.
 - **M1 on tvOS (B to D):** a sender in the web app reaches the Apple TV by room code on the same LAN, the H.264 picture plays smoothly with the hardware decoder, the check codes match, "sender left" and a new sender work. This confirms **A19** for the pinned library.
 - **Content (E):** images, links (no open action) and PDF pages work with the stated limits; no hostile input crashes the app. **A20** is confirmed if the PDFs of the corpus render acceptably and the hostile cases end without the system killing the app; otherwise record the failures and see the fallback below.
 - **Servers (G, I):** managed configuration, SRV and announcements behave as the tables say (record which of them do not work on tvOS: those are **A8** facts); every error shows its translated message.
 - **Lifecycle (J):** record what really happens; there is no pass or fail, the numbers decide the docs for A13.
+- **Designed screens (M):** every state of spec 4 matches the web display's screenshot of the same state in Dark, Light and OLED black, English and German; the focus rows and keys of spec 7.1 work with the Siri Remote and show the spec ring and no tvOS focus effect; the wake lock is held only while presenting; Reduce Motion removes the fades and the ring scale; switching the German set from du to Sie changes every addressing string and nothing else. Every deviation is written down (and may need a designer's answer).
 
 Fallbacks if a part fails: A19 (the library does not run on tvOS): build WebRTC for tvOS ourselves or deliver tvOS later ([appletv.md](appletv.md#video)); A20 (in-process PDF is unsafe or slow): drop PDF on tvOS and show "cannot show documents" (the translated `document_unsupported` notice exists), or render PDFs on the sender; A8 (SRV or mDNS missing on tvOS): the typed server and the managed configuration still work.
 

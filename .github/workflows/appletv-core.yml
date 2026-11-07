@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Tests of CometCastCore, the platform independent part of the Apple TV receiver (apps/apple-tv/CometCastCore),
-# with the shared fixtures in tests/fixtures. The SwiftUI app itself is NOT built here (it needs Xcode and the
-# tvOS SDK; the release workflow's `tvos` job is the only place that builds it).
+# with the shared fixtures in tests/fixtures. The tests also read the string catalogs and the Swift files of the app
+# (every key a view uses must exist in the catalog) and the licence files that About shows. The SwiftUI app itself is
+# NOT built here (it needs Xcode and the tvOS SDK; the release workflow's `tvos` job is the only place that builds it).
 # UNCERTAIN: this workflow has not been run on GitHub. The Linux job was verified locally with the same Swift
 # version (6.0.3) from the tarball; the macOS job (CryptoKit path, CommonCrypto PBKDF2) has never run anywhere.
 name: appletv-core

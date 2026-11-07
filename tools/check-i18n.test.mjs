@@ -109,3 +109,49 @@ test('de.json: the loaded German is du, no formal forms (Sie, Ihr..., Ihnen)', (
   }));
   assert.equal(hint.status, 0);
 });
+
+const xc = (strings) => ({
+  sourceLanguage: 'en', version: '1.0',
+  strings: Object.fromEntries(Object.entries(strings).map(([k, [en, de]]) => [k, { localizations: { en: { stringUnit: { state: 'translated', value: en } }, de: { stringUnit: { state: 'translated', value: de } } } }])),
+});
+const APPLE = 'apps/apple-tv/Sources/CometCastTV/';
+
+test('apple-tv: the Sie catalog has the same keys, English and placeholders as the du catalog', () => {
+  const ok = run(fixture({
+    [APPLE + 'Localizable.xcstrings']: xc({ a: ['Hello {name}', 'Hallo {name}'], b: ['B', 'Dein B'] }),
+    [APPLE + 'Localizable-sie.xcstrings']: xc({ a: ['Hello {name}', 'Hallo {name}'], b: ['B', 'Ihr B'] }),
+  }));
+  assert.equal(ok.status, 0, ok.stdout);
+  const missing = run(fixture({
+    [APPLE + 'Localizable.xcstrings']: xc({ a: ['A', 'A'], b: ['B', 'B'] }),
+    [APPLE + 'Localizable-sie.xcstrings']: xc({ a: ['A', 'A'] }),
+  }));
+  assert.equal(missing.status, 1);
+  assert.match(missing.stdout, /"b" is in Localizable.xcstrings but missing in Localizable-sie.xcstrings/);
+  const extra = run(fixture({
+    [APPLE + 'Localizable.xcstrings']: xc({ a: ['A', 'A'] }),
+    [APPLE + 'Localizable-sie.xcstrings']: xc({ a: ['A', 'A'], z: ['Z', 'Z'] }),
+  }));
+  assert.match(extra.stdout, /"z" is in Localizable-sie.xcstrings but missing in Localizable.xcstrings/);
+  const ph = run(fixture({
+    [APPLE + 'Localizable.xcstrings']: xc({ a: ['Hello {name}', 'Hallo {name}'] }),
+    [APPLE + 'Localizable-sie.xcstrings']: xc({ a: ['Hello {name}', 'Hallo {room}'] }),
+  }));
+  assert.equal(ph.status, 1);
+  assert.match(ph.stdout, /placeholders differ between de and sie/);
+});
+
+test('apple-tv: the loaded German catalog is du (formal forms fail, the address "Sie" is excepted)', () => {
+  const bad = run(fixture({
+    [APPLE + 'Localizable.xcstrings']: xc({ a: ['A', 'Geben Sie den Code ein'], c: ['C', 'Neutral'] }),
+    [APPLE + 'Localizable-sie.xcstrings']: xc({ a: ['A', 'x'], c: ['C', 'z'] }),
+  }));
+  assert.equal(bad.status, 1);
+  assert.match(bad.stdout, /"a" in Localizable.xcstrings contains a formal form/);
+  assert.doesNotMatch(bad.stdout, /"c" in Localizable.xcstrings/);
+  const ok = run(fixture({
+    [APPLE + 'Localizable.xcstrings']: xc({ 'receive.media.cleartext': ['E', 'Sie kann nicht abgespielt werden.'] }),
+    [APPLE + 'Localizable-sie.xcstrings']: xc({ 'receive.media.cleartext': ['E', 'Sie kann nicht abgespielt werden.'] }),
+  }));
+  assert.equal(ok.status, 0, ok.stdout);
+});

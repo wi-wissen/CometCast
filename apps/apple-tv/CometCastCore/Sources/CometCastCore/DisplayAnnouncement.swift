@@ -38,9 +38,10 @@ public func announcedMode(_ mode: JoinMode) -> String {
 /// The TXT entries of a display with a code, or nil when the state cannot be announced (bad id or code, a
 /// server that is not a `ws://` or `wss://` URL, too large). While `locked` there is no code and no token.
 /// `wsUrl` is the signalling URL of the relay the display uses (`wss://host:port/ws`); the announced `srv` is
-/// its `host:port`, and `tls=1` is written for `wss://`. There is no room name: the Apple TV app has no setup
-/// for one, and there is no fallback to the device name.
-public func displayAnnouncementTxt(id: String, wsUrl: String, mode: JoinMode, code: String?) -> [(String, String)]? {
+/// its `host:port`, and `tls=1` is written for `wss://`. `roomName` is the name chosen in the setup wizard: it is
+/// cleaned and cut like `room_name` and written as `name` (last key, like cc-discovery) unless empty; there is
+/// no fallback to the device name.
+public func displayAnnouncementTxt(id: String, wsUrl: String, mode: JoinMode, code: String?, roomName: String? = nil) -> [(String, String)]? {
     guard isValidInstanceId(id) else { return nil }
     let tls: Bool
     var rest: Substring
@@ -57,6 +58,7 @@ public func displayAnnouncementTxt(id: String, wsUrl: String, mode: JoinMode, co
         guard let code, isValidRoomCode(code) else { return nil }
         txt.append(("code", code))
     }
+    if let n = roomName.map(cleanRoomName), !n.isEmpty { txt.append(("name", n)) }
     let size = txt.reduce(0) { $0 + 1 + $1.0.utf8.count + 1 + $1.1.utf8.count }
     return size <= announcementMaxTxtBytes ? txt : nil
 }

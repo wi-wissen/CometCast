@@ -121,6 +121,40 @@ function checkFlutterGermanSets(label, loadedRel, alternateRel) {
   return { label, status: 'checked', problems };
 }
 
+// Apple TV: Localizable.xcstrings holds the loaded German set ("du"), Localizable-sie.xcstrings the formal alternate
+// (not loaded by default, selected by one build setting: docs/design/native-apps.md 16). Same keys and the same
+// {placeholders} in en, de and the Sie set; the loaded German must not address the reader formally. "Sie" in
+// receive.media.cleartext means "it" (the address): the one known false alarm besides receive.media.hint.
+function checkAppleGermanSets(label, loadedRel, sieRel) {
+  const a = join(root, loadedRel);
+  const b = join(root, sieRel);
+  if (![a, b].every((p) => existsSync(p))) return { label, status: 'skipped', problems: [], note: 'file missing: ' + [a, b].filter((p) => !existsSync(p)).map((p) => p.slice(root.length + 1)).join(', ') };
+  const problems = [];
+  try {
+    const val = (e, l) => e?.localizations?.[l]?.stringUnit?.value;
+    const holders = (t) => [...String(t).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+    const x = readJson(a).strings ?? {};
+    const y = readJson(b).strings ?? {};
+    const formal = /\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b/;
+    const EXCEPTIONS = new Set(['receive.media.hint', 'receive.media.cleartext']);
+    for (const [k, e] of Object.entries(x)) {
+      if (!(k in y)) { problems.push(`"${k}" is in Localizable.xcstrings but missing in Localizable-sie.xcstrings`); continue; }
+      for (const l of ['en', 'de']) {
+        if (typeof val(y[k], l) !== 'string' || val(y[k], l) === '') problems.push(`"${k}" has no "${l}" value in Localizable-sie.xcstrings`);
+      }
+      if (val(e, 'en') !== val(y[k], 'en')) problems.push(`"${k}": the English value differs between the two catalogs`);
+      if (formal.test(val(e, 'de') ?? '') && !EXCEPTIONS.has(k)) problems.push(`"${k}" in Localizable.xcstrings contains a formal form (Sie/Ihr...): the loaded German is "du"`);
+      for (const [n, t] of [['en', val(e, 'en')], ['sie', val(y[k], 'de')]]) {
+        if (holders(t ?? '') !== holders(val(e, 'de') ?? '')) problems.push(`"${k}": placeholders differ between de and ${n}`);
+      }
+    }
+    for (const k of Object.keys(y)) if (!(k in x)) problems.push(`"${k}" is in Localizable-sie.xcstrings but missing in Localizable.xcstrings`);
+  } catch (e) {
+    problems.push(`cannot read file: ${e.message}`);
+  }
+  return { label, status: 'checked', problems };
+}
+
 const arbKeys = (p) => Object.keys(readJson(p)).filter((k) => !k.startsWith('@'));
 
 const results = [
@@ -129,6 +163,8 @@ const results = [
   comparePair('flutter (app_en.arb vs app_de.arb)', 'apps/flutter/lib/l10n/app_en.arb', 'apps/flutter/lib/l10n/app_de.arb', arbKeys),
   checkFlutterGermanSets('flutter (app_de.arb du vs sie/app_de.arb)', 'apps/flutter/lib/l10n/app_de.arb', 'apps/flutter/lib/l10n/sie/app_de.arb'),
   checkXcstrings('apple-tv (Localizable.xcstrings)', 'apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings'),
+  checkXcstrings('apple-tv (Localizable-sie.xcstrings)', 'apps/apple-tv/Sources/CometCastTV/Localizable-sie.xcstrings'),
+  checkAppleGermanSets('apple-tv (Localizable.xcstrings du vs Localizable-sie.xcstrings)', 'apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings', 'apps/apple-tv/Sources/CometCastTV/Localizable-sie.xcstrings'),
 ];
 
 let failed = false;

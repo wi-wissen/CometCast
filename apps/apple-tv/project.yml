@@ -37,6 +37,12 @@ targets:
     sources:
       - path: Sources/CometCastTV
       - path: Assets.xcassets
+      # Atkinson Hyperlegible Next / Mono (SIL OFL 1.1), listed in Info.plist `UIAppFonts` (docs/design/native-apps.md 11).
+      - path: Resources/Fonts
+        buildPhase: resources
+      # Copies of THIRD_PARTY_LICENSES.md and THIRD_PARTY_NOTICES.md for About (written by tools/gen-third-party.mjs).
+      - path: Resources/Licenses
+        buildPhase: resources
     dependencies:
       - package: CometCastCore
       - package: LiveKitWebRTC
@@ -48,6 +54,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
         # The relay used when nothing else is configured (empty: the built-in list). Same role as VITE_DEFAULT_RELAY.
         CC_DEFAULT_RELAY: ""
+        # The German string table: `Localizable` is "du" (shipped); `Localizable-sie` is the formal set (kept complete,
+        # not loaded by default). Info.plist key CCStringsTable reads this (docs/design/native-apps.md 16).
+        CC_STRINGS_TABLE: "Localizable"
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
 
   # XCTest bundle with the tests of CometCastCore (the same sources `swift test` runs in CometCastCore/Tests).

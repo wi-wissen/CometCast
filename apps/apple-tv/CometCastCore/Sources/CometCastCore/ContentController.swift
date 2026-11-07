@@ -107,3 +107,11 @@ public final class ContentController {
         }
     }
 }
+
+/// The page message of the content control channel, display to presenter (spec 5.6, decisions 13.31 and 58):
+/// `{"kind":"page","page":n,"pages":m}`, 1-based, sent once the page count is known and on every page change.
+/// nil when the values are not `1 <= page <= pages` (that would mean "unknown": nothing is sent).
+public func pageMessageJSON(page: Int, pages: Int) -> String? {
+    guard pages >= 1, page >= 1, page <= pages else { return nil }
+    return JSON.serialize(.object(["kind": .string("page"), "page": .number(Double(page)), "pages": .number(Double(pages))]))
+}

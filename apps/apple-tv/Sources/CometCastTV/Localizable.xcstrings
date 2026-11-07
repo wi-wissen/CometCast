@@ -1,1889 +1,716 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "app.name": {
+    "common.back": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comet Cast"
+            "value": "Back"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comet Cast"
+            "value": "Zurück"
           }
         }
       }
     },
-    "receiver.codeLabel": {
+    "common.next": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Room code"
+            "value": "Next"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Raumcode"
+            "value": "Weiter"
           }
         }
       }
     },
-    "receiver.codeHint": {
+    "common.noName": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter this code on the sending device."
+            "value": "No name"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Geben Sie diesen Code auf dem sendenden Gerät ein."
+            "value": "Ohne Namen"
           }
         }
       }
     },
-    "receiver.howTitle": {
+    "common.quoted": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "How it works"
+            "value": "“{name}”"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "So funktioniert es"
+            "value": "„{name}“"
           }
         }
       }
     },
-    "receiver.how1": {
+    "common.stepOf": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open Comet Cast on the sending device: the app on a computer or phone, or the web page."
+            "value": "Step {n} of 4"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Öffnen Sie Comet Cast auf dem sendenden Gerät: die App auf einem Computer oder Smartphone oder die Webseite."
+            "value": "Schritt {n} von 4"
           }
         }
       }
     },
-    "receiver.how2": {
+    "mode.open": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose the same server as shown below and enter the room code."
+            "value": "Open"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wählen Sie denselben Server wie unten angezeigt und geben Sie den Raumcode ein."
+            "value": "Offen"
           }
         }
       }
     },
-    "receiver.how3": {
+    "mode.approval": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Compare the connection check code on both devices."
+            "value": "Approval on"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vergleichen Sie den Verbindungs-Prüfcode auf beiden Geräten."
+            "value": "Mit Freigabe"
           }
         }
       }
     },
-    "receiver.start": {
+    "mode.locked": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Show room code"
+            "value": "Locked"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Raumcode anzeigen"
+            "value": "Gesperrt"
           }
         }
       }
     },
-    "receiver.retry": {
+    "appearance.dark": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Create new room"
+            "value": "Dark"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Neuen Raum erstellen"
+            "value": "Dunkel"
           }
         }
       }
     },
-    "receiver.stop": {
+    "appearance.light": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stop"
+            "value": "Light"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beenden"
+            "value": "Hell"
           }
         }
       }
     },
-    "receiver.stopConfirmTitle": {
+    "appearance.oled": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stop receiving?"
+            "value": "OLED black"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Empfang beenden?"
+            "value": "OLED-Schwarz"
           }
         }
       }
     },
-    "receiver.stopConfirmBody": {
+    "appearance.auto": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The connection to the sender is closed and the room code is no longer valid."
+            "value": "Automatic"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Verbindung zum Absender wird getrennt und der Raumcode wird ungültig."
+            "value": "Automatisch"
           }
         }
       }
     },
-    "receiver.keepReceiving": {
+    "setup.welcome.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keep receiving"
+            "value": "Hi! This screen is about to become a display device."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Weiter empfangen"
+            "value": "Hallo! Dieser Bildschirm wird zum Anzeigegerät."
           }
         }
       }
     },
-    "receiver.status.idle": {
+    "setup.welcome.body": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Not started."
+            "value": "Afterwards anyone in the room can show here what is on their phone or laptop. With a code, no account."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nicht gestartet."
+            "value": "Danach kann jeder im Raum hier zeigen, was auf seinem Handy oder Laptop ist. Mit einem Code, ohne Konto."
           }
         }
       }
     },
-    "receiver.status.connecting": {
+    "setup.welcome.start": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connecting to the server…"
+            "value": "Set up"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verbindung zum Server wird aufgebaut …"
+            "value": "Einrichten"
           }
         }
       }
     },
-    "receiver.status.checking": {
+    "setup.name.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Checking the connection to the server…"
+            "value": "What is this room called?"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verbindung zum Server wird geprüft …"
+            "value": "Wie heißt dieser Raum?"
           }
         }
       }
     },
-    "receiver.status.waiting_sender": {
+    "setup.name.body": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Waiting for a sender…"
+            "value": "The name is shown large on the screen so people know they are in the right place."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Warten auf einen Absender …"
+            "value": "Der Name steht groß auf dem Bildschirm, damit alle wissen, dass sie richtig sind."
           }
         }
       }
     },
-    "receiver.status.negotiating": {
+    "setup.name.custom": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A sender joined. Setting up the connection…"
+            "value": "Custom name"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ein Absender ist beigetreten. Die Verbindung wird eingerichtet …"
+            "value": "Eigener Name"
           }
         }
       }
     },
-    "receiver.status.receiving": {
+    "setup.name.s1": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Receiving the screen."
+            "value": "Meeting room Elbe"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Bildschirm wird empfangen."
+            "value": "Besprechungsraum Elbe"
           }
         }
       }
     },
-    "receiver.status.peer_left": {
+    "setup.name.s2": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The sender left. You can keep this code and wait for a new sender."
+            "value": "Living room"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Absender hat die Verbindung verlassen. Sie können diesen Code behalten und auf einen neuen Absender warten."
+            "value": "Wohnzimmer"
           }
         }
       }
     },
-    "receiver.status.error": {
+    "setup.name.s3": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Something went wrong."
+            "value": "Clubhouse"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Es ist ein Fehler aufgetreten."
+            "value": "Vereinsheim"
           }
         }
       }
     },
-    "receiver.stageWaiting": {
+    "setup.name.s4": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connected. Waiting for the screen or content from the sender…"
+            "value": "Workshop"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verbunden. Warten auf den Bildschirm oder Inhalte des Absenders …"
+            "value": "Werkstatt"
           }
         }
       }
     },
-    "receiver.video": {
+    "setup.name.s5": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Incoming screen"
+            "value": "Room 204"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eingehender Bildschirm"
+            "value": "Raum 204"
           }
         }
       }
     },
-    "receiver.transfer": {
+    "setup.mode.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Receiving %@… %lld %%"
+            "value": "Who may connect?"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ wird empfangen … %lld %%"
+            "value": "Wer darf sich verbinden?"
           }
         }
       }
     },
-    "receiver.relayUsing": {
+    "setup.mode.fewPeople": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Server: %@"
+            "value": "Few people"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Server: %@"
+            "value": "Wenige Leute"
           }
         }
       }
     },
-    "receiver.unencrypted": {
+    "setup.mode.manyPeople": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unencrypted connection (ws://), only suitable for a trusted local network."
+            "value": "Many people"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unverschlüsselte Verbindung (ws://), nur für ein vertrauenswürdiges lokales Netzwerk geeignet."
+            "value": "Viele Leute"
           }
         }
       }
     },
-    "receiver.menuHint": {
+    "setup.mode.openText": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Press Menu to stop receiving. Play/Pause shows statistics."
+            "value": "Anyone who sees the code connects at once. For small groups, teams and at home."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Drücken Sie „Menü“, um den Empfang zu beenden. „Wiedergabe/Pause“ zeigt die Statistik."
+            "value": "Wer den Code sieht, ist sofort verbunden. Für kleine Runden, Teams und zu Hause."
           }
         }
       }
     },
-    "sas.label": {
+    "setup.mode.approvalText": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connection check code"
+            "value": "Each person shows up here as a request and you let them in. For rooms many people use."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verbindungs-Prüfcode"
+            "value": "Jede Person erscheint hier als Anfrage, du lässt sie rein. Für Räume, die viele nutzen."
           }
         }
       }
     },
-    "sas.explain": {
+    "setup.mode.later": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Both devices should show the same code. If they differ, stop: the connection may be intercepted. Comparing is up to you, the app does not enforce it."
+            "value": "You can switch or lock any time later in the settings."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beide Geräte sollten denselben Code anzeigen. Weichen sie ab, brechen Sie ab: Die Verbindung könnte abgefangen werden. Der Vergleich liegt bei Ihnen, die App erzwingt ihn nicht."
+            "value": "Umschalten und Sperren geht später jederzeit in den Einstellungen."
           }
         }
       }
     },
-    "errors.bad_hello": {
+    "setup.address.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server did not accept the handshake. Please try again."
+            "value": "Which address will others use?"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server hat den Verbindungsaufbau nicht akzeptiert. Bitte versuchen Sie es erneut."
+            "value": "Über welche Adresse kommen die anderen?"
           }
         }
       }
     },
-    "errors.proto_mismatch": {
+    "setup.address.body": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This app and the server use different protocol versions. Please update the app or use another server."
+            "value": "This address is shown large on the screen and is inside the QR code."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diese App und der Server verwenden unterschiedliche Protokollversionen. Bitte aktualisieren Sie die App oder verwenden Sie einen anderen Server."
+            "value": "Diese Adresse steht später groß auf dem Bildschirm und steckt im QR-Code."
           }
         }
       }
     },
-    "errors.wrong_role": {
+    "setup.address.sourceDefault": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This action is not allowed for this role."
+            "value": "Default server. Nothing to set up."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diese Aktion ist für diese Rolle nicht erlaubt."
+            "value": "Standardserver. Nichts einzustellen."
           }
         }
       }
     },
-    "errors.room_not_found": {
+    "setup.address.sourceOwn": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No room with this code exists."
+            "value": "Found via the company network (DNS entry)."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Es gibt keinen Raum mit diesem Code."
+            "value": "Gefunden über das Firmennetz (DNS-Eintrag)."
           }
         }
       }
     },
-    "errors.room_full": {
+    "setup.address.sourceBox": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This room already has a sender."
+            "value": "In-house box found on this network."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dieser Raum hat bereits einen Absender."
+            "value": "Box im Haus im selben Netz gefunden."
           }
         }
       }
     },
-    "errors.not_in_room": {
+    "setup.address.sourcePolicy": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The other device is not connected anymore."
+            "value": "Set by the administrator of this device."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das andere Gerät ist nicht mehr verbunden."
+            "value": "Vom Administrator dieses Geräts vorgegeben."
           }
         }
       }
     },
-    "errors.bad_message": {
+    "setup.address.sourceTyped": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server could not understand a message. Please try again."
+            "value": "Entered by hand."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server konnte eine Nachricht nicht verstehen. Bitte versuchen Sie es erneut."
+            "value": "Von Hand eingegeben."
           }
         }
       }
     },
-    "errors.altcha_required": {
+    "setup.address.ok": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server wants a short check before it creates a room. Please try again."
+            "value": "Looks right"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server verlangt eine kurze Prüfung, bevor er einen Raum anlegt. Bitte versuchen Sie es erneut."
+            "value": "Passt"
           }
         }
       }
     },
-    "errors.altcha_invalid": {
+    "setup.address.change": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The check was not accepted (it may have expired). Please try again."
+            "value": "Other address"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Prüfung wurde nicht akzeptiert (möglicherweise ist sie abgelaufen). Bitte versuchen Sie es erneut."
+            "value": "Andere Adresse"
           }
         }
       }
     },
-    "errors.altcha_failed": {
+    "setup.address.fieldLabel": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The check could not be completed. Please try again."
+            "value": "Server address"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Prüfung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut."
+            "value": "Serveradresse"
           }
         }
       }
     },
-    "errors.altcha_too_hard": {
+    "setup.done.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server asked for a check that is too demanding for this device, so it was not started. Please try again later or contact the server operator."
+            "value": "Done."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server verlangt eine Prüfung, die für dieses Gerät zu aufwendig ist, und sie wurde nicht gestartet. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Betreiber des Servers."
+            "value": "Fertig."
           }
         }
       }
     },
-    "errors.altcha_expired": {
+    "setup.done.bodyRemote": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The check from the server had already expired. Please try again; if it keeps happening, check that the date and time of this device are correct."
+            "value": "Open the settings any time with the Menu key or the Settings button: joining and appearance."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Prüfung des Servers war bereits abgelaufen. Bitte versuchen Sie es erneut; falls das wiederholt passiert, prüfen Sie Datum und Uhrzeit dieses Geräts."
+            "value": "Die Einstellungen öffnest du jederzeit mit der Menü-Taste oder „Einstellungen“: Beitritt und Aussehen."
           }
         }
       }
     },
-    "errors.rate_limited": {
+    "setup.done.finish": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Too many requests from this network. Please wait a moment and try again."
+            "value": "Go to idle screen"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zu viele Anfragen aus diesem Netzwerk. Bitte warten Sie einen Moment und versuchen Sie es erneut."
-          }
-        }
-      }
-    },
-    "errors.banned": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This network is blocked for a while because of too many failed attempts. Please try again later."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dieses Netzwerk ist wegen zu vieler fehlgeschlagener Versuche für kurze Zeit gesperrt. Bitte versuchen Sie es später erneut."
-          }
-        }
-      }
-    },
-    "errors.forbidden": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This network is not allowed to use this server."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dieses Netzwerk darf diesen Server nicht nutzen."
-          }
-        }
-      }
-    },
-    "errors.server_full": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server is full right now. Please try again later."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Server ist gerade ausgelastet. Bitte versuchen Sie es später erneut."
-          }
-        }
-      }
-    },
-    "errors.connection_lost": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The connection to the server was lost or could not be made."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Verbindung zum Server ist abgebrochen oder konnte nicht hergestellt werden."
-          }
-        }
-      }
-    },
-    "errors.peer_failed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The direct connection to the other device failed. Without STUN/TURN servers this only works in the same local network."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die direkte Verbindung zum anderen Gerät ist fehlgeschlagen. Ohne STUN/TURN-Server funktioniert das nur im selben lokalen Netzwerk."
-          }
-        }
-      }
-    },
-    "errors.no_server": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No server is selected. Choose a server first."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Es ist kein Server ausgewählt. Wählen Sie zuerst einen Server aus."
-          }
-        }
-      }
-    },
-    "errors.local_network_denied": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Access to the local network is not allowed for this app. Allow it in the Apple TV settings under Privacy."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Zugriff auf das lokale Netzwerk ist für diese App nicht erlaubt. Erlauben Sie ihn in den Apple-TV-Einstellungen unter „Datenschutz“."
-          }
-        }
-      }
-    },
-    "errors.unknown": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "An unknown error occurred."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ein unbekannter Fehler ist aufgetreten."
-          }
-        }
-      }
-    },
-    "transferError.bad_message": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A message from the sender could not be understood and was ignored."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eine Nachricht des Absenders konnte nicht verstanden werden und wurde ignoriert."
-          }
-        }
-      }
-    },
-    "transferError.unexpected_chunk": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unexpected image data was ignored."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unerwartete Bilddaten wurden ignoriert."
-          }
-        }
-      }
-    },
-    "transferError.too_large": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The image was larger than announced and was discarded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das Bild war größer als angekündigt und wurde verworfen."
-          }
-        }
-      }
-    },
-    "transferError.size_mismatch": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The image arrived incomplete and was discarded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das Bild ist unvollständig angekommen und wurde verworfen."
-          }
-        }
-      }
-    },
-    "transferError.no_transfer": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A transfer ended unexpectedly and was ignored."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eine Übertragung wurde unerwartet beendet und ignoriert."
-          }
-        }
-      }
-    },
-    "transferError.stalled": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The transfer from the sender stopped and was discarded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Übertragung vom Absender ist ins Stocken geraten und wurde verworfen."
-          }
-        }
-      }
-    },
-    "transferError.bad_chunk": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Data arrived in an unexpected form and was discarded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Daten kamen in unerwarteter Form an und wurden verworfen."
-          }
-        }
-      }
-    },
-    "transferError.document_unsupported": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The sender sent a PDF document. This device cannot show documents."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Absender hat ein PDF-Dokument gesendet. Dieses Gerät kann Dokumente nicht anzeigen."
-          }
-        }
-      }
-    },
-    "transferError.document_invalid": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF is damaged or not supported and cannot be shown."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF ist beschädigt oder wird nicht unterstützt und kann nicht angezeigt werden."
-          }
-        }
-      }
-    },
-    "transferError.document_encrypted": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF is password protected and cannot be shown."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF ist passwortgeschützt und kann nicht angezeigt werden."
-          }
-        }
-      }
-    },
-    "transferError.document_too_large": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF is too large to be shown."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF ist zu groß, um angezeigt zu werden."
-          }
-        }
-      }
-    },
-    "transferError.document_too_many_pages": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF has too many pages to be shown."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF hat zu viele Seiten, um angezeigt zu werden."
-          }
-        }
-      }
-    },
-    "transferError.document_rejected": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF was refused by the safety check and is not shown."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF wurde von der Sicherheitsprüfung abgelehnt und wird nicht angezeigt."
-          }
-        }
-      }
-    },
-    "transferError.document_memory": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF needs more memory than allowed and was closed."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF benötigt mehr Speicher als erlaubt und wurde geschlossen."
-          }
-        }
-      }
-    },
-    "transferError.document_timeout": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Showing the PDF took too long and it was closed."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Anzeige des PDFs hat zu lange gedauert; es wurde geschlossen."
-          }
-        }
-      }
-    },
-    "transferError.document_failed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The PDF could not be shown."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das PDF konnte nicht angezeigt werden."
-          }
-        }
-      }
-    },
-    "transferError.image_undecodable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The image could not be decoded and was discarded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das Bild konnte nicht dekodiert werden und wurde verworfen."
-          }
-        }
-      }
-    },
-    "transferError.image_too_many_pixels": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The image has too many pixels to be shown and was discarded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das Bild hat zu viele Pixel, um angezeigt zu werden, und wurde verworfen."
-          }
-        }
-      }
-    },
-    "content.close": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Schließen"
-          }
-        }
-      }
-    },
-    "content.imageLabel": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Image from the sender: %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bild vom Absender: %@"
-          }
-        }
-      }
-    },
-    "document.opening": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opening PDF…"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PDF wird geöffnet …"
-          }
-        }
-      }
-    },
-    "document.page": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Page %lld of %lld"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seite %lld von %lld"
-          }
-        }
-      }
-    },
-    "document.label": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PDF document %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PDF-Dokument %@"
-          }
-        }
-      }
-    },
-    "link.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ sent a link"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ hat einen Link gesendet"
-          }
-        }
-      }
-    },
-    "link.hint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The sender shared this link. Apple TV does not open links in a browser; check the address. Media files can be played from here."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Absender hat diesen Link geteilt. Apple TV öffnet Links nicht in einem Browser; prüfen Sie die Adresse. Mediendateien können von hier aus abgespielt werden."
-          }
-        }
-      }
-    },
-    "link.address": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Address"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Adresse"
-          }
-        }
-      }
-    },
-    "link.dismiss": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dismiss"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verwerfen"
-          }
-        }
-      }
-    },
-    "media.hint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This link points to a media file. It is loaded from %@ only after you select \"Play\"."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dieser Link verweist auf eine Mediendatei. Sie wird von %@ nur geladen, wenn Sie „Abspielen“ auswählen."
-          }
-        }
-      }
-    },
-    "media.play": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Play from %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Von %@ abspielen"
-          }
-        }
-      }
-    },
-    "media.retry": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Try again"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Erneut versuchen"
-          }
-        }
-      }
-    },
-    "media.stop": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stop"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stopp"
-          }
-        }
-      }
-    },
-    "media.label": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Media player, %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Medienwiedergabe, %@"
-          }
-        }
-      }
-    },
-    "media.from": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Playing from %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wiedergabe von %@"
-          }
-        }
-      }
-    },
-    "media.loading": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Loading…"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wird geladen …"
-          }
-        }
-      }
-    },
-    "media.cleartext": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This address uses http://, which Apple TV blocks for security. It cannot be played."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diese Adresse verwendet http://, was Apple TV aus Sicherheitsgründen blockiert. Sie kann nicht abgespielt werden."
-          }
-        }
-      }
-    },
-    "media.formatUnsupported": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apple TV cannot play this file format."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apple TV kann dieses Dateiformat nicht abspielen."
-          }
-        }
-      }
-    },
-    "media.localWarning": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Warning: this address points to a device or a name inside a network (an IP address or a local name). Only play it if you expect that."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Achtung: Diese Adresse zeigt auf ein Gerät oder einen Namen innerhalb eines Netzwerks (eine IP-Adresse oder ein lokaler Name). Spielen Sie sie nur ab, wenn Sie das erwarten."
-          }
-        }
-      }
-    },
-    "media.error.aborted": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Playback from %@ was stopped."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Wiedergabe von %@ wurde abgebrochen."
-          }
-        }
-      }
-    },
-    "media.error.network": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ could not be reached or did not answer in time."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ ist nicht erreichbar oder hat nicht rechtzeitig geantwortet."
-          }
-        }
-      }
-    },
-    "media.error.decode": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The file from %@ is damaged or could not be decoded."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Datei von %@ ist beschädigt oder konnte nicht dekodiert werden."
-          }
-        }
-      }
-    },
-    "media.error.unsupported": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This file cannot be played here: the format is not supported, the file is missing, or the server refuses playback. (%@)"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diese Datei kann hier nicht abgespielt werden: Das Format wird nicht unterstützt, die Datei fehlt oder der Server verweigert die Wiedergabe. (%@)"
-          }
-        }
-      }
-    },
-    "media.error.blocked": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Playback could not be started. Select \"Try again\"."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Wiedergabe konnte nicht gestartet werden. Wählen Sie „Erneut versuchen“."
-          }
-        }
-      }
-    },
-    "relay.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Server"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Server"
-          }
-        }
-      }
-    },
-    "relay.hint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server connects the two devices: room codes, connection data and network addresses pass through it. Media (screen, images) travels directly between the devices, encrypted (DTLS-SRTP), but the server carries the signalling and could in principle interfere with the key exchange. Compare the connection check code on both devices. Sender and receiver must use the same server."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Server verbindet die beiden Geräte: Raumcodes, Verbindungsdaten und Netzwerkadressen laufen darüber. Medien (Bildschirm, Bilder) werden direkt zwischen den Geräten übertragen, verschlüsselt (DTLS-SRTP), aber der Server vermittelt die Signalisierung und könnte den Schlüsselaustausch grundsätzlich manipulieren. Vergleichen Sie den Verbindungs-Prüfcode auf beiden Geräten. Sender und Empfänger müssen denselben Server verwenden."
-          }
-        }
-      }
-    },
-    "relay.change": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change server"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Server ändern"
-          }
-        }
-      }
-    },
-    "relay.choose": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Known servers"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bekannte Server"
-          }
-        }
-      }
-    },
-    "relay.noSelection": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No server is selected. Choose one of the servers below."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Es ist kein Server ausgewählt. Wählen Sie einen der Server unten aus."
-          }
-        }
-      }
-    },
-    "relay.locked": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your administrator has set the server."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ihr Administrator hat den Server festgelegt."
-          }
-        }
-      }
-    },
-    "relay.policyUnusable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The configuration of your administrator could not be read, so no server is offered."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Konfiguration Ihres Administrators konnte nicht gelesen werden, daher wird kein Server angeboten."
-          }
-        }
-      }
-    },
-    "relay.searching": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Looking for servers in the network…"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Es wird nach Servern im Netzwerk gesucht …"
-          }
-        }
-      }
-    },
-    "relay.selected": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selected"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ausgewählt"
-          }
-        }
-      }
-    },
-    "relay.useThis": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use this server"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diesen Server verwenden"
-          }
-        }
-      }
-    },
-    "relay.customLabel": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use another server"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Anderen Server verwenden"
-          }
-        }
-      }
-    },
-    "relay.customHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Example: wss://relay.example.org (an address on your local network may start with ws://)"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Beispiel: wss://relay.example.org (eine Adresse im lokalen Netzwerk darf mit ws:// beginnen)"
-          }
-        }
-      }
-    },
-    "relay.customApply": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Check and use"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Prüfen und verwenden"
-          }
-        }
-      }
-    },
-    "relay.done": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Done"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fertig"
-          }
-        }
-      }
-    },
-    "relay.source.mdm": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Set by your administrator"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Von Ihrem Administrator festgelegt"
-          }
-        }
-      }
-    },
-    "relay.source.dns-srv": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Found in the network (DNS)"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Im Netzwerk gefunden (DNS)"
-          }
-        }
-      }
-    },
-    "relay.source.display-announcement": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Announced by a display on this network, not verified"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Von einem Display in diesem Netzwerk angekündigt, nicht überprüft"
-          }
-        }
-      }
-    },
-    "relay.source.default-list": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Default list"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Standardliste"
-          }
-        }
-      }
-    },
-    "relay.source.user": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Entered by you"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Von Ihnen eingegeben"
+            "value": "Zum Wartebildschirm"
           }
         }
       }
@@ -1900,7 +727,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bitte geben Sie eine Adresse ein."
+            "value": "Bitte gib eine Adresse ein."
           }
         }
       }
@@ -1911,13 +738,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This is not a valid server address."
+            "value": "This is not a valid relay address."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das ist keine gültige Serveradresse."
+            "value": "Das ist keine gültige Relay-Adresse."
           }
         }
       }
@@ -1934,7 +761,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwenden Sie wss://."
+            "value": "Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwende wss://."
           }
         }
       }
@@ -1973,342 +800,1549 @@
         }
       }
     },
-    "relay.confirm.title": {
+    "idle.step1": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use this server?"
+            "value": "Open in your browser"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diesen Server verwenden?"
+            "value": "Im Browser öffnen"
           }
         }
       }
     },
-    "relay.confirm.body": {
+    "idle.step2": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The server %@ was not set by your administrator and is not on the default list (%@). Only continue if you know and trust its operator."
+            "value": "Enter this code"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server %@ wurde nicht von Ihrem Administrator festgelegt und steht nicht auf der Standardliste (%@). Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen."
+            "value": "Diesen Code eingeben"
           }
         }
       }
     },
-    "relay.confirm.risk": {
+    "idle.altAddress": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The operator of this server can see who connects, your room codes and network addresses, and can redirect the connection. Nothing is connected before you decide."
+            "value": "or {ip}"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Betreiber dieses Servers kann sehen, wer sich verbindet, Ihre Raumcodes und Netzwerkadressen, und kann die Verbindung umleiten. Es wird nichts verbunden, bevor Sie entschieden haben."
+            "value": "oder {ip}"
           }
         }
       }
     },
-    "relay.confirm.use": {
+    "idle.locked": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use this server"
+            "value": "Locked right now."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diesen Server verwenden"
+            "value": "Gerade gesperrt."
           }
         }
       }
     },
-    "relay.confirm.cancel": {
+    "idle.qrCaption": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cancel"
+            "value": "Or scan"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abbrechen"
+            "value": "Oder scannen"
           }
         }
       }
     },
-    "a11y.roomCode": {
+    "idle.qrLocked": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Room code %@"
+            "value": "Locked"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Raumcode %@"
+            "value": "Gesperrt"
           }
         }
       }
     },
-    "a11y.sas": {
+    "idle.appLine": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connection check code %@"
+            "value": "No download needed. Prefer an app: App Store · Google Play · {dom}/app"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verbindungs-Prüfcode %@"
+            "value": "Kein Download nötig. Lieber als App: App Store · Google Play · {dom}/app"
           }
         }
       }
     },
-    "a11y.video": {
+    "idle.appLineWeb": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Incoming screen of the sender"
+            "value": "No download needed."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eingehender Bildschirm des Absenders"
+            "value": "Kein Download nötig."
           }
         }
       }
     },
-    "a11y.progress": {
+    "idle.offline.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Receiving, %lld percent"
+            "value": "No connection to {dom}"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Empfang, %lld Prozent"
+            "value": "Keine Verbindung zu {dom}"
           }
         }
       }
     },
-    "stats.title": {
+    "idle.offline.body": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Statistics"
+            "value": "This screen is offline right now. Code and QR code come back by themselves once the network is back."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Statistik"
+            "value": "Dieser Bildschirm ist gerade offline. Sobald das Netz wieder da ist, erscheinen Code und QR-Code von selbst."
           }
         }
       }
     },
-    "stats.video": {
+    "idle.offline.bodyBusy": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video: %@ %lld x %lld, %@ fps"
+            "value": "The server is busy right now. This screen tries again by itself."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video: %@ %lld x %lld, %@ Bilder/s"
+            "value": "Der Server ist gerade ausgelastet. Dieser Bildschirm versucht es von selbst noch einmal."
           }
         }
       }
     },
-    "stats.decoder": {
+    "idle.offline.bodyOutdatedApp": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Decoder: %@"
+            "value": "This app is out of date. Update it to get a code."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Decoder: %@"
+            "value": "Diese App ist veraltet. Aktualisiere sie, um einen Code zu bekommen."
           }
         }
       }
     },
-    "stats.frames": {
+    "settings.open": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Frames: %lld decoded, %lld dropped, %lld key frames"
+            "value": "Settings"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bilder: %lld dekodiert, %lld verworfen, %lld Schlüsselbilder"
+            "value": "Einstellungen"
           }
         }
       }
     },
-    "stats.rate": {
+    "settings.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Received: %@ kbit/s, jitter %@ ms, %lld packets lost"
+            "value": "Settings"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Empfangen: %@ kbit/s, Jitter %@ ms, %lld Pakete verloren"
+            "value": "Einstellungen"
           }
         }
       }
     },
-    "stats.route": {
+    "settings.close": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Route: %@ (%@)"
+            "value": "Close"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Route: %@ (%@)"
+            "value": "Schließen"
           }
         }
       }
     },
-    "stats.route.host": {
+    "settings.closeRemote": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "direct, same network"
+            "value": "Close (Back key)"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "direkt, gleiches Netzwerk"
+            "value": "Schließen (Zurück-Taste)"
           }
         }
       }
     },
-    "stats.route.srflx": {
+    "settings.join.label": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "direct, through NAT"
+            "value": "Joining"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "direkt, über NAT"
+            "value": "Beitritt"
           }
         }
       }
     },
-    "stats.route.relay": {
+    "settings.join.openText": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "through a relay (TURN)"
+            "value": "Anyone with the code connects at once."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "über ein Relay (TURN)"
+            "value": "Jeder mit dem Code ist sofort verbunden."
           }
         }
       }
     },
-    "stats.route.unknown": {
+    "settings.join.approvalText": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "unknown"
+            "value": "You let each person in one by one."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "unbekannt"
+            "value": "Du lässt jede Person einzeln zu."
           }
         }
       }
     },
-    "stats.rtt": {
+    "settings.join.lockedText": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Round trip time: %@ ms"
+            "value": "Nobody new can join. Connected stay."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Laufzeit hin und zurück: %@ ms"
+            "value": "Niemand kommt neu hinzu. Verbundene bleiben."
+          }
+        }
+      }
+    },
+    "settings.appearance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aussehen"
+          }
+        }
+      }
+    },
+    "about.open": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Über"
+          }
+        }
+      }
+    },
+    "about.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About Comet Cast"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Über Comet Cast"
+          }
+        }
+      }
+    },
+    "about.version": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version {version}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version {version}"
+          }
+        }
+      }
+    },
+    "about.licence": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free software under the GPL-3.0"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freie Software unter der GPL-3.0"
+          }
+        }
+      }
+    },
+    "about.publisher": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Published by Schulverwalter GmbH"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herausgegeben von der Schulverwalter GmbH"
+          }
+        }
+      }
+    },
+    "about.sourceTv": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source code: {url}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quelltext: {url}"
+          }
+        }
+      }
+    },
+    "about.webTv": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy and imprint: {url}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Datenschutz und Impressum: {url}"
+          }
+        }
+      }
+    },
+    "about.licences": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Licences"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lizenzen"
+          }
+        }
+      }
+    },
+    "about.featured": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With their own notice"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit eigenem Hinweis"
+          }
+        }
+      }
+    },
+    "about.all": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All parts"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle Bausteine"
+          }
+        }
+      }
+    },
+    "request.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anfrage"
+          }
+        }
+      }
+    },
+    "request.queue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+{n} waiting"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+{n} warten"
+          }
+        }
+      }
+    },
+    "request.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "wants to connect"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "möchte sich verbinden"
+          }
+        }
+      }
+    },
+    "request.check": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prüfzahl"
+          }
+        }
+      }
+    },
+    "request.yes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ja"
+          }
+        }
+      }
+    },
+    "request.no": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nein"
+          }
+        }
+      }
+    },
+    "request.noBlock": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No and block"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nein und sperren"
+          }
+        }
+      }
+    },
+    "request.aria": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request: {name}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anfrage: {name}"
+          }
+        }
+      }
+    },
+    "present.byline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} is showing"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} zeigt"
+          }
+        }
+      }
+    },
+    "present.sas": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Security code {sas}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sicherheitscode {sas}"
+          }
+        }
+      }
+    },
+    "present.end": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beenden"
+          }
+        }
+      }
+    },
+    "toast.joined": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} connected"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} ist verbunden"
+          }
+        }
+      }
+    },
+    "toast.allowed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} allowed"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} zugelassen"
+          }
+        }
+      }
+    },
+    "toast.denied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} denied"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} abgelehnt"
+          }
+        }
+      }
+    },
+    "toast.blocked": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} denied and blocked"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} abgelehnt und gesperrt"
+          }
+        }
+      }
+    },
+    "toast.expired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request from {name} expired"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anfrage von {name} verfallen"
+          }
+        }
+      }
+    },
+    "toast.withdrawn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} withdrew the request"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} hat die Anfrage zurückgezogen"
+          }
+        }
+      }
+    },
+    "toast.left": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} disconnected"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} hat sich getrennt"
+          }
+        }
+      }
+    },
+    "toast.sessionEnded": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session ended · new code"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sitzung beendet · neuer Code"
+          }
+        }
+      }
+    },
+    "toast.openDisabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server only allows Approval on"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Server erlaubt nur „Mit Freigabe“"
+          }
+        }
+      }
+    },
+    "receive.link.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{host} wants to open a link"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{host} möchte einen Link öffnen"
+          }
+        }
+      }
+    },
+    "receive.link.hintTv": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This screen cannot open web pages. Open the address on your own device if you need it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Bildschirm kann keine Webseiten öffnen. Öffne die Adresse bei Bedarf auf deinem eigenen Gerät."
+          }
+        }
+      }
+    },
+    "receive.link.dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwerfen"
+          }
+        }
+      }
+    },
+    "receive.media.play": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abspielen"
+          }
+        }
+      }
+    },
+    "receive.media.stop": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopp"
+          }
+        }
+      }
+    },
+    "receive.media.from": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playing from {host}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wiedergabe von {host}"
+          }
+        }
+      }
+    },
+    "receive.media.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Media player, {host}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medienwiedergabe, {host}"
+          }
+        }
+      }
+    },
+    "receive.media.localWarning": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warning: this address points to a device or a name inside a network (an IP address or a local name). Only play it if you expect that."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Achtung: Diese Adresse zeigt auf ein Gerät oder einen Namen innerhalb eines Netzwerks (eine IP-Adresse oder ein lokaler Name). Spiel sie nur ab, wenn du das erwartest."
+          }
+        }
+      }
+    },
+    "receive.media.cleartext": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This address uses http://, which Apple TV blocks for security. It cannot be played."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Adresse verwendet http://, was Apple TV aus Sicherheitsgründen blockiert. Sie kann nicht abgespielt werden."
+          }
+        }
+      }
+    },
+    "receive.media.formatUnsupported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple TV cannot play this file format."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple TV kann dieses Dateiformat nicht abspielen."
+          }
+        }
+      }
+    },
+    "receive.media.error.aborted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback from {host} was stopped."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Wiedergabe von {host} wurde abgebrochen."
+          }
+        }
+      }
+    },
+    "receive.media.error.network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{host} could not be reached or did not answer in time."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{host} ist nicht erreichbar oder hat nicht rechtzeitig geantwortet."
+          }
+        }
+      }
+    },
+    "receive.media.error.decode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file from {host} is damaged or could not be decoded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Datei von {host} ist beschädigt oder konnte nicht dekodiert werden."
+          }
+        }
+      }
+    },
+    "receive.media.error.unsupported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file cannot be played here: the format is not supported, the file is missing, or the media server does not allow playback from other sites. Use Open to view it in a new tab. ({host})"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Datei kann hier nicht abgespielt werden: Das Format wird nicht unterstützt, die Datei fehlt oder der Medienserver erlaubt die Wiedergabe von anderen Websites nicht. Mit „Öffnen“ siehst du sie in einem neuen Tab. ({host})"
+          }
+        }
+      }
+    },
+    "receive.media.error.blocked": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The browser blocked automatic playback. Click \"Try again\" to start it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Browser hat die automatische Wiedergabe blockiert. Klick auf „Erneut versuchen“, um sie zu starten."
+          }
+        }
+      }
+    },
+    "receive.transfer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receiving {name}… {percent} %"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} wird empfangen … {percent} %"
+          }
+        }
+      }
+    },
+    "receive.document.loading": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening {name}…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "{name} wird geöffnet …"
+          }
+        }
+      }
+    },
+    "receive.document.pageError.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This page could not be shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Seite konnte nicht angezeigt werden."
+          }
+        }
+      }
+    },
+    "receive.document.pageError.page_out_of_range": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This page does not exist."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Seite existiert nicht."
+          }
+        }
+      }
+    },
+    "receive.document.pageError.bad_size": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This page has an unusable size."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Seite hat eine unbrauchbare Größe."
+          }
+        }
+      }
+    },
+    "receive.document.pageError.timeout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing this page took too long."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Anzeige dieser Seite hat zu lange gedauert."
+          }
+        }
+      }
+    },
+    "receive.document.pageError.memory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This page needs too much memory."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Seite benötigt zu viel Speicher."
+          }
+        }
+      }
+    },
+    "receive.transferError.bad_message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A message from the sender could not be understood and was ignored."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Nachricht des Absenders konnte nicht verstanden werden und wurde ignoriert."
+          }
+        }
+      }
+    },
+    "receive.transferError.unexpected_chunk": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unexpected image data was ignored."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unerwartete Bilddaten wurden ignoriert."
+          }
+        }
+      }
+    },
+    "receive.transferError.too_large": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image was larger than announced and was discarded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Bild war größer als angekündigt und wurde verworfen."
+          }
+        }
+      }
+    },
+    "receive.transferError.size_mismatch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image arrived incomplete and was discarded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Bild ist unvollständig angekommen und wurde verworfen."
+          }
+        }
+      }
+    },
+    "receive.transferError.no_transfer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An image transfer ended unexpectedly and was ignored."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Bildübertragung wurde unerwartet beendet und ignoriert."
+          }
+        }
+      }
+    },
+    "receive.transferError.stalled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The transfer from the sender stopped and was discarded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Übertragung vom Absender ist ins Stocken geraten und wurde verworfen."
+          }
+        }
+      }
+    },
+    "receive.transferError.bad_chunk": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image data arrived in an unexpected form and was discarded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilddaten kamen in unerwarteter Form an und wurden verworfen."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_unsupported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sender sent a PDF document. This app cannot show documents yet."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Absender hat ein PDF-Dokument gesendet. Diese App kann Dokumente noch nicht anzeigen."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_invalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF is damaged or not supported and cannot be shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF ist beschädigt oder wird nicht unterstützt und kann nicht angezeigt werden."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_encrypted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF is password protected and cannot be shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF ist passwortgeschützt und kann nicht angezeigt werden."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_too_large": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF is too large to be shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF ist zu groß, um angezeigt zu werden."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_too_many_pages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF has too many pages to be shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF hat zu viele Seiten, um angezeigt zu werden."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_rejected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF was refused by the safety check and is not shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF wurde von der Sicherheitsprüfung abgelehnt und wird nicht angezeigt."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_memory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF needs more memory than allowed and was closed."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF benötigt mehr Speicher als erlaubt und wurde geschlossen."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_timeout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing the PDF took too long and it was closed."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Anzeige des PDFs hat zu lange gedauert; es wurde geschlossen."
+          }
+        }
+      }
+    },
+    "receive.transferError.document_failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF could not be shown."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das PDF konnte nicht angezeigt werden."
+          }
+        }
+      }
+    },
+    "receive.transferError.image_undecodable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image could not be decoded and was discarded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Bild konnte nicht dekodiert werden und wurde verworfen."
+          }
+        }
+      }
+    },
+    "receive.transferError.image_too_many_pixels": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image has too many pixels to be shown and was discarded."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Bild hat zu viele Pixel, um angezeigt zu werden, und wurde verworfen."
           }
         }
       }

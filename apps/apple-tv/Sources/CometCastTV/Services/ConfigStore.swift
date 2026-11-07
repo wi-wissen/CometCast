@@ -20,6 +20,7 @@ enum ConfigStore {
     private static let confirmedKey = "cc.confirmedRelays"
     private static let maxConfirmed = 16
     private static let instanceKey = "cc.instanceId"
+    private static let displayKey = "cc.display.config"
 
     /// The stable random id of this installation (announced; spec 14.8 point 2). Created once.
     static var instanceId: String {
@@ -27,6 +28,15 @@ enum ConfigStore {
         let id = newInstanceId()
         UserDefaults.standard.set(id, forKey: instanceKey)
         return id
+    }
+
+    /// Room name, default join mode, server and appearance (spec 4.1 Finish, 4.3). nil until the wizard finished.
+    static var displayConfig: DisplayConfig? {
+        get { DisplayConfig.decode(UserDefaults.standard.string(forKey: displayKey)) }
+        set {
+            if let n = newValue { UserDefaults.standard.set(n.encode(), forKey: displayKey) }
+            else { UserDefaults.standard.removeObject(forKey: displayKey) }
+        }
     }
 
     static func policyState(_ defaults: UserDefaults = .standard) -> PolicyState {
