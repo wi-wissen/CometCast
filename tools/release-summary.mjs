@@ -50,8 +50,9 @@ const rows = jobs.map(([id, what]) => {
   return `| ${id} | ${what} | ${result} | UNCERTAIN until first real run |`;
 });
 
-// Files that are not release-signed or not shippable. NO-CORE: the iOS project has no Rust core.
-const unsigned = files.filter((f) => /debugkey|UNSIGNED|adhoc|not-notarized|NO-CORE/i.test(f));
+// Files that are not release-signed or not shippable. UNVERIFIED: the iOS build was never run on
+// a device (docs/ios-device-test-plan.md). NO-CORE: the old name of the iOS files (no Rust core).
+const unsigned = files.filter((f) => /debugkey|UNSIGNED|adhoc|not-notarized|NO-CORE|UNVERIFIED/i.test(f));
 // Platform artefacts = everything except the files of the `meta` job.
 const META = /^(cometcast-sbom-|cometcast-deploy-|LICENSE$|THIRD_PARTY_NOTICES\.md$)/;
 const platformFiles = files.filter((f) => !META.test(f));
@@ -75,7 +76,7 @@ if (bad.length) {
 lines.push('### Signing');
 lines.push('');
 if (unsigned.length) {
-  lines.push('These files are NOT signed with a release key (signing secrets were not configured) or are NOT shippable (`NO-CORE`: iOS has no Rust core, so even a signed .ipa is only a build check). Do not distribute them as official builds:');
+  lines.push('These files are NOT signed with a release key (signing secrets were not configured) or are NOT shippable (`UNVERIFIED`: the iOS app and its broadcast extension were never run on a device, so even a signed .ipa is only a build check). Do not distribute them as official builds:');
   lines.push('');
   for (const f of unsigned) lines.push(`- \`${f}\``);
 } else {

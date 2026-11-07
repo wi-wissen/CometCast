@@ -14,6 +14,8 @@
 | [web-m2.md](web-m2.md) | Web app toolbar, image, link and PDF transfer over the control DataChannel (message format, limits, PDF rendering in the browser) |
 | [android.md](android.md) | Android and Android TV build (cargo-ndk), TV readiness, screen capture, receiver video, PDF/Office workers, what is untested |
 | [android-device-test-plan.md](android-device-test-plan.md) | Checklist for testing the Android app on a phone and a Google TV (what to do, expected results, what to record) |
+| [ios.md](ios.md) | iOS and iPadOS: the ReplayKit broadcast extension, why the extension does the network connection, App Group hand-over, memory budget, receiving with VideoToolbox, project generation, signing, App Store notes; written to specification, never compiled |
+| [ios-device-test-plan.md](ios-device-test-plan.md) | Checklist for testing the iOS app on an iPhone, an iPad and a Mac with Xcode (build, broadcast, rotation, interruptions, memory soak, receiving, network, store checks) |
 | [flutter-bridge.md](flutter-bridge.md) | How the Flutter app talks to the Rust core (flutter_rust_bridge), codegen, build integration |
 | [airplay.md](airplay.md) | AirPlay receiving through the separate UxPlay process (`cc-airplay`): supervisor, policy, licence boundary, what is unverified |
 | [airplay-sender.md](airplay-sender.md) | AirPlay sender without FairPlay (`cc-airplay-sender`): discovery, pairing, media link, photo, the screen as an HLS stream; what was tested against UxPlay, what is unverified; real mirroring is not possible (FairPlay) |
