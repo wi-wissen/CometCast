@@ -162,7 +162,7 @@ Both modes: rooms live in memory only; nothing is written to disk.
 | `GET /healthz` | `200 ok`. Always allowed for a request that comes from the same computer (loopback) and is not forwarded for somebody else, even if `allow` would refuse it, so health checks keep working. A request that a trusted proxy forwards with `X-Forwarded-For` is checked like any other request against its forwarded client address (a denied client gets `403` on `/healthz` too). |
 | `GET /altcha/challenge` | A new puzzle (JSON), `Cache-Control: no-store`. |
 | `GET /ice-servers` | STUN list and, with `[turn]`, TURN credentials (JSON array); `404` when neither `[stun]` nor `[turn]` is configured. |
-| anything else | Static files from `web_dir`, if set. |
+| anything else | Static files from `web_dir`, if set. A path that is no file and has no file extension (`/display`, a join code such as `/K7QM2W`, `/app`) answers `200` with `index.html` of `web_dir`, because the web app chooses its page from the path; a missing file with an extension is a plain `404`. A static host that is not this server needs the same behaviour (GitHub Pages: a copy of `index.html` as `404.html`). |
 
 Refusals: `403` (not allowed or banned; banned answers carry `Retry-After`), `429`
 (rate limit, `Retry-After`), `503` (server full).

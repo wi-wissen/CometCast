@@ -31,6 +31,8 @@ export interface SenderState {
   timeoutSecs?: number
   /** Milliseconds since the epoch when an error happened (for "ask again in 15 s"). */
   errorAt?: number
+  /** True while the screen is being shown (see {@link SenderSession.shareScreen}). */
+  screen?: boolean
 }
 
 export interface SenderDeps {
@@ -57,6 +59,7 @@ export class SenderSession {
   private client: SignalingClient | null = null
   private peer: Peer | null = null
   private stream: MediaStream | null = null
+  private screenOn = false
   private run = 0 // invalidates async work of an earlier start()/stop()
   private icePromise: Promise<RTCIceServer[]> = Promise.resolve([])
   private readonly peerFactory: PeerFactory
@@ -77,6 +80,7 @@ export class SenderSession {
       this.state.timeoutSecs = this.check.timeoutSecs
     }
     if (phase === 'error') this.state.errorAt = (this.deps.now ?? Date.now)()
+    if (this.screenOn) this.state.screen = true
     this.deps.onChange(this.state)
   }
 
@@ -110,13 +114,77 @@ export class SenderSession {
     this.requireControl().sendCmd(cmd)
   }
 
-  /** Must be called from a user gesture (getDisplayMedia requires one). */
-  async start(code: string): Promise<void> {
+  /**
+   * Shows the screen on an already connected session: asks for the screen (must be called from a
+   * user gesture), adds it to the connection and negotiates again. Returns 'cancelled' when the
+   * person closed the system dialog, 'failed' when the browser could not capture and 'ok' when the
+   * screen is being sent. The session stays connected when the screen stops (see stopScreen).
+   */
+  async shareScreen(): Promise<'ok' | 'cancelled' | 'failed'> {
+    const getStream = this.deps.getStream
+    const run = this.run
+    if (!getStream || !this.peer || !this.client || this.state.phase !== 'sharing' || this.screenOn) return 'failed'
+    let stream: MediaStream
+    try {
+      stream = await getStream()
+    } catch (e) {
+      const denied = e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')
+      return denied ? 'cancelled' : 'failed'
+    }
+    if (run !== this.run || !this.peer || !this.client) {
+      stream.getTracks().forEach((t) => t.stop())
+      return 'cancelled'
+    }
+    this.stream = stream
+    this.screenOn = true
+    // The browser's own "stop sharing" button ends the track.
+    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+      if (run === this.run && this.stream === stream) void this.stopScreen()
+    })
+    try {
+      this.peer.addStream(stream)
+      const sdp = await this.peer.createOffer()
+      if (run === this.run) this.client?.send({ type: 'offer', sdp })
+    } catch {
+      if (run === this.run) this.fail('peer_failed')
+      return 'failed'
+    }
+    this.state = { ...this.state, screen: true }
+    this.deps.onChange(this.state)
+    return 'ok'
+  }
+
+  /** Stops showing the screen; the session stays connected (the host's display goes back to idle). */
+  async stopScreen(): Promise<void> {
+    const stream = this.stream
+    if (!stream || !this.screenOn) return
+    const run = this.run
+    this.screenOn = false
+    this.stream = null
+    this.peer?.removeStream?.(stream)
+    stream.getTracks().forEach((t) => t.stop())
+    const { screen: _screen, ...rest } = this.state
+    this.state = rest
+    this.deps.onChange(this.state)
+    try {
+      const sdp = await this.peer?.createOffer()
+      if (sdp !== undefined && run === this.run) this.client?.send({ type: 'offer', sdp })
+    } catch {
+      /* the connection is going away anyway */
+    }
+  }
+
+  /**
+   * Must be called from a user gesture (getDisplayMedia requires one). With `capture: false` no
+   * screen is asked for (even when `getStream` is set): the session only joins; the screen can be
+   * added later with {@link shareScreen}.
+   */
+  async start(code: string, opts: { capture?: boolean } = {}): Promise<void> {
     this.teardown()
     const run = ++this.run
     // Started first, so it runs while the screen picker is open. Failure means "no list".
     this.icePromise = this.deps.iceServers ? this.deps.iceServers().catch(() => []) : Promise.resolve([])
-    if (this.deps.getStream) {
+    if (this.deps.getStream && opts.capture !== false) {
       this.set('capturing')
       let stream: MediaStream
       try {
@@ -173,6 +241,7 @@ export class SenderSession {
     this.client = null
     this.stream?.getTracks().forEach((t) => t.stop())
     this.stream = null
+    this.screenOn = false
   }
 
   private fail(code: string): void {
@@ -210,6 +279,7 @@ export class SenderSession {
         this.client = null
         this.stream?.getTracks().forEach((t) => t.stop())
         this.stream = null
+        this.screenOn = false
         this.set('peer_left')
         break
       case 'error':

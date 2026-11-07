@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os'
 import { createServer as createHttp, request as httpRequest } from 'node:http'
 import { createServer as createNet } from 'node:net'
 import assert from 'node:assert/strict'
+import { runWizard } from './helpers.mjs'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -74,6 +75,9 @@ async function startStatic(label, root) {
     hits.push(url.pathname)
     if (!url.pathname.startsWith('/app/')) return res.writeHead(404).end('not found')
     let rel = url.pathname.slice('/app/'.length) || 'index.html'
+    // Pages of the app (/app/display, /app/<CODE>): a static host answers them with index.html
+    // (GitHub Pages: a copy of index.html as 404.html).
+    if (!/\.[A-Za-z0-9]+$/.test(rel)) rel = 'index.html'
     const file = resolve(root, rel)
     if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) return res.writeHead(404).end('not found')
     res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' }).end(readFileSync(file))
@@ -146,8 +150,8 @@ try {
     return p
   }
 
-  /** Receiver + sender from the same static origin; both must end up connected through `relay`. */
-  async function connectPair(query, relayHost, { expectWarning, expectConfirm = false }) {
+  /** Display + presenter from the same static origin; both must end up connected through `relay`. */
+  async function connectPair(query, relayHost, { expectConfirm = false }) {
     // The dialog of a relay that came from ?server= (UI only, no URL parameter can skip it).
     const confirmRelay = async (p) => {
       const dlg = p.getByTestId('relay-confirm')
@@ -163,31 +167,35 @@ try {
       await p.getByTestId('relay-confirm-use').click()
     }
     const receiver = await newPage()
-    await receiver.goto(S.app + query)
-    // The relay field names the host only.
-    assert.equal(await receiver.getByTestId('relay-host').innerText(), relayHost)
-    assert.equal(await receiver.getByTestId('relay-warning').count(), expectWarning ? 1 : 0, 'warning for non-default relay')
-    assert.equal(await receiver.getByTestId('relay-tag').innerText(), expectWarning ? 'custom' : 'default')
-    await receiver.getByRole('button', { name: /Receive on this device/ }).click()
+    await receiver.goto(`${S.app}display${query}`)
+    // Setup: the address step names the host only
+    await receiver.getByTestId('wz-start').click()
+    await receiver.getByTestId('wz-next').click()
+    await receiver.getByTestId('wz-next').click()
+    assert.equal((await receiver.getByTestId('wz-domain').innerText()).trim(), relayHost)
+    await receiver.getByTestId('wz-ok').click()
+    await receiver.getByTestId('wz-finish').click()
     await confirmRelay(receiver)
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
-    const code = (await receiver.getByTestId('room-code').innerText()).trim()
+    const code = (await receiver.getByTestId('room-code').innerText()).replace(/\s+/g, '')
     assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/)
-    // On the receiving page the relay stays visible (read-only).
-    assert.equal(await receiver.getByTestId('relay-host').innerText(), relayHost)
-    assert.equal(await receiver.getByTestId('relay-input').count(), 0)
+    // The idle screen shows the address of the relay in use
+    assert.equal((await receiver.getByTestId('address').innerText()).trim(), relayHost)
+    // A link-supplied relay is never remembered by the setup
+    if (expectConfirm) assert.equal(await receiver.evaluate(() => JSON.parse(localStorage.getItem('cometcast.display.setup')).server), null)
 
     const sender = await newPage()
     await sender.goto(S.app + (query ? `${query}&testVideo=1` : '?testVideo=1'))
-    await sender.getByRole('button', { name: /Send screen/ }).click()
-    await sender.locator('#room-code').fill(code)
-    await sender.getByRole('button', { name: 'Share screen' }).click()
+    await sender.getByTestId('start-code').fill(code)
+    await sender.getByTestId('start-browser').click()
     await confirmRelay(sender)
+    await sender.getByTestId('what-page').waitFor({ timeout: 20000 })
+    await sender.getByTestId('what-screen').click()
     await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
     await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 20000 })
-    const sas = await waitFor(() => sender.getByTestId('sas-code').innerText(), 'connection check code (sender)')
+    const sas = await waitFor(() => sender.getByTestId('sas-code').innerText(), 'connection check code (presenter)')
     assert.match(sas.trim(), /^\d{3} \d{3}$/)
-    assert.equal((await waitFor(() => receiver.getByTestId('sas-code').innerText(), 'connection check code (receiver)')).trim(), sas.trim())
+    assert.equal((await waitFor(() => receiver.getByTestId('sas-code').innerText(), 'connection check code (display)')).trim(), sas.trim())
     const video = receiver.getByTestId('remote-video')
     await waitFor(() => video.evaluate((v) => v.videoWidth > 0), 'videoWidth > 0')
     const t0 = await video.evaluate((v) => v.currentTime)
@@ -204,15 +212,28 @@ try {
     return code
   }
 
+  /** The address that the setup wizard offers on a page (no relay is contacted before Finish). */
+  async function wizardAddress(url) {
+    const p = await newPage()
+    await p.goto(url)
+    await p.getByTestId('wz-start').click()
+    await p.getByTestId('wz-next').click()
+    await p.getByTestId('wz-next').click()
+    const host = (await p.getByTestId('wz-domain').innerText()).trim()
+    await p.context().close()
+    return host
+  }
+
   console.log('1) ?server= : static origin S -> relay R (cross-origin, allow-listed)')
-  await connectPair(`?server=${R.host}`, R.host, { expectWarning: true, expectConfirm: true })
+  await connectPair(`?server=${R.host}`, R.host, { expectConfirm: true })
   {
     // Cancel: the default relay (here the static host, which has no relay) is used and nothing connects.
     const p = await newPage()
-    await p.goto(`${S.app}?server=${R.host}`)
-    await p.getByRole('button', { name: /Receive on this device/ }).click()
+    await p.goto(`${S.app}display?server=${R.host}`)
+    await runWizard(p)
     await p.getByTestId('relay-confirm-cancel').click()
-    assert.equal(await p.getByTestId('relay-host').innerText(), S.origin.replace('http://', ''))
+    await p.getByTestId('idle').waitFor()
+    assert.equal((await p.getByTestId('address').innerText()).trim(), S.origin.replace('http://', ''))
     await new Promise((r) => setTimeout(r, 500))
     assert.deepEqual(p.log.sockets, [], 'no WebSocket after Cancel')
     assert.ok(!p.log.requests.some((u) => u.startsWith(`http://${R.host}`)), 'no request to the declined relay')
@@ -223,45 +244,21 @@ try {
   console.log('2) config.json next to index.html')
   {
     writeFileSync(join(distDir, 'config.json'), JSON.stringify({ relays: [`ws://${R.host}/ws`] }))
-    await connectPair('', R.host, { expectWarning: false })
-    {
-      const h = await newPage()
-      await h.goto(S.app)
-      assert.equal(await h.getByTestId('relay-config-hint').count(), 0, 'valid config.json: no hint')
-      await h.context().close()
-    }
-    console.log('   ok: relay from config.json is the default (no warning)')
+    await connectPair('', R.host, { expectConfirm: false })
+    console.log('   ok: relay from config.json is the default (no dialog)')
     // ?server= still wins over config.json.
-    const p = await newPage()
-    await p.goto(`${S.app}?server=${encodeURIComponent(`ws://${O.host}`)}`)
-    assert.equal(await p.getByTestId('relay-host').innerText(), O.host)
-    assert.equal(await p.getByTestId('relay-warning').count(), 1)
-    // The UI can change and reset the relay; an invalid one is refused with a translated message.
-    await p.getByTestId('relay-reset').click()
-    assert.equal(await p.getByTestId('relay-host').innerText(), R.host)
-    await p.getByTestId('relay-input').fill('ws://relay.example.org')
-    await p.getByTestId('relay-apply').click()
-    assert.match(await p.getByTestId('relay-error').innerText(), /only allowed for localhost/)
-    await p.getByTestId('relay-input').fill(`127.0.0.1:${O.port}`)
-    await p.getByTestId('relay-apply').click()
-    assert.equal(await p.getByTestId('relay-host').innerText(), O.host)
-    assert.equal(await p.getByTestId('relay-warning').count(), 1)
-    await p.context().close()
+    assert.equal(await wizardAddress(`${S.app}display?server=${encodeURIComponent(`ws://${O.host}`)}`), O.host)
     // An unusable config.json is ignored (same origin = the static host, which has no relay).
     writeFileSync(join(distDir, 'config.json'), JSON.stringify({ relays: ['ws://relay.example.org/ws'] }))
-    const q = await newPage()
-    await q.goto(S.app)
-    assert.equal(await q.getByTestId('relay-host').innerText(), S.origin.replace('http://', ''))
-    assert.match(await q.getByTestId('relay-config-hint').innerText(), /relay configuration could not be read/, 'visible hint')
-    await q.context().close()
+    assert.equal(await wizardAddress(`${S.app}display`), S.origin.replace('http://', ''))
     writeFileSync(join(distDir, 'config.json'), JSON.stringify({ relays: [`ws://${R.host}/ws`] }))
   }
 
   console.log('3) open-mode relay: ALTCHA challenge fetched across origins (CORS)')
   {
     const receiver = await newPage()
-    await receiver.goto(`${S.app}?server=${O.host}`)
-    await receiver.getByRole('button', { name: /Receive on this device/ }).click()
+    await receiver.goto(`${S.app}display?server=${O.host}`)
+    await runWizard(receiver)
     await receiver.getByTestId('relay-confirm-use').click()
     await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     assert.ok(receiver.log.requests.includes(`http://${O.host}/altcha/challenge`), 'challenge fetched from the relay')
@@ -272,9 +269,9 @@ try {
   console.log('4) origin X (not allowed) is rejected')
   {
     const p = await newPage()
-    await p.goto(`${X.app}?server=${R.host}`)
+    await p.goto(`${X.app}display?server=${R.host}`)
     // R is the config.json default here, so no dialog.
-    await p.getByRole('button', { name: /Receive on this device/ }).click()
+    await runWizard(p)
     await p.locator('[data-testid=status][data-phase=error]').waitFor({ timeout: 20000 })
     assert.match(await p.getByTestId('status').innerText(), /connection to the server was lost or could not be made/)
     // CORS: the browser blocks reading the relay's HTTP answers from this origin ...

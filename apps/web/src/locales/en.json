@@ -2,32 +2,14 @@
   "app": {
     "name": "Comet Cast",
     "tagline": "Share your screen, documents, links and files.",
-    "preview": "Early version (v0.1): works over the local network only, without STUN/TURN relay servers. Connecting from another network may not work."
-  },
-  "lang": {
-    "label": "Language",
-    "en": "English",
-    "de": "Deutsch"
-  },
-  "nav": {
-    "back": "Back to start"
+    "welcome": "Welcome to Comet Cast",
+    "codeFromLink": "taken from your link",
+    "codeScanned": "scanned",
+    "scanAgainBody": "Scan the QR code on the screen once more to continue.",
+    "scanQr": "Scan QR code",
+    "connect": "Connect"
   },
   "relay": {
-    "label": "Relay server",
-    "using": "Using relay: {host}",
-    "hint": "The relay connects the two devices: room codes, connection data and network addresses pass through it. Media (screen, images) travels directly between the devices, encrypted (DTLS-SRTP), but the relay carries the signalling and could in principle interfere with the key exchange. Compare the connection check code on both devices. Sender and receiver must use the same relay.",
-    "defaultTag": "default",
-    "customTag": "custom",
-    "inputLabel": "Use another relay",
-    "inputHint": "Example: wss://relay.example.org (an address on your local network may start with ws://)",
-    "apply": "Use this relay",
-    "reset": "Use the default",
-    "choose": "Known relays",
-    "warnTitle": "A different relay than the default is in use.",
-    "warn": "This page would normally use {def}, but {host} is selected. Only continue if you trust the operator of this relay and have not been sent here by an unknown link.",
-    "insecureNote": "Unencrypted connection (ws://), only suitable for a trusted local network.",
-    "applied": "Relay changed to {host}.",
-    "resetDone": "Default relay restored.",
     "errors": {
       "empty": "Please enter an address.",
       "invalid": "This is not a valid relay address.",
@@ -36,7 +18,6 @@
       "path": "The address must not contain a path, query or fragment (only an optional /ws).",
       "mixed": "A page opened over https cannot use an unencrypted ws:// relay (the browser blocks it). Please use wss://."
     },
-    "configFailed": "The relay configuration could not be read. The default relay is used.",
     "confirm": {
       "title": "Use this relay?",
       "body": "A link asks this page to use the relay {host} instead of the default. Only continue if you know and trust its operator.",
@@ -45,27 +26,7 @@
       "cancel": "Cancel (use the default relay)"
     }
   },
-  "home": {
-    "title": "What would you like to do?",
-    "sendScreen": {
-      "title": "Send screen",
-      "desc": "Show your screen on another device."
-    },
-    "sendContent": {
-      "title": "Send file or link",
-      "desc": "Hand over an image, a PDF or a link. Office documents come later."
-    },
-    "receive": {
-      "title": "Receive on this device",
-      "desc": "Show a code and wait for a sender."
-    }
-  },
   "receive": {
-    "title": "Receive on this device",
-    "codeLabel": "Room code",
-    "intro": "This device shows a short room code. Enter it on the sender; the screen then appears here.",
-    "codeHelp": "Enter this code on the sending device.",
-    "retry": "Create new room",
     "videoLabel": "Incoming screen",
     "status": {
       "idle": "Not started.",
@@ -78,7 +39,6 @@
       "error": "Something went wrong."
     },
     "stageLabel": "Received content",
-    "stageWaiting": "Connected. Waiting for the screen or content from the sender…",
     "transfer": "Receiving {name}… {percent} %",
     "transferError": {
       "bad_message": "A message from the sender could not be understood and was ignored.",
@@ -152,19 +112,6 @@
     }
   },
   "send": {
-    "title": "Send",
-    "codeLabel": "Room code of the receiver",
-    "codeHint": "6 characters: letters and digits, without easily confused ones (0, O, 1, I).",
-    "codeInvalid": "Please enter all 6 characters.",
-    "codeValid": "Code format looks good.",
-    "connect": "Share screen",
-    "capTitle": "Screen sharing on this browser",
-    "capOk": "Screen sharing is available in this browser.",
-    "capUnavailable": "Screen sharing is not available here. It works only in desktop browsers and requires HTTPS (or localhost).",
-    "capNoSecure": "This page is not in a secure context (HTTPS required).",
-    "capNoDisplay": "This browser does not offer screen capture (getDisplayMedia).",
-    "stop": "Stop sharing",
-    "tryAgain": "Try again",
     "status": {
       "idle": "Enter the receiver's code to start.",
       "capturing": "Choose what to share in the browser dialog…",
@@ -176,16 +123,6 @@
       "stopped": "Sharing stopped.",
       "error": "Something went wrong.",
       "waiting_approval": "Waiting for the host to allow you to join. Nothing is sent until then."
-    },
-    "waiting": {
-      "title": "Waiting for the host",
-      "text": "The host has to allow you to join. Nothing is sent from your device until then.",
-      "check": "Check number",
-      "checkHelp": "If the host asks which request is yours, tell them this number.",
-      "timeLeft": "The request ends in {s} s.",
-      "cancel": "Cancel",
-      "retryIn": "You can ask again in {s} s.",
-      "retryNow": "Ask again"
     }
   },
   "errors": {
@@ -325,65 +262,251 @@
     "label": "Connection check code",
     "explain": "Both devices should show the same code. If they differ, stop: the connection may be intercepted. Comparing is up to you, the app does not enforce it."
   },
-  "join": {
-    "panelTitle": "Who may join",
-    "modeLabel": "Join mode",
-    "mode": {
-      "open": {
-        "label": "Open",
-        "help": "Anyone who knows the room code joins at once."
-      },
-      "confirm": {
-        "label": "Ask first",
-        "help": "Every join waits until you allow it here."
-      },
-      "locked": {
-        "label": "Locked",
-        "help": "Nobody can join right now. The code stays the same."
-      }
-    },
-    "lockNow": "Lock room",
-    "requestsTitle": "Waiting to join",
-    "none": "Nobody is waiting.",
-    "wantsToPresent": "wants to present",
-    "nameBoxLabel": "Name entered by the sender (not checked)",
-    "check": "Check number {check}",
-    "checkHelp": "The same number is shown on the sender's screen.",
-    "allow": "Yes",
-    "deny": "No",
-    "denyAll": "Deny all",
-    "more": "+{n} more waiting",
-    "secondsLeft": "{s} s left",
-    "connectedTitle": "Connected",
-    "noneConnected": "Nobody is connected.",
-    "remove": "Remove",
-    "removeLabel": "Remove {name} from the room",
-    "chip": "Join: {mode}",
-    "pill": "{n} waiting",
-    "open": "Show join settings",
-    "close": "Hide join settings",
-    "dismiss": "Dismiss",
-    "announce": "{name} is waiting to join. Check number {check}.",
-    "notice": {
-      "locked_discarded": "Room locked. {count} waiting request(s) were discarded.",
-      "open_disabled": "This server does not allow open rooms. \"Ask first\" is used instead."
-    },
-    "denyBlock": "No and block",
-    "later": "Later",
-    "takeoverTitle": "Someone wants to join",
-    "endPresentation": "End presentation",
-    "endAndBlock": "End and block",
-    "blockedTitle": "Blocked for this session",
-    "noneBlocked": "Nobody is blocked.",
-    "unblock": "Unblock",
-    "blockedHelp": "A blocked sender cannot join this room again until you unblock it or end the session. It is blocked by network address, so people on the same address are affected too.",
-    "endSession": "End session",
-    "endSessionConfirm": "Press again to end the session",
-    "endSessionHelp": "Removes everybody and creates a new room with a new code."
+  "common": {
+    "back": "Back",
+    "next": "Next",
+    "cancel": "Cancel",
+    "or": "or",
+    "noName": "No name",
+    "quoted": "“{name}”",
+    "stepOf": "Step {n} of 4"
   },
-  "displayName": {
-    "label": "Your name (shown to the host)",
-    "hint": "Shown to the host when it has to approve you. Optional; up to 40 characters.",
-    "placeholder": "e.g. Alex"
+  "device": {
+    "phone": "Phone",
+    "android": "Android phone",
+    "iphone": "iPhone",
+    "ipad": "iPad",
+    "laptop": "Laptop",
+    "chromebook": "Chromebook"
+  },
+  "mode": {
+    "open": "Open",
+    "approval": "Approval on",
+    "locked": "Locked"
+  },
+  "appearance": {
+    "dark": "Dark",
+    "light": "Light",
+    "oled": "OLED black",
+    "auto": "Automatic"
+  },
+  "setup": {
+    "welcome": {
+      "title": "Hi! This screen is about to become a display device.",
+      "body": "Afterwards anyone in the room can show here what is on their phone or laptop. With a code, no account.",
+      "start": "Set up"
+    },
+    "name": {
+      "title": "What is this room called?",
+      "body": "The name is shown large on the screen so people know they are in the right place.",
+      "custom": "Custom name",
+      "s1": "Meeting room Elbe",
+      "s2": "Living room",
+      "s3": "Clubhouse",
+      "s4": "Workshop",
+      "s5": "Room 204"
+    },
+    "mode": {
+      "title": "Who may connect?",
+      "fewPeople": "Few people",
+      "manyPeople": "Many people",
+      "openText": "Anyone who sees the code connects at once. For small groups, teams and at home.",
+      "approvalText": "Each person shows up here as a request and you let them in. For rooms many people use.",
+      "later": "You can switch or lock any time later in the settings."
+    },
+    "address": {
+      "title": "Which address will others use?",
+      "body": "This address is shown large on the screen and is inside the QR code.",
+      "sourceDefault": "Default server. Nothing to set up.",
+      "sourceOwn": "Found via the company network (DNS entry).",
+      "sourceBox": "In-house box found on this network.",
+      "ok": "Looks right",
+      "change": "Other address"
+    },
+    "done": {
+      "title": "Done.",
+      "bodyRemote": "Open the settings any time with the Menu key or the Settings button: joining and appearance.",
+      "bodyPointer": "Open the settings any time with “Settings” at the bottom right: joining and appearance.",
+      "finish": "Go to idle screen"
+    }
+  },
+  "idle": {
+    "step1": "Open in your browser",
+    "step2": "Enter this code",
+    "altAddress": "or {ip}",
+    "locked": "Locked right now.",
+    "qrCaption": "Or scan",
+    "qrLocked": "Locked",
+    "appLine": "No download needed. Prefer an app: App Store · Google Play · {dom}/app",
+    "offline": {
+      "title": "No connection to {dom}",
+      "body": "This screen is offline right now. Code and QR code come back by themselves once the network is back."
+    }
+  },
+  "settings": {
+    "open": "Settings",
+    "title": "Settings",
+    "close": "Close",
+    "closeRemote": "Close (Back key)",
+    "join": {
+      "label": "Joining",
+      "openText": "Anyone with the code connects at once.",
+      "approvalText": "You let each person in one by one.",
+      "lockedText": "Nobody new can join. Connected stay."
+    },
+    "appearance": "Appearance"
+  },
+  "request": {
+    "title": "Request",
+    "queue": "+{n} waiting",
+    "subtitle": "wants to connect · {device}",
+    "check": "Check",
+    "yes": "Yes",
+    "no": "No",
+    "noBlock": "No and block",
+    "aria": "Request: {name}"
+  },
+  "present": {
+    "byline": "{name} is showing · {device}",
+    "end": "End"
+  },
+  "toast": {
+    "joined": "{name} connected",
+    "allowed": "{name} allowed",
+    "denied": "{name} denied",
+    "blocked": "{name} denied and blocked",
+    "expired": "Request from {name} expired",
+    "withdrawn": "{name} withdrew the request",
+    "left": "{name} disconnected",
+    "lockedRejected": "Locked · {n} open requests denied",
+    "sessionEnded": "Session ended · new code"
+  },
+  "start": {
+    "titleRoom": "Connect to “{room}”",
+    "titleGeneric": "Connect to a screen",
+    "fromQr": "from the QR code",
+    "codeLabel": "Code from the screen",
+    "codeEmpty": "Please enter the code shown large on the screen.",
+    "nameLabel": "Your name",
+    "browser": "Continue in the browser",
+    "browserPhone": "No install. Show photos, files and links.",
+    "browserLaptop": "No install. Show your screen, a window, files and links.",
+    "or": "or",
+    "appAndroid": "Get the app on Google Play",
+    "appIos": "Get the app on the App Store",
+    "appDesktop": "Download the app for {os}",
+    "appPhone": "With the app you can also share your whole phone screen.",
+    "appLaptop": "The app finds screens on the same network without a code. For now the browser is enough.",
+    "detected": "Detected: {device}, {browser}",
+    "beDisplay": "Should this device be the screen itself? Open {dom}/display.",
+    "downloadStarted": "Download started. Until the app is installed, everything works here in the browser."
+  },
+  "wait": {
+    "title": "Waiting for approval",
+    "checkLabel": "Your check number",
+    "checkHint": "Also shown on the screen.",
+    "expires": "The request expires in {n} s.",
+    "withdraw": "Withdraw request"
+  },
+  "what": {
+    "connectedTo": "Connected to “{room}”",
+    "title": "What would you like to show?",
+    "screen": "Share screen",
+    "screenLaptop": "Whole screen or one window, live",
+    "screenApp": "Your whole phone display, live",
+    "screenPhoneBrowser": "On a phone only with the app",
+    "file": "Show a photo or file",
+    "fileSub": "PDF or image. You turn pages, everything else stays with you",
+    "link": "Show a link",
+    "linkSub": "The screen opens the page itself",
+    "disconnect": "Disconnect"
+  },
+  "file": {
+    "title": "What would you like to show?",
+    "body": "Recent on this device. Or “Other file” in the system dialog."
+  },
+  "link": {
+    "label": "Page address",
+    "hint": "The screen needs its own internet for this.",
+    "go": "Open on the screen"
+  },
+  "presenting": {
+    "screen": "You are sharing your screen",
+    "file": "You are showing a file",
+    "link": "The screen shows your link",
+    "where": "On “{room}”.",
+    "stop": "Stop showing"
+  },
+  "bye": {
+    "title": "Disconnected",
+    "body": "You are no longer connected. You can close this tab.",
+    "again": "Connect again"
+  },
+  "error": {
+    "why": "Why",
+    "now": "What now",
+    "code": {
+      "title": "This code does not exist right now",
+      "why": "Usually a typo. Comet Cast reads an O in a code as zero and an I as one, so you need not tell them apart.",
+      "now": "Look at the screen again and retype the code."
+    },
+    "expired": {
+      "title": "This code is no longer valid",
+      "why": "The screen has a new code by now. Codes change when the display device restarts or a session ends.",
+      "now": "Type the code the screen shows now, or scan the QR code again."
+    },
+    "otherServer": {
+      "title": "This code belongs to another address",
+      "why": "You are on {here}. The code fits another server, for example a company’s or a club’s.",
+      "now": "Look at the screen: it shows the right address. Or scan the QR code and both match."
+    },
+    "noInternet": {
+      "title": "No internet on this device",
+      "why": "Your device is offline, or the Wi-Fi only allows certain sites.",
+      "now": "Turn on mobile data or join the room’s Wi-Fi. The page then retries by itself.",
+      "nowBox": "For {dom} you must be on the same Wi-Fi as the screen. Ask for the room’s Wi-Fi."
+    },
+    "noScreen": {
+      "title": "Screen sharing does not work in this browser",
+      "why": "Phone browsers may not pass on your screen. That is the browser, not you.",
+      "now": "Show a photo, a file or a link instead. Or get the app, then the screen works too."
+    },
+    "displayOff": {
+      "title": "The screen does not answer",
+      "why": "The display device is off, asleep, or Comet Cast is closed there. Your request did not arrive.",
+      "now": "Is the code still on the screen? If not, ask the host to open Comet Cast there."
+    },
+    "denied": {
+      "title": "Not allowed",
+      "why": "“No” was chosen on the screen.",
+      "now": "Ask in person if you need to."
+    },
+    "locked": {
+      "title": "Locked right now",
+      "why": "The code is right, but this screen is not taking anyone new right now.",
+      "whyWhile": "The host locked the room while you were waiting. Your request was dropped.",
+      "now": "Try again later or talk to the host."
+    },
+    "timeout": {
+      "title": "No answer",
+      "why": "Nobody answered your request within 60 seconds.",
+      "now": "Ask again and let the host know."
+    },
+    "ended": {
+      "title": "Presentation ended",
+      "why": "The session was ended on the screen.",
+      "now": "To continue, enter the new code or scan the QR code again."
+    },
+    "action": {
+      "retype": "Retype code",
+      "rescan": "Scan QR code again",
+      "retry": "Try again",
+      "showFile": "Show photo or file",
+      "showLink": "Show a link",
+      "getApp": "Get the app",
+      "ask": "Ask again",
+      "askIn": "Ask again in {n} s",
+      "openDom": "Open {dom}"
+    }
   }
 }

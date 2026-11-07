@@ -10,6 +10,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import assert from 'node:assert/strict'
+import { openDisplay, presenterScreen } from './helpers.mjs'
 import { createServer } from 'node:net'
 
 const require = createRequire(import.meta.url)
@@ -124,10 +125,7 @@ try {
   assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/, 'room code format')
 
   const sender = await newPage()
-  await sender.goto(base)
-  await sender.getByRole('button', { name: /Send screen/ }).click()
-  await sender.locator('#room-code').fill(code)
-  await sender.getByRole('button', { name: 'Share screen' }).click()
+  await presenterScreen(sender, base, code)
   await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
 
   // The CLI prints one stats line per second; packet counts must keep growing.
@@ -148,7 +146,8 @@ try {
   if (final.keyframes < 1) console.warn('A) WARNING: no key frame detected')
 
   // Stopping the browser sender must end the CLI normally.
-  await sender.getByTestId('stop').click()
+  await sender.getByTestId('presenting-stop').click()
+  await sender.getByTestId('disconnect').click()
   const code1 = await Promise.race([
     rx.exited,
     new Promise((r) => setTimeout(() => r('timeout'), 10000)),
@@ -160,10 +159,7 @@ try {
   // ---------- B) native sender -> browser receiver ----------
   console.log('B) cometcast-cli send -> browser receiver')
   const receiver = await newPage()
-  await receiver.goto(base)
-  await receiver.getByRole('button', { name: /Receive on this device/ }).click()
-  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
-  const code2 = (await receiver.getByTestId('room-code').innerText()).trim()
+  const code2 = await openDisplay(receiver, base)
   const tx = startCli(['send', code2, '--server', `127.0.0.1:${port}`, '--seconds', '12'])
   children.push(tx.proc)
   await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 20000 })

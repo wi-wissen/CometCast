@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { onBeforeUnmount, shallowRef } from 'vue'
-import { ReceiverSession, type ReceiverState } from '../core/receiverSession'
+import { ReceiverSession, type ReceiverEvent, type ReceiverState } from '../core/receiverSession'
 import { useRelay } from './useRelay'
 import { fetchIceServers, obtainAltchaPayload } from '../core/altchaClient'
-import { loadJoinMode, saveJoinMode } from '../core/joinPrefs'
+import { saveDefaultMode } from '../core/displaySetup'
 import type { JoinMode } from '../core/signaling'
 
-export function useReceiver() {
+export interface UseReceiverOptions {
+  /** The room's starting mode (the default chosen in the setup wizard; first run: open). */
+  joinMode?: JoinMode
+  onEvent?: (e: ReceiverEvent) => void
+}
+
+export function useReceiver(opts: UseReceiverOptions = {}) {
   // shallowRef: MediaStream must not be wrapped in a reactive proxy.
   const state = shallowRef<ReceiverState>({
     phase: 'idle',
@@ -32,8 +38,8 @@ export function useReceiver() {
     onChange: (s) => (state.value = s),
     altcha: (signal) => obtainAltchaPayload(current.value.httpBase, { signal }),
     iceServers: () => fetchIceServers(current.value.httpBase),
-    // The mode the person chose last (first run: open).
-    joinMode: loadJoinMode(),
+    joinMode: opts.joinMode ?? 'open',
+    onEvent: opts.onEvent,
   })
   onBeforeUnmount(() => session.stop())
   return {
@@ -44,9 +50,10 @@ export function useReceiver() {
     },
     stop: () => session.stop(),
     clearContent: () => session.clearContent(),
-    // Join approval. The chosen mode is remembered for the next room (a convenience only).
+    // Join mode. Open and Approval on become the display's default (kept in the setup); Locked lasts
+    // only until the session ends or the display restarts (spec 4.3), so it is never remembered.
     setJoinMode: (mode: JoinMode) => {
-      saveJoinMode(mode)
+      if (mode !== 'locked') saveDefaultMode(mode)
       session.setJoinMode(mode)
     },
     decide: (id: number, allow: boolean, block = false) => session.decide(id, allow, block),

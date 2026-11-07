@@ -349,6 +349,19 @@ async fn healthz_and_static_files() {
     assert!(health.ends_with("ok"));
     let index = get(addr, "/").await;
     assert!(index.contains("<h1>hi</h1>"));
+    // Pages of the web app (/display, a join code) get index.html; a missing file with an
+    // extension is a plain 404.
+    for page in ["/display", "/K7QM2W", "/app"] {
+        let r = get(addr, page).await;
+        assert!(r.contains(" 200"), "{page}: {r}");
+        assert!(r.contains("<h1>hi</h1>"), "{page}: {r}");
+        assert!(r.to_ascii_lowercase().contains("text/html"), "{page}: {r}");
+    }
+    let missing = get(addr, "/assets/missing.js").await;
+    assert!(missing.contains(" 404"), "{missing}");
+    assert!(!missing.contains("<h1>hi</h1>"));
+    // The control routes still win over the fallback.
+    assert!(get(addr, "/healthz").await.ends_with("ok"));
     let _ = std::fs::remove_dir_all(dir);
 }
 

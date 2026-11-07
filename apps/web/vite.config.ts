@@ -21,6 +21,8 @@ export function normalizeBase(raw: string | undefined): string {
 export default defineConfig(({ mode }) => ({
   base: normalizeBase(loadEnv(mode, '.', 'VITE_').VITE_BASE),
   plugins: [vue(), tailwindcss()],
+  // The logos come from the repository's assets/logo folder and the locale tests read docs/design.
+  server: { fs: { allow: [decodeURIComponent(new URL('../..', import.meta.url).pathname)] } },
   test: {
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],

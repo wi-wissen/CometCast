@@ -25,6 +25,7 @@ import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:net'
+import { presenterScreen, presenterStart, readCode, startDisplay } from './helpers.mjs'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -155,10 +156,7 @@ try {
     return p
   }
   const phases = (p) => p.evaluate(() => window.__phases)
-  const startReceiver = async (p, base, button = /Receive on this device/) => {
-    await p.goto(base)
-    await p.getByRole('button', { name: button }).click()
-  }
+  const startReceiver = (p, base) => startDisplay(p, base)
 
   // ================= Server A: open mode =================
   // create_room_per_min is raised only because this script creates several rooms from one address;
@@ -186,7 +184,7 @@ try {
   const receiver = await newPage()
   await startReceiver(receiver, A.base)
   await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
-  const code = (await receiver.getByTestId('room-code').innerText()).trim()
+  const code = await readCode(receiver)
   assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/, 'room code format')
   {
     const seen = await phases(receiver)
@@ -209,10 +207,7 @@ try {
   }
 
   const sender = await newPage()
-  await sender.goto(A.base)
-  await sender.getByRole('button', { name: /Send screen/ }).click()
-  await sender.locator('#room-code').fill(code)
-  await sender.getByRole('button', { name: 'Share screen' }).click()
+  await presenterScreen(sender, A.base, code)
   await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
   await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 20000 })
   const video = receiver.getByTestId('remote-video')
@@ -231,7 +226,7 @@ try {
   console.log('A3) German UI shows the translated checking status')
   {
     const de = await newPage('de-DE')
-    await startReceiver(de, A.base, /Auf diesem Gerät empfangen/)
+    await startReceiver(de, A.base)
     await de.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     const seen = await phases(de)
     const checking = seen.find((x) => x.phase === 'checking')
@@ -248,10 +243,7 @@ try {
   assert.ok(!rx.lines.some((l) => l.startsWith('ICE servers')), 'open server offers no ICE servers')
   {
     const s2 = await newPage()
-    await s2.goto(A.base)
-    await s2.getByRole('button', { name: /Send screen/ }).click()
-    await s2.locator('#room-code').fill(cliCode)
-    await s2.getByRole('button', { name: 'Share screen' }).click()
+    await presenterScreen(s2, A.base, cliCode)
     await s2.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 20000 })
     const grown = await waitFor(() => {
       const s = statsOf(rx.lines)
@@ -260,7 +252,8 @@ try {
       return last[0].packets < last[1].packets && last[1].packets < last[2].packets && last[2].packets > 30 ? last[2] : null
     }, 'increasing packet counts in CLI output')
     console.log('   CLI stats:', grown)
-    await s2.getByTestId('stop').click()
+    await s2.getByTestId('presenting-stop').click()
+    await s2.getByTestId('disconnect').click()
     assert.equal(await Promise.race([rx.exited, new Promise((r) => setTimeout(() => r('timeout'), 10000))]), 0, 'CLI receive exits 0')
     await s2.context().close()
   }
@@ -270,7 +263,7 @@ try {
     const r2 = await newPage()
     await startReceiver(r2, A.base)
     await r2.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
-    const c = (await r2.getByTestId('room-code').innerText()).trim()
+    const c = await readCode(r2)
     const tx = startCli(['send', c, '--server', `127.0.0.1:${A.port}`, '--seconds', '8'])
     await r2.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 20000 })
     const v = r2.getByTestId('remote-video')
@@ -310,16 +303,16 @@ try {
       '--set', 'limits.join_attempts_per_min=1000',
     ])
     const p = await newPage()
-    await p.goto(C.base)
-    await p.getByRole('button', { name: /Send screen/ }).click()
-    await p.locator('#room-code').fill('ZZZZZZ')
-    await p.getByRole('button', { name: 'Share screen' }).click()
+    await presenterStart(p, C.base, 'ZZZZZZ')
     let text = ''
     for (let i = 0; i < 8; i++) {
-      await p.locator('[data-testid=status][data-phase=error]').waitFor({ timeout: 20000 })
-      text = await p.getByTestId('status').innerText()
+      await p.getByTestId('error-page').waitFor({ timeout: 20000 })
+      text = await p.getByTestId('error-title').innerText()
       if (/blocked for a while/.test(text)) break
-      await p.getByRole('button', { name: 'Try again' }).click()
+      // a wrong code: "Retype code", then the same code again
+      await p.getByTestId('error-retype').click()
+      await p.getByTestId('start-code').fill('ZZZZZZ')
+      await p.getByTestId('start-browser').click()
       await p.waitForTimeout(200)
     }
     console.log('   shown:', text.replace(/\s+/g, ' '))
@@ -355,12 +348,9 @@ try {
     await startReceiver(r, D.base)
     await r.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 20000 })
     assert.ok(!(await phases(r)).some((x) => x.phase === 'checking'), 'internal mode needs no puzzle')
-    const dCode = (await r.getByTestId('room-code').innerText()).trim()
+    const dCode = await readCode(r)
     const s = await newPage()
-    await s.goto(D.base)
-    await s.getByRole('button', { name: /Send screen/ }).click()
-    await s.locator('#room-code').fill(dCode)
-    await s.getByRole('button', { name: 'Share screen' }).click()
+    await presenterScreen(s, D.base, dCode)
     await s.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 30000 })
     await r.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 30000 })
 

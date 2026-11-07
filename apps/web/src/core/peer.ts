@@ -10,6 +10,8 @@ export interface PeerHandlers {
   /** JSON text of an RTCIceCandidateInit (what the protocol carries in ice_candidate.candidate). */
   onIceCandidate(candidate: string): void
   onTrack(stream: MediaStream): void
+  /** The remote side took its track(s) away again (a sender stopped showing its screen but stays connected). */
+  onTrackEnded?(stream: MediaStream): void
   onState(state: PeerState): void
   /** The remote side opened a data channel (receiver side). */
   onDataChannel?(channel: ControlChannel): void
@@ -17,6 +19,8 @@ export interface PeerHandlers {
 
 export interface Peer {
   addStream(stream: MediaStream): void
+  /** Removes the tracks of a stream that was added with addStream (the caller renegotiates with createOffer). */
+  removeStream?(stream: MediaStream): void
   /** Creates an ordered, reliable data channel (sender side; call before createOffer). */
   openChannel(label: string): ControlChannel
   createOffer(): Promise<string>
@@ -45,8 +49,17 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
   pc.onicecandidate = (ev) => {
     if (ev.candidate) handlers.onIceCandidate(JSON.stringify(ev.candidate.toJSON()))
   }
+  const watched = new WeakSet<MediaStream>()
   pc.ontrack = (ev) => {
-    handlers.onTrack(ev.streams[0] ?? new MediaStream([ev.track]))
+    const stream = ev.streams[0] ?? new MediaStream([ev.track])
+    if (!watched.has(stream)) {
+      watched.add(stream)
+      // Fired when a renegotiation takes the tracks away (the sender stopped showing, but stays connected).
+      stream.addEventListener('removetrack', () => {
+        if (stream.getTracks().length === 0) handlers.onTrackEnded?.(stream)
+      })
+    }
+    handlers.onTrack(stream)
   }
   pc.ondatachannel = (ev) => handlers.onDataChannel?.(ev.channel)
   pc.onconnectionstatechange = () => {
@@ -67,6 +80,10 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
   return {
     addStream(stream) {
       for (const t of stream.getTracks()) pc.addTrack(t, stream)
+    },
+    removeStream(stream) {
+      const tracks = new Set(stream.getTracks())
+      for (const s of pc.getSenders()) if (s.track && tracks.has(s.track)) pc.removeTrack(s)
     },
     openChannel(label) {
       return pc.createDataChannel(label, { ordered: true })

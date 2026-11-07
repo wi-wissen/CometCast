@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createAppI18n, detectLocale, initialLocale, STORAGE_KEY } from '../src/i18n'
 import { isValidRoomCode, normalizeRoomCode } from '../src/core/roomCode'
@@ -34,11 +34,26 @@ describe('room code', () => {
 })
 
 describe('App', () => {
-  it('switches language and updates <html lang>', async () => {
-    const w = mount(App, { global: { plugins: [createAppI18n('en')] } })
-    expect(w.text()).toContain('Send screen')
-    await w.find('button[lang="de"]').trigger('click')
-    expect(w.text()).toContain('Bildschirm senden')
+  afterEach(() => history.replaceState(null, '', '/'))
+  it('shows the presenter start page at / and picks the language by the browser language', () => {
+    const en = mount(App, { global: { plugins: [createAppI18n('en')] } })
+    expect(en.text()).toContain('Connect to a screen')
+    expect(en.find('[data-testid=start-page]').exists()).toBe(true)
+    const de = mount(App, { global: { plugins: [createAppI18n('de')] } })
+    expect(de.text()).toContain('Mit einem Bildschirm verbinden')
     expect(document.documentElement.lang).toBe('de')
+  })
+  it('opens the start page with the code when the path is a code (QR code)', () => {
+    history.replaceState(null, '', '/K7QM2W')
+    const w = mount(App, { global: { plugins: [createAppI18n('en')] } })
+    expect(w.get('[data-testid=start-code-chip]').text()).toBe('K7Q M2W')
+  })
+  it('shows the display at /display (setup wizard on first run)', () => {
+    history.replaceState(null, '', '/display')
+    localStorage.clear()
+    const w = mount(App, { global: { plugins: [createAppI18n('en')] } })
+    expect(w.find('[data-testid=display]').exists()).toBe(true)
+    expect(w.find('[data-testid=setup]').exists()).toBe(true)
+    expect(w.get('[data-testid=display]').attributes('data-theme')).toBe('dark')
   })
 })

@@ -8,8 +8,8 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <p v-if="code" class="text-sm text-muted" data-testid="sas-line">
-    {{ t('sas.label') }}: <span class="font-mono font-semibold text-fg" data-testid="sas-code">{{ code }}</span>
-    <span class="ml-1">{{ t('sas.explain') }}</span>
+  <p v-if="code" class="cp-small" data-testid="sas-line">
+    {{ t('sas.label') }}: <span class="mono" style="font-weight: 700; color: var(--p-fg)" data-testid="sas-code">{{ code }}</span>
+    <span style="margin-left: 4px">{{ t('sas.explain') }}</span>
   </p>
 </template>

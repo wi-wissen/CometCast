@@ -61,3 +61,23 @@ test('xcstrings key without de fails', () => {
   assert.equal(r.status, 1);
   assert.match(r.stdout, /"de"/);
 });
+
+test('de-du.json: only keys that de.json has, with the same placeholders', () => {
+  const ok = run(fixture({
+    'apps/web/src/locales/de.json': { a: 'Hallo {name}', b: 'B' },
+    'apps/web/src/locales/de-du.json': { a: 'Hallo {name}' },
+  }));
+  assert.equal(ok.status, 0);
+  const extra = run(fixture({
+    'apps/web/src/locales/de.json': { a: 'A' },
+    'apps/web/src/locales/de-du.json': { a: 'A', z: 'Z' },
+  }));
+  assert.equal(extra.status, 1);
+  assert.match(extra.stdout, /"z" is in de-du.json but missing in de.json/);
+  const ph = run(fixture({
+    'apps/web/src/locales/de.json': { a: 'Hallo {name}' },
+    'apps/web/src/locales/de-du.json': { a: 'Hallo {room}' },
+  }));
+  assert.equal(ph.status, 1);
+  assert.match(ph.stdout, /placeholders differ/);
+});

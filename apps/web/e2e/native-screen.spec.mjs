@@ -17,6 +17,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import assert from 'node:assert/strict'
+import { openDisplay } from './helpers.mjs'
 import { createServer } from 'node:net'
 
 const require = createRequire(import.meta.url)
@@ -183,9 +184,7 @@ try {
   await new Promise((r) => setTimeout(r, 1500))
 
   // Browser receives; native sender sends the screen.
-  await page.getByRole('button', { name: /Receive on this device/ }).click()
-  await page.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
-  const code = (await page.getByTestId('room-code').innerText()).trim()
+  const code = await openDisplay(page, base)
   const tx = startCli(['send', code, '--server', `127.0.0.1:${port}`, '--screen', '--display', display, '--fps', '15', '--seconds', '25'])
   await page.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 20000 })
   const video = page.getByTestId('remote-video')

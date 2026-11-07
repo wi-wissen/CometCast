@@ -27,10 +27,13 @@ export function useSender(opts: { contentOnly?: boolean } = {}) {
   return {
     state,
     // A relay that only a link asked for must be confirmed before anything is captured or connected.
-    start: async (code: string) => {
-      if (await ensureTrusted()) await session.start(code)
+    // `capture: false` joins without asking for the screen (the screen is added later with shareScreen).
+    start: async (code: string, opts: { capture?: boolean } = {}) => {
+      if (await ensureTrusted()) await session.start(code, opts)
     },
     stop: () => session.stop(),
+    shareScreen: () => session.shareScreen(),
+    stopScreen: () => session.stopScreen(),
     sendImage: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendImage(f, onProgress),
     sendDocument: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendDocument(f, onProgress),
     sendLink: (url: string) => session.sendLink(url),

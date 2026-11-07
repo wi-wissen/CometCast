@@ -4,59 +4,14 @@
 // (image, link) over the WebRTC DataChannel. Real server binary + real Chromium pages.
 // Run: npm run build && npm run e2e:m2
 // Optional: E2E_SHOTS=<dir> writes screenshots (1280x800, light/dark, en/de) of the receiver.
-import { createRequire } from 'node:module'
-import { spawn, spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { mkdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 import assert from 'node:assert/strict'
+import { launch, newContext, openDisplay, presenterJoin, startServer, status, waitFor, waitHealthy } from './helpers.mjs'
 
-const require = createRequire(import.meta.url)
-const { chromium } = require('playwright')
-
-const here = dirname(fileURLToPath(import.meta.url))
-const repo = resolve(here, '../../..')
-const webDir = resolve(here, '../dist')
-const port = Number(process.env.E2E_PORT ?? 18443 + Math.floor(Math.random() * 1000))
-const base = `http://127.0.0.1:${port}`
 const realDisplay = process.env.E2E_TEST_VIDEO !== '1'
 const shotDir = process.env.E2E_SHOTS
-
-function startServer() {
-  const build = spawnSync('cargo', ['build', '-p', 'cometcast-server'], { cwd: repo, stdio: 'inherit' })
-  assert.equal(build.status, 0, 'cargo build failed')
-  const targetDir = process.env.CARGO_TARGET_DIR ?? resolve(repo, 'target')
-  return spawn(resolve(targetDir, 'debug/cometcast-server'), ['--listen', `127.0.0.1:${port}`, '--web-dir', webDir], {
-    stdio: 'inherit',
-  })
-}
-
-async function waitHealthy() {
-  for (let i = 0; i < 100; i++) {
-    try {
-      if ((await fetch(`${base}/healthz`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  throw new Error('server did not become healthy')
-}
-
-async function waitFor(fn, what, ms = 15000) {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    try {
-      const v = await fn()
-      if (v) return v
-    } catch {
-      /* retry */
-    }
-    await new Promise((r) => setTimeout(r, 150))
-  }
-  throw new Error(`timeout waiting for: ${what}`)
-}
 
 /** A solid-colour RGB PNG, built by hand so that the test needs no image library. */
 function makePng(width, height) {
@@ -108,25 +63,13 @@ const paintedPixels = (page, testid) =>
   })
 
 const server = startServer()
+const { base } = server
 let browser
 try {
-  await waitHealthy()
-  browser = await chromium.launch({
-    executablePath: process.env.E2E_CHROME || undefined,
-    args: [
-      '--use-fake-ui-for-media-stream',
-      '--auto-select-desktop-capture-source=Entire screen',
-      '--use-fake-device-for-media-stream',
-      '--disable-features=WebRtcHideLocalIpsWithMdns',
-    ],
-  })
-  const mk = async () => {
-    const ctx = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 800 } })
-    ctx.on('page', (p) => p.on('pageerror', (e) => console.error('pageerror:', e.message)))
-    return ctx
-  }
-  const rctx = await mk()
-  const sctx = await mk()
+  await waitHealthy(base)
+  browser = await launch()
+  const rctx = await newContext(browser, { viewport: { width: 1280, height: 800 } })
+  const sctx = await newContext(browser, { viewport: { width: 1280, height: 800 } })
   // Serve the link target locally so that "Open" can be verified without internet access.
   let linkRequests = 0
   await rctx.route('https://example.org/**', (r) => {
@@ -134,22 +77,20 @@ try {
     return r.fulfill({ contentType: 'text/html', body: '<title>target</title>opened' })
   })
 
-  // --- Receiver: room code
+  // --- Display: room code
   const receiver = await rctx.newPage()
-  await receiver.goto(base)
-  await receiver.getByRole('button', { name: /Receive on this device/ }).click()
-  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 10000 })
-  const code = (await receiver.getByTestId('room-code').innerText()).trim()
+  const code = await openDisplay(receiver, base)
   console.log('room code:', code)
 
   // ===== Part A: screen share + toolbar =======================================================
   const sender = await sctx.newPage()
   await sender.goto(realDisplay ? base : `${base}/?testVideo=1`)
-  await sender.getByRole('button', { name: /Send screen/ }).click()
-  await sender.locator('#room-code').fill(code)
-  await sender.getByRole('button', { name: 'Share screen' }).click()
+  await sender.getByTestId('start-code').fill(code)
+  await sender.getByTestId('start-browser').click()
+  await sender.getByTestId('what-page').waitFor({ timeout: 15000 })
+  await sender.getByTestId('what-screen').click()
   await sender.locator('[data-testid=status][data-phase=sharing]').waitFor({ timeout: 15000 })
-  await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 15000 })
+  await status(receiver, 'receiving')
   const video = receiver.getByTestId('remote-video')
   await waitFor(() => video.evaluate((v) => v.videoWidth > 0 && v.currentTime > 0), 'video playing')
 
@@ -282,45 +223,51 @@ try {
   await receiver.keyboard.press('Tab')
 
   // ===== Part B: content over the data channel ===============================================
-  await sender.getByTestId('stop').click()
-  await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
-
-  const cs = await sctx.newPage()
-  await cs.goto(base)
-  await cs.getByRole('button', { name: /Send file or link/ }).click()
-  await cs.locator('#room-code').fill(code)
-  await cs.getByRole('button', { name: 'Connect' }).click()
-  await cs.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 15000 })
-  await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 15000 })
-  // The PDF section exists (sent and shown in e2e:pdf); Office documents are still listed as "coming later"
-  assert.match(await cs.locator('body').innerText(), /PDF document/)
-  assert.match(await cs.locator('body').innerText(), /Office documents/)
+  // The presenter stops showing the screen but stays connected, then shows a file and a link.
+  await sender.getByTestId('presenting-stop').click()
+  await sender.getByTestId('what-page').waitFor()
+  await receiver.getByTestId('idle').waitFor({ state: 'visible', timeout: 10000 })
+  const cs = sender
+  const toFile = async () => {
+    await cs.getByTestId('what-file').click()
+    await cs.getByTestId('file-page').waitFor()
+  }
+  const toLink = async () => {
+    await cs.getByTestId('what-link').click()
+    await cs.getByTestId('link-page').waitFor()
+  }
+  const back = async () => {
+    await cs.getByTestId('presenting-stop').click()
+    await cs.getByTestId('what-page').waitFor()
+  }
 
   // Image
   const png = makePng(64, 32)
-  await cs.getByTestId('image-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
+  await toFile()
+  // Wrong type is refused on the presenter, nothing arrives
+  await cs.getByTestId('file-input').setInputFiles({ name: 'x.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })
+  await waitFor(async () => /Only PNG/.test(await cs.getByTestId('file-error').innerText()), 'bad type message')
+  await cs.getByTestId('file-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
   const img = receiver.getByTestId('received-image')
   await img.waitFor({ timeout: 10000 })
   const dims = await waitFor(() => img.evaluate((i) => (i.naturalWidth > 0 ? [i.naturalWidth, i.naturalHeight] : 0)), 'image decoded')
   assert.deepEqual(dims, [64, 32])
-  assert.match(await cs.getByTestId('image-notice').innerText(), /Sent test\.png/)
+  await cs.getByTestId('presenting-page').waitFor()
   console.log('received image natural size:', dims)
-  // Wrong type is refused on the sender, nothing arrives
-  await cs.getByTestId('image-input').setInputFiles({ name: 'x.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })
-  await waitFor(async () => /Only PNG/.test(await cs.getByTestId('image-notice').innerText()), 'bad type message')
-  // Close button on the receiver
+  // Close button on the display
   await receiver.getByTestId('content-close').click()
   await img.waitFor({ state: 'detached' })
+  await back()
 
   // Link: validation on the sender
   const pagesBefore = rctx.pages().length
-  await cs.locator('#link-url').fill('javascript:alert(1)')
-  await cs.getByRole('button', { name: 'Send link' }).click()
-  assert.match(await cs.getByTestId('link-notice').innerText(), /http:\/\/ or https:\/\//)
-  // (type=url inputs may block the submit natively; either way no card may appear)
+  await toLink()
+  await cs.getByTestId('link-url').fill('javascript:alert(1)')
+  await cs.getByTestId('link-go').click()
+  assert.match(await cs.getByTestId('link-error').innerText(), /http:\/\/ or https:\/\//)
   // Link: card appears, nothing opens by itself
-  await cs.locator('#link-url').fill('https://example.org/path?x=1')
-  await cs.getByRole('button', { name: 'Send link' }).click()
+  await cs.getByTestId('link-url').fill('https://example.org/path?x=1')
+  await cs.getByTestId('link-go').click()
   const card = receiver.getByTestId('link-card')
   await card.waitFor({ timeout: 10000 })
   assert.match(await card.innerText(), /example\.org wants to open a link/)
@@ -334,7 +281,10 @@ try {
   await new Promise((r) => setTimeout(r, 500))
   assert.equal(rctx.pages().length, pagesBefore, 'dismiss does not open a tab')
   // Again, now click Open: a new tab opens
-  await cs.getByRole('button', { name: 'Send link' }).click()
+  await back()
+  await toLink()
+  await cs.getByTestId('link-url').fill('https://example.org/path?x=1')
+  await cs.getByTestId('link-go').click()
   await card.waitFor({ timeout: 10000 })
   const [opened] = await Promise.all([rctx.waitForEvent('page'), receiver.getByTestId('link-open').click()])
   await opened.waitForLoadState()
@@ -343,14 +293,16 @@ try {
   await card.waitFor({ state: 'detached' })
   await opened.close()
 
-  // "Stop showing" from the sender closes an image on the receiver
-  await cs.getByTestId('image-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
+  // "Stop showing" from the presenter closes an image on the display
+  await back()
+  await toFile()
+  await cs.getByTestId('file-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
   await receiver.getByTestId('received-image').waitFor()
-  await cs.getByTestId('stop-showing').click()
+  await cs.getByTestId('presenting-stop').click()
   await receiver.getByTestId('received-image').waitFor({ state: 'detached' })
 
   console.log('E2E M2 OK')
 } finally {
   await browser?.close()
-  server.kill('SIGTERM')
+  server.proc.kill('SIGTERM')
 }

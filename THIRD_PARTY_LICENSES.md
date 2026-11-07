@@ -12,7 +12,7 @@ when one of the lock files below changed after this file was generated.
 
 ```text
 Cargo.lock-sha256: 74dbeef5ce05790c347882b15f0f68f831b5d193ca9e7d6f01da34cb9a8d1c5d
-package-lock.json-sha256: 6ab2eadae03586a3d623f3925767ded5e86bb898cc2d289cbfa165b651227b73
+package-lock.json-sha256: 6ad3910c8dda2fc821f1d6816de1bb9f66cb81880ac376837e1807a1f03d363a
 pubspec.lock-sha256: e161bbd5b126c51171cf10b44c3a88b3167463a3fa7d928d3be2c78732db63bb
 ```
 
@@ -26034,6 +26034,8 @@ The licence below is the SPDX expression the package declares; no separate licen
 | @babel/helper-validator-identifier | 7.29.7 | MIT |
 | @babel/parser | 7.29.13 | MIT |
 | @babel/types | 7.29.11 | MIT |
+| @fontsource/atkinson-hyperlegible-mono | 5.3.0 | OFL-1.1 |
+| @fontsource/atkinson-hyperlegible-next | 5.3.0 | OFL-1.1 |
 | @intlify/core-base | 11.4.18 | MIT |
 | @intlify/devtools-types | 11.4.18 | MIT |
 | @intlify/message-compiler | 11.4.18 | MIT |
@@ -26056,6 +26058,7 @@ The licence below is the SPDX expression the package declares; no separate licen
 | nanoid | 3.3.20 | MIT |
 | picocolors | 1.1.1 | ISC |
 | postcss | 8.5.32 | MIT |
+| qrcode-generator | 2.0.4 | MIT |
 | source-map-js | 1.2.2 | BSD-3-Clause |
 | typescript | 5.9.3 | Apache-2.0 |
 | vue | 3.5.45 | MIT |

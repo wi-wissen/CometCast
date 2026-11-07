@@ -17,12 +17,17 @@
     "e2e:content": "node e2e/native-content.spec.mjs",
     "e2e:open": "node e2e/open-mode.spec.mjs",
     "e2e:join": "node e2e/join-approval.spec.mjs",
+    "e2e:display": "node e2e/display.spec.mjs",
+    "e2e:shots": "node e2e/screenshots.spec.mjs",
     "e2e:media": "node e2e/media.spec.mjs",
     "e2e:pdf": "node e2e/pdf.spec.mjs",
     "e2e:static": "node e2e/static-origin.spec.mjs",
     "build:wasm": "bash scripts/build-wasm.sh"
   },
   "dependencies": {
+    "@fontsource/atkinson-hyperlegible-mono": "5.3.0",
+    "@fontsource/atkinson-hyperlegible-next": "5.3.0",
+    "qrcode-generator": "2.0.4",
     "vue": "3.5.45",
     "vue-i18n": "11.4.18"
   },

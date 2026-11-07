@@ -1,0 +1,734 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/*
+ * Display (receiver) styles. Source of every value: docs/design/first-run-and-display.md
+ * (sections 3 and 4), measured in reference px on a 960 x 540 canvas. The canvas is scaled
+ * uniformly with `transform: scale(var(--s))` (set by useDisplayScale); the rest of the viewport
+ * is filled with --bg. Presenting, dialogs and toasts use full-viewport layers that are scaled
+ * the same way, so that 1 reference px is the same everywhere.
+ */
+
+.cd {
+  --bg: #0e1630;
+  --panel: #17213f;
+  --panel2: #1f2b50;
+  --line: #2e3c68;
+  --fg: #f3f5fa;
+  --mut: #b9c2d8;
+  --acc: #ffc266;
+  --focus: #ffc94d;
+  --btn: #24305a;
+  --qrbg: #ffffff;
+  --qrdot: #0e1630;
+  --scrim: rgba(0, 0, 0, 0.55);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+  line-height: 1.3;
+  cursor: default;
+}
+.cd[data-theme='light'] {
+  --bg: #ffffff;
+  --panel: #f2f4f8;
+  --panel2: #e6eaf1;
+  --line: #b4bccb;
+  --fg: #0a0f1e;
+  --mut: #343c51;
+  --acc: #7a4300;
+  --focus: #b35c00;
+  --btn: #e3e7ef;
+}
+.cd[data-theme='oled'] {
+  --bg: #000000;
+  --panel: #000000;
+  --panel2: #000000;
+  --line: #2c313c;
+  --fg: #e2e6ee;
+  --mut: #a1a9ba;
+  --acc: #d29e48;
+  --focus: #ddae48;
+  --btn: #000000;
+  --qrbg: #e6e6e6;
+}
+.cd *,
+.cd *::before,
+.cd *::after {
+  box-sizing: border-box;
+}
+.cd button {
+  font-family: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+.cd input {
+  font-family: inherit;
+}
+.cd p,
+.cd h1,
+.cd h2 {
+  margin: 0;
+}
+.cd .mono {
+  font-family: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+}
+.cd.cd-hide-pointer,
+.cd.cd-hide-pointer * {
+  cursor: none;
+}
+
+/* The 960 x 540 canvas (setup, idle) */
+.cd-canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 960px;
+  height: 540px;
+  transform: translate(-50%, -50%) scale(var(--s, 1));
+  transform-origin: center;
+  overflow: hidden;
+}
+/* A viewport-sized layer in reference px (dialogs, toast, presenting controls) */
+.cd-hud {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100vw / var(--s, 1));
+  height: calc(100vh / var(--s, 1));
+  transform: scale(var(--s, 1));
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.cd-hud > * {
+  pointer-events: auto;
+}
+
+/* D-pad focus ring (3.5): outline 4 --focus, offset 3, glow 9, scale 1.03, 120 ms. Only on the
+   display's own controls; the picture's own controls (annotation toolbar, link card) keep theirs. */
+.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob) {
+  position: relative;
+  transition: transform 0.12s ease;
+}
+.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus {
+  outline: none;
+}
+.cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 9px rgba(255, 201, 77, 0.18);
+  transform: scale(1.03);
+  z-index: 2;
+}
+
+/* ---------- idle ---------- */
+.cd-idle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 26px 40px 18px;
+  gap: 14px;
+}
+.cd-itop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cd-itop img {
+  width: 46px;
+  height: 46px;
+}
+.cd-room {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cd-pill {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 10px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 700;
+  background: var(--panel2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+.cd-pill svg {
+  width: 20px;
+  height: 20px;
+  color: var(--acc);
+}
+.cd-imain {
+  flex: 1;
+  display: flex;
+  gap: 36px;
+  align-items: center;
+  min-height: 0;
+}
+.cd-isteps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.cd-istep {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.cd-num {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--acc);
+  color: var(--bg);
+  font-size: 21px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+.cd-ilbl {
+  font-size: 17px;
+  color: var(--mut);
+}
+.cd-idom {
+  font-size: 58px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.cd-icode {
+  font-size: 80px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  min-height: 80px;
+  white-space: pre;
+}
+.cd-icode.dim {
+  opacity: 0.35;
+}
+.cd-inote {
+  font-size: 17px;
+  color: var(--mut);
+  padding-left: 54px;
+}
+.cd-iqr {
+  width: 236px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.cd-qrbox {
+  width: 212px;
+  height: 212px;
+  background: var(--qrbg);
+  border-radius: 14px;
+  padding: 10px;
+}
+.cd-qrbox svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.cd-qrbox.dim {
+  opacity: 0.25;
+}
+.cd-qrcap {
+  font-size: 15px;
+  color: var(--mut);
+  text-align: center;
+  line-height: 1.3;
+}
+.cd-ifoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 15px;
+  color: var(--mut);
+  line-height: 1.3;
+}
+.cd-menubtn {
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--fg);
+  border-radius: 10px;
+  min-height: 46px;
+  padding: 0 16px 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.cd-menubtn svg {
+  width: 20px;
+  height: 20px;
+}
+.cd-offline {
+  background: var(--panel);
+  border: 2px dashed var(--line);
+  border-radius: 16px;
+  padding: 16px 20px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.cd-offline svg {
+  width: 34px;
+  height: 34px;
+  color: var(--acc);
+  flex: none;
+}
+.cd-offline p {
+  font-size: 18px;
+  line-height: 1.35;
+}
+.cd-offline b {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+/* Idle dimming (8.6): overlay of --bg at 60 % over 2 s, restored in 200 ms */
+.cd-dim {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 3;
+}
+.cd-dim.on {
+  opacity: 0.6;
+  transition: opacity 2s ease-out;
+}
+
+/* ---------- setup wizard and dialogs ---------- */
+.cd-setup {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+.cd-wz {
+  width: 780px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 28px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.cd-wztop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cd-wztop img {
+  width: 40px;
+  height: 40px;
+}
+.cd-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+  color: var(--mut);
+}
+.cd-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  display: inline-block;
+}
+.cd-dots i.on {
+  background: var(--acc);
+}
+.cd-wz h2 {
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+.cd-wz p {
+  font-size: 18px;
+  line-height: 1.4;
+  color: var(--mut);
+}
+.cd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cd-chip {
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--fg);
+  border-radius: 999px;
+  min-height: 46px;
+  padding: 0 18px;
+  font-size: 18px;
+}
+.cd-chip.on {
+  border-color: var(--acc);
+  font-weight: 700;
+}
+.cd-namefield {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cd-namefield label {
+  font-size: 15px;
+  color: var(--mut);
+}
+.cd-namefield input {
+  height: 50px;
+  border-radius: 10px;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 22px;
+  padding: 0 14px;
+}
+.cd-mcards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.cd-mcard {
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--fg);
+  border-radius: 16px;
+  padding: 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 120px;
+}
+.cd-mcard b {
+  font-size: 21px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cd-mcard b svg {
+  width: 24px;
+  height: 24px;
+}
+.cd-mcard span {
+  font-size: 16px;
+  line-height: 1.35;
+  color: var(--mut);
+}
+.cd-mcard.on {
+  border-color: var(--acc);
+}
+.cd-mcard em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--acc);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.cd-srvcard {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: var(--panel2);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+.cd-srvcard svg {
+  width: 34px;
+  height: 34px;
+  color: var(--acc);
+  flex: none;
+}
+.cd-srvcard .d {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.cd-srvcard .s {
+  font-size: 16px;
+  color: var(--mut);
+}
+.cd-acts {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+.cd-acts .gap {
+  flex: 1;
+}
+.cd-tbtn {
+  border: 2px solid var(--line);
+  background: var(--btn);
+  color: var(--fg);
+  border-radius: 12px;
+  min-height: 50px;
+  padding: 0 22px;
+  font-size: 19px;
+  font-weight: 700;
+}
+.cd-tbtn.p {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--bg);
+}
+.cd-ghost {
+  border: 2px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 14px;
+  min-height: 34px;
+}
+.cd-rh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* Section label in dialogs (14, uppercase, .08em) */
+.cd-rh h2 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mut);
+  line-height: 1.3;
+}
+.cd-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cd-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.cd-mt {
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--fg);
+  border-radius: 12px;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.cd-mt svg {
+  width: 22px;
+  height: 22px;
+}
+.cd-mt.on {
+  font-weight: 700;
+  border-color: var(--acc);
+  background: color-mix(in srgb, var(--acc) 14%, var(--panel2));
+}
+.cd-looks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.cd-looks .cd-mt {
+  height: 46px;
+  font-size: 15px;
+}
+.cd-looks .cd-mt.on {
+  background: color-mix(in srgb, var(--acc) 14%, var(--panel2));
+}
+.cd-mdesc {
+  font-size: 15px;
+  color: var(--mut);
+}
+.cd-xbtn {
+  border: 0;
+  background: transparent;
+  color: var(--mut);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.cd-xbtn svg {
+  width: 16px;
+  height: 16px;
+}
+.cd-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--scrim);
+  pointer-events: auto;
+}
+.cd-modal .cd-wz {
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  width: 600px;
+}
+.cd-rq {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.cd-rq h2 {
+  overflow-wrap: anywhere;
+  color: var(--fg);
+}
+.cd-rq > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cd-chk {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 3px 10px;
+  min-width: 58px;
+}
+.cd-chk > span:first-child {
+  font-size: 11px;
+  color: var(--mut);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cd-chk > span:last-child {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.cd-queue {
+  font-size: 15px;
+  color: var(--mut);
+}
+
+/* ---------- presenting ---------- */
+.cd-show {
+  position: absolute;
+  inset: 0;
+  background: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cd-pv {
+  position: absolute;
+  bottom: 12px;
+  z-index: 4;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+.cd-pv.hid {
+  opacity: 0;
+  pointer-events: none;
+}
+.cd-byline {
+  left: 12px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  min-height: 46px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.cd-byline small {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--mut);
+}
+.cd-endbtn {
+  right: 12px;
+}
+.cd-ob {
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--fg);
+  border-radius: 10px;
+  min-height: 46px;
+  padding: 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cd-ob svg {
+  width: 18px;
+  height: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cd-pv,
+  .cd-dim,
+  .cd-dim.on {
+    transition: none;
+  }
+  .cd :is(.cd-tbtn, .cd-chip, .cd-mcard, .cd-mt, .cd-menubtn, .cd-xbtn, .cd-ghost, .cd-ob):focus-visible {
+    transform: none;
+  }
+}
+
+/* ---------- toast ---------- */
+.cd-toast {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  background: var(--fg);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 8px 20px;
+  font-size: 17px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  pointer-events: none;
+}

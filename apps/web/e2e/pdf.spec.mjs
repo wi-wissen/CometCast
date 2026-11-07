@@ -18,6 +18,7 @@ import { dirname, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import assert from 'node:assert/strict'
+import { contentSender, openDisplay, presenterJoin } from './helpers.mjs'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -164,17 +165,11 @@ try {
 
   // ---------- English: receiver and sender ----------
   const { ctx: rctx, page: receiver } = await newPage()
-  await receiver.goto(base)
-  await receiver.getByRole('button', { name: /Receive on this device/ }).click()
-  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 15000 })
-  const code = (await receiver.getByTestId('room-code').innerText()).trim()
+  const code = await openDisplay(receiver, base)
 
   const { ctx: sctx, page: sender } = await newPage()
-  await sender.goto(base)
-  await sender.getByRole('button', { name: /Send file or link/ }).click()
-  await sender.locator('#room-code').fill(code)
-  await sender.getByRole('button', { name: 'Connect' }).click()
-  await sender.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 20000 })
+  await presenterJoin(sender, base, code)
+  const content = contentSender(sender)
 
   // Anything the PDF's link would do must not happen: watch for new tabs and navigations.
   const opened = []
@@ -185,9 +180,8 @@ try {
   const receiverUrl = receiver.url()
 
   const pdf = makePdf()
-  await sender.getByTestId('pdf-input').setInputFiles({ name: 'lesson.pdf', mimeType: 'application/pdf', buffer: pdf })
-  await sender.getByTestId('pdf-notice').waitFor({ timeout: 20000 })
-  assert.match(await sender.getByTestId('pdf-notice').innerText(), /Sent lesson\.pdf/)
+  await content.file({ name: 'lesson.pdf', mimeType: 'application/pdf', buffer: pdf })
+  await sender.getByTestId('presenting-page').waitFor({ timeout: 20000 })
 
   await receiver.getByTestId('document-canvas').waitFor({ state: 'visible', timeout: 30000 })
   await waitFor(() => receiver.getByTestId('document-canvas').getAttribute('data-busy').then((b) => b === 'false'), 'first page drawn', 30000)
@@ -252,38 +246,29 @@ try {
   assert.equal(await receiver.getByTestId('stage').locator('a[href]').count(), 0, 'the document view contains no links')
 
   // A damaged PDF (valid marker, garbage after it) gives the translated notice and no document.
-  await sender.getByTestId('send-next-page').click()
   const garbage = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(40000, 0x41)])
-  await sender.getByTestId('pdf-input').setInputFiles({ name: 'broken.pdf', mimeType: 'application/pdf', buffer: garbage })
-  await receiver.getByTestId('content-error').waitFor({ timeout: 30000 })
-  assert.match(await receiver.getByTestId('content-error').innerText(), /damaged or not supported/)
+  await content.file({ name: 'broken.pdf', mimeType: 'application/pdf', buffer: garbage })
+  await receiver.getByTestId('toast').filter({ hasText: /damaged or not supported/ }).waitFor({ timeout: 30000 })
   assert.equal(await receiver.getByTestId('document-canvas').count(), 0)
 
   // The sender refuses a file that is no PDF before sending anything.
-  await sender.getByTestId('pdf-input').setInputFiles({ name: 'text.pdf', mimeType: 'application/pdf', buffer: Buffer.from('hello world') })
-  await sender.getByTestId('pdf-notice').filter({ hasText: /does not look like a PDF/ }).waitFor({ timeout: 10000 })
+  await content.file({ name: 'text.pdf', mimeType: 'application/pdf', buffer: Buffer.from('hello world') })
+  await sender.getByTestId('file-error').filter({ hasText: /does not look like a PDF/ }).waitFor({ timeout: 10000 })
 
-  // A good PDF again, then stop from the sender closes it.
-  await sender.getByTestId('pdf-input').setInputFiles({ name: 'lesson.pdf', mimeType: 'application/pdf', buffer: pdf })
+  // A good PDF again, then stop from the presenter closes it.
+  await content.file({ name: 'lesson.pdf', mimeType: 'application/pdf', buffer: pdf })
   await receiver.getByText('Page 1 of 3').waitFor({ timeout: 30000 })
-  await sender.getByTestId('stop-showing').click()
+  await content.stop()
   await receiver.getByTestId('document-canvas').waitFor({ state: 'detached', timeout: 10000 })
   await sctx.close()
   await rctx.close()
 
   // ---------- German texts ----------
   const { ctx: dr, page: de } = await newPage('de-DE')
-  await de.goto(base)
-  await de.getByRole('button', { name: /Auf diesem Gerät empfangen/ }).click()
-  await de.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 15000 })
-  const code2 = (await de.getByTestId('room-code').innerText()).trim()
+  const code2 = await openDisplay(de, base)
   const { ctx: ds, page: deSender } = await newPage('de-DE')
-  await deSender.goto(base)
-  await deSender.getByRole('button', { name: /Datei oder Link senden/ }).click()
-  await deSender.locator('#room-code').fill(code2)
-  await deSender.getByRole('button', { name: 'Verbinden' }).click()
-  await deSender.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 20000 })
-  await deSender.getByTestId('pdf-input').setInputFiles({ name: 'folien.pdf', mimeType: 'application/pdf', buffer: pdf })
+  await presenterJoin(deSender, base, code2)
+  await contentSender(deSender).file({ name: 'folien.pdf', mimeType: 'application/pdf', buffer: pdf })
   await de.getByText('Seite 1 von 3').waitFor({ timeout: 30000 })
   await deSender.getByRole('button', { name: 'Nächste Seite' }).click()
   await de.getByText('Seite 2 von 3').waitFor({ timeout: 10000 })

@@ -74,5 +74,7 @@ jobs:
         working-directory: apps/web
       - run: npm run e2e:join
         working-directory: apps/web
+      - run: npm run e2e:display
+        working-directory: apps/web
       - run: npm run e2e:media
         working-directory: apps/web

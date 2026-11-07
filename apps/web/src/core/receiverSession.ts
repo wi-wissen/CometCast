@@ -49,6 +49,21 @@ export interface BlockedEntry {
   name: string
 }
 
+/**
+ * Things that happened that the display tells the host about in a short toast
+ * (docs/design/first-run-and-display.md, 4.6). `name` is the sender's cleaned name (may be empty).
+ */
+export type ReceiverEvent =
+  | { kind: 'joined'; name: string } // a sender is connected (open mode)
+  | { kind: 'allowed'; name: string }
+  | { kind: 'denied'; name: string }
+  | { kind: 'blocked'; name: string }
+  | { kind: 'expired'; name: string }
+  | { kind: 'withdrawn'; name: string }
+  | { kind: 'left'; name: string }
+  | { kind: 'lockedRejected'; n: number }
+  | { kind: 'sessionEnded' }
+
 export interface ReceiverState {
   phase: ReceiverPhase
   code: string | null
@@ -90,6 +105,8 @@ export interface ReceiverDeps {
   pdfRenderer?: PdfRendererFactory
   /** Join mode of the room that is created (default "open"). Changed later with setJoinMode. */
   joinMode?: JoinMode
+  /** Called for the events of {@link ReceiverEvent} (the display shows them as toasts). */
+  onEvent?: (e: ReceiverEvent) => void
   /** Test seam: the clock (default Date.now). */
   now?: () => number
   /** Test seam; defaults to URL.createObjectURL / revokeObjectURL. */
@@ -163,10 +180,19 @@ export class ReceiverSession {
   private altchaAbort: AbortController | null = null
   private altchaPayload: string | undefined
   private mode: JoinMode
+  /** The mode a new room (after the session ends) starts with: the last one that was not "locked". */
+  private defaultMode: JoinMode
+  /** A request was allowed and its sender is about to connect (so "connected" is not toasted a second time). */
+  private allowedPending = false
 
   constructor(private readonly deps: ReceiverDeps) {
     this.peerFactory = deps.peerFactory ?? ((h, c) => createPeer(h, c))
     this.mode = deps.joinMode ?? 'open'
+    this.defaultMode = this.mode === 'locked' ? 'open' : this.mode
+  }
+
+  private emit(e: ReceiverEvent): void {
+    this.deps.onEvent?.(e)
   }
 
   get snapshot(): ReceiverState {
@@ -302,6 +328,12 @@ export class ReceiverSession {
 
   /** Changes who may join, at any time. The state changes when the server confirms. */
   setJoinMode(mode: JoinMode): void {
+    // Locked lasts until the session ends or the display restarts: it never becomes the default.
+    if (mode !== 'locked') this.defaultMode = mode
+    // Locking rejects everybody who waits (the server tells them too).
+    if (mode === 'locked' && this.mode !== 'locked' && this.state.requests.length > 0) {
+      this.emit({ kind: 'lockedRejected', n: this.state.requests.length })
+    }
     this.mode = mode
     if (this.state.code !== null) this.client?.send({ type: 'set_join_mode', join_mode: mode })
   }
@@ -311,8 +343,11 @@ export class ReceiverSession {
    * (only with a denial) also blocks the sender's address for the rest of this room session.
    */
   decide(id: number, allow: boolean, block = false): void {
-    if (!this.state.requests.some((r) => r.id === id)) return
+    const req = this.state.requests.find((r) => r.id === id)
+    if (!req) return
     this.client?.send({ type: 'join_decision', id, allow, ...(block && !allow ? { block: true } : {}) })
+    if (allow) this.allowedPending = true
+    this.emit({ kind: allow ? 'allowed' : block ? 'blocked' : 'denied', name: req.name })
     this.set({ requests: this.state.requests.filter((r) => r.id !== id) })
   }
 
@@ -396,6 +431,9 @@ export class ReceiverSession {
       {
         onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
         onTrack: (stream) => this.set({ stream }),
+        onTrackEnded: (stream) => {
+          if (this.state.stream === stream) this.set({ stream: null })
+        },
         onDataChannel: (ch) => this.attachChannel(ch),
         onState: (s: PeerState) => {
           if (s === 'connected') {
@@ -441,7 +479,10 @@ export class ReceiverSession {
         })
         break
       case 'join_request_cancelled': {
+        const gone = this.state.requests.find((r) => r.id === m.id)
         const requests = this.state.requests.filter((r) => r.id !== m.id)
+        if (gone && m.reason === 'timeout') this.emit({ kind: 'expired', name: gone.name })
+        else if (gone && (m.reason === 'cancelled' || m.reason === 'left')) this.emit({ kind: 'withdrawn', name: gone.name })
         if (m.reason === 'locked') {
           const prev = this.state.notice
           const count = (prev?.kind === 'locked_discarded' ? prev.count : 0) + 1
@@ -470,10 +511,16 @@ export class ReceiverSession {
         this.control.reset()
         this.altchaPayload = undefined
         this.altchaTried = false
-        this.set({ phase: 'connecting', code: null, stream: null, sas: undefined, peerName: null, requests: [], blocks: [] })
+        // A new session starts in the default mode again ("locked" does not survive the end).
+        this.mode = this.defaultMode
+        this.allowedPending = false
+        this.emit({ kind: 'sessionEnded' })
+        this.set({ joinMode: this.mode, phase: 'connecting', code: null, stream: null, sas: undefined, peerName: null, requests: [], blocks: [] })
         this.sendCreateRoom()
         break
       case 'peer_joined':
+        if (!this.allowedPending) this.emit({ kind: 'joined', name: m.name })
+        this.allowedPending = false
         this.newPeer()
         this.set({ phase: 'negotiating', stream: null, sas: undefined, peerName: m.name })
         break
@@ -492,6 +539,7 @@ export class ReceiverSession {
         })
         break
       case 'peer_left':
+        if (this.state.peerName !== null) this.emit({ kind: 'left', name: this.state.peerName })
         this.peer?.close()
         this.peer = null
         this.clearContent()

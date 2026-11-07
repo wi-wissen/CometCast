@@ -1,0 +1,257 @@
+{
+  "common": {
+    "back": "Zurück",
+    "next": "Weiter",
+    "cancel": "Abbrechen",
+    "or": "oder",
+    "noName": "Ohne Namen",
+    "quoted": "„{name}“",
+    "stepOf": "Schritt {n} von 4"
+  },
+  "device": {
+    "phone": "Handy",
+    "android": "Android-Handy",
+    "iphone": "iPhone",
+    "ipad": "iPad",
+    "laptop": "Laptop",
+    "chromebook": "Chromebook"
+  },
+  "mode": {
+    "open": "Offen",
+    "approval": "Mit Freigabe",
+    "locked": "Gesperrt"
+  },
+  "appearance": {
+    "dark": "Dunkel",
+    "light": "Hell",
+    "oled": "OLED-Schwarz",
+    "auto": "Automatisch"
+  },
+  "setup": {
+    "welcome": {
+      "title": "Hallo! Dieser Bildschirm wird zum Anzeigegerät.",
+      "body": "Danach kann jeder im Raum hier zeigen, was auf seinem Handy oder Laptop ist. Mit einem Code, ohne Konto.",
+      "start": "Einrichten"
+    },
+    "name": {
+      "title": "Wie heißt dieser Raum?",
+      "body": "Der Name steht groß auf dem Bildschirm, damit alle wissen, dass sie richtig sind.",
+      "custom": "Eigener Name",
+      "s1": "Besprechungsraum Elbe",
+      "s2": "Wohnzimmer",
+      "s3": "Vereinsheim",
+      "s4": "Werkstatt",
+      "s5": "Raum 204"
+    },
+    "mode": {
+      "title": "Wer darf sich verbinden?",
+      "fewPeople": "Wenige Leute",
+      "manyPeople": "Viele Leute",
+      "openText": "Wer den Code sieht, ist sofort verbunden. Für kleine Runden, Teams und zu Hause.",
+      "approvalText": "Jede Person erscheint hier als Anfrage, du lässt sie rein. Für Räume, die viele nutzen.",
+      "later": "Umschalten und Sperren geht später jederzeit in den Einstellungen."
+    },
+    "address": {
+      "title": "Über welche Adresse kommen die anderen?",
+      "body": "Diese Adresse steht später groß auf dem Bildschirm und steckt im QR-Code.",
+      "sourceDefault": "Standardserver. Nichts einzustellen.",
+      "sourceOwn": "Gefunden über das Firmennetz (DNS-Eintrag).",
+      "sourceBox": "Box im Haus im selben Netz gefunden.",
+      "ok": "Passt",
+      "change": "Andere Adresse"
+    },
+    "done": {
+      "title": "Fertig.",
+      "bodyRemote": "Die Einstellungen öffnest du jederzeit mit der Menü-Taste oder „Einstellungen“: Beitritt und Aussehen.",
+      "bodyPointer": "Die Einstellungen öffnest du jederzeit mit „Einstellungen“ unten rechts: Beitritt und Aussehen.",
+      "finish": "Zum Wartebildschirm"
+    }
+  },
+  "idle": {
+    "step1": "Im Browser öffnen",
+    "step2": "Diesen Code eingeben",
+    "altAddress": "oder {ip}",
+    "locked": "Gerade gesperrt.",
+    "qrCaption": "Oder scannen",
+    "qrLocked": "Gesperrt",
+    "appLine": "Kein Download nötig. Lieber als App: App Store · Google Play · {dom}/app",
+    "offline": {
+      "title": "Keine Verbindung zu {dom}",
+      "body": "Dieser Bildschirm ist gerade offline. Sobald das Netz wieder da ist, erscheinen Code und QR-Code von selbst."
+    }
+  },
+  "settings": {
+    "open": "Einstellungen",
+    "title": "Einstellungen",
+    "close": "Schließen",
+    "closeRemote": "Schließen (Zurück-Taste)",
+    "join": {
+      "label": "Beitritt",
+      "openText": "Jeder mit dem Code ist sofort verbunden.",
+      "approvalText": "Du lässt jede Person einzeln zu.",
+      "lockedText": "Niemand kommt neu hinzu. Verbundene bleiben."
+    },
+    "appearance": "Aussehen"
+  },
+  "request": {
+    "title": "Anfrage",
+    "queue": "+{n} warten",
+    "subtitle": "möchte sich verbinden · {device}",
+    "check": "Prüfzahl",
+    "yes": "Ja",
+    "no": "Nein",
+    "noBlock": "Nein und sperren",
+    "aria": "Anfrage: {name}"
+  },
+  "present": {
+    "byline": "{name} zeigt · {device}",
+    "end": "Beenden"
+  },
+  "toast": {
+    "joined": "{name} ist verbunden",
+    "allowed": "{name} zugelassen",
+    "denied": "{name} abgelehnt",
+    "blocked": "{name} abgelehnt und gesperrt",
+    "expired": "Anfrage von {name} verfallen",
+    "withdrawn": "{name} hat die Anfrage zurückgezogen",
+    "left": "{name} hat sich getrennt",
+    "lockedRejected": "Gesperrt · {n} offene Anfragen abgelehnt",
+    "sessionEnded": "Sitzung beendet · neuer Code"
+  },
+  "start": {
+    "titleRoom": "Mit „{room}“ verbinden",
+    "titleGeneric": "Mit einem Bildschirm verbinden",
+    "fromQr": "aus dem QR-Code",
+    "codeLabel": "Code vom Bildschirm",
+    "codeEmpty": "Bitte den Code eingeben, der groß auf dem Bildschirm steht.",
+    "nameLabel": "Dein Name",
+    "browser": "Im Browser weiter",
+    "browserPhone": "Ohne Installation. Fotos, Dateien und Links zeigen.",
+    "browserLaptop": "Ohne Installation. Bildschirm, Fenster, Dateien und Links zeigen.",
+    "or": "oder",
+    "appAndroid": "App bei Google Play holen",
+    "appIos": "App im App Store holen",
+    "appDesktop": "App für {os} herunterladen",
+    "appPhone": "Mit der App teilst du auch deinen ganzen Handy-Bildschirm.",
+    "appLaptop": "Die App findet Bildschirme im selben Netz auch ohne Code. Für jetzt reicht der Browser.",
+    "detected": "Erkannt: {device}, {browser}",
+    "beDisplay": "Soll dieses Gerät selbst der Bildschirm sein? {dom}/display öffnen.",
+    "downloadStarted": "Download gestartet. Bis die App installiert ist, geht alles hier im Browser."
+  },
+  "app": {
+    "welcome": "Willkommen bei Comet Cast",
+    "codeFromLink": "aus dem Link übernommen",
+    "codeScanned": "gescannt",
+    "scanAgainBody": "Scanne den QR-Code auf dem Bildschirm noch einmal, dann geht es weiter.",
+    "scanQr": "QR-Code scannen",
+    "connect": "Verbinden"
+  },
+  "wait": {
+    "title": "Warten auf Freigabe",
+    "checkLabel": "Deine Prüfzahl",
+    "checkHint": "Steht auch auf dem Bildschirm.",
+    "expires": "Die Anfrage verfällt in {n} s.",
+    "withdraw": "Anfrage zurückziehen"
+  },
+  "what": {
+    "connectedTo": "Verbunden mit „{room}“",
+    "title": "Was möchtest du zeigen?",
+    "screen": "Bildschirm teilen",
+    "screenLaptop": "Ganzer Bildschirm oder ein Fenster, live",
+    "screenApp": "Dein ganzes Handy-Display, live",
+    "screenPhoneBrowser": "Geht auf dem Handy nur mit der App",
+    "file": "Foto oder Datei zeigen",
+    "fileSub": "PDF oder Bild. Du blätterst, der Rest bleibt bei dir",
+    "link": "Link zeigen",
+    "linkSub": "Der Bildschirm öffnet die Seite selbst",
+    "disconnect": "Trennen"
+  },
+  "file": {
+    "title": "Was möchtest du zeigen?",
+    "body": "Zuletzt auf diesem Gerät. Oder „Andere Datei“ im Systemdialog."
+  },
+  "link": {
+    "label": "Adresse der Seite",
+    "hint": "Der Bildschirm braucht dafür selbst Internet.",
+    "go": "Auf dem Bildschirm öffnen"
+  },
+  "presenting": {
+    "screen": "Du zeigst deinen Bildschirm",
+    "file": "Du zeigst eine Datei",
+    "link": "Der Bildschirm zeigt deinen Link",
+    "where": "Auf „{room}“.",
+    "stop": "Zeigen beenden"
+  },
+  "bye": {
+    "title": "Getrennt",
+    "body": "Du bist nicht mehr verbunden. Du kannst diesen Tab schließen.",
+    "again": "Neu verbinden"
+  },
+  "error": {
+    "why": "Warum",
+    "now": "Was jetzt",
+    "code": {
+      "title": "Diesen Code gibt es gerade nicht",
+      "why": "Meist ein Tippfehler. Ein O im Code liest Comet Cast als Null, ein I als Eins, das musst du nicht unterscheiden.",
+      "now": "Schau noch einmal auf den Bildschirm und tippe den Code neu."
+    },
+    "expired": {
+      "title": "Dieser Code gilt nicht mehr",
+      "why": "Der Bildschirm hat inzwischen einen neuen Code. Codes wechseln, wenn das Anzeigegerät neu startet oder eine Sitzung endet.",
+      "now": "Den Code abtippen, der jetzt auf dem Bildschirm steht, oder den QR-Code neu scannen."
+    },
+    "otherServer": {
+      "title": "Dieser Code gehört zu einer anderen Adresse",
+      "why": "Du bist auf {here}. Der Code passt aber zu einem anderen Server, zum Beispiel dem einer Firma oder eines Vereins.",
+      "now": "Schau auf den Bildschirm: Dort steht die richtige Adresse. Oder scanne den QR-Code, dann stimmt beides."
+    },
+    "noInternet": {
+      "title": "Kein Internet auf diesem Gerät",
+      "why": "Dein Gerät ist offline, oder das WLAN lässt nur bestimmte Seiten zu.",
+      "now": "Mobile Daten einschalten oder das WLAN des Raums wählen. Die Seite versucht es dann von selbst noch einmal.",
+      "nowBox": "Für {dom} musst du im selben WLAN sein wie der Bildschirm. Frag nach dem WLAN des Raums."
+    },
+    "noScreen": {
+      "title": "Bildschirm teilen geht in diesem Browser nicht",
+      "why": "Handy-Browser dürfen deinen Bildschirm nicht weitergeben. Das liegt am Browser, nicht an dir.",
+      "now": "Zeig stattdessen ein Foto, eine Datei oder einen Link. Oder hol dir die App, dann geht auch der Bildschirm."
+    },
+    "displayOff": {
+      "title": "Der Bildschirm antwortet nicht",
+      "why": "Das Anzeigegerät ist aus, schläft oder Comet Cast ist dort geschlossen. Deine Anfrage ist nicht angekommen.",
+      "now": "Steht der Code noch auf dem Bildschirm? Wenn nicht, den Gastgeber bitten, Comet Cast dort zu öffnen."
+    },
+    "denied": {
+      "title": "Nicht zugelassen",
+      "why": "Am Bildschirm wurde „Nein“ gewählt.",
+      "now": "Frag bei Bedarf kurz persönlich nach."
+    },
+    "locked": {
+      "title": "Gerade gesperrt",
+      "why": "Der Code stimmt, aber dieser Bildschirm nimmt gerade niemanden Neues an.",
+      "whyWhile": "Der Gastgeber hat gesperrt, während du gewartet hast. Deine Anfrage wurde verworfen.",
+      "now": "Später noch einmal versuchen oder den Gastgeber ansprechen."
+    },
+    "timeout": {
+      "title": "Keine Antwort",
+      "why": "Niemand hat deine Anfrage innerhalb von 60 Sekunden beantwortet.",
+      "now": "Noch einmal anfragen und dem Gastgeber Bescheid sagen."
+    },
+    "ended": {
+      "title": "Präsentation beendet",
+      "why": "Am Bildschirm wurde die Sitzung beendet.",
+      "now": "Zum Weitermachen den neuen Code eingeben oder den QR-Code neu scannen."
+    },
+    "action": {
+      "retype": "Code neu eingeben",
+      "rescan": "QR-Code neu scannen",
+      "retry": "Erneut versuchen",
+      "showFile": "Foto oder Datei zeigen",
+      "showLink": "Link zeigen",
+      "getApp": "App holen",
+      "ask": "Erneut anfragen",
+      "askIn": "Erneut anfragen in {n} s",
+      "openDom": "{dom} öffnen"
+    }
+  }
+}
