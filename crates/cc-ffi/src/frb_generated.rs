@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 971354861;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1568113564;
 
 // Section: executor
 
@@ -418,6 +418,164 @@ fn wire__crate__api__keyframe_requested_impl(
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
                 let output_ok = Ok::<_, ()>(crate::api::keyframe_requested())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__local_network_available_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "local_network_available",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::local_network_available())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__nearby_native_gone_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "nearby_native_gone",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_instance = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::nearby_native_gone(api_instance);
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__nearby_native_permission_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "nearby_native_permission",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_state = <crate::api::NearbyPermission>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::nearby_native_permission(api_state);
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__nearby_native_reset_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "nearby_native_reset",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::nearby_native_reset();
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__nearby_native_seen_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "nearby_native_seen",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_instance = <String>::sse_decode(&mut deserializer);
+            let api_addresses = <Vec<String>>::sse_decode(&mut deserializer);
+            let api_txt = <Vec<(String, String)>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::nearby_native_seen(api_instance, api_addresses, api_txt);
+                })?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -844,6 +1002,45 @@ fn wire__crate__api__set_content_target_width_impl(
                 })?;
                 std::result::Result::Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__api__set_display_announcing_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_display_announcing",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_active = <bool>::sse_decode(&mut deserializer);
+            let api_instance_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(
+                            crate::api::set_display_announcing(api_active, api_instance_id).await,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
         },
     )
 }
@@ -1347,6 +1544,40 @@ fn wire__crate__api__stop_advertising_impl(
         },
     )
 }
+fn wire__crate__api__stop_nearby_screens_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_nearby_screens",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>({
+                        crate::api::stop_nearby_screens();
+                    })?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__stop_presenter_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1677,6 +1908,48 @@ fn wire__crate__api__validate_link_impl(
         },
     )
 }
+fn wire__crate__api__watch_nearby_screens_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "watch_nearby_screens",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_native = <bool>::sse_decode(&mut deserializer);
+            let api_events = <StreamSink<
+                crate::api::NearbyUiEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>({
+                            crate::api::watch_nearby_screens(api_native, api_events).await;
+                        })?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__watch_receivers_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1750,6 +2023,16 @@ impl SseDecode
 }
 
 impl SseDecode
+    for StreamSink<crate::api::NearbyUiEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
+impl SseDecode
     for StreamSink<crate::api::PresenterUiEvent, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -1797,6 +2080,21 @@ impl SseDecode for crate::api::AdvertiseOutcome {
             2 => crate::api::AdvertiseOutcome::Failed,
             3 => crate::api::AdvertiseOutcome::Superseded,
             _ => unreachable!("Invalid variant for AdvertiseOutcome: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::AnnounceStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::AnnounceStatus::Announcing,
+            1 => crate::api::AnnounceStatus::Off,
+            2 => crate::api::AnnounceStatus::WaitingForRoom,
+            3 => crate::api::AnnounceStatus::ForbiddenByPolicy,
+            4 => crate::api::AnnounceStatus::BadId,
+            _ => unreachable!("Invalid variant for AnnounceStatus: {}", inner),
         };
     }
 }
@@ -2144,6 +2442,18 @@ impl SseDecode for Vec<u8> {
     }
 }
 
+impl SseDecode for Vec<(String, String)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<(String, String)>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::ServerCandidate> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2153,6 +2463,32 @@ impl SseDecode for Vec<crate::api::ServerCandidate> {
             ans_.push(<crate::api::ServerCandidate>::sse_decode(deserializer));
         }
         return ans_;
+    }
+}
+
+impl SseDecode for crate::api::NearbyMode {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::NearbyMode::Open,
+            1 => crate::api::NearbyMode::Approval,
+            2 => crate::api::NearbyMode::Locked,
+            _ => unreachable!("Invalid variant for NearbyMode: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::NearbyPermission {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::NearbyPermission::NotAsked,
+            1 => crate::api::NearbyPermission::Granted,
+            2 => crate::api::NearbyPermission::Denied,
+            _ => unreachable!("Invalid variant for NearbyPermission: {}", inner),
+        };
     }
 }
 
@@ -2177,6 +2513,64 @@ impl SseDecode for crate::api::NearbyReceiverEvent {
             }
             2 => {
                 return crate::api::NearbyReceiverEvent::Unavailable;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseDecode for crate::api::NearbyScreenInfo {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_server = <String>::sse_decode(deserializer);
+        let mut var_mode = <crate::api::NearbyMode>::sse_decode(deserializer);
+        let mut var_code = <Option<String>>::sse_decode(deserializer);
+        return crate::api::NearbyScreenInfo {
+            id: var_id,
+            name: var_name,
+            server: var_server,
+            mode: var_mode,
+            code: var_code,
+        };
+    }
+}
+
+impl SseDecode for crate::api::NearbyUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                return crate::api::NearbyUiEvent::SearchStarted;
+            }
+            1 => {
+                return crate::api::NearbyUiEvent::SearchStopped;
+            }
+            2 => {
+                let mut var_screen = <crate::api::NearbyScreenInfo>::sse_decode(deserializer);
+                return crate::api::NearbyUiEvent::Added { screen: var_screen };
+            }
+            3 => {
+                let mut var_screen = <crate::api::NearbyScreenInfo>::sse_decode(deserializer);
+                return crate::api::NearbyUiEvent::Updated { screen: var_screen };
+            }
+            4 => {
+                let mut var_id = <String>::sse_decode(deserializer);
+                return crate::api::NearbyUiEvent::Removed { id: var_id };
+            }
+            5 => {
+                let mut var_state = <crate::api::NearbyPermission>::sse_decode(deserializer);
+                return crate::api::NearbyUiEvent::Permission { state: var_state };
+            }
+            6 => {
+                return crate::api::NearbyUiEvent::Unavailable;
+            }
+            7 => {
+                return crate::api::NearbyUiEvent::Forbidden;
             }
             _ => {
                 unimplemented!("");
@@ -2544,6 +2938,15 @@ impl SseDecode for crate::api::ReceiverUiEvent {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseDecode for (String, String) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_field0 = <String>::sse_decode(deserializer);
+        let mut var_field1 = <String>::sse_decode(deserializer);
+        return (var_field0, var_field1);
     }
 }
 
@@ -2936,21 +3339,24 @@ fn pde_ffi_dispatcher_primary_impl(
         7 => wire__crate__api__discover_servers_impl(port, ptr, rust_vec_len, data_len),
         10 => wire__crate__api__ensure_codec_impl(port, ptr, rust_vec_len, data_len),
         11 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__start_presenter_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__stop_presenter_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__take_encoded_video_impl(port, ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__set_display_announcing_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__start_presenter_impl(port, ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__stop_nearby_screens_impl(port, ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__stop_presenter_impl(port, ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__take_encoded_video_impl(port, ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__watch_nearby_screens_impl(port, ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2971,28 +3377,33 @@ fn pde_ffi_dispatcher_sync_impl(
         8 => wire__crate__api__docs_worker_path_impl(ptr, rust_vec_len, data_len),
         9 => wire__crate__api__end_room_impl(ptr, rust_vec_len, data_len),
         12 => wire__crate__api__keyframe_requested_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__office_worker_path_impl(ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__present_content_impl(ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__present_encoded_impl(ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__present_screen_impl(ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__remove_peer_impl(ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__request_video_keyframe_impl(ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__set_codec_dir_impl(ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__set_join_mode_impl(ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__set_office_worker_impl(ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__set_video_passthrough_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__stop_presenting_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__unblock_impl(ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__local_network_available_impl(ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__nearby_native_gone_impl(ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__nearby_native_permission_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__nearby_native_reset_impl(ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__nearby_native_seen_impl(ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__office_worker_path_impl(ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__present_content_impl(ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__present_encoded_impl(ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__present_screen_impl(ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__remove_peer_impl(ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__request_video_keyframe_impl(ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__set_codec_dir_impl(ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__set_join_mode_impl(ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__set_office_worker_impl(ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__set_video_passthrough_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__stop_presenting_impl(ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__unblock_impl(ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3016,6 +3427,25 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::AdvertiseOutcome>
     for crate::api::AdvertiseOutcome
 {
     fn into_into_dart(self) -> crate::api::AdvertiseOutcome {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::AnnounceStatus {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Announcing => 0.into_dart(),
+            Self::Off => 1.into_dart(),
+            Self::WaitingForRoom => 2.into_dart(),
+            Self::ForbiddenByPolicy => 3.into_dart(),
+            Self::BadId => 4.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::AnnounceStatus {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::AnnounceStatus> for crate::api::AnnounceStatus {
+    fn into_into_dart(self) -> crate::api::AnnounceStatus {
         self
     }
 }
@@ -3276,6 +3706,42 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::LinkCheck> for crate::api::Li
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::NearbyMode {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Open => 0.into_dart(),
+            Self::Approval => 1.into_dart(),
+            Self::Locked => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::NearbyMode {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::NearbyMode> for crate::api::NearbyMode {
+    fn into_into_dart(self) -> crate::api::NearbyMode {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::NearbyPermission {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::NotAsked => 0.into_dart(),
+            Self::Granted => 1.into_dart(),
+            Self::Denied => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::NearbyPermission {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::NearbyPermission>
+    for crate::api::NearbyPermission
+{
+    fn into_into_dart(self) -> crate::api::NearbyPermission {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::NearbyReceiverEvent {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
@@ -3304,6 +3770,59 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::NearbyReceiverEvent>
     for crate::api::NearbyReceiverEvent
 {
     fn into_into_dart(self) -> crate::api::NearbyReceiverEvent {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::NearbyScreenInfo {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.name.into_into_dart().into_dart(),
+            self.server.into_into_dart().into_dart(),
+            self.mode.into_into_dart().into_dart(),
+            self.code.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::NearbyScreenInfo {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::NearbyScreenInfo>
+    for crate::api::NearbyScreenInfo
+{
+    fn into_into_dart(self) -> crate::api::NearbyScreenInfo {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::NearbyUiEvent {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::NearbyUiEvent::SearchStarted => [0.into_dart()].into_dart(),
+            crate::api::NearbyUiEvent::SearchStopped => [1.into_dart()].into_dart(),
+            crate::api::NearbyUiEvent::Added { screen } => {
+                [2.into_dart(), screen.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::NearbyUiEvent::Updated { screen } => {
+                [3.into_dart(), screen.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::NearbyUiEvent::Removed { id } => {
+                [4.into_dart(), id.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::NearbyUiEvent::Permission { state } => {
+                [5.into_dart(), state.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::NearbyUiEvent::Unavailable => [6.into_dart()].into_dart(),
+            crate::api::NearbyUiEvent::Forbidden => [7.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::NearbyUiEvent {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::NearbyUiEvent> for crate::api::NearbyUiEvent {
+    fn into_into_dart(self) -> crate::api::NearbyUiEvent {
         self
     }
 }
@@ -3952,6 +4471,15 @@ impl SseEncode
 }
 
 impl SseEncode
+    for StreamSink<crate::api::NearbyUiEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
     for StreamSink<crate::api::PresenterUiEvent, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -3994,6 +4522,25 @@ impl SseEncode for crate::api::AdvertiseOutcome {
                 crate::api::AdvertiseOutcome::Refused => 1,
                 crate::api::AdvertiseOutcome::Failed => 2,
                 crate::api::AdvertiseOutcome::Superseded => 3,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::AnnounceStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::AnnounceStatus::Announcing => 0,
+                crate::api::AnnounceStatus::Off => 1,
+                crate::api::AnnounceStatus::WaitingForRoom => 2,
+                crate::api::AnnounceStatus::ForbiddenByPolicy => 3,
+                crate::api::AnnounceStatus::BadId => 4,
                 _ => {
                     unimplemented!("");
                 }
@@ -4303,6 +4850,16 @@ impl SseEncode for Vec<u8> {
     }
 }
 
+impl SseEncode for Vec<(String, String)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <(String, String)>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::ServerCandidate> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4310,6 +4867,40 @@ impl SseEncode for Vec<crate::api::ServerCandidate> {
         for item in self {
             <crate::api::ServerCandidate>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for crate::api::NearbyMode {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::NearbyMode::Open => 0,
+                crate::api::NearbyMode::Approval => 1,
+                crate::api::NearbyMode::Locked => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::NearbyPermission {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::NearbyPermission::NotAsked => 0,
+                crate::api::NearbyPermission::Granted => 1,
+                crate::api::NearbyPermission::Denied => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 
@@ -4329,6 +4920,56 @@ impl SseEncode for crate::api::NearbyReceiverEvent {
             }
             crate::api::NearbyReceiverEvent::Unavailable => {
                 <i32>::sse_encode(2, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseEncode for crate::api::NearbyScreenInfo {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.name, serializer);
+        <String>::sse_encode(self.server, serializer);
+        <crate::api::NearbyMode>::sse_encode(self.mode, serializer);
+        <Option<String>>::sse_encode(self.code, serializer);
+    }
+}
+
+impl SseEncode for crate::api::NearbyUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::NearbyUiEvent::SearchStarted => {
+                <i32>::sse_encode(0, serializer);
+            }
+            crate::api::NearbyUiEvent::SearchStopped => {
+                <i32>::sse_encode(1, serializer);
+            }
+            crate::api::NearbyUiEvent::Added { screen } => {
+                <i32>::sse_encode(2, serializer);
+                <crate::api::NearbyScreenInfo>::sse_encode(screen, serializer);
+            }
+            crate::api::NearbyUiEvent::Updated { screen } => {
+                <i32>::sse_encode(3, serializer);
+                <crate::api::NearbyScreenInfo>::sse_encode(screen, serializer);
+            }
+            crate::api::NearbyUiEvent::Removed { id } => {
+                <i32>::sse_encode(4, serializer);
+                <String>::sse_encode(id, serializer);
+            }
+            crate::api::NearbyUiEvent::Permission { state } => {
+                <i32>::sse_encode(5, serializer);
+                <crate::api::NearbyPermission>::sse_encode(state, serializer);
+            }
+            crate::api::NearbyUiEvent::Unavailable => {
+                <i32>::sse_encode(6, serializer);
+            }
+            crate::api::NearbyUiEvent::Forbidden => {
+                <i32>::sse_encode(7, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -4652,6 +5293,14 @@ impl SseEncode for crate::api::ReceiverUiEvent {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseEncode for (String, String) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.0, serializer);
+        <String>::sse_encode(self.1, serializer);
     }
 }
 

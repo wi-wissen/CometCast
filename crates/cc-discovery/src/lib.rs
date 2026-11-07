@@ -14,7 +14,9 @@
 
 pub mod address;
 pub mod announce;
+pub mod display;
 pub mod merge;
+pub mod nearby;
 pub mod policy;
 pub mod srv;
 
@@ -24,7 +26,15 @@ pub use announce::{
     AdvertiseOptions, Advertisement, AnnouncementSource, MdnsError, MdnsSource, ReceiverBrowser,
     ReceiverEvent, ReceiverInfo, advertise_receiver, discover_receivers,
 };
+pub use display::{
+    AnnounceBackend, AnnounceError, DisplayAnnouncement, DisplayAnnouncer, DisplayState,
+    MdnsBackend,
+};
 pub use merge::{Merged, merge};
+pub use nearby::{
+    NearbyChange, NearbyScreen, NearbySearch, NearbyTracker, RawEvent, RawRecord, RawSink,
+    ScreenMode, local_network_available,
+};
 pub use policy::{
     ModeHint, PolicyFormat, PolicyLocation, PolicyState, ServerPolicy, default_policy_locations,
     load_policy,

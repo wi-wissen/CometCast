@@ -11,7 +11,7 @@ part 'api.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -253,6 +253,77 @@ Stream<NearbyReceiverEvent> watchReceivers() =>
 Future<void> stopWatchingReceivers() =>
     RustLib.instance.api.crateApiStopWatchingReceivers();
 
+/// Tell the core whether the display may announce itself on the local network.
+///
+/// `active` is true while the display shows Idle or Presenting in the foreground and false in
+/// setup, offline, in the background and on every other page; the announcement is withdrawn
+/// (goodbye) when it turns false. `instance_id` is the stable random id of this installation
+/// (8 to 32 lower-case hex digits, created and persisted by the app, new after a data reset).
+/// What is announced (server, room name, join mode, the current code; no code while Locked)
+/// is taken from the running receiver ([`start_receiver`]), so it cannot differ from what the
+/// screen shows, and it is updated at once when the mode changes. A policy that forbids
+/// announcements wins over `active`.
+Future<AnnounceStatus> setDisplayAnnouncing({
+  required bool active,
+  required String instanceId,
+}) => RustLib.instance.api.crateApiSetDisplayAnnouncing(
+  active: active,
+  instanceId: instanceId,
+);
+
+/// Search for screens on the local network until [`stop_nearby_screens`] is called or Dart
+/// stops listening. A newer call replaces the running search.
+///
+/// `native` is true on platforms whose own browse API finds the screens (Android
+/// `NsdManager`, iOS and iPadOS `NWBrowser`): the bridge then reports what it sees with
+/// [`nearby_native_seen`], [`nearby_native_gone`] and [`nearby_native_permission`], and this
+/// function only checks and keeps the list. With `native` false (Linux, Windows, macOS) the
+/// core browses itself (`mdns-sd`).
+///
+/// Rules of the list (spec 14.3, 14.8; code in `cc_discovery::nearby`): rows are keyed by the
+/// instance id, new rows come at the end, a row is removed on goodbye or after 30 s without
+/// refresh, at most 32 rows, every field is cleaned and checked (server like any announced
+/// server, code of 6 characters from the code alphabet, other layout versions dropped). The
+/// search never picks a screen and never saves a server.
+Stream<NearbyUiEvent> watchNearbyScreens({required bool native}) =>
+    RustLib.instance.api.crateApiWatchNearbyScreens(native: native);
+
+/// Stop [`watch_nearby_screens`] (does nothing if none runs). The stream ends with
+/// [`NearbyUiEvent::SearchStopped`].
+Future<void> stopNearbyScreens() =>
+    RustLib.instance.api.crateApiStopNearbyScreens();
+
+/// A native bridge saw (or saw again) a `_cometcast._tcp` service. `instance` is the service
+/// instance name, `addresses` the resolved IP addresses as text (may be empty: Apple's browser
+/// does not resolve), `txt` the TXT entries. Everything is checked here. Ignored when no
+/// search runs.
+void nearbyNativeSeen({
+  required String instance,
+  required List<String> addresses,
+  required List<(String, String)> txt,
+}) => RustLib.instance.api.crateApiNearbyNativeSeen(
+  instance: instance,
+  addresses: addresses,
+  txt: txt,
+);
+
+/// A native bridge lost a service (goodbye or the platform dropped it).
+void nearbyNativeGone({required String instance}) =>
+    RustLib.instance.api.crateApiNearbyNativeGone(instance: instance);
+
+/// The native browse restarted: forget every row (the bridge reports what it sees again).
+void nearbyNativeReset() => RustLib.instance.api.crateApiNearbyNativeReset();
+
+/// The native bridge reports the state of the system permission.
+void nearbyNativePermission({required NearbyPermission state}) =>
+    RustLib.instance.api.crateApiNearbyNativePermission(state: state);
+
+/// Does this machine have a local network (a non-loopback interface with a private address)?
+/// Used by the computers' pages for the state "No local network"; phones and tablets ask the
+/// platform instead (`ConnectivityManager`, `NWPathMonitor`).
+bool localNetworkAvailable() =>
+    RustLib.instance.api.crateApiLocalNetworkAvailable();
+
 /// The image or PDF page that waits, or `None`. Call it after a
 /// [`ReceiverUiEvent::ContentFrameReady`]. Fetching re-arms that event; a newer picture
 /// replaces an unfetched one (only the latest matters), and a link, a stop or a new document
@@ -409,6 +480,24 @@ enum AdvertiseOutcome {
 
   /// A stop or a newer start came first; nothing is announced.
   superseded,
+}
+
+/// Whether the display announces itself now (result of [`set_display_announcing`]).
+enum AnnounceStatus {
+  /// A record with the current code is published (or will be as soon as the room exists).
+  announcing,
+
+  /// The UI said the display must not announce (setup, offline, background).
+  off,
+
+  /// Allowed, but no room exists yet (the announcement starts with the room).
+  waitingForRoom,
+
+  /// The administrator's policy forbids announcements (or the policy file is unusable).
+  forbiddenByPolicy,
+
+  /// The instance id is not 8 to 32 lower-case hex digits.
+  badId,
 }
 
 /// Answer of [`capture_info`].
@@ -744,6 +833,31 @@ sealed class LinkCheck with _$LinkCheck {
   const factory LinkCheck.invalid() = LinkCheck_Invalid;
 }
 
+/// Who may join a screen found nearby.
+enum NearbyMode {
+  /// Connects at once.
+  open,
+
+  /// The person at the screen has to approve.
+  approval,
+
+  /// Locked right now (no code is announced).
+  locked,
+}
+
+/// The state of the system permission to search the local network (iOS and iPadOS: Local
+/// Network; macOS 15 and later may ask the same way). Reported by the native bridge.
+enum NearbyPermission {
+  /// The platform needs a permission and the person was not asked yet.
+  notAsked,
+
+  /// Searching is allowed (or the platform needs no permission).
+  granted,
+
+  /// The person refused (Apple: `kDNSServiceErr_PolicyDenied`).
+  denied,
+}
+
 @freezed
 sealed class NearbyReceiverEvent with _$NearbyReceiverEvent {
   const NearbyReceiverEvent._();
@@ -770,6 +884,95 @@ sealed class NearbyReceiverEvent with _$NearbyReceiverEvent {
   /// Listening is not possible here (no multicast); the stream ends after this.
   const factory NearbyReceiverEvent.unavailable() =
       NearbyReceiverEvent_Unavailable;
+}
+
+/// One screen on the network, checked and cleaned by `cc-discovery` (docs/discovery.md,
+/// section 3). Nothing in it is trusted: in particular the server is only a suggestion until
+/// the person has confirmed it (spec 14.4).
+class NearbyScreenInfo {
+  /// The stable instance id of the screen; rows are merged by it.
+  final String id;
+
+  /// The room name, cleaned, at most 32 characters; empty when the screen has none.
+  final String name;
+
+  /// The announced server with scheme (`ws://host:port` or `wss://host:port`).
+  final String server;
+
+  /// Who may join.
+  final NearbyMode mode;
+
+  /// The current code (6 characters); `None` exactly when the mode is `Locked`.
+  final String? code;
+
+  const NearbyScreenInfo({
+    required this.id,
+    required this.name,
+    required this.server,
+    required this.mode,
+    this.code,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      server.hashCode ^
+      mode.hashCode ^
+      code.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NearbyScreenInfo &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          server == other.server &&
+          mode == other.mode &&
+          code == other.code;
+}
+
+@freezed
+sealed class NearbyUiEvent with _$NearbyUiEvent {
+  const NearbyUiEvent._();
+
+  /// The search runs. The first event of every stream.
+  const factory NearbyUiEvent.searchStarted() = NearbyUiEvent_SearchStarted;
+
+  /// The search ended (the last event after [`stop_nearby_screens`]).
+  const factory NearbyUiEvent.searchStopped() = NearbyUiEvent_SearchStopped;
+
+  /// A screen appeared. It goes to the end of the list.
+  const factory NearbyUiEvent.added({
+    /// The screen.
+    required NearbyScreenInfo screen,
+  }) = NearbyUiEvent_Added;
+
+  /// A screen changed (code, mode, name or server); it keeps its place.
+  const factory NearbyUiEvent.updated({
+    /// The screen.
+    required NearbyScreenInfo screen,
+  }) = NearbyUiEvent_Updated;
+
+  /// A screen left: goodbye, no refresh for 30 s, or it announced something unusable.
+  const factory NearbyUiEvent.removed({
+    /// The id of the screen.
+    required String id,
+  }) = NearbyUiEvent_Removed;
+
+  /// The state of the system permission changed (from the native bridge).
+  const factory NearbyUiEvent.permission({
+    /// The new state.
+    required NearbyPermission state,
+  }) = NearbyUiEvent_Permission;
+
+  /// Searching is not possible here (no multicast, no interface); the stream ends.
+  const factory NearbyUiEvent.unavailable() = NearbyUiEvent_Unavailable;
+
+  /// The administrator's policy forbids announcements (or locks the server): there is no
+  /// search; the stream ends.
+  const factory NearbyUiEvent.forbidden() = NearbyUiEvent_Forbidden;
 }
 
 @freezed

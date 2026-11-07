@@ -40,6 +40,7 @@ use crate::content::{self, CONTENT};
 use crate::content_sender;
 use crate::encoded;
 use crate::frb_generated::StreamSink;
+use crate::nearby;
 use crate::office;
 use crate::presenter::{self, PCmd};
 use crate::video::{self, VIDEO};
@@ -579,9 +580,11 @@ pub async fn start_receiver(
     let video_generation = VIDEO.reset();
     let content_generation = CONTENT.reset();
     let worker = content::worker();
+    let announce_server = server.clone();
     let mut options = ReceiverOptions::new(server);
     options.join_mode = join_mode.into();
     options.room_name = room_name.filter(|n| !n.trim().is_empty());
+    let announce_room_name = options.room_name.clone();
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
     }
@@ -637,12 +640,23 @@ pub async fn start_receiver(
     }
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<ReceiverCmd>();
     *RECEIVER_CMDS.lock().unwrap_or_else(|p| p.into_inner()) = Some(cmd_tx);
+    // From here on the display announces its code (when the UI allows it, spec 14.8); the guard
+    // withdraws the announcement whenever this task ends, for whatever reason.
+    nearby::receiver_started(
+        generation,
+        announce_server,
+        announce_room_name,
+        core.room_code().as_str().to_owned(),
+        core.join_mode(),
+    );
+    let announce_guard = nearby::ReceiverGuard::new(generation);
     let panic_sink = events.clone();
     let mut content_events = core.take_content_events();
     let (width_tx, mut width_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
     content::set_width_channel(content_generation, width_tx);
     spawn_guarded(
         async move {
+            let _announce_guard = announce_guard;
             // The decoder thread asks for key frames through a flag; this timer sends them.
             let mut keyframe_tick = tokio::time::interval(Duration::from_millis(250));
             loop {
@@ -673,7 +687,12 @@ pub async fn start_receiver(
                     }
                     Some(w) = width_rx.recv() => core.set_content_target_width(w),
                     Some(cmd) = cmd_rx.recv() => match cmd {
-                        ReceiverCmd::SetMode(m) => core.set_join_mode(m),
+                        ReceiverCmd::SetMode(m) => {
+                            // Locked takes the code out of the announcement at once, without
+                            // waiting for the server's confirmation.
+                            nearby::receiver_mode(generation, m);
+                            core.set_join_mode(m);
+                        }
                         ReceiverCmd::Decide { id: Some(id), allow } => core.decide_join(id, allow),
                         ReceiverCmd::Decide { id: None, .. } => core.deny_all_joins(),
                         ReceiverCmd::DenyAndBlock(id) => core.deny_and_block_join(id),
@@ -691,6 +710,9 @@ pub async fn start_receiver(
                         let Some(ev) = ev else { break };
                         if let ReceiverEvent::VideoTrack { codec, .. } = &ev {
                             VIDEO.set_codec_is_h264(matches!(codec, Some(cc_transport::VideoCodec::H264)));
+                        }
+                        if let ReceiverEvent::JoinModeChanged(m) = &ev {
+                            nearby::receiver_mode(generation, *m);
                         }
                         let is_stats = matches!(ev, ReceiverEvent::Stats(_));
                         let left = matches!(ev, ReceiverEvent::PeerLeft);
@@ -1569,7 +1591,7 @@ fn candidates(report: &cc_discovery::DiscoveryReport) -> Vec<ServerCandidate> {
 
 /// May announcements of display devices be used? Not if a policy forbids them or other servers,
 /// or if the policy file is unusable (fail closed).
-fn announcements_allowed(report: &cc_discovery::DiscoveryReport) -> bool {
+pub(crate) fn announcements_allowed(report: &cc_discovery::DiscoveryReport) -> bool {
     use cc_discovery::PolicyState;
     match &report.policy {
         PolicyState::Absent => true,
@@ -1820,6 +1842,254 @@ pub async fn watch_receivers(events: StreamSink<NearbyReceiverEvent>) {
 /// Stop [`watch_receivers`] (does nothing if none runs).
 pub fn stop_watching_receivers() {
     WATCH.stop();
+}
+
+// ---------------------------------------------------------------------------
+// Screens on this network (spec 14): the display announces, the presenter app lists
+// ---------------------------------------------------------------------------
+
+/// Whether the display announces itself now (result of [`set_display_announcing`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnounceStatus {
+    /// A record with the current code is published (or will be as soon as the room exists).
+    Announcing,
+    /// The UI said the display must not announce (setup, offline, background).
+    Off,
+    /// Allowed, but no room exists yet (the announcement starts with the room).
+    WaitingForRoom,
+    /// The administrator's policy forbids announcements (or the policy file is unusable).
+    ForbiddenByPolicy,
+    /// The instance id is not 8 to 32 lower-case hex digits.
+    BadId,
+}
+
+/// Tell the core whether the display may announce itself on the local network.
+///
+/// `active` is true while the display shows Idle or Presenting in the foreground and false in
+/// setup, offline, in the background and on every other page; the announcement is withdrawn
+/// (goodbye) when it turns false. `instance_id` is the stable random id of this installation
+/// (8 to 32 lower-case hex digits, created and persisted by the app, new after a data reset).
+/// What is announced (server, room name, join mode, the current code; no code while Locked)
+/// is taken from the running receiver ([`start_receiver`]), so it cannot differ from what the
+/// screen shows, and it is updated at once when the mode changes. A policy that forbids
+/// announcements wins over `active`.
+pub async fn set_display_announcing(active: bool, instance_id: String) -> AnnounceStatus {
+    match nearby::set_enabled(active, instance_id) {
+        nearby::Wanted::Yes => AnnounceStatus::Announcing,
+        nearby::Wanted::NotEnabled => AnnounceStatus::Off,
+        nearby::Wanted::NoReceiver => AnnounceStatus::WaitingForRoom,
+        nearby::Wanted::Forbidden => AnnounceStatus::ForbiddenByPolicy,
+        nearby::Wanted::BadId => AnnounceStatus::BadId,
+    }
+}
+
+/// Who may join a screen found nearby.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NearbyMode {
+    /// Connects at once.
+    Open,
+    /// The person at the screen has to approve.
+    Approval,
+    /// Locked right now (no code is announced).
+    Locked,
+}
+
+impl From<cc_discovery::ScreenMode> for NearbyMode {
+    fn from(m: cc_discovery::ScreenMode) -> Self {
+        match m {
+            cc_discovery::ScreenMode::Open => Self::Open,
+            cc_discovery::ScreenMode::Approval => Self::Approval,
+            cc_discovery::ScreenMode::Locked => Self::Locked,
+        }
+    }
+}
+
+/// One screen on the network, checked and cleaned by `cc-discovery` (docs/discovery.md,
+/// section 3). Nothing in it is trusted: in particular the server is only a suggestion until
+/// the person has confirmed it (spec 14.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NearbyScreenInfo {
+    /// The stable instance id of the screen; rows are merged by it.
+    pub id: String,
+    /// The room name, cleaned, at most 32 characters; empty when the screen has none.
+    pub name: String,
+    /// The announced server with scheme (`ws://host:port` or `wss://host:port`).
+    pub server: String,
+    /// Who may join.
+    pub mode: NearbyMode,
+    /// The current code (6 characters); `None` exactly when the mode is `Locked`.
+    pub code: Option<String>,
+}
+
+impl From<cc_discovery::NearbyScreen> for NearbyScreenInfo {
+    fn from(s: cc_discovery::NearbyScreen) -> Self {
+        Self {
+            id: s.id,
+            name: s.name,
+            server: s.server,
+            mode: s.mode.into(),
+            code: s.code,
+        }
+    }
+}
+
+/// The state of the system permission to search the local network (iOS and iPadOS: Local
+/// Network; macOS 15 and later may ask the same way). Reported by the native bridge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NearbyPermission {
+    /// The platform needs a permission and the person was not asked yet.
+    NotAsked,
+    /// Searching is allowed (or the platform needs no permission).
+    Granted,
+    /// The person refused (Apple: `kDNSServiceErr_PolicyDenied`).
+    Denied,
+}
+
+/// What a search for screens on the network reports ([`watch_nearby_screens`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NearbyUiEvent {
+    /// The search runs. The first event of every stream.
+    SearchStarted,
+    /// The search ended (the last event after [`stop_nearby_screens`]).
+    SearchStopped,
+    /// A screen appeared. It goes to the end of the list.
+    Added {
+        /// The screen.
+        screen: NearbyScreenInfo,
+    },
+    /// A screen changed (code, mode, name or server); it keeps its place.
+    Updated {
+        /// The screen.
+        screen: NearbyScreenInfo,
+    },
+    /// A screen left: goodbye, no refresh for 30 s, or it announced something unusable.
+    Removed {
+        /// The id of the screen.
+        id: String,
+    },
+    /// The state of the system permission changed (from the native bridge).
+    Permission {
+        /// The new state.
+        state: NearbyPermission,
+    },
+    /// Searching is not possible here (no multicast, no interface); the stream ends.
+    Unavailable,
+    /// The administrator's policy forbids announcements (or locks the server): there is no
+    /// search; the stream ends.
+    Forbidden,
+}
+
+static NEARBY: Slot = Slot::new();
+
+/// Search for screens on the local network until [`stop_nearby_screens`] is called or Dart
+/// stops listening. A newer call replaces the running search.
+///
+/// `native` is true on platforms whose own browse API finds the screens (Android
+/// `NsdManager`, iOS and iPadOS `NWBrowser`): the bridge then reports what it sees with
+/// [`nearby_native_seen`], [`nearby_native_gone`] and [`nearby_native_permission`], and this
+/// function only checks and keeps the list. With `native` false (Linux, Windows, macOS) the
+/// core browses itself (`mdns-sd`).
+///
+/// Rules of the list (spec 14.3, 14.8; code in `cc_discovery::nearby`): rows are keyed by the
+/// instance id, new rows come at the end, a row is removed on goodbye or after 30 s without
+/// refresh, at most 32 rows, every field is cleaned and checked (server like any announced
+/// server, code of 6 characters from the code alphabet, other layout versions dropped). The
+/// search never picks a screen and never saves a server.
+pub async fn watch_nearby_screens(native: bool, events: StreamSink<NearbyUiEvent>) {
+    let generation = NEARBY.begin();
+    let allowed = announcements_allowed(&cc_discovery::discover_servers_offline(
+        &cc_discovery::DiscoverOptions::default(),
+    ));
+    if !allowed {
+        let _ = events.add(NearbyUiEvent::Forbidden);
+        return;
+    }
+    let mut search = if native {
+        cc_discovery::NearbySearch::new()
+    } else {
+        match cc_discovery::NearbySearch::with_mdns() {
+            Ok(s) => s,
+            Err(_) => {
+                let _ = events.add(NearbyUiEvent::Unavailable);
+                return;
+            }
+        }
+    };
+    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
+    NEARBY.store(stop_tx);
+    // A stop between `begin` and `store` found an empty slot: check once more.
+    if !NEARBY.is_current(generation) {
+        return;
+    }
+    nearby::set_feed(generation, search.sink(), events.clone());
+    if events.add(NearbyUiEvent::SearchStarted).is_err() {
+        nearby::clear_feed(generation);
+        return;
+    }
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut stop_rx => {
+                    let _ = events.add(NearbyUiEvent::SearchStopped);
+                    break;
+                }
+                c = search.next() => {
+                    let Some(c) = c else { break };
+                    let out = match c {
+                        cc_discovery::NearbyChange::Added(s) => NearbyUiEvent::Added { screen: s.into() },
+                        cc_discovery::NearbyChange::Updated(s) => NearbyUiEvent::Updated { screen: s.into() },
+                        cc_discovery::NearbyChange::Removed(id) => NearbyUiEvent::Removed { id },
+                    };
+                    if events.add(out).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+        nearby::clear_feed(generation);
+        // `search` is dropped here: the browse stops. `events` is dropped: the stream ends.
+    });
+}
+
+/// Stop [`watch_nearby_screens`] (does nothing if none runs). The stream ends with
+/// [`NearbyUiEvent::SearchStopped`].
+pub fn stop_nearby_screens() {
+    NEARBY.stop();
+}
+
+/// A native bridge saw (or saw again) a `_cometcast._tcp` service. `instance` is the service
+/// instance name, `addresses` the resolved IP addresses as text (may be empty: Apple's browser
+/// does not resolve), `txt` the TXT entries. Everything is checked here. Ignored when no
+/// search runs.
+#[frb(sync)]
+pub fn nearby_native_seen(instance: String, addresses: Vec<String>, txt: Vec<(String, String)>) {
+    nearby::native_seen(instance, addresses, txt);
+}
+
+/// A native bridge lost a service (goodbye or the platform dropped it).
+#[frb(sync)]
+pub fn nearby_native_gone(instance: String) {
+    nearby::native_gone(instance);
+}
+
+/// The native browse restarted: forget every row (the bridge reports what it sees again).
+#[frb(sync)]
+pub fn nearby_native_reset() {
+    nearby::native_reset();
+}
+
+/// The native bridge reports the state of the system permission.
+#[frb(sync)]
+pub fn nearby_native_permission(state: NearbyPermission) {
+    nearby::native_event(NearbyUiEvent::Permission { state });
+}
+
+/// Does this machine have a local network (a non-loopback interface with a private address)?
+/// Used by the computers' pages for the state "No local network"; phones and tablets ask the
+/// platform instead (`ConnectivityManager`, `NWPathMonitor`).
+#[frb(sync)]
+pub fn local_network_available() -> bool {
+    cc_discovery::local_network_available()
 }
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_nearby_receiver_event_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<NearbyUiEvent> dco_decode_StreamSink_nearby_ui_event_Sse(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<PresenterUiEvent> dco_decode_StreamSink_presenter_ui_event_Sse(
     dynamic raw,
   );
@@ -54,6 +59,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AdvertiseOutcome dco_decode_advertise_outcome(dynamic raw);
 
   @protected
+  AnnounceStatus dco_decode_announce_status(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -61,6 +69,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ContentSource dco_decode_box_autoadd_content_source(dynamic raw);
+
+  @protected
+  NearbyScreenInfo dco_decode_box_autoadd_nearby_screen_info(dynamic raw);
 
   @protected
   ScreenRequest dco_decode_box_autoadd_screen_request(dynamic raw);
@@ -135,10 +146,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
+
+  @protected
   List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw);
 
   @protected
+  NearbyMode dco_decode_nearby_mode(dynamic raw);
+
+  @protected
+  NearbyPermission dco_decode_nearby_permission(dynamic raw);
+
+  @protected
   NearbyReceiverEvent dco_decode_nearby_receiver_event(dynamic raw);
+
+  @protected
+  NearbyScreenInfo dco_decode_nearby_screen_info(dynamic raw);
+
+  @protected
+  NearbyUiEvent dco_decode_nearby_ui_event(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -169,6 +195,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ReceiverUiEvent dco_decode_receiver_ui_event(dynamic raw);
+
+  @protected
+  (String, String) dco_decode_record_string_string(dynamic raw);
 
   @protected
   RoomCodeCheck dco_decode_room_code_check(dynamic raw);
@@ -241,6 +270,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   sse_decode_StreamSink_nearby_receiver_event_Sse(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<NearbyUiEvent> sse_decode_StreamSink_nearby_ui_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<PresenterUiEvent> sse_decode_StreamSink_presenter_ui_event_Sse(
     SseDeserializer deserializer,
   );
@@ -262,6 +296,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AdvertiseOutcome sse_decode_advertise_outcome(SseDeserializer deserializer);
 
   @protected
+  AnnounceStatus sse_decode_announce_status(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -271,6 +308,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ContentSource sse_decode_box_autoadd_content_source(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  NearbyScreenInfo sse_decode_box_autoadd_nearby_screen_info(
     SseDeserializer deserializer,
   );
 
@@ -361,14 +403,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<(String, String)> sse_decode_list_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<ServerCandidate> sse_decode_list_server_candidate(
     SseDeserializer deserializer,
   );
 
   @protected
+  NearbyMode sse_decode_nearby_mode(SseDeserializer deserializer);
+
+  @protected
+  NearbyPermission sse_decode_nearby_permission(SseDeserializer deserializer);
+
+  @protected
   NearbyReceiverEvent sse_decode_nearby_receiver_event(
     SseDeserializer deserializer,
   );
+
+  @protected
+  NearbyScreenInfo sse_decode_nearby_screen_info(SseDeserializer deserializer);
+
+  @protected
+  NearbyUiEvent sse_decode_nearby_ui_event(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -407,6 +466,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ReceiverUiEvent sse_decode_receiver_ui_event(SseDeserializer deserializer);
+
+  @protected
+  (String, String) sse_decode_record_string_string(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RoomCodeCheck sse_decode_room_code_check(SseDeserializer deserializer);
@@ -486,6 +550,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_nearby_ui_event_Sse(
+    RustStreamSink<NearbyUiEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_presenter_ui_event_Sse(
     RustStreamSink<PresenterUiEvent> self,
     SseSerializer serializer,
@@ -513,6 +583,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_announce_status(
+    AnnounceStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -524,6 +600,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_content_source(
     ContentSource self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_nearby_screen_info(
+    NearbyScreenInfo self,
     SseSerializer serializer,
   );
 
@@ -639,8 +721,23 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_record_string_string(
+    List<(String, String)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_server_candidate(
     List<ServerCandidate> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_nearby_mode(NearbyMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_nearby_permission(
+    NearbyPermission self,
     SseSerializer serializer,
   );
 
@@ -649,6 +746,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     NearbyReceiverEvent self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_nearby_screen_info(
+    NearbyScreenInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_nearby_ui_event(NearbyUiEvent self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
@@ -695,6 +801,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_receiver_ui_event(
     ReceiverUiEvent self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_record_string_string(
+    (String, String) self,
     SseSerializer serializer,
   );
 

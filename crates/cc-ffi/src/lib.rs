@@ -22,6 +22,7 @@ pub mod api;
 mod content;
 mod content_sender;
 mod encoded;
+mod nearby;
 mod office;
 mod presenter;
 mod video;
