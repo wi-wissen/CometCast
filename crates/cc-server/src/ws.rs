@@ -472,7 +472,11 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
         ClientMsg::Hello { .. } => {
             return strike(conn, state, "bad_message", "hello was already sent");
         }
-        ClientMsg::CreateRoom { altcha, join_mode } => {
+        ClientMsg::CreateRoom {
+            altcha,
+            join_mode,
+            room_name,
+        } => {
             if role != Role::Receiver {
                 return strike(
                     conn,
@@ -516,6 +520,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     state.guard.max_rooms(),
                     state.guard.max_rooms_per_ip(),
                     mode,
+                    room_name.as_deref(),
                 );
                 match created {
                     Ok((code, cancel)) => {
@@ -555,9 +560,13 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     l.max_pending_per_ip,
                 );
                 match result {
-                    Ok(Joined::Member { receiver, name }) => {
+                    Ok(Joined::Member {
+                        receiver,
+                        name,
+                        room_name,
+                    }) => {
                         conn.room = Some(code);
-                        conn.send(ServerMsg::Joined);
+                        conn.send(ServerMsg::Joined { room_name });
                         receiver.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
                     }
                     Ok(Joined::Pending {
@@ -565,6 +574,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         req,
                         check,
                         name,
+                        room_name,
                     }) => {
                         let wait = state.config.join_approval_timeout;
                         conn.pending = Some(PendingJoin {
@@ -574,6 +584,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         conn.send(ServerMsg::JoinPending {
                             timeout_secs: wait.as_secs().max(1),
                             check,
+                            room_name,
                         });
                         owner.send(Outgoing::Msg(ServerMsg::JoinRequest {
                             id: req,
@@ -705,7 +716,9 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         conn.send(ServerMsg::Blocked { id: bid, name });
                     }
                     if let Some((joiner, owner, name)) = d.approved {
-                        joiner.send(Outgoing::Msg(ServerMsg::Joined));
+                        joiner.send(Outgoing::Msg(ServerMsg::Joined {
+                            room_name: d.room_name.clone(),
+                        }));
                         owner.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
                     }
                     for (tx, req, code, reason, ip) in d.dropped {

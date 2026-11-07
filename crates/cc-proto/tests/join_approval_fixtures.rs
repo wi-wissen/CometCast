@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use cc_proto::{ClientMsg, ServerMsg, sanitize_display_name};
+use cc_proto::{ClientMsg, ServerMsg, sanitize_display_name, sanitize_room_name};
 use serde_json::Value;
 
 fn fixture(name: &str) -> Value {
@@ -76,6 +76,22 @@ fn name_vectors_hold() {
         assert_eq!(
             sanitize_display_name(input, n),
             v["expected"].as_str().unwrap(),
+            "{}",
+            v["note"]
+        );
+    }
+}
+
+#[test]
+fn room_name_vectors_hold() {
+    let f = fixture("room-name-sanitising.json");
+    assert_eq!(f["max_chars"], 32);
+    let vectors = f["vectors"].as_array().unwrap();
+    assert!(vectors.len() >= 10);
+    for v in vectors {
+        assert_eq!(
+            sanitize_room_name(v["input"].as_str()).as_deref(),
+            v["expected"].as_str(),
             "{}",
             v["note"]
         );

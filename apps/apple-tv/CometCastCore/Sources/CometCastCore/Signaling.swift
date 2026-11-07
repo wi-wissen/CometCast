@@ -18,7 +18,9 @@ public enum JoinMode: String, Sendable, CaseIterable {
 
 public enum ClientMessage: Equatable, Sendable {
     case hello(role: Role)
-    case createRoom(altcha: String?, joinMode: JoinMode?)
+    /// `roomName` (optional, protocol field `room_name`): the name the display device gives its room. The server
+    /// cleans it and cuts it at 32 characters; senders get it back in `join_pending` and `joined`.
+    case createRoom(altcha: String?, joinMode: JoinMode?, roomName: String? = nil)
     /// Sender side; not used by the TV, kept for the shared message vectors.
     case joinRoom(code: String, name: String?)
     case setJoinMode(JoinMode)
@@ -36,10 +38,11 @@ public enum ClientMessage: Equatable, Sendable {
     public var json: JSONValue {
         switch self {
         case .hello(let r): return .object(["type": .string("hello"), "proto_version": .number(Double(protoVersion)), "role": .string(r.rawValue)])
-        case .createRoom(let a, let mode):
+        case .createRoom(let a, let mode, let roomName):
             var o: [String: JSONValue] = ["type": .string("create_room")]
             if let a { o["altcha"] = .string(a) }
             if let mode { o["join_mode"] = .string(mode.rawValue) }
+            if let roomName { o["room_name"] = .string(roomName) }
             return .object(o)
         case .joinRoom(let c, let name):
             var o: [String: JSONValue] = ["type": .string("join_room"), "code": .string(c)]
@@ -70,10 +73,11 @@ public enum ClientMessage: Equatable, Sendable {
 public enum ServerMessage: Equatable, Sendable {
     case hello(protoVersion: Double)
     case roomCreated(code: String, joinMode: JoinMode)
-    case joined
+    /// `roomName`: the room's name as the display device set it (`room_name`); nil when absent, not a string, or empty.
+    case joined(roomName: String? = nil)
     /// `name` is untrusted text as the server sent it (it cleans it, the machine cleans it again).
     case peerJoined(name: String)
-    case joinPending(timeoutSecs: Double, check: Int)
+    case joinPending(timeoutSecs: Double, check: Int, roomName: String? = nil)
     case joinRequest(id: Int, name: String, check: Int)
     case joinRequestCancelled(id: Int, reason: String)
     case joinModeChanged(JoinMode)
@@ -97,6 +101,12 @@ public enum ServerMessage: Equatable, Sendable {
             return Int(d)
         }
         func mode(_ k: String) -> JoinMode? { str(k).flatMap(JoinMode.init(rawValue:)) }
+        // `room_name` is optional: absent, null, not a string, or only white space all mean "no room name"
+        // (the message itself stays valid). The server already cleaned it; it is shown as plain text only.
+        func roomName() -> String? {
+            guard let s = str("room_name"), !s.allSatisfy({ $0.isWhitespace }) else { return nil }
+            return s
+        }
         switch type {
         case "hello":
             guard let v = o["proto_version"]?.numberValue else { return nil }
@@ -104,13 +114,13 @@ public enum ServerMessage: Equatable, Sendable {
         case "room_created":
             guard let c = str("code"), let m = mode("join_mode") else { return nil }
             return .roomCreated(code: c, joinMode: m)
-        case "joined": return .joined
+        case "joined": return .joined(roomName: roomName())
         case "peer_joined": return str("name").map { .peerJoined(name: $0) }
         case "peer_left": return .peerLeft
         case "room_ended": return .roomEnded
         case "join_pending":
             guard let t = o["timeout_secs"]?.numberValue, t.isFinite, let c = int("check") else { return nil }
-            return .joinPending(timeoutSecs: t, check: c)
+            return .joinPending(timeoutSecs: t, check: c, roomName: roomName())
         case "join_request":
             guard let id = int("id"), let n = str("name"), let c = int("check") else { return nil }
             return .joinRequest(id: id, name: n, check: c)

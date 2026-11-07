@@ -1076,6 +1076,7 @@ async fn run_sender(
         while let Some(JoinProgress::Pending {
             timeout_secs,
             check,
+            ..
         }) = prx.recv().await
         {
             let _ = notice_sink.add(SenderUiEvent::WaitingForApproval {
@@ -2119,6 +2120,7 @@ pub async fn start_content_sender(
         while let Some(JoinProgress::Pending {
             timeout_secs,
             check,
+            ..
         }) = prx.recv().await
         {
             let _ = notice_sink.add(ContentSenderUiEvent::WaitingForApproval {

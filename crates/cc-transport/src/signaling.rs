@@ -159,6 +159,9 @@ pub enum JoinProgress {
         timeout_secs: u64,
         /// Two-digit check number; the display shows the same number on the request.
         check: u8,
+        /// Name of the room as the display device set it (`join_pending.room_name`);
+        /// `None` when it set none or the server is older.
+        room_name: Option<String>,
     },
 }
 
@@ -173,12 +176,15 @@ const APPROVAL_SLACK: Duration = Duration::from_secs(15);
 /// on `progress` and the wait continues until the host decides (`joined` or an error such as
 /// `join_denied`, `room_locked`, `approval_timeout`). Dropping the returned future (or the
 /// whole [`SignalingClient`]) cancels the request: the server then tells the host.
+///
+/// Returns the room name that the display device set (`joined.room_name`), `None` when it
+/// set none or the server does not send one.
 pub async fn join_room(
     sig: &mut SignalingClient,
     code: RoomCode,
     name: Option<String>,
     progress: Option<&mpsc::UnboundedSender<JoinProgress>>,
-) -> Result<(), TransportError> {
+) -> Result<Option<String>, TransportError> {
     sig.send(ClientMsg::JoinRoom { code, name }).await?;
     let mut deadline = tokio::time::Instant::now() + JOIN_ANSWER_TIMEOUT;
     loop {
@@ -186,15 +192,17 @@ pub async fn join_room(
             .await
             .map_err(|_| TransportError::Timeout("waiting for joined"))?;
         match msg {
-            Some(ServerMsg::Joined) => return Ok(()),
+            Some(ServerMsg::Joined { room_name }) => return Ok(room_name),
             Some(ServerMsg::JoinPending {
                 timeout_secs,
                 check,
+                room_name,
             }) => {
                 if let Some(p) = progress {
                     let _ = p.send(JoinProgress::Pending {
                         timeout_secs,
                         check,
+                        room_name,
                     });
                 }
                 deadline = tokio::time::Instant::now()

@@ -131,8 +131,11 @@ public struct ReceiverMachine: Sendable {
     private var mode: JoinMode
     private var altchaPayload: String?
     private var peersSeen = 0
+    /// The room name sent with `create_room` (nil = none). No UI sets it yet.
+    private var roomName: String?
 
-    public init(joinMode: JoinMode = .open) {
+    public init(joinMode: JoinMode = .open, roomName: String? = nil) {
+        self.roomName = roomName
         mode = joinMode
         state.joinMode = joinMode
     }
@@ -219,7 +222,7 @@ public struct ReceiverMachine: Sendable {
         }
     }
 
-    private func createRoom() -> ReceiverEffect { .send(.createRoom(altcha: altchaPayload, joinMode: mode)) }
+    private func createRoom() -> ReceiverEffect { .send(.createRoom(altcha: altchaPayload, joinMode: mode, roomName: roomName)) }
 
     private mutating func teardown() -> [ReceiverEffect] {
         held = []

@@ -117,7 +117,10 @@ async fn dropping_the_receiver_closes_its_connection() {
     sig.send(cc_proto::ClientMsg::JoinRoom { code, name: None })
         .await
         .unwrap();
-    assert_eq!(sig.recv().await, Some(cc_proto::ServerMsg::Joined));
+    assert_eq!(
+        sig.recv().await,
+        Some(cc_proto::ServerMsg::Joined { room_name: None })
+    );
     drop(receiver);
 
     // The server must tell the sender that the receiver is gone.

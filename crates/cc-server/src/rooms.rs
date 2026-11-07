@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 
-use cc_proto::{JoinMode, RoomCode, ServerMsg, error_codes, sanitize_display_name};
+use cc_proto::{
+    JoinMode, RoomCode, ServerMsg, error_codes, sanitize_display_name, sanitize_room_name,
+};
 use rand::Rng;
 use std::sync::Arc;
 
@@ -82,6 +84,8 @@ const MAX_BLOCKS: usize = 32;
 
 struct Room {
     mode: JoinMode,
+    /// Cleaned name the owner gave (`create_room.room_name`); told to joiners.
+    room_name: Option<String>,
     blocks: Vec<Block>,
     next_block: u64,
     /// Address bucket and name of the sender who is in the room (for "remove and block").
@@ -144,13 +148,18 @@ pub(crate) enum JoinError {
 /// A successful join.
 pub(crate) enum Joined {
     /// The sender is in the room now.
-    Member { receiver: Tx, name: String },
+    Member {
+        receiver: Tx,
+        name: String,
+        room_name: Option<String>,
+    },
     /// The sender waits for the owner's decision.
     Pending {
         owner: Tx,
         req: u64,
         check: u8,
         name: String,
+        room_name: Option<String>,
     },
 }
 
@@ -179,6 +188,8 @@ pub(crate) enum OwnerError {
 pub(crate) struct Decided {
     /// The approved sender: (its channel, owner's channel, name).
     pub(crate) approved: Option<(Tx, Tx, String)>,
+    /// The room's name, for the `joined` that the approved sender gets.
+    pub(crate) room_name: Option<String>,
     /// A block list entry that was added: (id, name).
     pub(crate) blocked: Option<(u64, String)>,
     /// Requests that ended without joining: (joiner's channel, request id, error code to the
@@ -230,6 +241,8 @@ impl Rooms {
     /// Create a room with a fresh random code (retry on collision).
     /// Also returns a signal that fires when the room is removed.
     /// Fails when `max_rooms` rooms exist already, or `owner` has `max_per_owner`.
+    /// `raw_room_name` is untrusted and gets cleaned ([`sanitize_room_name`]).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create(
         &mut self,
         receiver_id: u64,
@@ -238,6 +251,7 @@ impl Rooms {
         max_rooms: usize,
         max_per_owner: usize,
         mode: JoinMode,
+        raw_room_name: Option<&str>,
     ) -> Result<(RoomCode, Arc<Notify>), CreateError> {
         if self.map.len() >= max_rooms {
             return Err(CreateError::ServerFull);
@@ -263,6 +277,7 @@ impl Rooms {
                 code.clone(),
                 Room {
                     mode,
+                    room_name: sanitize_room_name(raw_room_name),
                     blocks: Vec::new(),
                     next_block: 1,
                     sender_info: None,
@@ -316,6 +331,7 @@ impl Rooms {
                 Ok(Joined::Member {
                     receiver: room.receiver.clone(),
                     name,
+                    room_name: room.room_name.clone(),
                 })
             }
             JoinMode::Confirm => {
@@ -344,6 +360,7 @@ impl Rooms {
                     req,
                     check,
                     name,
+                    room_name: room.room_name.clone(),
                 })
             }
         }
@@ -388,6 +405,7 @@ impl Rooms {
             return Err(OwnerError::NotOwner);
         }
         let mut out = Decided {
+            room_name: room.room_name.clone(),
             blocked: None,
             approved: None,
             dropped: Vec::new(),

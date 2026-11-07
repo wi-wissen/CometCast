@@ -124,11 +124,17 @@ final class FixtureTests: XCTestCase {
         switch m {
         case .hello(let v): return .object(["type": .string("hello"), "proto_version": .number(v)])
         case .roomCreated(let c, let m): return .object(["type": .string("room_created"), "code": .string(c), "join_mode": .string(m.rawValue)])
-        case .joined: return .object(["type": .string("joined")])
+        case .joined(let r):
+            var o: [String: JSONValue] = ["type": .string("joined")]
+            if let r { o["room_name"] = .string(r) }
+            return .object(o)
         case .peerJoined(let n): return .object(["type": .string("peer_joined"), "name": .string(n)])
         case .peerLeft: return .object(["type": .string("peer_left")])
         case .roomEnded: return .object(["type": .string("room_ended")])
-        case .joinPending(let t, let c): return .object(["type": .string("join_pending"), "timeout_secs": .number(t), "check": .number(Double(c))])
+        case .joinPending(let t, let c, let r):
+            var o: [String: JSONValue] = ["type": .string("join_pending"), "timeout_secs": .number(t), "check": .number(Double(c))]
+            if let r { o["room_name"] = .string(r) }
+            return .object(o)
         case .joinRequest(let id, let n, let c): return .object(["type": .string("join_request"), "id": .number(Double(id)), "name": .string(n), "check": .number(Double(c))])
         case .joinRequestCancelled(let id, let r): return .object(["type": .string("join_request_cancelled"), "id": .number(Double(id)), "reason": .string(r)])
         case .joinModeChanged(let m): return .object(["type": .string("join_mode_changed"), "join_mode": .string(m.rawValue)])

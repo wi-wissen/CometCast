@@ -60,6 +60,7 @@ async fn open_server_refuses_create_room_without_altcha() {
     sig.send(ClientMsg::CreateRoom {
         altcha: None,
         join_mode: None,
+        room_name: None,
     })
     .await
     .unwrap();
@@ -71,6 +72,7 @@ async fn open_server_refuses_create_room_without_altcha() {
     sig.send(ClientMsg::CreateRoom {
         altcha: Some("bm90IGFsdGNoYQ==".into()),
         join_mode: None,
+        room_name: None,
     })
     .await
     .unwrap();
@@ -115,6 +117,7 @@ async fn a_puzzle_can_be_used_only_once() {
     sig.send(ClientMsg::CreateRoom {
         altcha: Some(payload.clone()),
         join_mode: None,
+        room_name: None,
     })
     .await
     .unwrap();
@@ -129,6 +132,7 @@ async fn a_puzzle_can_be_used_only_once() {
     sig2.send(ClientMsg::CreateRoom {
         altcha: Some(payload),
         join_mode: None,
+        room_name: None,
     })
     .await
     .unwrap();

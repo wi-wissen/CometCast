@@ -972,6 +972,7 @@ fn spawn_join_notice() -> tokio::sync::mpsc::UnboundedSender<cc_sender::JoinProg
         while let Some(cc_sender::JoinProgress::Pending {
             timeout_secs,
             check,
+            ..
         }) = rx.recv().await
         {
             println!(

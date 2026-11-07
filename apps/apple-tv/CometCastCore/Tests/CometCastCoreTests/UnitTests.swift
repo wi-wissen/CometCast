@@ -264,7 +264,7 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         m.fetchesIce = false
         _ = m.handle(.start)
-        for msg: ServerMessage in [.hello(protoVersion: 2), .joined, .joinPending(timeoutSecs: 60, check: 42), .answer(sdp: "x"), .control(cmd: .string("stop"))] {
+        for msg: ServerMessage in [.hello(protoVersion: 2), .joined(roomName: nil), .joinPending(timeoutSecs: 60, check: 42), .joined(roomName: "Room"), .joinPending(timeoutSecs: 60, check: 42, roomName: "Room"), .answer(sdp: "x"), .control(cmd: .string("stop"))] {
             XCTAssertEqual(m.handle(.message(msg)), [])
         }
         XCTAssertEqual(m.state.phase, .connecting)

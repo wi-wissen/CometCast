@@ -149,6 +149,9 @@ pub mod error_codes {
 /// Longest display name (in characters) that the server relays to the display device.
 pub const MAX_DISPLAY_NAME_CHARS: usize = 40;
 
+/// Longest room name (in characters) that the server keeps and relays to senders.
+pub const MAX_ROOM_NAME_CHARS: usize = 32;
+
 /// Who may join a room. Chosen by the receiver (display device) and changeable at any time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -209,16 +212,12 @@ fn is_unsafe_name_char(c: char) -> bool {
         )
 }
 
-/// Make a display name that a joiner chose safe to show on the display device.
-///
-/// The name is untrusted. Control, bidi and invisible characters are removed, runs of
-/// whitespace become one space, the result is trimmed and cut to
-/// [`MAX_DISPLAY_NAME_CHARS`] characters. If nothing is left, `Guest {guest_number}` is
-/// returned. Clients must still show the name as plain text, never as markup.
-pub fn sanitize_display_name(raw: Option<&str>, guest_number: u32) -> String {
+/// Remove unsafe characters, collapse whitespace, trim and cut to `max` characters.
+/// Returns an empty string when nothing is left.
+fn clean_text(raw: &str, max: usize) -> String {
     let mut out = String::new();
     let mut pending_space = false;
-    for c in raw.unwrap_or("").chars() {
+    for c in raw.chars() {
         // A tab or a line break inside a name is a space, not an invisible character.
         let spacing = matches!(c, '\t' | '\n' | '\r');
         if !spacing && is_unsafe_name_char(c) {
@@ -233,17 +232,38 @@ pub fn sanitize_display_name(raw: Option<&str>, guest_number: u32) -> String {
             pending_space = false;
         }
         out.push(c);
-        if out.chars().count() >= MAX_DISPLAY_NAME_CHARS {
+        if out.chars().count() >= max {
             break;
         }
     }
-    let out: String = out.chars().take(MAX_DISPLAY_NAME_CHARS).collect();
-    let out = out.trim().to_string();
+    let out: String = out.chars().take(max).collect();
+    out.trim().to_string()
+}
+
+/// Make a display name that a joiner chose safe to show on the display device.
+///
+/// The name is untrusted. Control, bidi and invisible characters are removed, runs of
+/// whitespace become one space, the result is trimmed and cut to
+/// [`MAX_DISPLAY_NAME_CHARS`] characters. If nothing is left, `Guest {guest_number}` is
+/// returned. Clients must still show the name as plain text, never as markup.
+pub fn sanitize_display_name(raw: Option<&str>, guest_number: u32) -> String {
+    let out = clean_text(raw.unwrap_or(""), MAX_DISPLAY_NAME_CHARS);
     if out.is_empty() {
         format!("Guest {guest_number}")
     } else {
         out
     }
+}
+
+/// Make a room name that the display device chose safe to relay to senders.
+///
+/// Cleaned exactly like a display name (control, bidi, zero-width and private-use
+/// characters removed, whitespace collapsed, trimmed) and cut to [`MAX_ROOM_NAME_CHARS`]
+/// characters. Returns `None` when `raw` is absent or nothing is left (there is no
+/// placeholder: clients show no room name then).
+pub fn sanitize_room_name(raw: Option<&str>) -> Option<String> {
+    let out = clean_text(raw?, MAX_ROOM_NAME_CHARS);
+    (!out.is_empty()).then_some(out)
 }
 
 /// Messages from a client (sender or receiver) to the server.
@@ -268,6 +288,11 @@ pub enum ClientMsg {
         /// Who may join the room. Omitted = the server's default (see docs/server.md).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         join_mode: Option<JoinMode>,
+        /// Name of the room, shown to senders (`join_pending`, `joined`). Untrusted: the
+        /// server cleans it ([`sanitize_room_name`], at most [`MAX_ROOM_NAME_CHARS`]
+        /// characters) and drops it when empty. Optional; not sent when `None`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        room_name: Option<String>,
     },
     /// Sender only: join the room with this code.
     JoinRoom {
@@ -355,7 +380,11 @@ pub enum ServerMsg {
         join_mode: JoinMode,
     },
     /// Sent to the sender after a successful `JoinRoom`.
-    Joined,
+    Joined {
+        /// Cleaned name of the room as the display device set it; absent when it set none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        room_name: Option<String>,
+    },
     /// Sent to the receiver when a sender has joined its room.
     PeerJoined {
         /// Sanitised display name of the sender (`Guest N` if it gave none).
@@ -369,6 +398,9 @@ pub enum ServerMsg {
         /// display device shows the same number on the request, so the host can match the
         /// person in the room with the request. Not a secret.
         check: u8,
+        /// Cleaned name of the room as the display device set it; absent when it set none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        room_name: Option<String>,
     },
     /// Sent to the receiver: somebody wants to join (join mode `confirm`).
     JoinRequest {
@@ -489,10 +521,12 @@ mod tests {
             ClientMsg::CreateRoom {
                 altcha: None,
                 join_mode: None,
+                room_name: None,
             },
             ClientMsg::CreateRoom {
                 altcha: Some("eyJ9".into()),
                 join_mode: Some(JoinMode::Confirm),
+                room_name: Some("Meeting room Elbe".into()),
             },
             ClientMsg::JoinRoom {
                 code: RoomCode::parse("k7m2qx").unwrap(),
@@ -547,11 +581,20 @@ mod tests {
                 code: RoomCode::parse("k7m2qx").unwrap(),
                 join_mode: JoinMode::Confirm,
             },
-            ServerMsg::Joined,
+            ServerMsg::Joined { room_name: None },
+            ServerMsg::Joined {
+                room_name: Some("Meeting room Elbe".into()),
+            },
             ServerMsg::PeerJoined { name: "Ana".into() },
             ServerMsg::JoinPending {
                 timeout_secs: 60,
                 check: 42,
+                room_name: None,
+            },
+            ServerMsg::JoinPending {
+                timeout_secs: 60,
+                check: 42,
+                room_name: Some("Wohnzimmer".into()),
             },
             ServerMsg::JoinRequest {
                 id: 1,
@@ -615,9 +658,18 @@ mod tests {
         assert_eq!(
             j(&ClientMsg::CreateRoom {
                 altcha: None,
-                join_mode: Some(JoinMode::Confirm)
+                join_mode: Some(JoinMode::Confirm),
+                room_name: None
             }),
             r#"{"type":"create_room","join_mode":"confirm"}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: Some(JoinMode::Open),
+                room_name: Some("Room 204".into())
+            }),
+            r#"{"type":"create_room","join_mode":"open","room_name":"Room 204"}"#
         );
         assert_eq!(
             j(&ClientMsg::JoinRoom {
@@ -683,8 +735,17 @@ mod tests {
             s(&ServerMsg::JoinPending {
                 timeout_secs: 60,
                 check: 42,
+                room_name: None,
             }),
             r#"{"type":"join_pending","timeout_secs":60,"check":42}"#
+        );
+        assert_eq!(
+            s(&ServerMsg::JoinPending {
+                timeout_secs: 60,
+                check: 42,
+                room_name: Some("Room 204".into()),
+            }),
+            r#"{"type":"join_pending","timeout_secs":60,"check":42,"room_name":"Room 204"}"#
         );
         assert_eq!(
             s(&ServerMsg::JoinModeChanged {
@@ -753,7 +814,8 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ClientMsg::CreateRoom {
                 altcha: None,
-                join_mode: None
+                join_mode: None,
+                room_name: None
             })
             .unwrap(),
             r#"{"type":"create_room"}"#
@@ -761,7 +823,8 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ClientMsg::CreateRoom {
                 altcha: Some("e30=".into()),
-                join_mode: None
+                join_mode: None,
+                room_name: None
             })
             .unwrap(),
             r#"{"type":"create_room","altcha":"e30="}"#
@@ -775,8 +838,29 @@ mod tests {
             r#"{"type":"room_created","code":"K7M2QX","join_mode":"open"}"#
         );
         assert_eq!(
-            serde_json::to_string(&ServerMsg::Joined).unwrap(),
+            serde_json::to_string(&ServerMsg::Joined { room_name: None }).unwrap(),
             r#"{"type":"joined"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ServerMsg::Joined {
+                room_name: Some("Room 204".into())
+            })
+            .unwrap(),
+            r#"{"type":"joined","room_name":"Room 204"}"#
+        );
+        // An old server sends no `room_name`.
+        let m: ServerMsg = serde_json::from_str(r#"{"type":"joined"}"#).unwrap();
+        assert_eq!(m, ServerMsg::Joined { room_name: None });
+        let m: ServerMsg =
+            serde_json::from_str(r#"{"type":"join_pending","timeout_secs":60,"check":42}"#)
+                .unwrap();
+        assert_eq!(
+            m,
+            ServerMsg::JoinPending {
+                timeout_secs: 60,
+                check: 42,
+                room_name: None
+            }
         );
         assert_eq!(
             serde_json::to_string(&ServerMsg::PeerJoined { name: "Ana".into() }).unwrap(),
@@ -791,7 +875,8 @@ mod tests {
             m,
             ClientMsg::CreateRoom {
                 altcha: None,
-                join_mode: None
+                join_mode: None,
+                room_name: None
             }
         );
         // Old clients send no `altcha` field; a null is accepted too.
@@ -800,7 +885,8 @@ mod tests {
             m,
             ClientMsg::CreateRoom {
                 altcha: None,
-                join_mode: None
+                join_mode: None,
+                room_name: None
             }
         );
         let m: ClientMsg =
@@ -809,8 +895,46 @@ mod tests {
             m,
             ClientMsg::CreateRoom {
                 altcha: Some("e30=".into()),
-                join_mode: None
+                join_mode: None,
+                room_name: None
             }
+        );
+        let m: ClientMsg =
+            serde_json::from_str(r#"{"type":"create_room","room_name":"Raum 204"}"#).unwrap();
+        assert_eq!(
+            m,
+            ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: None,
+                room_name: Some("Raum 204".into())
+            }
+        );
+    }
+
+    #[test]
+    fn room_names_are_sanitised() {
+        assert_eq!(sanitize_room_name(None), None);
+        assert_eq!(sanitize_room_name(Some("")), None);
+        assert_eq!(sanitize_room_name(Some("  \t\n ")), None);
+        assert_eq!(sanitize_room_name(Some("\u{202E}\u{200B}\u{0}")), None);
+        assert_eq!(
+            sanitize_room_name(Some("  Meeting   room\u{202E} Elbe\u{200B} ")).as_deref(),
+            Some("Meeting room Elbe")
+        );
+        assert_eq!(
+            sanitize_room_name(Some("A\u{0}\nB\u{FEFF}\u{E000}")).as_deref(),
+            Some("A B")
+        );
+        // Cut at 32 characters, also for multi-byte characters; no trailing space.
+        let long = "ä".repeat(100);
+        assert_eq!(
+            sanitize_room_name(Some(&long)).unwrap().chars().count(),
+            MAX_ROOM_NAME_CHARS
+        );
+        let spaced = format!("{} x", "a".repeat(31));
+        assert_eq!(
+            sanitize_room_name(Some(&spaced)).as_deref(),
+            Some("a".repeat(31).as_str())
         );
     }
 

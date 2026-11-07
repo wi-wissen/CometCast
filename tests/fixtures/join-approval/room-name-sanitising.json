@@ -1,0 +1,61 @@
+{
+  "description": "Room name cleaning (cc_proto::sanitize_room_name). The server applies it to create_room.room_name; the result is relayed as room_name in join_pending and joined. `expected` null means the field is dropped (clients then show no room name). Same rules as the display name: control, bidi, zero-width and private-use characters removed, white space collapsed and trimmed, cut at max_chars; nothing left means absent.",
+  "max_chars": 32,
+  "vectors": [
+    {
+      "input": "Meeting room Elbe",
+      "expected": "Meeting room Elbe",
+      "note": "plain name"
+    },
+    {
+      "input": null,
+      "expected": null,
+      "note": "no name"
+    },
+    {
+      "input": "",
+      "expected": null,
+      "note": "empty"
+    },
+    {
+      "input": "   \t\n ",
+      "expected": null,
+      "note": "only white space"
+    },
+    {
+      "input": "‮​\u0000",
+      "expected": null,
+      "note": "nothing is left after removing unsafe characters"
+    },
+    {
+      "input": "  Meeting‮   room\u0000\n​Elbe  ",
+      "expected": "Meeting room Elbe",
+      "note": "unsafe characters removed, white space collapsed and trimmed"
+    },
+    {
+      "input": "A\u0000\nB﻿",
+      "expected": "A B",
+      "note": "line break is white space; BOM and private use removed"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "note": "cut at 32 characters"
+    },
+    {
+      "input": "ääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+      "expected": "ääääääääääääääääääääääääääääääää",
+      "note": "cut counts characters, not bytes"
+    },
+    {
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x",
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "note": "no trailing space after the cut"
+    },
+    {
+      "input": "<b>Elbe</b>",
+      "expected": "<b>Elbe</b>",
+      "note": "markup is not interpreted; clients show it as plain text"
+    }
+  ]
+}

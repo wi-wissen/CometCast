@@ -9,6 +9,11 @@ Version 2 added **join approval** (the display device decides who may join, see
 [Join approval](#join-approval)). The project is at version 0.1, so there is no compatibility
 with version 1: a client that says `proto_version` 1 gets `proto_mismatch`.
 
+The optional `room_name` field (see [Room name](#room-name)) is **additive**: it is optional in
+every message that carries it, an older client ignores it and an older server never sends it. It
+needs no new protocol version, so `proto_version` stays 2 (the project needs no backwards
+compatibility, and a new optional field does not break any version-2 client or server anyway).
+
 ## Transport
 
 - WebSocket at path `/ws`. Every message is one JSON **text** frame (binary frames are rejected).
@@ -35,7 +40,7 @@ Client to server:
 | type | fields | who | meaning |
 |---|---|---|---|
 | `hello` | `proto_version`, `role` (`sender`/`receiver`) | both | Must be the first message. |
-| `create_room` | optional `altcha` (string), optional `join_mode` | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. The web app and the native clients first send `create_room` without the field; after `altcha_required` they fetch and solve a puzzle and send `create_room` again on the same connection (the connection stays open after `altcha_required`). Payload and solving scheme: [web README](../apps/web/README.md#open-servers-and-turn) and [transport.md](transport.md). `join_mode` (`open`, `confirm`, `locked`) sets who may join; without it the server's `default_join_mode` applies (see [Join approval](#join-approval)). |
+| `create_room` | optional `altcha` (string), optional `join_mode`, optional `room_name` (string) | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. The web app and the native clients first send `create_room` without the field; after `altcha_required` they fetch and solve a puzzle and send `create_room` again on the same connection (the connection stays open after `altcha_required`). Payload and solving scheme: [web README](../apps/web/README.md#open-servers-and-turn) and [transport.md](transport.md). `join_mode` (`open`, `confirm`, `locked`) sets who may join; without it the server's `default_join_mode` applies (see [Join approval](#join-approval)). `room_name` is the name of the room as the display device shows it; senders get it back (see [Room name](#room-name)). |
 | `join_room` | `code`, optional `name` | sender | Join the room with this code (case-insensitive, 6 characters). `name` is shown to the display device when it has to approve; the server cleans it. |
 | `set_join_mode` | `join_mode` | receiver (owner) | Change who may join, at any time. |
 | `join_decision` | `id` (optional), `allow`, optional `block` | receiver (owner) | Allow or deny the waiting request `id`. Without `id`, `allow: false` denies all waiting requests. `block: true` (only with `allow: false` and an `id`) also blocks the sender's address bucket for the rest of this room session. |
@@ -54,9 +59,9 @@ Server to client:
 |---|---|---|---|
 | `hello` | `proto_version` | the client that said hello | Handshake accepted. |
 | `room_created` | `code`, `join_mode` | receiver | Show this code on screen. `join_mode` is the mode the room really has. |
-| `joined` | - | sender | Join succeeded (in `confirm` mode: the host allowed it). |
+| `joined` | optional `room_name` | sender | Join succeeded (in `confirm` mode: the host allowed it). `room_name` is the cleaned name of the room; absent when the display device set none. |
 | `peer_joined` | `name` | receiver | A sender is in the room now. `name` is the cleaned display name (`Guest N` if none). |
-| `join_pending` | `timeout_secs`, `check` | sender | The join waits for the host's decision. `check` is a two-digit number (10 to 99) that the display shows on the request too. |
+| `join_pending` | `timeout_secs`, `check`, optional `room_name` | sender | The join waits for the host's decision. `check` is a two-digit number (10 to 99) that the display shows on the request too. `room_name` as in `joined`. |
 | `join_request` | `id`, `name`, `check` | receiver (owner) | Somebody wants to join (mode `confirm`). Nothing else about the joiner is passed on. |
 | `join_request_cancelled` | `id`, `reason` | receiver (owner) | A waiting request is gone: `left`, `cancelled`, `timeout`, `locked` or `room_full`. |
 | `join_mode_changed` | `join_mode` | receiver (owner) | Answer to `set_join_mode`: the mode now in force. |
@@ -133,6 +138,16 @@ that changes under a person who is typing it. The tools for the same goal are th
 (lock after the wanted presenter is in) and removing a peer; a native receiver already gets a
 new code per session, and the web receiver can start a new room with its "Stop" button.
 
+## Room name
+
+`create_room` may carry `room_name`: the name that the display device (receiver) shows for its room, for example `Meeting room Elbe`. It exists so that a presenter's pages can say where they are connected to without ever showing the room code in its place.
+
+- **Cleaning (server).** Untrusted text, cleaned exactly like the display `name`: control, bidi, zero-width, invisible and private-use characters are removed, white space is collapsed and trimmed, and the result is **cut at 32 characters** (characters, not bytes; no trailing space after the cut). If nothing is left, or the field is absent or `null`, the room has no name. A value that is not a string is a `bad_message` like any other malformed message. There is no placeholder name.
+- **Stored in the room**, not tied to the connection; it never changes during the room's life (a new room, for example after `end_room`, may have another name).
+- **Relayed** to senders as optional `room_name` in `join_pending` (when the room needs approval) and in `joined`, always the cleaned value. It is **absent** when the room has no name. `room_created` does not echo it, and `join_request` to the owner does not carry it. It is not part of the QR URL.
+- **Clients.** Show it as plain text only. A client works without it: a missing, `null`, empty or non-string `room_name` in a server message means "no room name" (the rest of the message is still valid). The web app and the Swift core apply this rule; presenter pages then show no room at all, never the code. Vectors: `tests/fixtures/join-approval/room-name-sanitising.json`, `messages.json` and `tests/fixtures/signaling.json`.
+- **Native API.** `ReceiverOptions::room_name` (cc-receiver) sets it; `JoinProgress::Pending { room_name, .. }` and `SenderCore::room_name()` / `ContentSender::room_name()` (cc-sender) expose it.
+
 ## Join approval
 
 Added in version 2. The room owner (the receiver that created it, usually a display device)
@@ -149,6 +164,7 @@ The server enforces this; a client cannot skip it.
 - **Who is the owner.** Only the connection that created the room (`create_room`) may send `set_join_mode`, `join_decision` and `remove_peer`. The server checks the connection, not any name or id in a message. A sender gets `wrong_role`; a receiver connection that does not own a room gets `not_in_room`; request ids are room-local, so an owner cannot touch another room.
 - **What a pending joiner can do.** Nothing is relayed. `offer`, `answer`, `ice_candidate` and `control` get `join_pending` back and never reach the owner. It may send `cancel_join`, or disconnect.
 - **What the owner learns.** Only `join_request { id, name, check }`. `name` is untrusted text: the server removes control, bidi, zero-width and invisible characters (and the private-use range), collapses white space, cuts at 40 characters and uses `Guest N` (N counts joiners of the room) when nothing is left. Clients must show it as plain text (no markup). The IP address and everything else about the joiner stay on the server.
+- **Room name.** See [Room name](#room-name).
 - **Check number.** The server draws a two-digit number (10 to 99) per pending request, unique among the room's waiting requests, and sends it to the owner (`join_request.check`) and to the joiner (`join_pending.check`). A person at the display can match the person in front of them with the request. It is not a secret and not an authentication.
 - **Decision.** `join_decision {id, allow:true}` makes the joiner a peer: it gets `joined`, the owner gets `peer_joined`, and relaying starts. `allow:false` gives the joiner `join_denied`. All other waiting requests then get `room_full` (one sender per room) and the owner gets `join_request_cancelled` with reason `room_full`. A join into a room that already has a sender gets `room_full` at once, in every mode.
 - **No and block.** `join_decision {id, allow:false, block:true}` denies the request and puts the sender's address bucket (an IPv4 address, or an IPv6 /64) on the room's block list for the rest of the room session. Other waiting requests from the same bucket end with `join_request_cancelled` reason `blocked`. A blocked sender gets `join_denied` at once (in modes `open` and `confirm`; a locked room still answers `room_locked` to everybody), is not shown to the host, and counts toward the same cooldown as a denial. `remove_peer {block:true}` blocks the connected sender the same way. The owner gets `blocked {id, name}` and can `unblock {id}`. The list lives as long as the room: `end_room` or a new room starts with an empty list. UNCERTAIN: blocking works by network address, not by device, so everybody behind the same address (a shared NAT or a /64) is blocked too and a person on another network is not; the name is only a label for the list. The list is capped at 32 entries.

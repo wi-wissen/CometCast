@@ -57,6 +57,72 @@
       }
     },
     {
+      "input": "{\"type\":\"joined\",\"room_name\":\"Meeting room Elbe\"}",
+      "expect": {
+        "type": "joined",
+        "room_name": "Meeting room Elbe"
+      }
+    },
+    {
+      "input": "{\"type\":\"joined\",\"room_name\":null}",
+      "expect": {
+        "type": "joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"joined\",\"room_name\":\"\"}",
+      "expect": {
+        "type": "joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"joined\",\"room_name\":\"   \"}",
+      "expect": {
+        "type": "joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"joined\",\"room_name\":5}",
+      "expect": {
+        "type": "joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"joined\",\"room_name\":[\"x\"]}",
+      "expect": {
+        "type": "joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"join_pending\",\"timeout_secs\":60,\"check\":42,\"room_name\":\"Wohnzimmer\"}",
+      "expect": {
+        "type": "join_pending",
+        "timeout_secs": 60,
+        "check": 42,
+        "room_name": "Wohnzimmer"
+      }
+    },
+    {
+      "input": "{\"type\":\"join_pending\",\"timeout_secs\":60,\"check\":42,\"room_name\":false}",
+      "expect": {
+        "type": "join_pending",
+        "timeout_secs": 60,
+        "check": 42
+      }
+    },
+    {
+      "input": "{\"type\":\"join_pending\",\"timeout_secs\":60,\"check\":42,\"room_name\":\"  \"}",
+      "expect": {
+        "type": "join_pending",
+        "timeout_secs": 60,
+        "check": 42
+      }
+    },
+    {
+      "input": "{\"type\":\"join_pending\",\"check\":42,\"room_name\":\"Wohnzimmer\"}",
+      "expect": null
+    },
+    {
       "input": "{\"type\":\"peer_joined\"}",
       "expect": null
     },

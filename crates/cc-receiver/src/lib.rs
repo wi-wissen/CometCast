@@ -56,6 +56,9 @@ pub struct ReceiverOptions {
     /// Who may join the room from the start (docs/protocol.md, "Join approval"). Default
     /// `open`. Can be changed at any time with [`ReceiverCore::set_join_mode`].
     pub join_mode: JoinMode,
+    /// Name of the room, shown to senders on their waiting and "connected" pages. The
+    /// server cleans it and cuts it at 32 characters. `None` = no room name.
+    pub room_name: Option<String>,
 }
 
 impl ReceiverOptions {
@@ -67,6 +70,7 @@ impl ReceiverOptions {
             trust: TlsTrust::system(),
             content: None,
             join_mode: JoinMode::Open,
+            room_name: None,
         }
     }
 }
@@ -211,6 +215,7 @@ impl ReceiverCore {
         sig.send(ClientMsg::CreateRoom {
             altcha: None,
             join_mode: Some(options.join_mode),
+            room_name: options.room_name.clone(),
         })
         .await?;
         let (code, join_mode) = match next_room_reply(&mut sig).await? {
@@ -222,6 +227,7 @@ impl ReceiverCore {
                 sig.send(ClientMsg::CreateRoom {
                     altcha: Some(payload),
                     join_mode: Some(options.join_mode),
+                    room_name: options.room_name.clone(),
                 })
                 .await?;
                 match next_room_reply(&mut sig).await? {

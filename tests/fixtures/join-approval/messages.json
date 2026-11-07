@@ -43,6 +43,15 @@
       }
     },
     {
+      "id": "create_room_with_room_name",
+      "direction": "client_to_server",
+      "message": {
+        "type": "create_room",
+        "join_mode": "open",
+        "room_name": "Meeting room Elbe"
+      }
+    },
+    {
       "id": "room_created",
       "direction": "server_to_client",
       "message": {
@@ -75,6 +84,16 @@
         "type": "join_pending",
         "timeout_secs": 60,
         "check": 42
+      }
+    },
+    {
+      "id": "join_pending_with_room_name",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_pending",
+        "timeout_secs": 60,
+        "check": 42,
+        "room_name": "Meeting room Elbe"
       }
     },
     {
@@ -118,6 +137,14 @@
       "direction": "server_to_client",
       "message": {
         "type": "joined"
+      }
+    },
+    {
+      "id": "joined_with_room_name",
+      "direction": "server_to_client",
+      "message": {
+        "type": "joined",
+        "room_name": "Meeting room Elbe"
       }
     },
     {

@@ -766,3 +766,114 @@ async fn end_room_tells_the_connected_sender() {
     send(&mut a, json!({"type":"offer","sdp":"v=0"})).await;
     assert_eq!(code_of(&recv(&mut a).await), "not_in_room");
 }
+
+/// Receiver with a room that has the raw JSON value `room_name` (`None` = field omitted).
+async fn named_room(
+    addr: std::net::SocketAddr,
+    mode: &str,
+    room_name: Option<Value>,
+) -> (Ws, String) {
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    let mut m = json!({"type":"create_room","join_mode":mode});
+    if let Some(n) = room_name {
+        m["room_name"] = n;
+    }
+    send(&mut r, m).await;
+    let created = recv(&mut r).await;
+    assert_eq!(created["type"], "room_created", "{created}");
+    // `room_created` does not echo the name.
+    assert!(created.get("room_name").is_none(), "{created}");
+    (r, created["code"].as_str().unwrap().to_string())
+}
+
+#[tokio::test]
+async fn room_name_reaches_joined_in_open_mode() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = named_room(addr, "open", Some(json!("Meeting room Elbe"))).await;
+    let mut s = sender(addr).await;
+    join(&mut s, &code, Some("Ana")).await;
+    assert_eq!(
+        recv(&mut s).await,
+        json!({"type":"joined","room_name":"Meeting room Elbe"})
+    );
+    assert_eq!(
+        recv(&mut r).await,
+        json!({"type":"peer_joined","name":"Ana"})
+    );
+}
+
+#[tokio::test]
+async fn room_name_reaches_join_pending_and_joined_after_approval() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = named_room(addr, "confirm", Some(json!("Wohnzimmer"))).await;
+    let mut s = sender(addr).await;
+    join(&mut s, &code, Some("Ana")).await;
+    let pending = recv(&mut s).await;
+    assert_eq!(pending["type"], "join_pending");
+    assert_eq!(pending["room_name"], "Wohnzimmer");
+    let req = recv(&mut r).await;
+    // The owner knows its own room name; the request does not carry it.
+    assert!(req.get("room_name").is_none(), "{req}");
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":req["id"],"allow":true}),
+    )
+    .await;
+    assert_eq!(
+        recv(&mut s).await,
+        json!({"type":"joined","room_name":"Wohnzimmer"})
+    );
+}
+
+#[tokio::test]
+async fn room_name_is_absent_when_none_was_given_or_nothing_is_left() {
+    let addr = start(ServerConfig::default()).await;
+    for raw in [
+        None,
+        Some(json!("")),
+        Some(json!("   \t ")),
+        Some(json!("\u{202E}\u{200B}\u{0}")),
+        Some(json!(null)),
+    ] {
+        let (_r, code) = named_room(addr, "open", raw).await;
+        let mut s = sender(addr).await;
+        join(&mut s, &code, None).await;
+        assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
+    }
+    let (_r, code) = named_room(addr, "confirm", None).await;
+    let mut s = sender(addr).await;
+    join(&mut s, &code, None).await;
+    let pending = recv(&mut s).await;
+    assert_eq!(pending["type"], "join_pending");
+    assert!(pending.get("room_name").is_none(), "{pending}");
+}
+
+#[tokio::test]
+async fn room_name_is_cleaned_and_cut_at_32_characters() {
+    let addr = start(ServerConfig::default()).await;
+    // Control, bidi and zero-width characters are removed, white space is collapsed.
+    let (_r, code) = named_room(
+        addr,
+        "open",
+        Some(json!("  Meeting\u{202E}   room\u{0}\n\u{200B}Elbe  ")),
+    )
+    .await;
+    let mut s = sender(addr).await;
+    join(&mut s, &code, None).await;
+    assert_eq!(
+        recv(&mut s).await,
+        json!({"type":"joined","room_name":"Meeting room Elbe"})
+    );
+    // Over-long (multi-byte) names are cut at 32 characters, never in the middle of one.
+    let (_r, code) = named_room(addr, "open", Some(json!("ä".repeat(100)))).await;
+    let mut s = sender(addr).await;
+    join(&mut s, &code, None).await;
+    let joined = recv(&mut s).await;
+    assert_eq!(joined["room_name"], "ä".repeat(32));
+    // A name that is not text is a protocol error, not silently dropped.
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    send(&mut r, json!({"type":"create_room","room_name":5})).await;
+    assert_eq!(code_of(&recv(&mut r).await), "bad_message");
+}

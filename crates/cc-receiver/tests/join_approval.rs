@@ -70,9 +70,11 @@ async fn confirm_allow_and_deny_with_native_cores() {
     let JoinProgress::Pending {
         timeout_secs,
         check: sender_check,
+        room_name,
     } = prx.recv().await.unwrap();
     assert_eq!(timeout_secs, 60);
     assert_eq!(check, sender_check);
+    assert_eq!(room_name, None);
     rx.decide_join(id, false);
     let err = denied.await.unwrap().err().expect("must be denied");
     assert!(err.to_string().contains("join_denied"), "{err}");
@@ -190,5 +192,34 @@ async fn block_unblock_and_end_room_with_native_cores() {
         _ => None,
     })
     .await;
+    rx.stop().await;
+}
+
+#[tokio::test]
+async fn room_name_reaches_native_senders_through_pending_and_joined() {
+    let server = start(ServerConfig::default()).await;
+    let mut o = ReceiverOptions::new(&server);
+    o.session = local_session();
+    o.join_mode = JoinMode::Confirm;
+    o.room_name = Some("  Meeting\u{202E} room   Elbe ".into());
+    let mut rx = ReceiverCore::start(o).await.unwrap();
+    let code = rx.room_code().clone();
+
+    let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel();
+    let mut o = SenderOptions::new(&server, code);
+    o.session = local_session();
+    o.join_progress = Some(ptx);
+    let joined = tokio::spawn(SenderCore::start(o));
+    let id = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinRequest { id, .. } => Some(id),
+        _ => None,
+    })
+    .await;
+    let JoinProgress::Pending { room_name, .. } = prx.recv().await.unwrap();
+    assert_eq!(room_name.as_deref(), Some("Meeting room Elbe"));
+    rx.decide_join(id, true);
+    let sender = joined.await.unwrap().expect("allowed");
+    assert_eq!(sender.room_name(), Some("Meeting room Elbe"));
+    drop(sender);
     rx.stop().await;
 }

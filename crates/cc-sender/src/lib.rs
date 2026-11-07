@@ -167,6 +167,7 @@ pub enum SenderEvent {
 
 /// A running sender.
 pub struct SenderCore {
+    room_name: Option<String>,
     ice_servers: Vec<IceServerConfig>,
     counters: Arc<screen::Counters>,
     external: Option<ExternalInput>,
@@ -183,7 +184,7 @@ impl SenderCore {
         let addr = ServerAddr::parse(&options.server)?;
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        join_room(
+        let room_name = join_room(
             &mut sig,
             options.code.clone(),
             options.name.clone(),
@@ -243,6 +244,7 @@ impl SenderCore {
             options.duration,
         ));
         Ok(Self {
+            room_name,
             ice_servers,
             counters,
             external,
@@ -251,6 +253,12 @@ impl SenderCore {
             stop: Some(stop_tx),
             task,
         })
+    }
+
+    /// The name the display device gave its room (`joined.room_name`); `None` when it gave
+    /// none or the server is older.
+    pub fn room_name(&self) -> Option<&str> {
+        self.room_name.as_deref()
     }
 
     /// The STUN/TURN servers this sender uses (from the server's `/ice-servers`, or what the

@@ -160,6 +160,7 @@ impl ContentSenderOptions {
 
 /// A content-only sender: a WebRTC session with a data channel and no media.
 pub struct ContentSender {
+    room_name: Option<String>,
     control: ControlSender,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
@@ -173,7 +174,7 @@ impl ContentSender {
         let addr = ServerAddr::parse(&options.server)?;
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        join_room(
+        let room_name = join_room(
             &mut sig,
             options.code.clone(),
             options.name.clone(),
@@ -203,11 +204,18 @@ impl ContentSender {
             stop_rx,
         ));
         Ok(Self {
+            room_name,
             control: ControlSender::new(channel),
             events: events_rx,
             stop: Some(stop_tx),
             task,
         })
+    }
+
+    /// The name the display device gave its room (`joined.room_name`); `None` when it gave
+    /// none or the server is older.
+    pub fn room_name(&self) -> Option<&str> {
+        self.room_name.as_deref()
     }
 
     /// The handle to send content with.

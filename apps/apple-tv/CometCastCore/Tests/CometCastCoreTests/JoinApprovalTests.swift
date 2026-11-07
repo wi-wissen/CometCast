@@ -53,7 +53,7 @@ final class JoinApprovalFixtureTests: XCTestCase {
         let mode = o["join_mode"]?.stringValue.flatMap(JoinMode.init(rawValue:))
         switch t {
         case "hello": return o["role"]?.stringValue.flatMap(Role.init(rawValue:)).map { .hello(role: $0) }
-        case "create_room": return .createRoom(altcha: o["altcha"]?.stringValue, joinMode: mode)
+        case "create_room": return .createRoom(altcha: o["altcha"]?.stringValue, joinMode: mode, roomName: o["room_name"]?.stringValue)
         case "join_room": return o["code"]?.stringValue.map { .joinRoom(code: $0, name: o["name"]?.stringValue) }
         case "set_join_mode": return mode.map { .setJoinMode($0) }
         case "join_decision": return .joinDecision(id: o["id"]?.integerValue.map { Int($0) }, allow: o["allow"]?.boolValue ?? false, block: o["block"]?.boolValue ?? false)
@@ -126,9 +126,9 @@ final class JoinApprovalFixtureTests: XCTestCase {
                     replayed += 1
                     let want = try XCTUnwrap(JoinApprovalFixtureTests.clientMessage(from: msg), "\(id): \(type)")
                     switch want {
-                    case .createRoom(_, let mode):
+                    case .createRoom(_, let mode, let roomName):
                         if !started {
-                            m = ReceiverMachine(joinMode: mode ?? .open); m.fetchesIce = false
+                            m = ReceiverMachine(joinMode: mode ?? .open, roomName: roomName); m.fetchesIce = false
                             boot(mode: mode)
                         }
                         XCTAssertEqual(pending.first, want, "\(id): create_room")
