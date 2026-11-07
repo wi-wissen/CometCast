@@ -1,4 +1,4 @@
-# Screen capture and H.264 (native sender, Linux/X11)
+# Screen capture and H.264 (native sender: Linux X11 and Wayland, Windows, macOS)
 
 This page describes how the native sender gets real screen content, encodes it as H.264 and
 sends it through the existing WebRTC session. It is the first real implementation behind the
@@ -14,7 +14,7 @@ named there was used.
 
 | Where | What |
 | --- | --- |
-| `crates/cc-capture` | `ScreenSource` trait; `X11Source` (pure Rust `x11rb`: `GetImage`, DAMAGE as a hint, RandR for the monitor list); `ChangeDetector` (64-bit hash of the picture); `Unsupported` stubs for Wayland/PipeWire, Windows, macOS; `testutil` (starts a private Xvfb, draws a coloured window; only for tests, feature `test-support`) |
+| `crates/cc-capture` | `ScreenSource` trait; `X11Source` (pure Rust `x11rb`: `GetImage`, DAMAGE as a hint, RandR for the monitor list); `ChangeDetector` (64-bit hash of the picture); the system-picker backends (Wayland portal + PipeWire, Windows Graphics Capture, macOS ScreenCaptureKit, see "Desktop capture with the system picker" below); `Unsupported` stubs where a backend is not compiled in; `testutil` (starts a private Xvfb, draws a coloured window; only for tests, feature `test-support`) |
 | `crates/cc-media` | `H264Encoder` / `H264Decoder` (OpenH264 through the `openh264` crate), `StaticRefresh` (timing only), `H264Assembler` (RTP payloads back to Annex-B, tests/CLI only), `HardwareEncoderProbe` (trait only) |
 | `crates/cc-transport` | H.264 registered as `packetization-mode=1;profile-level-id=42e01f`; PLI/FIR requests are delivered to the sender (`VideoSender::next_keyframe_request`); `Session::request_keyframe` on the receiving side; an optional tap that copies received RTP packets to a bounded channel (`SessionConfig::video_tap`, a `VideoTap`; packets are dropped and counted when the reader is too slow; for tests and the CLI) |
 | `crates/cc-sender` | `SenderOptions::screen`: capture -> change check -> encode -> RTP, on one thread; counters (`SenderCore::screen_stats`) |
@@ -223,6 +223,145 @@ roots is an open improvement).
   time limit, store the result together with a GPU/driver fingerprint, fall back to OpenH264 on failure).
   No hardware encoder is implemented. The 1280x720 test size and 30 s limit are placeholders.
 
+## Desktop capture with the system picker
+
+**State in one sentence: built to specification; compiled and unit-tested everywhere, the PipeWire half
+exercised against a real PipeWire daemon, nothing run on a real Wayland compositor, Windows or macOS.**
+Added for fix list item B7 (decision N26): on Linux, Windows and macOS "Screen" opens the **system's own
+picker** (a screen or one window); the app draws no picker and has no monitor list. The behaviour of the
+picker in the UI (no page for a cancel, `capture_denied`, `capture_unavailable`) is the designer's
+([native-apps.md](design/native-apps.md) section 8 and 20.3, [first-run-and-display.md](design/first-run-and-display.md)
+5.5 and 11); this section is the engineering side.
+
+### How it is wired
+
+```
+Flutter: present_screen(None)
+  -> cc-ffi presenter  -> cc-sender ScreenOptions { picker: true }
+  -> cc_capture::open_picker(PickerOptions)            (on a blocking thread: the picker waits for a person)
+       Linux:   plan_linux(): portal + PipeWire (feature `wayland`)  else  X11 whole desktop  else  unavailable
+       Windows: GraphicsCapturePicker + Windows.Graphics.Capture
+       macOS:   SCContentSharingPicker + ScreenCaptureKit (macOS 14+)
+  -> ScreenSource::list_sources()   one entry, id "system-picker"
+  -> ScreenSource::start()          opens the picker, blocks until the person chooses or cancels
+  -> next_frame() loop              same as X11: Frame / Unchanged / Ended, BGRA, then the existing encoder path
+```
+
+* **Trait unchanged.** The existing `ScreenSource` is used as it is. New: `CaptureError::Denied` (picker cancelled
+  or permission refused), `PICKER_SOURCE_ID`, `PickerOptions`, `open_picker`, `plan_linux`. `cc-sender` maps `Denied`
+  to the code `capture_denied` (carried as a `TransportError::Server` with that code, so `TransportError::code()`
+  returns it unchanged) and every other capture failure to `capture_unavailable`. The cc-ffi API signatures did not
+  change (`present_screen(Option<ScreenRequest>)`; only its doc comment, mirrored by hand in
+  `apps/flutter/lib/src/rust/api.dart`, so no bridge code was regenerated). Neither code ends the session.
+* **`present_screen(Some(request))` is unchanged:** the X11 whole-desktop path with the request's settings.
+* **Linux order (decision, `plan_linux`):** (1) the portal if the build has the `wayland` feature and a ScreenCast
+  portal answers on the session bus, on Wayland sessions **and** on X11 sessions that have one; (2) otherwise X11
+  whole-desktop capture, but **only when the session is not Wayland** (XWayland would give an empty or partial
+  picture); (3) otherwise `capture_unavailable`. A cancelled portal picker is `capture_denied`, with no fallback to X11.
+* **Blocking.** `start` blocks while the picker is open; `cc-sender` runs `prepare` with `spawn_blocking`.
+  Nothing else in the process waits for it.
+* **Shared logic** (platform independent, unit-tested): `convert` (BGRA/BGRx/RGBA/RGBx/ARGB/XRGB/ABGR/XBGR/RGB/BGR,
+  row stride, crop, size limits 16384 per side and about 8K area, alpha forced to 255), `session` (the phase state
+  machine `Idle -> Picking -> Starting -> Streaming <-> Paused -> Ended | Denied | Failed`, a one-slot `Mailbox`
+  that keeps only the newest picture, and the `Pacer` for the frame rate), `wayland::negotiate`, `wayland::restore`,
+  `winlogic`, `sck_logic`.
+* **Frame pacing.** The platform's callback thread converts every delivered buffer to BGRA and replaces the one in the
+  mailbox; `next_frame` looks at the mailbox at the requested rate (`Pacer`, default 15 fps, no bursts after a
+  late look). Nothing new in the mailbox = `Unchanged`. A picture that is new but equal to the last one (hash) is
+  `Unchanged` too. UNCERTAIN: converting every buffer even when only every fourth is used costs CPU on a
+  compositor that delivers 60 fps; not measured.
+* **Unsafe code.** The crate is `unsafe_code = deny` (was `forbid`), like `cc-miracast`; only `windows_wgc` and
+  `macos_sck` allow it, with a `SAFETY` comment on every block. The Wayland code uses the safe APIs of `ashpd` and
+  `pipewire` and has none.
+
+### Linux, Wayland (`crates/cc-capture/src/wayland`, cargo feature `wayland`)
+
+* **Crates (licences checked in the crate metadata only, versions pinned exactly):** `ashpd =0.14.0` (MIT; the
+  portal client, on top of `zbus`), `pipewire =0.10.1` with feature `v0_3_34` (MIT; safe bindings to libpipewire).
+  **ashpd 0.14.0 is two days old** (2026-11-05); the previous line 0.13.13 has a different API. Both crates are
+  maintained (ashpd releases about monthly, pipewire-rs last release 2026-08-19). See THIRD_PARTY_NOTICES.md.
+* **Feature, not default.** `cargo build` works without PipeWire. Building with `--features wayland` (cc-capture,
+  cc-sender, cc-ffi all forward it) needs `libpipewire-0.3-dev` and `libclang-dev`. **UNCERTAIN, open question
+  H2:** the C library is linked dynamically, so a Linux app built with the feature does not start at all on a system
+  without `libpipewire-0.3.so.0` (all current Wayland desktops have it); the alternative (loading it at run time) is
+  not implemented. Until decided, release packaging must either add the dependency to the package or leave the
+  feature off.
+* **Portal flow (`portal.rs`):** connect (no bus or no ScreenCast interface = `Unsupported`, which lets the order above
+  fall back to X11); `CreateSession`; `SelectSources` with `multiple = false`, types monitor + window (never virtual),
+  cursor mode **embedded** where the portal offers it (the pointer is then in the picture; metadata mode is not used),
+  persist mode off; `Start` (this is where the portal shows its picker); `OpenPipeWireRemote`; the session's `Closed`
+  signal is watched for the whole share. A `Cancelled` response and any other ended response are `Denied`
+  (UNCERTAIN: backends differ in what they answer when the person closes their dialog; the designer's rule is that a
+  refusal is `capture_denied`).
+* **PipeWire flow (`pw.rs`):** one thread runs the PipeWire main loop on the portal's file descriptor; the stream
+  connects to the node id the portal returned (monitor or window). Offered formats, best first: BGRx, BGRA, RGBx,
+  RGBA, BGR, RGB; any size up to 16384; any frame rate. **Buffers: shared memory only** (memfd or memptr, mapped by
+  PipeWire). **DMA-BUF is not implemented** (it needs EGL or Vulkan import) and is never offered, so compositors fall
+  back to shared memory; a compositor that sends DMA-BUF anyway fails the stream with a clear message
+  (`negotiate::judge_buffer`). Empty and corrupted buffers keep the previous picture. The `dataType` of the buffer
+  parameter is a **flags choice**, not a plain integer: found with the loopback test, two plain values must be equal
+  to negotiate.
+* **Size, HiDPI, fractional scaling:** the picture size is the size of the PipeWire format (pixels). The portal's
+  size is in logical units (1280x720 at 150 % scaling for a 1920x1080 buffer) and is only used until the format is
+  known. A size change mid-stream (renegotiation, a resized window) is followed; the encoder restarts at the new size
+  as for X11 (not tested end to end).
+* **Source ends:** the portal's `Closed` signal (compositor ended the session) and the removal of the node from the
+  PipeWire registry (window closed, monitor unplugged) end the capture as `Capture::Ended`; the app treats it like
+  "stop sharing" (no error page). The stream going to "paused" is not an end (minimised window): the capture keeps
+  returning `Unchanged`. UNCERTAIN: how long a paused window may stay paused before the share should be ended is a
+  UI decision; nothing times it out.
+* **Multi-monitor:** one monitor or one window per share (the portal's picker returns the choice). If a compositor
+  returns several streams anyway the first is used.
+* **Restore tokens (`restore.rs`):** stored in `<data dir>/CometCast/screencast/restore-token` (0600 in a 0700
+  folder), tested; **not used by default** (`PickerOptions::use_restore_token` is false and nothing sets it), because
+  a token makes the portal skip its picker, which is a design decision. Open question H1.
+* **Cursor and damage:** pointer embedded; the stream's damage metadata and the cursor metadata are not read; the
+  whole-picture hash decides "unchanged" (A10 stays as for X11: no dirty rectangles, no separate pointer message).
+* **What was run here:** `cargo test -p cc-capture --features wayland` (pure logic with fake buffers, the format and
+  buffer pods, SPA constants against the bindings) and `tools/pipewire-loopback-test.sh`: a throw-away `pipewire` +
+  `wireplumber`, a fake screen producer node (BGRx, 64x48, shared memory) and the real consumer code (`pw.rs` +
+  `Shared`): the first picture arrives as BGRA with the right colour, a change of the producer's picture arrives,
+  and removing the node ends the session as `Ended(SourceClosed)`. **Not run:** the desktop portal itself (no
+  `xdg-desktop-portal` with a ScreenCast backend here), any compositor, DMA-BUF, window sources, restore.
+  Manual plan: [linux-wayland-test-plan.md](linux-wayland-test-plan.md).
+
+### Windows (`windows_wgc.rs`, Windows targets only)
+
+* `GraphicsCapturePicker.PickSingleItemAsync` (owner window: `PickerOptions::owner_window`, else the foreground
+  window; UNCERTAIN) on a thread in the multithreaded apartment; cancel or an empty result is `Denied`
+  (`winlogic::map_pick_error`: `E_POINTER`, `E_ABORT`, `E_ACCESSDENIED`, `ERROR_CANCELLED`, `S_OK`; UNCERTAIN which of
+  them a given Windows build returns).
+* Direct3D 11 device (hardware, WARP fallback), free-threaded `Direct3D11CaptureFramePool` (BGRA, 2 buffers),
+  `FrameArrived` copies the texture to a staging texture and converts with the row pitch (`convert::to_bgra`).
+  `GraphicsCaptureItem.Closed` ends the capture. A changed content size recreates the frame pool
+  (`winlogic::SizeTracker`) and a texture larger than the content is cropped. Frames are in physical pixels whatever the
+  DPI scaling.
+* Cursor capture is requested; the yellow capture border and the system's stop control are left to Windows (hiding
+  the border needs a capability and an extra consent, not done). Needs Windows 10 1803 or newer
+  (`GraphicsCaptureSession::IsSupported`); otherwise `capture_unavailable`.
+* **Verified:** `cargo check` and `cargo clippy -D warnings` for `x86_64-pc-windows-gnu` (also in CI); host unit tests
+  of `winlogic` and the shared logic with fakes. **Never run on Windows.** Plan: [windows-capture-test-plan.md](windows-capture-test-plan.md).
+
+### macOS (`macos_sck.rs`, macOS targets only)
+
+* macOS 14 or newer (`SCContentSharingPicker`); older systems answer `Unsupported` = `capture_unavailable`
+  (the designer's text names the picker for macOS 14+; a fallback for 12.3 to 13 would need our own picker UI and was
+  not built).
+* The picker is presented on the **main queue** (the app's main run loop must run: it does in Flutter, not in a plain
+  command line program) and waits on a worker thread; calling `start` from the main thread is refused. The observer
+  reports the chosen content filter, a cancel (`Denied`) or a failure. The stream is built from the filter at the
+  picked size times the filter's points-to-pixels scale (even numbers), BGRA, minimum frame interval 1/fps, cursor
+  shown, queue depth 3; each `SCFrameStatus::Complete` buffer is copied from its `CVPixelBuffer` with the row stride;
+  `Idle` = `Unchanged`; `Blank`/`Suspended` = paused; `Stopped` and `stream:didStopWithError:` end the capture (the
+  system's "stop sharing" `SCStreamErrorUserStopped` is a normal end, not an error).
+* **Permissions (UNCERTAIN, not tried):** with the system picker the person's choice is the consent for that content
+  and Screen Recording (TCC) is not asked in advance; a refusal comes as the picker's cancel or as
+  `SCStreamErrorUserDeclined` from the stream start (`Denied`). The app may still need the screen capture entitlement
+  or a usage description in the bundle; nothing was added to the Flutter macOS project.
+* **Verified:** `cargo check` and `cargo clippy -D warnings` for `aarch64-apple-darwin` (the objc2 crates type-check
+  without an SDK, no fake SDK was needed; also in CI); host unit tests of `sck_logic` and the shared logic.
+  **Never linked or run.** Plan: [macos-capture-test-plan.md](macos-capture-test-plan.md).
+
 ## Tests and what they prove
 
 | Test | Command | Proves |
@@ -234,6 +373,10 @@ roots is an open improvement).
 | Codec manager | `cargo test -p cc-codec --features download` (`-- --ignored` adds two tests that download from Cisco) | Hash check (tamper), platform table (and that it equals `hashes.txt` of `openh264-sys2`, found with `cargo metadata`; skipped loudly if the crate is not on disk), bzip2/raw sniffing, size caps and a decompression bomb, atomic write, symlink refusal, owner and mode checks, copy of the administrator file into the private folder, no redirects, https only, retries, stall timeout versus a slow link, a panic during a download; local HTTP server with a fake library |
 | CLI codec command | `cargo test -p cometcast-cli --no-default-features --features h264-libloading` | `codec status`/`install` parse, need `--yes`, report a missing, existing and nonexistent `COMETCAST_OPENH264_LIB` |
 | Screen pipeline with a scripted source | `cargo test -p cc-sender` | First frame is IDR; no capture while a frame is in flight; a static screen gives exactly one picture plus 3 refreshes and then silence; a key frame request is answered on a static screen. With a scripted encoder that skips pictures: 40 skipped encodes after the first frame still end with the 3 refreshes sent; a skipped new picture is retried until sent; a key frame request survives 5 skipped attempts and is cleared only when the key frame went out; 1000 requests within half a second give one accepted request and 999 counted as ignored; a panic in the capture thread is reported; `stop` returns within its time limit while the capture call is stuck |
+| Picker backends, platform independent parts | `cargo test -p cc-capture` (and `--features wayland`) | Pixel conversion of all layouts, stride, crop and size limits; the phase state machine (cancel = denied, source closed, system stop, errors); the one-slot mailbox (newest wins, wakes a waiting thread, survives close); the pacer; portal choices (cursor mode, source types, DMA-BUF never offered, buffer verdicts, pixel size beats logical size, first stream wins); restore token store (0600/0700, bad tokens refused); fake PipeWire buffers into frames; Windows error codes and size tracking; macOS frame statuses, error codes and sizes; the Linux backend order |
+| PipeWire loopback | `tools/pipewire-loopback-test.sh` (needs pipewire, wireplumber, dbus, libpipewire-0.3-dev) | The real consumer code against a real daemon and a fake producer: negotiation, BGRx to BGRA, a changing picture, `Ended` when the node disappears. Skips with a note when no PipeWire socket exists |
+| Picker option in the sender | `cargo test -p cc-sender` | A cancelled picker maps to `capture_denied` and other failures to `capture_unavailable`; the picker option goes through the backend order |
+| Type check of the other platforms | `cargo clippy -p cc-capture --target x86_64-pc-windows-gnu -- -D warnings`; `... --target aarch64-apple-darwin ...` | The Windows and macOS code compiles and passes clippy (nothing is linked or run) |
 | RandR change of a monitor | `cargo test -p cc-capture` (`a_monitor_source_follows_a_randr_change`) | Under Xvfb a second client gives the CRT controller a 400x300 mode; the `monitor:0` source then delivers 400x300 frames (without listening to RandR events it stayed at the old rectangle and delivered nothing; checked by disabling the event handling once) |
 | End to end | `cargo test -p cc-receiver --test screen` | Real `cc-server`, Xvfb with a full-screen red window, `SenderCore` with the X11 source, `ReceiverCore` with the packet tap; the received H.264 is reassembled and decoded with OpenH264; the decoded picture is red, 640x480; after the window turns blue the decoded picture turns blue; then the sender produces no frames while the screen is static; a PLI from the receiver is answered with a key frame |
 | Browser receiver | `cd apps/web && npm run build && npm run e2e:screen` | Chromium (playwright's, version 153.0.8010.12) receives `cometcast-cli send --screen` from an Xvfb screen and decodes it at 640x480; the canvas mean colour is close to the window colour, and follows a second window of another colour. The script checks `RTCRtpReceiver.getCapabilities('video')` first and prints `SKIPPED` (not OK) if the Chromium has no H.264 |
@@ -315,11 +458,11 @@ with a key frame of about 1 KB; why the browser asks that often was not investig
 
 ## Limits
 
-- **X11 only.** Wayland (desktop portal + PipeWire), Windows and macOS return `CaptureError::Unsupported`
-  from stubs. Other X11 limits: only 32-bit-per-pixel little-endian BGRX roots (anything else is refused
+- **The X11 backend** (whole desktop, no picker) is the only one that has been run end to end here. Wayland,
+  Windows and macOS have the system-picker backends described above (not run on those systems). Other X11 limits: only 32-bit-per-pixel little-endian BGRX roots (anything else is refused
   with a message); the root window and RandR monitors, no single windows; no hot-plug handling beyond
   following the size of the root; no multi-screen (Zaphod) setups.
-- **No mouse pointer.** `GetImage` does not contain it. Sending it as separate messages (A10) is not done.
+- **No separate mouse pointer message.** X11 `GetImage` does not contain the pointer; the picker backends ask the system to draw it into the picture (portal: embedded mode where offered; Windows and macOS: cursor capture on). Sending it as separate messages (A10) is not done.
 - **No audio.**
 - **No dirty rectangles.** The whole picture is hashed, read and encoded; DAMAGE is only used as "something
   changed" hint. A 64-bit hash collision could in theory hide a change.
@@ -337,6 +480,7 @@ with a key frame of about 1 KB; why the browser asks that often was not investig
 
 ## What is not verified
 
+- The picker backends on their systems: a real Wayland compositor with its portal (GNOME, KDE, wlroots), Windows 10/11, macOS 14+. No picture from any of them was ever seen. What the platforms answer on cancel, how long first pictures take, HiDPI and fractional scaling, window capture, window resize, closing a shared window, sleep and lock screen, multi-monitor, CPU and latency (measurement points A1, A10, A11) are all open.
 - Any other machine, GPU, X server (Xorg, XWayland), desktop environment, or a real compositor.
 - Real content such as slides, code or video, real network conditions (everything ran over loopback UDP),
   latency (no number), image quality beyond the PSNR experiment above.
