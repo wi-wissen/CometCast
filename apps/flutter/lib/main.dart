@@ -17,16 +17,15 @@ import 'core/core_api.dart';
 import 'core/ios_broadcast.dart';
 import 'core/miracast.dart';
 import 'core/rust_loader.dart';
-import 'home_page.dart';
+import 'src/app_shell.dart';
+import 'src/design/tokens.dart';
+import 'src/display/display_logic.dart' show DisplayStore, PrefsDisplayStore;
+import 'src/display/wake_lock.dart';
+import 'src/presenter/file_picker.dart';
 import 'miracast_page.dart' show miracastSupportedHere;
-import 'receive_page.dart' show launchInBrowser;
+import 'src/display/launch.dart' show launchInBrowser;
 import 'receiver_controller.dart' show UrlOpener;
-import 'send_content_page.dart';
 import 'settings.dart';
-import 'widgets.dart';
-
-// Accent colour of the brand.
-const Color cometAccent = Color(0xFF2D4A8A);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -119,24 +118,6 @@ String? _env(String name) {
   return (v == null || v.isEmpty) ? null : v;
 }
 
-/// Material 3 theme with visible focus indicators (for D-pad / keyboard use on Android TV).
-ThemeData _theme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: cometAccent,
-    brightness: brightness,
-  );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
-    focusColor: scheme.primary.withValues(alpha: 0.2),
-    filledButtonTheme: FilledButtonThemeData(style: focusBorderStyle(scheme)),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: focusBorderStyle(scheme),
-    ),
-    iconButtonTheme: IconButtonThemeData(style: focusBorderStyle(scheme)),
-  );
-}
-
 /// Root widget (like App.vue). Pass [locale] to force a language (used by tests).
 class CometCastApp extends StatelessWidget {
   CometCastApp({
@@ -154,7 +135,23 @@ class CometCastApp extends StatelessWidget {
     this.videoDecoder,
     this.deviceName,
     this.miracast,
+    this.displayStore = const PrefsDisplayStore(),
+    this.wakeLock,
+    this.forceDisplayCapable,
+    this.initialCode,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
+
+  /// What the display remembers (a memory store in tests).
+  final DisplayStore displayStore;
+
+  /// The wake lock (a fake in tests).
+  final WakeLockControl? wakeLock;
+
+  /// Tests: treat this device as a tablet or computer (true) or a phone (false).
+  final bool? forceDisplayCapable;
+
+  /// A code from a link (tests).
+  final String? initialCode;
 
   final Locale? locale;
 
@@ -208,6 +205,7 @@ class CometCastApp extends StatelessWidget {
 
   Widget _app() {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       // onGenerateTitle is used because the title needs translations.
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       locale: locale, // null = follow the system language
@@ -225,10 +223,12 @@ class CometCastApp extends StatelessWidget {
         }
         return const Locale('en');
       },
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
-      themeMode: ThemeMode.system, // light/dark follows the system
-      home: HomePage(
+      // The presenter pages follow the system; the display brings its own theme
+      // (lib/src/design/tokens.dart).
+      theme: presenterTheme(Brightness.light),
+      darkTheme: presenterTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
+      home: AppShell(
         core: core,
         settings: settings,
         androidCapture: androidCapture,
@@ -236,6 +236,10 @@ class CometCastApp extends StatelessWidget {
         pickFile: pickFile,
         openUrl: openUrl,
         miracast: miracast,
+        store: displayStore,
+        wakeLock: wakeLock,
+        forceDisplayCapable: forceDisplayCapable,
+        initialCode: initialCode,
       ),
     );
   }

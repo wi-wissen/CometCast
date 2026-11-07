@@ -12,11 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/miracast.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
-import 'package:cometcast/main.dart';
 import 'package:cometcast/miracast_controller.dart';
 import 'package:cometcast/miracast_page.dart';
 
-import 'fake_core.dart';
 import 'fake_miracast.dart';
 
 void main() {
@@ -387,23 +385,6 @@ void main() {
   });
 
   group('screen', () {
-    Future<void> pumpPage(
-      WidgetTester tester,
-      FakeMiracastCore core, {
-      Locale locale = const Locale('en'),
-      FrameDecoder? decoder,
-    }) async {
-      tester.view.physicalSize = const Size(900, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        CometCastApp(locale: locale, core: FakeCoreApi(), miracast: core),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('miracastTile')));
-      await tester.pumpAndSettle();
-    }
-
     Future<void> pumpDirect(
       WidgetTester tester,
       FakeMiracastCore core, {
@@ -619,37 +600,6 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byKey(const Key('miracastRejectedNote')), findsOneWidget);
-      await close(tester);
-    });
-
-    testWidgets('home screen: the row exists only with a Miracast core', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        CometCastApp(locale: const Locale('en'), core: FakeCoreApi()),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('miracastTile')), findsNothing);
-      expect(find.text('Receive via Miracast (Windows)'), findsNothing);
-
-      await tester.pumpWidget(
-        CometCastApp(
-          locale: const Locale('en'),
-          core: FakeCoreApi(),
-          miracast: FakeMiracastCore(),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Receive via Miracast (Windows)'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('home screen: German row text and opening the screen', (
-      tester,
-    ) async {
-      final core = FakeMiracastCore();
-      await pumpPage(tester, core, locale: const Locale('de'));
-      expect(find.text('Miracast-Empfänger'), findsOneWidget);
       await close(tester);
     });
 

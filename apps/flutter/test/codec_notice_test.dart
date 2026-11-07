@@ -10,7 +10,6 @@ import 'package:cometcast/codec_controller.dart';
 import 'package:cometcast/codec_notice.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
-import 'package:cometcast/main.dart';
 import 'package:cometcast/settings.dart';
 
 import 'fake_core.dart';
@@ -249,90 +248,6 @@ void main() {
     );
     expect(find.byKey(const Key('codecUnsupported')), findsOneWidget);
     expect(find.byKey(const Key('codecDownload')), findsNothing);
-  });
-
-  Future<FakeCoreApi> openScreen(
-    WidgetTester tester,
-    String entry, {
-    UiCodecState state = const UiCodecState.missing(),
-  }) async {
-    final core = FakeCoreApi()
-      ..codecStateResult = state
-      ..codecInfoResult = _info;
-    tester.view.physicalSize = const Size(900, 1800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      CometCastApp(locale: const Locale('en'), core: core),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(entry));
-    await tester.pumpAndSettle();
-    return core;
-  }
-
-  testWidgets('send screen: sharing waits for the codec', (tester) async {
-    final core = await openScreen(tester, 'Send screen');
-    // Not asked while the screen is not shared (the test video needs no codec).
-    expect(find.byKey(const Key('codecNotice')), findsNothing);
-    await tester.tap(find.byKey(const Key('shareScreenSwitch')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('codecNotice')), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
-    await tester.tap(find.byKey(const Key('startButton')));
-    await tester.pump();
-    expect(core.senderScreen, isNull);
-    expect(core.senderCode, isNull);
-    // After the download the same start works.
-    await tester.tap(find.byKey(const Key('codecDownload')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('codecNotice')), findsNothing);
-    await tester.tap(find.byKey(const Key('startButton')));
-    await tester.pump();
-    expect(core.senderScreen, isNotNull);
-  });
-
-  testWidgets('send screen follows a download that another owner runs', (
-    tester,
-  ) async {
-    final core = await openScreen(
-      tester,
-      'Send screen',
-      state: const UiCodecState.downloading(progress: 0.4),
-    );
-    await tester.tap(find.byKey(const Key('shareScreenSwitch')));
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byKey(const Key('codecProgress')), findsOneWidget);
-    expect(core.ensureCodecCalls, 0);
-    core.codecStateResult = const UiCodecState.ready();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('codecNotice')), findsNothing);
-  });
-
-  testWidgets('receive screen follows a download that another owner runs', (
-    tester,
-  ) async {
-    final core = await openScreen(
-      tester,
-      'Receive on this device',
-      state: const UiCodecState.downloading(progress: 0.4),
-    );
-    expect(find.byKey(const Key('codecProgress')), findsOneWidget);
-    core.codecStateResult = const UiCodecState.ready();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('codecNotice')), findsNothing);
-  });
-
-  testWidgets('receive screen shows the card but can still start', (
-    tester,
-  ) async {
-    final core = await openScreen(tester, 'Receive on this device');
-    expect(find.byKey(const Key('codecNotice')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('startButton')));
-    await tester.pump();
-    expect(core.receiverServer, isNotNull);
   });
 
   test(

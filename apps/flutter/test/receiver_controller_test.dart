@@ -9,7 +9,7 @@ import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/receiver_controller.dart';
 
 import 'fake_core.dart';
-import 'receive_page_test.dart' show solidFrame;
+import 'solid_frame.dart';
 
 /// Lets real time pass (image decoding and timers run on the real event loop).
 Future<void> realWait(WidgetTester tester, int ms) =>
