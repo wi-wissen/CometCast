@@ -150,6 +150,10 @@ fn is_executable_file(p: &Path) -> bool {
     p.is_file()
 }
 
+/// Android's `AID_SYSTEM`, the owner of installed app libraries.
+#[cfg(unix)]
+const ANDROID_AID_SYSTEM: u32 = 1000;
+
 /// The trust check for a worker program given by path (`COMETCAST_DOCS_WORKER`, and the worker
 /// paths `cc-ffi` accepts): absolute, a regular file, and on Unix owned by this user or root,
 /// not writable by group or others, in a directory not writable by others (sticky bit excepted).
@@ -165,7 +169,15 @@ pub fn check_worker_file(p: &Path) -> Result<(), &'static str> {
     {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
         let me = rustix::process::getuid().as_raw();
-        if meta.uid() != me && meta.uid() != 0 {
+        // Android: the package manager installs the app's `lib/<abi>/` files (where a worker
+        // shipped as `lib*.so` ends up) as `system` (uid 1000), not as the app's own user. Only
+        // the system can write there (the mode and directory checks below still apply).
+        // UNCERTAIN: from the Android documentation and AOSP behaviour as remembered, not run
+        // on a device (docs/android.md).
+        let owner_ok = meta.uid() == me
+            || meta.uid() == 0
+            || (cfg!(target_os = "android") && meta.uid() == ANDROID_AID_SYSTEM);
+        if !owner_ok {
             return Err("it is owned by another user");
         }
         if meta.permissions().mode() & 0o022 != 0 {

@@ -2452,7 +2452,7 @@ extension ReceiverUiEventPatterns on ReceiverUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult Function( ReceiverUiEvent_ContentError value)?  contentError,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult Function( ReceiverUiEvent_ContentError value)?  contentError,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -2461,7 +2461,8 @@ return peerJoined(_that);case ReceiverUiEvent_ConnectionState() when connectionS
 return connectionState(_that);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that);case ReceiverUiEvent_Stats() when stats != null:
 return stats(_that);case ReceiverUiEvent_FrameReady() when frameReady != null:
-return frameReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
+return frameReady(_that);case ReceiverUiEvent_EncodedReady() when encodedReady != null:
+return encodedReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
 return contentTransferStarted(_that);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady(_that);case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
@@ -2488,7 +2489,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_ContentTransferStarted value)  contentTransferStarted,required TResult Function( ReceiverUiEvent_ContentFrameReady value)  contentFrameReady,required TResult Function( ReceiverUiEvent_ContentDocumentOpened value)  contentDocumentOpened,required TResult Function( ReceiverUiEvent_ContentLink value)  contentLink,required TResult Function( ReceiverUiEvent_ContentStopped value)  contentStopped,required TResult Function( ReceiverUiEvent_ContentError value)  contentError,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_EncodedReady value)  encodedReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_ContentTransferStarted value)  contentTransferStarted,required TResult Function( ReceiverUiEvent_ContentFrameReady value)  contentFrameReady,required TResult Function( ReceiverUiEvent_ContentDocumentOpened value)  contentDocumentOpened,required TResult Function( ReceiverUiEvent_ContentLink value)  contentLink,required TResult Function( ReceiverUiEvent_ContentStopped value)  contentStopped,required TResult Function( ReceiverUiEvent_ContentError value)  contentError,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
@@ -2497,7 +2498,8 @@ return peerJoined(_that);case ReceiverUiEvent_ConnectionState():
 return connectionState(_that);case ReceiverUiEvent_VideoTrack():
 return videoTrack(_that);case ReceiverUiEvent_Stats():
 return stats(_that);case ReceiverUiEvent_FrameReady():
-return frameReady(_that);case ReceiverUiEvent_VideoStats():
+return frameReady(_that);case ReceiverUiEvent_EncodedReady():
+return encodedReady(_that);case ReceiverUiEvent_VideoStats():
 return videoStats(_that);case ReceiverUiEvent_ContentTransferStarted():
 return contentTransferStarted(_that);case ReceiverUiEvent_ContentFrameReady():
 return contentFrameReady(_that);case ReceiverUiEvent_ContentDocumentOpened():
@@ -2520,7 +2522,7 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult? Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult? Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult? Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult? Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult? Function( ReceiverUiEvent_ContentError value)?  contentError,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult? Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult? Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult? Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult? Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult? Function( ReceiverUiEvent_ContentError value)?  contentError,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -2529,7 +2531,8 @@ return peerJoined(_that);case ReceiverUiEvent_ConnectionState() when connectionS
 return connectionState(_that);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that);case ReceiverUiEvent_Stats() when stats != null:
 return stats(_that);case ReceiverUiEvent_FrameReady() when frameReady != null:
-return frameReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
+return frameReady(_that);case ReceiverUiEvent_EncodedReady() when encodedReady != null:
+return encodedReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
 return contentTransferStarted(_that);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady(_that);case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
@@ -2555,7 +2558,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code)?  roomCode,TResult Function()?  peerJoined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult Function()?  contentFrameReady,TResult Function( String name,  int pages)?  contentDocumentOpened,TResult Function( String url,  String host)?  contentLink,TResult Function()?  contentStopped,TResult Function( UiContentError error)?  contentError,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code)?  roomCode,TResult Function()?  peerJoined,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function()?  encodedReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult Function()?  contentFrameReady,TResult Function( String name,  int pages)?  contentDocumentOpened,TResult Function( String url,  String host)?  contentLink,TResult Function()?  contentStopped,TResult Function( UiContentError error)?  contentError,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
@@ -2563,7 +2566,8 @@ return peerJoined();case ReceiverUiEvent_ConnectionState() when connectionState 
 return connectionState(_that.state);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that.mime,_that.codec);case ReceiverUiEvent_Stats() when stats != null:
 return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_FrameReady() when frameReady != null:
-return frameReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
+return frameReady();case ReceiverUiEvent_EncodedReady() when encodedReady != null:
+return encodedReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
 return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady();case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
@@ -2590,7 +2594,7 @@ return error(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code)  roomCode,required TResult Function()  peerJoined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function( bool document,  String name,  BigInt size)  contentTransferStarted,required TResult Function()  contentFrameReady,required TResult Function( String name,  int pages)  contentDocumentOpened,required TResult Function( String url,  String host)  contentLink,required TResult Function()  contentStopped,required TResult Function( UiContentError error)  contentError,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code)  roomCode,required TResult Function()  peerJoined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function()  encodedReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function( bool document,  String name,  BigInt size)  contentTransferStarted,required TResult Function()  contentFrameReady,required TResult Function( String name,  int pages)  contentDocumentOpened,required TResult Function( String url,  String host)  contentLink,required TResult Function()  contentStopped,required TResult Function( UiContentError error)  contentError,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
 return roomCode(_that.code);case ReceiverUiEvent_PeerJoined():
@@ -2598,7 +2602,8 @@ return peerJoined();case ReceiverUiEvent_ConnectionState():
 return connectionState(_that.state);case ReceiverUiEvent_VideoTrack():
 return videoTrack(_that.mime,_that.codec);case ReceiverUiEvent_Stats():
 return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_FrameReady():
-return frameReady();case ReceiverUiEvent_VideoStats():
+return frameReady();case ReceiverUiEvent_EncodedReady():
+return encodedReady();case ReceiverUiEvent_VideoStats():
 return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_ContentTransferStarted():
 return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentFrameReady():
 return contentFrameReady();case ReceiverUiEvent_ContentDocumentOpened():
@@ -2621,7 +2626,7 @@ return error(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code)?  roomCode,TResult? Function()?  peerJoined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult? Function()?  contentFrameReady,TResult? Function( String name,  int pages)?  contentDocumentOpened,TResult? Function( String url,  String host)?  contentLink,TResult? Function()?  contentStopped,TResult? Function( UiContentError error)?  contentError,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code)?  roomCode,TResult? Function()?  peerJoined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function()?  encodedReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult? Function()?  contentFrameReady,TResult? Function( String name,  int pages)?  contentDocumentOpened,TResult? Function( String url,  String host)?  contentLink,TResult? Function()?  contentStopped,TResult? Function( UiContentError error)?  contentError,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
@@ -2629,7 +2634,8 @@ return peerJoined();case ReceiverUiEvent_ConnectionState() when connectionState 
 return connectionState(_that.state);case ReceiverUiEvent_VideoTrack() when videoTrack != null:
 return videoTrack(_that.mime,_that.codec);case ReceiverUiEvent_Stats() when stats != null:
 return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case ReceiverUiEvent_FrameReady() when frameReady != null:
-return frameReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
+return frameReady();case ReceiverUiEvent_EncodedReady() when encodedReady != null:
+return encodedReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
 return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady();case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
@@ -2990,6 +2996,38 @@ int get hashCode => runtimeType.hashCode;
 @override
 String toString() {
     return 'ReceiverUiEvent.frameReady()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ReceiverUiEvent_EncodedReady extends ReceiverUiEvent {
+  const ReceiverUiEvent_EncodedReady(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_EncodedReady);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.encodedReady()';
 }
 
 

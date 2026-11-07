@@ -11,7 +11,7 @@ part 'api.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `discover_servers_with`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -55,6 +55,25 @@ Future<void> stopReceiver() => RustLib.instance.api.crateApiStopReceiver();
 /// The picture is at most the size set by [`set_video_max_size`] (and never larger than
 /// 1920 x 1080). Fetching re-arms the `FrameReady` event.
 Future<VideoFrame?> takeFrame() => RustLib.instance.api.crateApiTakeFrame();
+
+/// Use the host's own decoder (Android `MediaCodec`) instead of the software decoder: the
+/// receiver then does not decode, it queues the H.264 access units and sends
+/// [`ReceiverUiEvent::EncodedReady`]; fetch them with [`take_encoded_video`]. Call it before
+/// [`start_receiver`] (the choice is kept across receivers); switching while a receiver runs
+/// works too (a key frame is requested). `false` goes back to the software decoder.
+void setVideoPassthrough({required bool on_}) =>
+    RustLib.instance.api.crateApiSetVideoPassthrough(on_: on_);
+
+/// Ask the sender for a key frame (rate limited to one per second). For a host decoder that lost
+/// its place (a new surface, a decoder restart).
+void requestVideoKeyframe() =>
+    RustLib.instance.api.crateApiRequestVideoKeyframe();
+
+/// The encoded access units that wait in pass-through mode, oldest first (at most 8 are ever
+/// queued; if the host is too slow the queue is dropped and a key frame requested). Call it
+/// after [`ReceiverUiEvent::EncodedReady`]; fetching re-arms that event.
+Future<List<EncodedVideoUnit>> takeEncodedVideo() =>
+    RustLib.instance.api.crateApiTakeEncodedVideo();
 
 /// Tell the decoder how large the picture area is in physical pixels. Pictures larger than
 /// this are scaled down (aspect ratio kept); smaller ones are not enlarged. Values are
@@ -538,6 +557,36 @@ enum DiscoveryWarning {
   other,
 }
 
+/// One undecoded H.264 access unit for a hardware decoder of the host (pass-through mode).
+class EncodedVideoUnit {
+  /// Annex B bytes (start codes), SPS and PPS included on key frames.
+  final Uint8List data;
+
+  /// The unit is an IDR frame.
+  final bool isKey;
+
+  /// Presentation time in microseconds (RTP clock converted; wraps with the 32 bit RTP time).
+  final BigInt ptsUs;
+
+  const EncodedVideoUnit({
+    required this.data,
+    required this.isKey,
+    required this.ptsUs,
+  });
+
+  @override
+  int get hashCode => data.hashCode ^ isKey.hashCode ^ ptsUs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EncodedVideoUnit &&
+          runtimeType == other.runtimeType &&
+          data == other.data &&
+          isKey == other.isKey &&
+          ptsUs == other.ptsUs;
+}
+
 @freezed
 sealed class LinkCheck with _$LinkCheck {
   const LinkCheck._();
@@ -655,6 +704,10 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
   /// A decoded picture is waiting: call [`take_frame`]. Sent again only after `take_frame`
   /// was called (so a slow UI does not build up a queue).
   const factory ReceiverUiEvent.frameReady() = ReceiverUiEvent_FrameReady;
+
+  /// Pass-through mode ([`set_video_passthrough`]): encoded H.264 access units wait; call
+  /// [`take_encoded_video`]. Sent again only after that call.
+  const factory ReceiverUiEvent.encodedReady() = ReceiverUiEvent_EncodedReady;
 
   /// Counters of the decoder, sent together with `Stats`.
   const factory ReceiverUiEvent.videoStats({

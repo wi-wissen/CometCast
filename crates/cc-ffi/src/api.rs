@@ -178,6 +178,9 @@ pub enum ReceiverUiEvent {
     /// A decoded picture is waiting: call [`take_frame`]. Sent again only after `take_frame`
     /// was called (so a slow UI does not build up a queue).
     FrameReady,
+    /// Pass-through mode ([`set_video_passthrough`]): encoded H.264 access units wait; call
+    /// [`take_encoded_video`]. Sent again only after that call.
+    EncodedReady,
     /// Counters of the decoder, sent together with `Stats`.
     VideoStats {
         /// Pictures decoded.
@@ -449,8 +452,12 @@ pub async fn start_receiver(
     // The decoder thread gets a copy of every incoming video packet. If the start fails below,
     // `options` is dropped, the channel closes and the thread ends.
     let frame_sink = events.clone();
-    options.session.video_tap = video::spawn_decoder(video_generation, move || {
-        let _ = frame_sink.add(ReceiverUiEvent::FrameReady);
+    options.session.video_tap = video::spawn_decoder(video_generation, move |encoded| {
+        let _ = frame_sink.add(if encoded {
+            ReceiverUiEvent::EncodedReady
+        } else {
+            ReceiverUiEvent::FrameReady
+        });
     });
     let mut core = match ReceiverCore::start(options).await {
         Ok(core) => core,
@@ -614,6 +621,49 @@ pub struct VideoFrame {
     pub height: u32,
     /// RGBA bytes, length = width * height * 4.
     pub rgba: Vec<u8>,
+}
+
+/// One undecoded H.264 access unit for a hardware decoder of the host (pass-through mode).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedVideoUnit {
+    /// Annex B bytes (start codes), SPS and PPS included on key frames.
+    pub data: Vec<u8>,
+    /// The unit is an IDR frame.
+    pub is_key: bool,
+    /// Presentation time in microseconds (RTP clock converted; wraps with the 32 bit RTP time).
+    pub pts_us: u64,
+}
+
+/// Use the host's own decoder (Android `MediaCodec`) instead of the software decoder: the
+/// receiver then does not decode, it queues the H.264 access units and sends
+/// [`ReceiverUiEvent::EncodedReady`]; fetch them with [`take_encoded_video`]. Call it before
+/// [`start_receiver`] (the choice is kept across receivers); switching while a receiver runs
+/// works too (a key frame is requested). `false` goes back to the software decoder.
+#[frb(sync)]
+pub fn set_video_passthrough(on: bool) {
+    VIDEO.set_passthrough(on);
+}
+
+/// Ask the sender for a key frame (rate limited to one per second). For a host decoder that lost
+/// its place (a new surface, a decoder restart).
+#[frb(sync)]
+pub fn request_video_keyframe() {
+    VIDEO.request_keyframe();
+}
+
+/// The encoded access units that wait in pass-through mode, oldest first (at most 8 are ever
+/// queued; if the host is too slow the queue is dropped and a key frame requested). Call it
+/// after [`ReceiverUiEvent::EncodedReady`]; fetching re-arms that event.
+pub async fn take_encoded_video() -> Vec<EncodedVideoUnit> {
+    VIDEO
+        .take_encoded()
+        .into_iter()
+        .map(|u| EncodedVideoUnit {
+            data: u.data,
+            is_key: u.is_key,
+            pts_us: u.pts_us,
+        })
+        .collect()
 }
 
 /// Tell the decoder how large the picture area is in physical pixels. Pictures larger than

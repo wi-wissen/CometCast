@@ -32,6 +32,7 @@
 //!
 //! The hand-written API of this module is `pub(crate)`; `api.rs` exposes what Dart may call.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -46,6 +47,12 @@ pub(crate) const MAX_HEIGHT: u32 = 1080;
 #[cfg(feature = "h264")]
 const MAX_BACKLOG_PACKETS: usize = 2000;
 
+/// Most encoded access units that wait for the host in pass-through mode. When the host (Dart ->
+/// Android `MediaCodec`) is slower than the network the queue is thrown away, the path waits for
+/// the next IDR frame and asks for a key frame. UNCERTAIN: placeholder (about 8 frames, 0.27 s at
+/// 30 fps), not tuned.
+pub(crate) const MAX_ENCODED_QUEUE: usize = 8;
+
 /// At most one key frame request per this long.
 const KEYFRAME_MIN_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -58,12 +65,37 @@ pub(crate) struct Frame {
     pub(crate) rgba: Vec<u8>,
 }
 
+/// One H.264 access unit (Annex B) that is handed to the host undecoded (pass-through mode).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EncodedUnit {
+    pub(crate) data: Vec<u8>,
+    pub(crate) is_key: bool,
+    /// RTP timestamp (90 kHz) converted to microseconds; wraps with the 32 bit RTP clock.
+    pub(crate) pts_us: u64,
+}
+
+/// What [`Video::publish_encoded`] decided.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EncodedPublish {
+    /// The unit is stale (an older session) and was dropped.
+    Stale,
+    /// Queued. `notify` is true if the host must be told (nothing was outstanding).
+    Queued { notify: bool },
+    /// The queue was full: it was emptied (all dropped, the new unit too). The caller must wait
+    /// for the next IDR frame and ask for a key frame.
+    Overflow { notify: bool },
+}
+
 #[derive(Debug, Default)]
 struct MailSlot {
     latest: Option<Frame>,
     /// A `FrameReady` event was sent and `take` has not been called since.
     notified: bool,
     seq: u64,
+    /// Pass-through mode: encoded units waiting for the host.
+    encoded: VecDeque<EncodedUnit>,
+    /// An `EncodedReady` event was sent and `take_encoded` has not been called since.
+    encoded_notified: bool,
 }
 
 /// Counters of the video path, copied for the UI.
@@ -89,6 +121,9 @@ pub(crate) struct Video {
     max_h: AtomicU32,
     /// True once the track was announced as H.264; other codecs are not decoded.
     h264: AtomicBool,
+    /// Pass-through mode: do not decode, hand the access units to the host (Android hardware
+    /// decoder). Chosen by the UI before the receiver starts; kept across `reset` like the size.
+    passthrough: AtomicBool,
     want_keyframe: AtomicBool,
     last_keyframe_request: Mutex<Option<Instant>>,
     /// Bumped on every reset; a decoder thread of an older generation ends.
@@ -121,10 +156,13 @@ impl Video {
                 latest: None,
                 notified: false,
                 seq: 0,
+                encoded: VecDeque::new(),
+                encoded_notified: false,
             }),
             max_w: AtomicU32::new(MAX_WIDTH),
             max_h: AtomicU32::new(MAX_HEIGHT),
             h264: AtomicBool::new(false),
+            passthrough: AtomicBool::new(false),
             want_keyframe: AtomicBool::new(false),
             last_keyframe_request: Mutex::new(None),
             generation: AtomicU64::new(0),
@@ -301,6 +339,50 @@ impl Video {
         }
     }
 
+    /// Choose pass-through (true) or the software decoder (false). Takes effect for the next
+    /// access unit; the decoder thread then waits for an IDR frame and a key frame is requested.
+    pub(crate) fn set_passthrough(&self, on: bool) {
+        if self.passthrough.swap(on, Ordering::SeqCst) != on {
+            self.request_keyframe();
+        }
+    }
+
+    pub(crate) fn passthrough(&self) -> bool {
+        self.passthrough.load(Ordering::SeqCst)
+    }
+
+    /// Queue an undecoded access unit for the host (pass-through mode). Bounded by
+    /// [`MAX_ENCODED_QUEUE`]; see [`EncodedPublish`].
+    pub(crate) fn publish_encoded(&self, generation: u64, unit: EncodedUnit) -> EncodedPublish {
+        let Some(mut slot) = self.current(generation) else {
+            return EncodedPublish::Stale;
+        };
+        self.decoded.fetch_add(1, Ordering::Relaxed);
+        if slot.encoded.len() >= MAX_ENCODED_QUEUE {
+            // The host fell behind: everything queued (and this unit) is dropped.
+            let n = slot.encoded.len() as u64 + 1;
+            slot.encoded.clear();
+            self.dropped.fetch_add(n, Ordering::Relaxed);
+            let notify = !slot.encoded_notified;
+            slot.encoded_notified = true;
+            return EncodedPublish::Overflow { notify };
+        }
+        slot.encoded.push_back(unit);
+        let notify = !slot.encoded_notified;
+        slot.encoded_notified = true;
+        EncodedPublish::Queued { notify }
+    }
+
+    /// All queued encoded units, oldest first. Also re-arms the `EncodedReady` event.
+    pub(crate) fn take_encoded(&self) -> Vec<EncodedUnit> {
+        let mut slot = lock(&self.slot);
+        slot.encoded_notified = false;
+        let units: Vec<EncodedUnit> = slot.encoded.drain(..).collect();
+        self.delivered
+            .fetch_add(units.len() as u64, Ordering::Relaxed);
+        units
+    }
+
     /// The newest picture, if Dart has not seen it yet. Also re-arms the `FrameReady` event.
     pub(crate) fn take(&self) -> Option<Frame> {
         let mut slot = lock(&self.slot);
@@ -382,12 +464,13 @@ pub(crate) fn rgb_to_rgba_scaled(rgb: &[u8], w: u32, h: u32, dw: u32, dh: u32) -
 }
 
 /// Start the decoder thread. The returned sender goes into `SessionConfig::video_tap`.
-/// `notify` is called (from the decoder thread) when a picture is ready and none is
-/// outstanding. Returns `None` if the thread cannot be started.
+/// `notify(false)` is called (from the decoder thread) when a picture is ready and none is
+/// outstanding, `notify(true)` when an encoded unit is ready in pass-through mode. Returns
+/// `None` if the thread cannot be started.
 #[cfg(feature = "h264")]
 pub(crate) fn spawn_decoder(
     generation: u64,
-    notify: impl Fn() + Send + 'static,
+    notify: impl Fn(bool) + Send + 'static,
 ) -> Option<cc_transport::VideoTap> {
     // Bounded tap: when the decoder is too slow, packets are dropped and counted in the tap
     // (the decoder then waits for the next IDR frame). UNCERTAIN: capacity is a placeholder.
@@ -404,7 +487,7 @@ pub(crate) fn spawn_decoder(
 #[cfg(not(feature = "h264"))]
 pub(crate) fn spawn_decoder(
     generation: u64,
-    _notify: impl Fn() + Send + 'static,
+    _notify: impl Fn(bool) + Send + 'static,
 ) -> Option<cc_transport::VideoTap> {
     VIDEO.record_error_for(
         generation,
@@ -417,18 +500,26 @@ pub(crate) fn spawn_decoder(
 fn run_decoder(
     mut rx: tokio::sync::mpsc::Receiver<cc_transport::VideoPacket>,
     generation: u64,
-    notify: impl Fn(),
+    notify: impl Fn(bool),
 ) {
     use cc_media::rtp::H264Assembler;
     use cc_media::{H264Backend, H264Decoder, annexb_nal_types};
 
-    let mut decoder = match H264Decoder::new(&H264Backend::from_env()) {
-        Ok(d) => d,
-        Err(e) => {
-            VIDEO.record_error_for(generation, format!("cannot start the H.264 decoder: {e}"));
-            return;
+    // The software decoder is created when it is first needed: in pass-through mode (Android
+    // hardware decoding) it never is, which also means a missing OpenH264 library does not
+    // matter there.
+    let mut decoder: Option<H264Decoder> = None;
+    let mut decoder_failed = false;
+    let mut last_passthrough = VIDEO.passthrough();
+    if !last_passthrough {
+        match H264Decoder::new(&H264Backend::from_env()) {
+            Ok(d) => decoder = Some(d),
+            Err(e) => {
+                VIDEO.record_error_for(generation, format!("cannot start the H.264 decoder: {e}"));
+                return;
+            }
         }
-    };
+    }
     let mut assembler = H264Assembler::new();
     // The decoder can only start at an IDR frame (which carries SPS and PPS here).
     let mut wait_idr = true;
@@ -462,6 +553,12 @@ fn run_decoder(
             VIDEO.request_keyframe_for(generation);
         }
         let Some(unit) = unit else { continue };
+        let passthrough = VIDEO.passthrough();
+        if passthrough != last_passthrough {
+            // The UI switched between hardware and software decoding: start again at an IDR.
+            last_passthrough = passthrough;
+            wait_idr = true;
+        }
         if wait_idr {
             if !annexb_nal_types(&unit.data).contains(&5) {
                 VIDEO.request_keyframe_for(generation);
@@ -469,6 +566,45 @@ fn run_decoder(
             }
             wait_idr = false;
         }
+        if passthrough {
+            let is_key = annexb_nal_types(&unit.data).contains(&5);
+            let encoded = EncodedUnit {
+                data: unit.data,
+                is_key,
+                pts_us: u64::from(unit.timestamp) * 1_000_000 / 90_000,
+            };
+            match VIDEO.publish_encoded(generation, encoded) {
+                EncodedPublish::Stale => break,
+                EncodedPublish::Queued { notify: n } => {
+                    if n {
+                        notify(true);
+                    }
+                }
+                EncodedPublish::Overflow { notify: n } => {
+                    wait_idr = true;
+                    VIDEO.request_keyframe_for(generation);
+                    if n {
+                        notify(true);
+                    }
+                }
+            }
+            continue;
+        }
+        if decoder.is_none() && !decoder_failed {
+            match H264Decoder::new(&H264Backend::from_env()) {
+                Ok(d) => decoder = Some(d),
+                Err(e) => {
+                    decoder_failed = true;
+                    VIDEO.record_error_for(
+                        generation,
+                        format!("cannot start the H.264 decoder: {e}"),
+                    );
+                }
+            }
+        }
+        let Some(decoder) = decoder.as_mut() else {
+            continue;
+        };
         let started = Instant::now();
         match decoder.decode(&unit.data) {
             Ok(Some(pic)) => {
@@ -477,7 +613,7 @@ fn run_decoder(
                 let rgba = rgb_to_rgba_scaled(&pic.rgb, pic.width, pic.height, dw, dh);
                 VIDEO.add_decode_time(generation, started.elapsed());
                 if VIDEO.publish(generation, dw, dh, rgba) {
-                    notify();
+                    notify(false);
                 }
             }
             Ok(None) => {}
@@ -539,6 +675,87 @@ mod tests {
         assert!(v.publish(g, 1, 1, vec![4, 4, 4, 255]));
     }
 
+    fn unit(tag: u8, is_key: bool) -> EncodedUnit {
+        EncodedUnit {
+            data: vec![0, 0, 0, 1, tag],
+            is_key,
+            pts_us: u64::from(tag),
+        }
+    }
+
+    #[test]
+    fn passthrough_queue_is_ordered_bounded_and_notifies_once() {
+        let v = Video::new();
+        let g = v.reset();
+        assert_eq!(
+            v.publish_encoded(g, unit(1, true)),
+            EncodedPublish::Queued { notify: true }
+        );
+        assert_eq!(
+            v.publish_encoded(g, unit(2, false)),
+            EncodedPublish::Queued { notify: false }
+        );
+        let got = v.take_encoded();
+        assert_eq!(got.iter().map(|u| u.pts_us).collect::<Vec<_>>(), [1, 2]);
+        assert!(got[0].is_key && !got[1].is_key);
+        assert!(v.take_encoded().is_empty());
+        // Taking re-arms the event.
+        assert_eq!(
+            v.publish_encoded(g, unit(3, false)),
+            EncodedPublish::Queued { notify: true }
+        );
+        let c = v.counters();
+        assert_eq!((c.decoded, c.delivered), (3, 2));
+    }
+
+    #[test]
+    fn passthrough_overflow_drops_everything_and_asks_for_an_idr() {
+        let v = Video::new();
+        let g = v.reset();
+        for i in 0..MAX_ENCODED_QUEUE {
+            assert!(matches!(
+                v.publish_encoded(g, unit(i as u8, i == 0)),
+                EncodedPublish::Queued { .. }
+            ));
+        }
+        // The queue is full: this unit and the queued ones are dropped.
+        assert_eq!(
+            v.publish_encoded(g, unit(99, false)),
+            EncodedPublish::Overflow { notify: false }
+        );
+        assert!(v.take_encoded().is_empty());
+        assert_eq!(v.counters().dropped, MAX_ENCODED_QUEUE as u64 + 1);
+    }
+
+    #[test]
+    fn passthrough_is_stale_after_stop_and_survives_reset() {
+        let v = Video::new();
+        v.set_passthrough(true);
+        let old = v.reset();
+        assert!(
+            v.passthrough(),
+            "the choice describes the device, not the session"
+        );
+        v.stop();
+        assert_eq!(v.publish_encoded(old, unit(1, true)), EncodedPublish::Stale);
+        let new = v.reset();
+        assert!(v.take_encoded().is_empty());
+        assert_eq!(
+            v.publish_encoded(new, unit(1, true)),
+            EncodedPublish::Queued { notify: true }
+        );
+    }
+
+    #[test]
+    fn switching_the_mode_requests_a_key_frame() {
+        let v = Video::new();
+        v.reset();
+        v.set_passthrough(false); // no change
+        assert!(!v.take_keyframe_request());
+        v.set_passthrough(true);
+        assert!(v.take_keyframe_request());
+    }
+
     #[test]
     fn keyframe_requests_are_rate_limited() {
         let v = Video::new();
@@ -589,7 +806,7 @@ mod tests {
     #[test]
     fn decoder_thread_ends_when_the_tap_is_dropped() {
         // Own generation number: do not disturb the global used by other tests.
-        let tx = spawn_decoder(VIDEO.generation.load(Ordering::SeqCst), || {}).expect("thread");
+        let tx = spawn_decoder(VIDEO.generation.load(Ordering::SeqCst), |_| {}).expect("thread");
         drop(tx);
         // Nothing to assert beyond "does not hang the test process": the thread ends at once.
     }

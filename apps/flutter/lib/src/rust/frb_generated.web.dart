@@ -93,6 +93,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DiscoveryWarning dco_decode_discovery_warning(dynamic raw);
 
   @protected
+  EncodedVideoUnit dco_decode_encoded_video_unit(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -109,6 +112,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DiscoveryWarning> dco_decode_list_discovery_warning(dynamic raw);
+
+  @protected
+  List<EncodedVideoUnit> dco_decode_list_encoded_video_unit(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
@@ -273,6 +279,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DiscoveryWarning sse_decode_discovery_warning(SseDeserializer deserializer);
 
   @protected
+  EncodedVideoUnit sse_decode_encoded_video_unit(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
@@ -291,6 +300,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DiscoveryWarning> sse_decode_list_discovery_warning(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<EncodedVideoUnit> sse_decode_list_encoded_video_unit(
     SseDeserializer deserializer,
   );
 
@@ -496,6 +510,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_encoded_video_unit(
+    EncodedVideoUnit self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -516,6 +536,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_discovery_warning(
     List<DiscoveryWarning> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_encoded_video_unit(
+    List<EncodedVideoUnit> self,
     SseSerializer serializer,
   );
 
