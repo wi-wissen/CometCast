@@ -2,6 +2,7 @@
 // Join approval with a fake core: the host's panel (mode, requests, hold-to-allow, kick), the
 // television profile (D-pad / remote keys only), and the sender's waiting and refusal screens.
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,19 +80,23 @@ Future<FakeCoreApi> openReceive(
   return core;
 }
 
-Future<void> holdAllow(WidgetTester tester, int n, {int ms = 1100}) async {
-  final g = await tester.startGesture(
-    tester.getCenter(find.byKey(const Key('allowButton')).at(n)),
-  );
-  // The first frame only starts the ticker; the hold is measured from there.
-  await tester.pump();
-  await tester.pump(Duration(milliseconds: ms));
-  await g.up();
-  await tester.pump();
+/// A test clock for the join screens (the guard of 700 ms and the countdown use it).
+class FakeClock {
+  DateTime now = DateTime(2026, 1, 1, 12);
+  void install(WidgetTester tester) {
+    joinClock = () => now;
+    addTearDown(() => joinClock = DateTime.now);
+  }
+
+  /// Moves the test clock and the widget clock together.
+  Future<void> advance(WidgetTester tester, Duration d) async {
+    now = now.add(d);
+    await tester.pump(d);
+  }
 }
 
 void main() {
-  group('host panel (desktop)', () {
+  group('request takeover and host menu (desktop)', () {
     testWidgets(
       'mode choice: one press, the server confirms, help text follows',
       (tester) async {
@@ -139,101 +144,120 @@ void main() {
     });
 
     testWidgets(
-      'a request is shown with name and check number; nothing takes the focus',
+      'a request takes over the display as a large dialog; No has the focus',
       (tester) async {
         final core = await openReceive(tester, mode: UiJoinMode.confirm);
-        await tester.tap(find.byKey(const Key('mode-confirm')));
-        await tester.pump();
-        final before = FocusManager.instance.primaryFocus;
+        expect(find.byKey(const Key('joinTakeover')), findsNothing);
         core.receiverEvents.add(request(1, 'Ana'));
         await tester.pump();
-        expect(FocusManager.instance.primaryFocus, before);
-        expect(find.text('“Ana”'), findsOneWidget);
-        expect(find.byKey(Key('requestCheck-${id(1)}')), findsOneWidget);
+        await tester.pump();
+        expect(find.byKey(const Key('joinTakeover')), findsOneWidget);
+        expect(find.text('Someone wants to join'), findsOneWidget);
+        expect(find.text('\u201CAna\u201D'), findsOneWidget);
         expect(
           tester.widget<Text>(find.byKey(Key('requestCheck-${id(1)}'))).data,
           '41',
         );
-        final allow = tester.widget<FilledButton>(
-          find.byKey(const Key('allowButton')),
+        // The safe choice has the focus, never "Yes".
+        final no = tester.widget<OutlinedButton>(
+          find.byKey(Key('deny-${id(1)}')),
         );
-        expect(allow.focusNode!.hasPrimaryFocus, isFalse);
+        expect(no.focusNode!.hasPrimaryFocus, isTrue);
       },
     );
 
     testWidgets(
-      'Allow needs a hold; a short press only shows a hint; Deny is one press',
+      'presses right after the request appeared are ignored (700 ms guard)',
       (tester) async {
+        final clock = FakeClock()..install(tester);
         final core = await openReceive(tester, mode: UiJoinMode.confirm);
         core.receiverEvents.add(request(1, 'Ana'));
-        core.receiverEvents.add(request(2, 'Ben'));
         await tester.pump();
-        // Short press on the first Allow.
-        final g = await tester.startGesture(
-          tester.getCenter(find.byKey(const Key('allowButton')).first),
-        );
-        await tester.pump(const Duration(milliseconds: 300));
-        await g.up();
+        await clock.advance(tester, const Duration(milliseconds: 300));
+        await tester.tap(find.byKey(Key('allow-${id(1)}')));
+        await tester.tap(find.byKey(Key('deny-${id(1)}')));
+        await tester.tap(find.byKey(Key('denyBlock-${id(1)}')));
         await tester.pump();
         expect(core.joinDecisions, isEmpty);
-        expect(find.byKey(const Key('holdHint')), findsOneWidget);
-        // A tap (click) never allows.
-        await tester.tap(find.byKey(const Key('allowButton')).first);
+        expect(core.blockedRequests, isEmpty);
+        await clock.advance(tester, const Duration(milliseconds: 500));
+        await tester.tap(find.byKey(Key('allow-${id(1)}')));
         await tester.pump();
-        expect(core.joinDecisions, isEmpty);
-        await tester.pump(const Duration(seconds: 3));
-        // A long hold allows.
-        await holdAllow(tester, 0);
         expect(core.joinDecisions, [(id: id(1), allow: true)]);
-        // Deny: one press.
-        await tester.tap(find.byKey(Key('deny-${id(2)}')));
-        await tester.pump();
-        expect(core.joinDecisions.last, (id: id(2), allow: false));
       },
     );
 
     testWidgets(
-      'after a decision the focus goes to the next Deny, never to Allow',
+      'No, Yes and "No and block" go to the core; after a decision the next No is focused',
       (tester) async {
+        final clock = FakeClock()..install(tester);
         final core = await openReceive(tester, mode: UiJoinMode.confirm);
         core.receiverEvents.add(request(1, 'Ana'));
         core.receiverEvents.add(request(2, 'Ben'));
+        core.receiverEvents.add(request(3, 'Cy'));
         await tester.pump();
+        await clock.advance(tester, const Duration(seconds: 1));
         await tester.tap(find.byKey(Key('deny-${id(1)}')));
         await tester.pumpAndSettle();
-        final deny2 = tester.widget<OutlinedButton>(
-          find.byKey(Key('deny-${id(2)}')),
+        expect(core.joinDecisions, [(id: id(1), allow: false)]);
+        expect(
+          tester
+              .widget<OutlinedButton>(find.byKey(Key('deny-${id(2)}')))
+              .focusNode!
+              .hasPrimaryFocus,
+          isTrue,
         );
-        expect(deny2.focusNode!.hasPrimaryFocus, isTrue);
-        // The last one: the focus returns to the mode choice.
-        await tester.tap(find.byKey(Key('deny-${id(2)}')));
+        await tester.tap(find.byKey(Key('denyBlock-${id(2)}')));
         await tester.pumpAndSettle();
-        final mode = tester.widget<ElevatedButton>(
-          find.byKey(const Key('mode-confirm')),
-        );
-        expect(mode.focusNode!.hasPrimaryFocus, isTrue);
+        expect(core.blockedRequests, [id(2)]);
+        expect(core.joinDecisions, hasLength(1));
+        await tester.tap(find.byKey(Key('allow-${id(3)}')));
+        await tester.pumpAndSettle();
+        expect(core.joinDecisions.last, (id: id(3), allow: true));
       },
     );
 
     testWidgets(
-      'three requests are shown, the rest counted; Deny all from two on',
+      'Later (and Escape) hide the takeover; the request stays in the menu',
       (tester) async {
         final core = await openReceive(tester, mode: UiJoinMode.confirm);
-        core.receiverEvents.add(request(1, 'A'));
+        core.receiverEvents.add(request(1, 'Ana'));
         await tester.pump();
-        expect(find.byKey(const Key('denyAllButton')), findsNothing);
-        for (var n = 2; n <= 4; n++) {
-          core.receiverEvents.add(request(n, 'P$n'));
-        }
         await tester.pump();
-        expect(find.byKey(const Key('allowButton')), findsNWidgets(3));
-        expect(find.text('+1 more waiting'), findsOneWidget);
-        await tester.tap(find.byKey(const Key('denyAllButton')));
+        await tester.tap(find.byKey(const Key('laterButton')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('joinTakeover')), findsNothing);
+        expect(core.joinDecisions, isEmpty);
+        // It is listed in the menu with the same buttons.
+        expect(find.byKey(Key('listed-${id(1)}')), findsOneWidget);
+        core.receiverEvents.add(request(2, 'Ben'));
         await tester.pump();
-        expect(core.joinDecisions, [(id: null, allow: false)]);
-        expect(find.byKey(const Key('joinNobodyWaiting')), findsOneWidget);
+        await tester.pump();
+        expect(find.byKey(const Key('joinTakeover')), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('joinTakeover')), findsNothing);
+        expect(core.joinDecisions, isEmpty);
       },
     );
+
+    testWidgets('more requests are counted on the takeover; Deny all', (
+      tester,
+    ) async {
+      final clock = FakeClock()..install(tester);
+      final core = await openReceive(tester, mode: UiJoinMode.confirm);
+      for (var n = 1; n <= 3; n++) {
+        core.receiverEvents.add(request(n, 'P$n'));
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('+2 more waiting'), findsOneWidget);
+      await clock.advance(tester, const Duration(seconds: 1));
+      await tester.tap(find.byKey(const Key('denyAllButton')));
+      await tester.pumpAndSettle();
+      expect(core.joinDecisions, [(id: null, allow: false)]);
+      expect(find.byKey(const Key('joinTakeover')), findsNothing);
+    });
 
     testWidgets('locking discards waiting requests and says so', (
       tester,
@@ -252,35 +276,77 @@ void main() {
         const ReceiverUiEvent.joinModeChanged(mode: UiJoinMode.locked),
       );
       await tester.pump();
+      await tester.pump();
       expect(
         find.text('Room locked. 2 waiting request(s) were discarded.'),
         findsOneWidget,
       );
       expect(find.byKey(const Key('joinNobodyWaiting')), findsOneWidget);
+      expect(find.byKey(const Key('joinTakeover')), findsNothing);
       await tester.tap(find.byKey(const Key('joinNoteDismiss')));
       await tester.pump();
       expect(find.byKey(const Key('joinNote')), findsNothing);
     });
 
-    testWidgets('the connected sender is listed and can be removed', (
-      tester,
-    ) async {
-      final core = await openReceive(tester);
-      core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Cy'));
-      await tester.pump();
-      expect(find.text('“Cy”'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('removePeerButton')));
-      expect(core.removePeerCalls, 1);
-    });
+    testWidgets(
+      'the connected sender: end the presentation, end and block, and the block list',
+      (tester) async {
+        final core = await openReceive(tester);
+        core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Cy'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('\u201CCy\u201D'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('removePeerButton')));
+        await tester.tap(find.byKey(const Key('removeBlockButton')));
+        expect(core.removePeerBlock, [false, true]);
+        core.receiverEvents.add(ReceiverUiEvent.blocked(id: id(7), name: 'Cy'));
+        await tester.pump();
+        expect(find.byKey(Key('blocked-${id(7)}')), findsOneWidget);
+        await tester.tap(find.byKey(Key('unblock-${id(7)}')));
+        expect(core.unblocked, [id(7)]);
+        core.receiverEvents.add(ReceiverUiEvent.unblocked(id: id(7)));
+        await tester.pump();
+        expect(find.byKey(Key('blocked-${id(7)}')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'End session needs a second press, then a new room starts in the same mode',
+      (tester) async {
+        final core = await openReceive(tester, mode: UiJoinMode.confirm);
+        await tester.tap(find.byKey(const Key('endSessionButton')));
+        await tester.pump();
+        expect(core.endRoomCalls, 0);
+        expect(find.text('Press again to end the session'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('endSessionButton')));
+        await tester.pump();
+        expect(core.endRoomCalls, 1);
+        // The core ends the stream with roomEnded; the controller asks for a new room.
+        core.receiverServer = null;
+        core.receiverEvents.add(const ReceiverUiEvent.roomEnded());
+        await tester.pump();
+        expect(core.receiverServer, isNotNull);
+        expect(core.receiverJoinMode, UiJoinMode.confirm);
+        core.receiverEvents.add(
+          const ReceiverUiEvent.roomCode(
+            code: 'NEW234',
+            joinMode: UiJoinMode.confirm,
+          ),
+        );
+        await tester.pump();
+        expect(find.text('NEW234'), findsOneWidget);
+      },
+    );
 
     testWidgets('names are plain text and are shortened', (tester) async {
       final core = await openReceive(tester, mode: UiJoinMode.confirm);
       core.receiverEvents.add(request(1, '<b>Alexandra-Maria Schmidt</b>'));
       await tester.pump();
-      expect(find.text('“<b>Alexandra-Maria…”'), findsOneWidget);
+      await tester.pump();
+      expect(find.text('\u201C<b>Alexandra-Maria\u2026\u201D'), findsOneWidget);
       expect(
         shortJoinName('abcdefghijklmnopqrstuvwxyz'),
-        'abcdefghijklmnopqr…',
+        'abcdefghijklmnopqr\u2026',
       );
     });
 
@@ -292,10 +358,12 @@ void main() {
       );
       core.receiverEvents.add(request(1, 'Ana'));
       await tester.pump();
+      await tester.pump();
+      expect(find.text('Jemand möchte beitreten'), findsOneWidget);
+      expect(find.text('Nein'), findsOneWidget);
+      expect(find.text('Ja'), findsOneWidget);
+      expect(find.text('Nein und blockieren'), findsOneWidget);
       expect(find.text('Wer darf beitreten?'), findsOneWidget);
-      expect(find.text('Erst fragen'), findsOneWidget);
-      expect(find.text('Ablehnen'), findsOneWidget);
-      expect(find.textContaining('Halten Sie OK'), findsOneWidget);
     });
 
     testWidgets(
@@ -324,104 +392,146 @@ void main() {
     );
   });
 
+  group('while somebody presents', () {
+    Future<FakeCoreApi> presenting(
+      WidgetTester tester, {
+      bool tv = false,
+    }) async {
+      final core = await openReceive(tester, tv: tv, mode: UiJoinMode.confirm);
+      core.receiverEvents.add(
+        const ReceiverUiEvent.contentLink(
+          url: 'https://example.org/',
+          host: 'example.org',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      return core;
+    }
+
+    testWidgets('the join chip appears when something moves and fades out', (
+      tester,
+    ) async {
+      await presenting(tester);
+      double opacity() => tester
+          .widget<AnimatedOpacity>(find.byKey(const Key('joinChipFade')))
+          .opacity;
+      expect(opacity(), 0);
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: const Offset(100, 100));
+      await gesture.moveTo(const Offset(120, 120));
+      await tester.pump();
+      expect(opacity(), 1);
+      await tester.pump(const Duration(seconds: 7));
+      expect(opacity(), 0);
+      // Any key reveals it as well.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(opacity(), 1);
+      await tester.pump(const Duration(seconds: 7));
+    });
+
+    testWidgets(
+      'a request shows as a banner; Back closes the menu without deciding',
+      (tester) async {
+        final core = await presenting(tester, tv: true);
+        core.receiverEvents.add(request(1, 'Ana'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(const Key('joinTakeover')), findsOneWidget);
+        expect(find.text('Someone wants to join'), findsOneWidget);
+        // Escape (Back) hides it without deciding.
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('joinTakeover')), findsNothing);
+        expect(core.joinDecisions, isEmpty);
+        // The chip opens the menu in a dialog; its first focus is neutral; Back closes it.
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('joinChip')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('joinPanel')), findsOneWidget);
+        expect(
+          tester
+              .widget<ElevatedButton>(find.byKey(const Key('mode-confirm')))
+              .focusNode!
+              .hasPrimaryFocus,
+          isTrue,
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('joinPanel')), findsNothing);
+        expect(core.joinDecisions, isEmpty);
+      },
+    );
+  });
+
   group('television remote (D-pad only)', () {
     testWidgets(
-      'a request does not take the focus; OK held on Allow allows, a short OK does not',
+      'a request takes over; OK on the focused No answers; the guard blocks an early OK',
       (tester) async {
+        final clock = FakeClock()..install(tester);
         final core = await openReceive(
           tester,
           tv: true,
           mode: UiJoinMode.confirm,
         );
-        // Move the focus with the D-pad onto the mode choice.
-        // Put the focus on the mode choice, then move with the D-pad only.
-        tester
-            .widget<ElevatedButton>(find.byKey(const Key('mode-confirm')))
-            .focusNode!
-            .requestFocus();
+        core.receiverEvents.add(request(1, 'Ana'));
         await tester.pump();
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
         expect(
           tester
-              .widget<ElevatedButton>(find.byKey(const Key('mode-locked')))
+              .widget<OutlinedButton>(find.byKey(Key('deny-${id(1)}')))
               .focusNode!
               .hasPrimaryFocus,
           isTrue,
         );
-        final focusedBefore = FocusManager.instance.primaryFocus;
-        core.receiverEvents.add(request(1, 'Ana'));
+        // An OK press right after the request appeared does nothing.
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
         await tester.pump();
-        expect(
-          FocusManager.instance.primaryFocus,
-          focusedBefore,
-          reason: 'a new request never grabs the focus',
-        );
-
-        // Walk to Deny first (focus order), then to Allow with arrow keys.
-        final deny = tester.widget<OutlinedButton>(
-          find.byKey(Key('deny-${id(1)}')),
-        );
-        deny.focusNode!.requestFocus();
-        await tester.pump();
-        expect(deny.focusNode!.hasPrimaryFocus, isTrue);
+        expect(core.joinDecisions, isEmpty);
+        await clock.advance(tester, const Duration(milliseconds: 800));
+        // Move right to Yes with the D-pad, then OK.
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
-        final allow = tester.widget<FilledButton>(
-          find.byKey(const Key('allowButton')),
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(Key('allow-${id(1)}')))
+              .focusNode
+              ?.hasPrimaryFocus,
+          isNot(false),
         );
-        expect(allow.focusNode!.hasPrimaryFocus, isTrue);
-
-        // A short OK: only a hint.
-        await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
-        await tester.pump();
-        expect(core.joinDecisions, isEmpty);
-        expect(find.byKey(const Key('holdHint')), findsOneWidget);
-
-        // OK held about a second allows (key repeats do not restart the hold).
-        await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
-        await tester.pump(const Duration(milliseconds: 400));
-        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
-        await tester.pump(const Duration(milliseconds: 400));
-        // Not yet: the hold is about a second, measured from the first frame.
-        expect(core.joinDecisions, isEmpty);
-        await tester.pump(const Duration(milliseconds: 800));
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
-        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
         expect(core.joinDecisions, [(id: id(1), allow: true)]);
       },
     );
 
-    testWidgets(
-      'OK on Deny is one press; the focus then moves to the next Deny',
-      (tester) async {
-        final core = await openReceive(
-          tester,
-          tv: true,
-          mode: UiJoinMode.confirm,
-        );
-        core.receiverEvents.add(request(1, 'Ana'));
-        core.receiverEvents.add(request(2, 'Ben'));
-        await tester.pump();
+    testWidgets('OK on No is one press; the focus then moves to the next No', (
+      tester,
+    ) async {
+      final clock = FakeClock()..install(tester);
+      final core = await openReceive(
+        tester,
+        tv: true,
+        mode: UiJoinMode.confirm,
+      );
+      core.receiverEvents.add(request(1, 'Ana'));
+      core.receiverEvents.add(request(2, 'Ben'));
+      await tester.pump();
+      await tester.pump();
+      await clock.advance(tester, const Duration(seconds: 1));
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(core.joinDecisions, [(id: id(1), allow: false)]);
+      expect(
         tester
-            .widget<OutlinedButton>(find.byKey(Key('deny-${id(1)}')))
+            .widget<OutlinedButton>(find.byKey(Key('deny-${id(2)}')))
             .focusNode!
-            .requestFocus();
-        await tester.pump();
-        await tester.sendKeyEvent(LogicalKeyboardKey.select);
-        await tester.pumpAndSettle();
-        expect(core.joinDecisions, [(id: id(1), allow: false)]);
-        expect(
-          tester
-              .widget<OutlinedButton>(find.byKey(Key('deny-${id(2)}')))
-              .focusNode!
-              .hasPrimaryFocus,
-          isTrue,
-        );
-      },
-    );
+            .hasPrimaryFocus,
+        isTrue,
+      );
+    });
 
     testWidgets('the mode can be changed with the D-pad and OK alone', (
       tester,
@@ -441,49 +551,8 @@ void main() {
       expect(core.joinModeRequests, [UiJoinMode.locked]);
     });
 
-    testWidgets(
-      'while somebody presents: chip and pill; Back closes the panel without allowing',
-      (tester) async {
-        final core = await openReceive(
-          tester,
-          tv: true,
-          mode: UiJoinMode.confirm,
-        );
-        core.receiverEvents.add(
-          const ReceiverUiEvent.contentLink(
-            url: 'https://example.org/',
-            host: 'example.org',
-          ),
-        );
-        await tester.pump();
-        core.receiverEvents.add(request(1, 'Ana'));
-        await tester.pump();
-        expect(find.byKey(const Key('joinChip')), findsOneWidget);
-        expect(find.text('1 waiting'), findsOneWidget);
-        expect(find.byKey(const Key('joinPanel')), findsNothing);
-        tester
-            .widget<FilledButton>(find.byKey(const Key('joinPill')))
-            .focusNode
-            ?.requestFocus();
-        await tester.tap(find.byKey(const Key('joinPill')));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('joinPanel')), findsOneWidget);
-        // The first thing focused is neutral: the selected mode, not Allow.
-        expect(
-          tester
-              .widget<ElevatedButton>(find.byKey(const Key('mode-confirm')))
-              .focusNode!
-              .hasPrimaryFocus,
-          isTrue,
-        );
-        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('joinPanel')), findsNothing);
-        expect(core.joinDecisions, isEmpty);
-      },
-    );
-
     testWidgets('hit areas are large on a TV', (tester) async {
+      final clock = FakeClock()..install(tester);
       final core = await openReceive(
         tester,
         tv: true,
@@ -491,6 +560,8 @@ void main() {
       );
       core.receiverEvents.add(request(1, 'Ana'));
       await tester.pump();
+      await tester.pump();
+      await clock.advance(tester, const Duration(seconds: 1));
       expect(
         tester.getSize(find.byKey(const Key('mode-open'))).height,
         greaterThanOrEqualTo(64),
@@ -500,7 +571,7 @@ void main() {
         greaterThanOrEqualTo(60),
       );
       expect(
-        tester.getSize(find.byKey(const Key('allowButton'))).height,
+        tester.getSize(find.byKey(Key('allow-${id(1)}'))).height,
         greaterThanOrEqualTo(60),
       );
     });

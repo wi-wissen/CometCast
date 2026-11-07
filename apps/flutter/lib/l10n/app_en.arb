@@ -1078,23 +1078,11 @@
       }
     }
   },
-  "joinAllow": "Allow",
+  "joinAllow": "Yes",
   "@joinAllow": {
     "description": "Button: allow a join (needs to be held)."
   },
-  "joinAllowHint": "Press and hold to allow.",
-  "@joinAllowHint": {
-    "description": "Hint after a short press on Allow."
-  },
-  "joinAllowHolding": "Keep holding…",
-  "@joinAllowHolding": {
-    "description": "Allow button while it is held."
-  },
-  "joinAllowHelp": "Hold OK (or the button) for about a second to allow. A short press only shows a hint.",
-  "@joinAllowHelp": {
-    "description": "Explains how to allow a join."
-  },
-  "joinDeny": "Deny",
+  "joinDeny": "No",
   "@joinDeny": {
     "description": "Button: deny a join."
   },
@@ -1256,5 +1244,53 @@
         "type": "int"
       }
     }
+  },
+  "joinDenyBlock": "No and block",
+  "@joinDenyBlock": {
+    "description": "Button: deny and block the sender for this session."
+  },
+  "joinLater": "Later",
+  "@joinLater": {
+    "description": "Button: hide the request for now without deciding."
+  },
+  "joinTakeoverTitle": "Someone wants to join",
+  "@joinTakeoverTitle": {
+    "description": "Heading of the request that takes over the display."
+  },
+  "joinEndPresentation": "End presentation",
+  "@joinEndPresentation": {
+    "description": "Button: remove the connected sender from the room."
+  },
+  "joinEndAndBlock": "End and block",
+  "@joinEndAndBlock": {
+    "description": "Button: remove the connected sender and block it for this session."
+  },
+  "joinBlockedTitle": "Blocked for this session",
+  "@joinBlockedTitle": {
+    "description": "Heading of the block list."
+  },
+  "joinNoneBlocked": "Nobody is blocked.",
+  "@joinNoneBlocked": {
+    "description": "Empty block list."
+  },
+  "joinUnblock": "Unblock",
+  "@joinUnblock": {
+    "description": "Button: take a sender off the block list."
+  },
+  "joinBlockedHelp": "A blocked sender cannot join this room again until you unblock it or end the session. It is blocked by network address, so people on the same address are affected too.",
+  "@joinBlockedHelp": {
+    "description": "Explains the block list."
+  },
+  "joinEndSession": "End session",
+  "@joinEndSession": {
+    "description": "Button: end the room session."
+  },
+  "joinEndSessionConfirm": "Press again to end the session",
+  "@joinEndSessionConfirm": {
+    "description": "The end-session button after the first press."
+  },
+  "joinEndSessionHelp": "Removes everybody and creates a new room with a new code.",
+  "@joinEndSessionHelp": {
+    "description": "Explains ending the session."
   }
 }

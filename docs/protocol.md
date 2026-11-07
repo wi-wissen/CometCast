@@ -38,8 +38,10 @@ Client to server:
 | `create_room` | optional `altcha` (string), optional `join_mode` | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. The web app and the native clients first send `create_room` without the field; after `altcha_required` they fetch and solve a puzzle and send `create_room` again on the same connection (the connection stays open after `altcha_required`). Payload and solving scheme: [web README](../apps/web/README.md#open-servers-and-turn) and [transport.md](transport.md). `join_mode` (`open`, `confirm`, `locked`) sets who may join; without it the server's `default_join_mode` applies (see [Join approval](#join-approval)). |
 | `join_room` | `code`, optional `name` | sender | Join the room with this code (case-insensitive, 6 characters). `name` is shown to the display device when it has to approve; the server cleans it. |
 | `set_join_mode` | `join_mode` | receiver (owner) | Change who may join, at any time. |
-| `join_decision` | `id` (optional), `allow` | receiver (owner) | Allow or deny the waiting request `id`. Without `id`, `allow: false` denies all waiting requests. |
-| `remove_peer` | - | receiver (owner) | Remove the connected sender from the room. |
+| `join_decision` | `id` (optional), `allow`, optional `block` | receiver (owner) | Allow or deny the waiting request `id`. Without `id`, `allow: false` denies all waiting requests. `block: true` (only with `allow: false` and an `id`) also blocks the sender's address bucket for the rest of this room session. |
+| `remove_peer` | optional `block` | receiver (owner) | End the connected sender's presentation: remove it from the room (the room stays). With `block: true` its address bucket is blocked too. |
+| `unblock` | `id` | receiver (owner) | Take an entry off the room's block list. |
+| `end_room` | - | receiver (owner) | End the room session: everybody is dropped, the code is gone, the owner may create a new room on the same connection. |
 | `cancel_join` | - | sender | Stop waiting for approval. |
 | `offer` | `sdp` | both | WebRTC offer, relayed to the peer. |
 | `answer` | `sdp` | both | WebRTC answer, relayed to the peer. |
@@ -58,6 +60,9 @@ Server to client:
 | `join_request` | `id`, `name`, `check` | receiver (owner) | Somebody wants to join (mode `confirm`). Nothing else about the joiner is passed on. |
 | `join_request_cancelled` | `id`, `reason` | receiver (owner) | A waiting request is gone: `left`, `cancelled`, `timeout`, `locked` or `room_full`. |
 | `join_mode_changed` | `join_mode` | receiver (owner) | Answer to `set_join_mode`: the mode now in force. |
+| `blocked` | `id`, `name` | receiver (owner) | An entry was added to the block list (after "No and block" or `remove_peer` with `block`). `name` is the cleaned name, for the list only. |
+| `unblocked` | `id` | receiver (owner) | Answer to `unblock`. |
+| `room_ended` | - | receiver (owner) | Answer to `end_room`: the room is gone; the connected sender got `peer_left`, waiting senders `room_not_found`. |
 | `offer` / `answer` / `ice_candidate` / `control` | as above | the other peer | Relayed unchanged. |
 | `peer_left` | - | the remaining peer | The other side disconnected. |
 | `error` | `code`, `message` | the client that caused it | See error codes. |
@@ -146,10 +151,13 @@ The server enforces this; a client cannot skip it.
 - **What the owner learns.** Only `join_request { id, name, check }`. `name` is untrusted text: the server removes control, bidi, zero-width and invisible characters (and the private-use range), collapses white space, cuts at 40 characters and uses `Guest N` (N counts joiners of the room) when nothing is left. Clients must show it as plain text (no markup). The IP address and everything else about the joiner stay on the server.
 - **Check number.** The server draws a two-digit number (10 to 99) per pending request, unique among the room's waiting requests, and sends it to the owner (`join_request.check`) and to the joiner (`join_pending.check`). A person at the display can match the person in front of them with the request. It is not a secret and not an authentication.
 - **Decision.** `join_decision {id, allow:true}` makes the joiner a peer: it gets `joined`, the owner gets `peer_joined`, and relaying starts. `allow:false` gives the joiner `join_denied`. All other waiting requests then get `room_full` (one sender per room) and the owner gets `join_request_cancelled` with reason `room_full`. A join into a room that already has a sender gets `room_full` at once, in every mode.
+- **No and block.** `join_decision {id, allow:false, block:true}` denies the request and puts the sender's address bucket (an IPv4 address, or an IPv6 /64) on the room's block list for the rest of the room session. Other waiting requests from the same bucket end with `join_request_cancelled` reason `blocked`. A blocked sender gets `join_denied` at once (in modes `open` and `confirm`; a locked room still answers `room_locked` to everybody), is not shown to the host, and counts toward the same cooldown as a denial. `remove_peer {block:true}` blocks the connected sender the same way. The owner gets `blocked {id, name}` and can `unblock {id}`. The list lives as long as the room: `end_room` or a new room starts with an empty list. UNCERTAIN: blocking works by network address, not by device, so everybody behind the same address (a shared NAT or a /64) is blocked too and a person on another network is not; the name is only a label for the list. The list is capped at 32 entries.
+- **End the presentation, end the session.** `remove_peer` ends the connected sender's presentation (it gets `removed_by_host`, the owner gets `peer_left`, the room and its code stay). `end_room` ends the room session: the connected sender gets `peer_left`, waiting senders `room_not_found`, the owner `room_ended`; the code is gone and the same connection may send `create_room` again for a new code. The native receiver core ends with the session either way (one sender per core), so the native apps start a new room at once. A join request that arrives while a sender is connected gets `room_full` (one sender per room): the host ends the presentation first.
 - **Mode changes.** `set_join_mode` is answered with `join_mode_changed`. `locked` ends all waiting requests (`room_locked` to the joiners, `join_request_cancelled` reason `locked` to the owner) but does not remove a sender who is already in. `open` and `confirm` do not auto-approve waiting requests. There is no "lock" for a sender who is in: use `remove_peer` (the sender gets `removed_by_host` and has to join again; the room stays; on the native receiver core the session ends instead, see [How the room code works](#how-the-room-code-works-investigated-2026-11)).
 - **Limits.** `limits.max_pending_per_room` (8) and `limits.max_pending_per_ip` (3 open, 8 internal) bound waiting requests; beyond that `join_room` gets `rate_limited`. Pending requests time out after `join_approval_secs` (60 s): the joiner gets `approval_timeout`, the owner `join_request_cancelled` reason `timeout`. A denied or timed-out request counts `limits.denied_join_weight` (2) failures toward the address ban, so repeated denials or timeouts lead to a cooldown (`banned`, connection closed) using the same machinery as failed joins; `join_room` itself is still subject to the usual join rate limit. UNCERTAIN: many people behind one address share this budget; the weight is a placeholder.
 - **Server settings.** `default_join_mode` (`open` by default; `confirm` allowed; never `locked`) is the mode of rooms whose creator names none; `allow_open_rooms = false` makes the server refuse `open` (`open_rooms_disabled`) for operators who want approval everywhere (then `default_join_mode` must be `confirm`). See [server.md](server.md).
-- **Client defaults.** The web app, the Flutter app and the CLI send `join_mode: "open"` unless the person chose something else.
+- **Client defaults.** The web app, the Flutter app and the CLI send `join_mode: "open"` unless the person chose something else (they remember the last choice as a convenience).
+- **What the display should do** (not enforced by the server): show a request as a large takeover on the code page, as a banner while somebody presents, with Yes / No / No and block; ignore presses for about 700 ms after it appeared; put the focus on "No", never on "Yes"; keep the host menu (mode, block list, end presentation, end session) behind a control that appears on activity and fades out. The web app and the Flutter app do this; the code does not have to stay on screen.
 
 ```mermaid
 sequenceDiagram
@@ -219,12 +227,14 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 | `rate_limited` | Too many `create_room` / `join_room` messages from this address, the server has reached its maximum number of rooms, or too many senders already wait for approval (per room or per address). The message text says which. Try again later. | no |
 | `banned` | Too many failed joins, or too many denied / unanswered join requests: the address is banned for a while. | yes |
 | `join_pending` | A sender that waits for approval tried to relay `offer`, `answer`, `ice_candidate` or `control`. Nothing is forwarded. | no |
-| `join_denied` | The host denied the join request. | no |
+| `join_denied` | The host denied the join request. Also the answer to a sender whose address bucket is on the room's block list: it comes at once, no request reaches the host, and nothing says that a block exists. | no |
 | `room_locked` | The room's join mode is `locked` (also sent to waiting senders when the host locks the room). | no |
 | `approval_timeout` | Nobody decided within `join_approval_secs` (60 s by default). | no |
 | `removed_by_host` | The host removed this sender with `remove_peer`. The connection stays open. | no |
 | `open_rooms_disabled` | `create_room` or `set_join_mode` asked for mode `open` on a server with `allow_open_rooms = false`. | no |
 | `no_such_request` | `join_decision` named a request that is not (or no longer) waiting. | no |
+| `no_such_block` | `unblock` named an entry that is not on the block list. | no |
+| `block_list_full` | The room's block list has 32 entries; unblock somebody first (the request stays undecided). | no |
 | `bad_message` | Unparsable JSON, unknown type, binary frame, second `hello`, or `create_room`/`join_room` while already in a room. | no |
 
 A message larger than the size limit makes the connection fail and close

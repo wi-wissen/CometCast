@@ -229,6 +229,90 @@
         "code": "open_rooms_disabled",
         "message": "this server does not allow rooms that anybody can join"
       }
+    },
+    {
+      "id": "join_decision_deny_block",
+      "direction": "client_to_server",
+      "message": {
+        "type": "join_decision",
+        "id": 1,
+        "allow": false,
+        "block": true
+      }
+    },
+    {
+      "id": "remove_peer_block",
+      "direction": "client_to_server",
+      "message": {
+        "type": "remove_peer",
+        "block": true
+      }
+    },
+    {
+      "id": "unblock",
+      "direction": "client_to_server",
+      "message": {
+        "type": "unblock",
+        "id": 2
+      }
+    },
+    {
+      "id": "end_room",
+      "direction": "client_to_server",
+      "message": {
+        "type": "end_room"
+      }
+    },
+    {
+      "id": "blocked",
+      "direction": "server_to_client",
+      "message": {
+        "type": "blocked",
+        "id": 2,
+        "name": "Ana"
+      }
+    },
+    {
+      "id": "unblocked",
+      "direction": "server_to_client",
+      "message": {
+        "type": "unblocked",
+        "id": 2
+      }
+    },
+    {
+      "id": "room_ended",
+      "direction": "server_to_client",
+      "message": {
+        "type": "room_ended"
+      }
+    },
+    {
+      "id": "join_request_cancelled_blocked",
+      "direction": "server_to_client",
+      "message": {
+        "type": "join_request_cancelled",
+        "id": 3,
+        "reason": "blocked"
+      }
+    },
+    {
+      "id": "error_no_such_block",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "no_such_block",
+        "message": "no such block entry"
+      }
+    },
+    {
+      "id": "error_block_list_full",
+      "direction": "server_to_client",
+      "message": {
+        "type": "error",
+        "code": "block_list_full",
+        "message": "the block list is full"
+      }
     }
   ]
 }

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Join approval on the screens: the host's panel (who may join, who asks, who is connected), the
-// hold-to-allow button, the corner chip while somebody presents, and the sender's waiting card.
+// Join approval on the screens: the request takeover (a large dialog on the code page, a banner
+// while somebody presents), the host's menu (who may join, who asks, who is connected, the block
+// list, "End session"), the corner chip, and the sender's waiting card.
 //
 // Rules (docs/protocol.md, "Join approval"), also for a TV remote (D-pad, no touch, no mouse):
-// * a new request never takes the focus;
-// * "Allow" needs a deliberate hold (about a second; OK held on a remote, press and hold with a
-//   pointer); a short press only shows a hint;
-// * "Deny" is one press; after a decision the focus moves to the next request's "Deny", never
-//   to "Allow", and to the mode choice when nothing is left;
-// * Back / Escape closes the panel without allowing anything;
+// * Yes / No / No and block, nothing to hold. A request that just appeared ignores presses for
+//   a short moment (700 ms), so an OK press meant for something else cannot answer it;
+// * when a request takes over, the focus goes to "No" (the safe choice), never to "Yes"; after a
+//   decision it goes to the next request's "No";
+// * Back / Escape hides the takeover without deciding ("Later");
+// * the menu chip appears when something moves and fades out; "End session" needs a second press;
 // * big hit areas and a clearly visible focus frame on a TV.
 
 import 'dart:async';
@@ -24,8 +25,8 @@ import 'receiver_controller.dart';
 import 'settings.dart';
 import 'widgets.dart';
 
-/// How long "Allow" must be held.
-const holdToAllowDuration = Duration(milliseconds: 1000);
+/// A request ignores presses for this long after it appeared. UNCERTAIN: placeholder.
+const requestGuard = Duration(milliseconds: 700);
 
 /// Requests shown at once; the rest is counted ("+n more waiting").
 const maxShownRequests = 3;
@@ -57,168 +58,184 @@ String joinRefusalText(AppLocalizations t, JoinRefusal r) => switch (r) {
   JoinRefusal.removed => t.joinRefusalRemoved,
 };
 
-/// A button that acts only after it was held for [holdToAllowDuration]: OK / Enter / Space held
-/// on a keyboard or remote, or a pressed pointer. A shorter press only shows [hint].
-class HoldToAllowButton extends StatefulWidget {
-  const HoldToAllowButton({
+/// One join request: the sender's name in quotes (untrusted text, plain), the check number, the
+/// time left, and No / Yes / No and block. Ignores presses for [requestGuard] after it appeared.
+class JoinRequestCard extends StatefulWidget {
+  const JoinRequestCard({
     super.key,
-    required this.label,
-    required this.holdingLabel,
-    required this.hint,
-    required this.onConfirmed,
-    this.semanticsLabel,
+    required this.request,
+    required this.onAllow,
+    required this.onDeny,
+    required this.onBlock,
+    this.denyNode,
     this.tv = false,
+    this.big = false,
   });
 
-  final String label;
-  final String holdingLabel;
-  final String hint;
-  final VoidCallback onConfirmed;
-  final String? semanticsLabel;
+  final JoinRequestView request;
+  final VoidCallback onAllow;
+  final VoidCallback onDeny;
+  final VoidCallback onBlock;
+
+  /// Focus node of "No" (the takeover moves the focus there).
+  final FocusNode? denyNode;
   final bool tv;
 
+  /// The takeover layout (larger).
+  final bool big;
+
   @override
-  State<HoldToAllowButton> createState() => _HoldToAllowButtonState();
+  State<JoinRequestCard> createState() => _JoinRequestCardState();
 }
 
-class _HoldToAllowButtonState extends State<HoldToAllowButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _progress;
-  late final FocusNode _focus;
-  Timer? _hintTimer;
-  bool _hint = false;
+class _JoinRequestCardState extends State<JoinRequestCard> {
+  Timer? _tick;
 
   @override
   void initState() {
     super.initState();
-    _progress = AnimationController(vsync: this, duration: holdToAllowDuration)
-      ..addStatusListener((s) {
-        if (s == AnimationStatus.completed) {
-          _progress.reset();
-          widget.onConfirmed();
-        }
-      });
-    // The node's own handler runs before the button's "activate" shortcut, so Enter / OK is
-    // ours: down starts the hold, up ends it.
-    _focus = FocusNode(debugLabel: 'hold-to-allow', onKeyEvent: _onKey);
-  }
-
-  static bool _isSelectKey(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.space ||
-      k == LogicalKeyboardKey.gameButtonA;
-
-  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (!_isSelectKey(e.logicalKey)) return KeyEventResult.ignored;
-    if (e is KeyDownEvent) {
-      _begin();
-    } else if (e is KeyUpEvent) {
-      _end();
-    }
-    // Key repeats are swallowed: holding must not restart the hold.
-    return KeyEventResult.handled;
-  }
-
-  void _begin() {
-    if (_progress.isAnimating) return;
-    setState(() => _hint = false);
-    _hintTimer?.cancel();
-    _progress.forward(from: 0);
-  }
-
-  void _end() {
-    if (!_progress.isAnimating) return;
-    _progress.reset();
-    setState(() => _hint = true);
-    _hintTimer?.cancel();
-    _hintTimer = Timer(const Duration(milliseconds: 2500), () {
-      if (mounted) setState(() => _hint = false);
+    _tick = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
-    _hintTimer?.cancel();
-    _progress.dispose();
-    _focus.dispose();
+    _tick?.cancel();
     super.dispose();
+  }
+
+  bool get _armed =>
+      joinClock().difference(widget.request.receivedAt) >= requestGuard;
+
+  int get _left {
+    final left =
+        joinRequestSeconds -
+        joinClock().difference(widget.request.receivedAt).inSeconds;
+    return left < 0 ? 0 : left;
+  }
+
+  void _act(VoidCallback fn) {
+    // Not armed yet: the press is ignored.
+    if (_armed) fn();
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        FocusRing(
-          child: Semantics(
-            label: widget.semanticsLabel,
-            button: true,
-            child: Listener(
-              onPointerDown: (_) => _begin(),
-              onPointerUp: (_) => _end(),
-              onPointerCancel: (_) => _end(),
-              child: FilledButton(
-                key: const Key('allowButton'),
-                focusNode: _focus,
-                // A tap does nothing by itself; only a hold counts (see the Listener).
-                onPressed: () {},
-                style: FilledButton.styleFrom(
-                  minimumSize: Size(widget.tv ? 200 : 120, widget.tv ? 64 : 48),
-                  textStyle: widget.tv
-                      ? theme.textTheme.titleLarge
-                      : theme.textTheme.titleMedium,
+    final r = widget.request;
+    final big = widget.big || widget.tv;
+    final size = Size(big ? 180 : 120, big ? 64 : 48);
+    final textStyle = big
+        ? theme.textTheme.titleLarge
+        : theme.textTheme.titleMedium;
+    final dim = _armed ? 1.0 : 0.6;
+    return Card(
+      key: Key('request-${r.id}'),
+      margin: const EdgeInsets.only(top: 8),
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: EdgeInsets.all(widget.big ? 24 : 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t.joinNameBoxLabel, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _NameBox(
+                  key: Key('requestName-${r.id}'),
+                  name: r.name,
+                  style: widget.big ? theme.textTheme.headlineMedium : null,
                 ),
-                child: AnimatedBuilder(
-                  animation: _progress,
-                  builder: (context, _) => Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Positioned.fill(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: _progress.value,
-                            child: ColoredBox(
-                              key: const Key('holdBar'),
-                              color: theme.colorScheme.onPrimary.withValues(
-                                alpha: 0.35,
-                              ),
-                              child: const SizedBox.expand(),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Text(
-                        _progress.isAnimating
-                            ? widget.holdingLabel
-                            : widget.label,
-                      ),
-                    ],
+                Text(
+                  t.joinWantsToPresent,
+                  style: widget.big ? theme.textTheme.titleLarge : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(
+                  '${r.check}',
+                  key: Key('requestCheck-${r.id}'),
+                  style:
+                      (widget.big
+                              ? theme.textTheme.displayMedium
+                              : theme.textTheme.headlineMedium)
+                          ?.copyWith(fontFamily: 'monospace'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    t.joinCheckNumber(r.check),
+                    style: theme.textTheme.bodySmall,
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: _left / joinRequestSeconds),
+            Text(t.joinSecondsLeft(_left), style: theme.textTheme.bodySmall),
+            const SizedBox(height: 8),
+            Opacity(
+              opacity: dim,
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  // "No" comes first in the focus order; "Yes" is never the default.
+                  FocusRing(
+                    child: OutlinedButton(
+                      key: Key('deny-${r.id}'),
+                      focusNode: widget.denyNode,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: size,
+                        textStyle: textStyle,
+                      ),
+                      onPressed: () => _act(widget.onDeny),
+                      child: Text(t.joinDeny),
+                    ),
+                  ),
+                  FocusRing(
+                    child: FilledButton(
+                      key: Key('allow-${r.id}'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: size,
+                        textStyle: textStyle,
+                      ),
+                      onPressed: () => _act(widget.onAllow),
+                      child: Text(t.joinAllow),
+                    ),
+                  ),
+                  FocusRing(
+                    child: OutlinedButton(
+                      key: Key('denyBlock-${r.id}'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: size,
+                        textStyle: textStyle,
+                      ),
+                      onPressed: () => _act(widget.onBlock),
+                      child: Text(t.joinDenyBlock),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
+          ],
         ),
-        if (_hint)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              widget.hint,
-              key: const Key('holdHint'),
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-      ],
+      ),
     );
   }
 }
 
-/// The host's panel: who may join, who asks, who is connected.
+/// The host's menu: who may join (mode), requests that are not on the takeover, who is connected
+/// (end the presentation, with or without blocking), the block list and "End session".
 class JoinHostPanel extends StatefulWidget {
   const JoinHostPanel({
     super.key,
@@ -250,38 +267,14 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
       m: FocusNode(debugLabel: 'mode-${m.name}'),
   };
   final _denyNodes = <BigInt, FocusNode>{};
-  Timer? _tick;
-  String _announce = '';
-  int _lastRequestCount = 0;
+  bool _confirmEnd = false;
+  Timer? _endTimer;
 
   ReceiverController get c => widget.controller;
 
   @override
-  void initState() {
-    super.initState();
-    _lastRequestCount = c.requests.length;
-    c.addListener(_onController);
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && c.requests.isNotEmpty) setState(() {});
-    });
-  }
-
-  void _onController() {
-    // A new request is announced to screen readers; it never moves the focus.
-    if (c.requests.length > _lastRequestCount && c.requests.isNotEmpty) {
-      final r = c.requests.last;
-      final t = AppLocalizations.of(context);
-      setState(
-        () => _announce = t.joinAnnounce(shortJoinName(r.name), r.check),
-      );
-    }
-    _lastRequestCount = c.requests.length;
-  }
-
-  @override
   void dispose() {
-    c.removeListener(_onController);
-    _tick?.cancel();
+    _endTimer?.cancel();
     for (final n in _modeNodes.values) {
       n.dispose();
     }
@@ -294,10 +287,18 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
   FocusNode _denyNode(BigInt id) =>
       _denyNodes.putIfAbsent(id, () => FocusNode(debugLabel: 'deny-$id'));
 
+  List<JoinRequestView> get _listed {
+    final top = c.takeoverRequest;
+    return [
+      for (final r in c.requests)
+        if (r.id != top?.id) r,
+    ];
+  }
+
   void _afterDecision() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final shown = c.requests.take(maxShownRequests).toList();
+      final shown = _listed.take(maxShownRequests).toList();
       if (shown.isNotEmpty) {
         _denyNode(shown.first.id).requestFocus();
       } else {
@@ -311,10 +312,17 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
     c.setJoinMode(m);
   }
 
-  int _secondsLeft(JoinRequestView r) {
-    final left =
-        joinRequestSeconds - joinClock().difference(r.receivedAt).inSeconds;
-    return left < 0 ? 0 : left;
+  void _onEnd() {
+    if (!_confirmEnd) {
+      setState(() => _confirmEnd = true);
+      _endTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _confirmEnd = false);
+      });
+      return;
+    }
+    _endTimer?.cancel();
+    setState(() => _confirmEnd = false);
+    c.endRoom();
   }
 
   @override
@@ -324,9 +332,9 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
     return ListenableBuilder(
       listenable: c,
       builder: (context, _) {
-        final shown = c.requests.take(maxShownRequests).toList();
-        final more = c.requests.length - shown.length;
-        // Forget the focus nodes of requests that are gone.
+        final listed = _listed;
+        final shown = listed.take(maxShownRequests).toList();
+        final more = listed.length - shown.length;
         _denyNodes.removeWhere((id, n) {
           final gone = c.requests.every((r) => r.id != id);
           if (gone) {
@@ -334,6 +342,7 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
           }
           return gone;
         });
+        final buttonHeight = widget.tv ? 60.0 : 48.0;
         return Card(
           key: const Key('joinPanel'),
           child: Padding(
@@ -356,13 +365,6 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
                         child: Text(t.joinClosePanel),
                       ),
                   ],
-                ),
-                // Screen readers announce a new request here; the focus is not moved.
-                Semantics(
-                  key: const Key('joinAnnounce'),
-                  liveRegion: true,
-                  label: _announce,
-                  child: const SizedBox.shrink(),
                 ),
                 if (c.joinNote != null) _note(context, t),
                 const SizedBox(height: 8),
@@ -389,7 +391,7 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
                     child: OutlinedButton(
                       key: const Key('lockNowButton'),
                       style: OutlinedButton.styleFrom(
-                        minimumSize: Size(0, widget.tv ? 60 : 48),
+                        minimumSize: Size(0, buttonHeight),
                       ),
                       onPressed: () => _setMode(UiJoinMode.locked),
                       child: Text(t.joinLockNow),
@@ -397,27 +399,7 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
                   ),
                 ],
                 const Divider(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        t.joinRequestsTitle,
-                        style: theme.textTheme.titleSmall,
-                      ),
-                    ),
-                    if (c.requests.length >= 2)
-                      FocusRing(
-                        child: OutlinedButton(
-                          key: const Key('denyAllButton'),
-                          onPressed: () {
-                            c.denyAllJoins();
-                            _afterDecision();
-                          },
-                          child: Text(t.joinDenyAll),
-                        ),
-                      ),
-                  ],
-                ),
+                Text(t.joinRequestsTitle, style: theme.textTheme.titleSmall),
                 if (c.requests.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -426,9 +408,25 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
                       key: const Key('joinNobodyWaiting'),
                     ),
                   ),
-                for (final r in shown) _requestCard(context, t, r),
-                if (c.requests.isNotEmpty)
-                  Text(t.joinAllowHelp, style: theme.textTheme.bodySmall),
+                for (final r in shown)
+                  JoinRequestCard(
+                    key: Key('listed-${r.id}'),
+                    request: r,
+                    tv: widget.tv,
+                    denyNode: _denyNode(r.id),
+                    onAllow: () {
+                      c.decideJoin(r.id, allow: true);
+                      _afterDecision();
+                    },
+                    onDeny: () {
+                      c.decideJoin(r.id, allow: false);
+                      _afterDecision();
+                    },
+                    onBlock: () {
+                      c.decideJoin(r.id, allow: false, block: true);
+                      _afterDecision();
+                    },
+                  ),
                 if (more > 0)
                   Text(
                     t.joinMoreWaiting(more),
@@ -442,37 +440,93 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(t.joinNobodyConnected),
                   )
-                else
+                else ...[
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _NameBox(
-                            key: const Key('peerName'),
-                            name: c.peerName!,
-                            max: 40,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FocusRing(
-                          child: OutlinedButton(
-                            key: const Key('removePeerButton'),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: Size(0, widget.tv ? 60 : 48),
-                            ),
-                            onPressed: c.removePeer,
-                            child: Text(
-                              t.joinRemove,
-                              semanticsLabel: t.joinRemoveLabel(
-                                shortJoinName(c.peerName!),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: _NameBox(
+                      key: const Key('peerName'),
+                      name: c.peerName!,
+                      max: 40,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FocusRing(
+                        child: OutlinedButton(
+                          key: const Key('removePeerButton'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size(0, buttonHeight),
+                          ),
+                          onPressed: c.removePeer,
+                          child: Text(
+                            t.joinEndPresentation,
+                            semanticsLabel: t.joinRemoveLabel(
+                              shortJoinName(c.peerName!),
+                            ),
+                          ),
+                        ),
+                      ),
+                      FocusRing(
+                        child: OutlinedButton(
+                          key: const Key('removeBlockButton'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size(0, buttonHeight),
+                          ),
+                          onPressed: () => c.removePeer(block: true),
+                          child: Text(t.joinEndAndBlock),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const Divider(height: 24),
+                Text(t.joinBlockedTitle, style: theme.textTheme.titleSmall),
+                if (c.blocks.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(t.joinNoneBlocked),
+                  )
+                else
+                  for (final b in c.blocks)
+                    Padding(
+                      key: Key('blocked-${b.id}'),
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          Expanded(child: _NameBox(name: b.name)),
+                          const SizedBox(width: 8),
+                          FocusRing(
+                            child: OutlinedButton(
+                              key: Key('unblock-${b.id}'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: Size(0, buttonHeight),
+                              ),
+                              onPressed: () => c.unblock(b.id),
+                              child: Text(t.joinUnblock),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                Text(t.joinBlockedHelp, style: theme.textTheme.bodySmall),
+                const Divider(height: 24),
+                FocusRing(
+                  child: OutlinedButton(
+                    key: const Key('endSessionButton'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: Size(0, buttonHeight),
+                      foregroundColor: theme.colorScheme.error,
+                    ),
+                    onPressed: _onEnd,
+                    child: Text(
+                      _confirmEnd ? t.joinEndSessionConfirm : t.joinEndSession,
+                    ),
+                  ),
+                ),
+                Text(t.joinEndSessionHelp, style: theme.textTheme.bodySmall),
               ],
             ),
           ),
@@ -528,111 +582,15 @@ class _JoinHostPanelState extends State<JoinHostPanel> {
       ),
     );
   }
-
-  Widget _requestCard(
-    BuildContext context,
-    AppLocalizations t,
-    JoinRequestView r,
-  ) {
-    final theme = Theme.of(context);
-    final left = _secondsLeft(r);
-    return Card(
-      key: Key('request-${r.id}'),
-      margin: const EdgeInsets.only(top: 8),
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(t.joinNameBoxLabel, style: theme.textTheme.bodySmall),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _NameBox(key: Key('requestName-${r.id}'), name: r.name),
-                Text(t.joinWantsToPresent),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  '${r.check}',
-                  key: Key('requestCheck-${r.id}'),
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontFamily: 'monospace',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    t.joinCheckNumber(r.check),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(value: left / joinRequestSeconds),
-            Text(t.joinSecondsLeft(left), style: theme.textTheme.bodySmall),
-            const SizedBox(height: 8),
-            // Deny comes first in the focus order; Allow is never the default.
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.start,
-              children: [
-                FocusRing(
-                  child: OutlinedButton(
-                    key: Key('deny-${r.id}'),
-                    focusNode: _denyNode(r.id),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: Size(
-                        widget.tv ? 200 : 120,
-                        widget.tv ? 64 : 48,
-                      ),
-                      textStyle: widget.tv
-                          ? theme.textTheme.titleLarge
-                          : theme.textTheme.titleMedium,
-                    ),
-                    onPressed: () {
-                      c.decideJoin(r.id, allow: false);
-                      _afterDecision();
-                    },
-                    child: Text(t.joinDeny),
-                  ),
-                ),
-                HoldToAllowButton(
-                  key: Key('allow-${r.id}'),
-                  tv: widget.tv,
-                  label: t.joinAllow,
-                  holdingLabel: t.joinAllowHolding,
-                  hint: t.joinAllowHint,
-                  semanticsLabel:
-                      '${t.joinAllow}: ${shortJoinName(r.name)} (${t.joinAllowHint})',
-                  onConfirmed: () {
-                    c.decideJoin(r.id, allow: true);
-                    _afterDecision();
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// A name that somebody else chose, in quotes in a dashed box, shortened. Plain text.
 class _NameBox extends StatelessWidget {
-  const _NameBox({super.key, required this.name, this.max = 18});
+  const _NameBox({super.key, required this.name, this.max = 18, this.style});
 
   final String name;
   final int max;
+  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
@@ -646,27 +604,206 @@ class _NameBox extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(
-          '“${shortJoinName(name, max: max)}”',
-          style: Theme.of(context).textTheme.titleMedium,
+          '\u201C${shortJoinName(name, max: max)}\u201D',
+          style: style ?? Theme.of(context).textTheme.titleMedium,
         ),
       ),
     );
   }
 }
 
-/// Corner chip (and pill with the number of waiting requests) while somebody presents. Opens
-/// the panel in a dialog; Back closes it without allowing anything.
+/// An incoming request takes over the display: a large dialog on the code page ([banner] false),
+/// a banner at the top while somebody presents. When it appears the focus goes to "No"; Back /
+/// Escape hides it without deciding ("Later").
+class JoinTakeover extends StatefulWidget {
+  const JoinTakeover({
+    super.key,
+    required this.controller,
+    this.banner = false,
+    this.tv = false,
+  });
+
+  final ReceiverController controller;
+  final bool banner;
+  final bool tv;
+
+  @override
+  State<JoinTakeover> createState() => _JoinTakeoverState();
+}
+
+class _JoinTakeoverState extends State<JoinTakeover> {
+  final _deny = FocusNode(debugLabel: 'takeover-deny');
+  BigInt? _shownId;
+  FocusNode? _returnFocus;
+
+  ReceiverController get c => widget.controller;
+
+  @override
+  void dispose() {
+    _deny.dispose();
+    super.dispose();
+  }
+
+  void _sync(JoinRequestView? r) {
+    final id = r?.id;
+    if (id == _shownId) return;
+    final before = _shownId;
+    _shownId = id;
+    if (id != null && before == null) {
+      _returnFocus = FocusManager.instance.primaryFocus;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (id != null) {
+        _deny.requestFocus();
+      } else {
+        final back = _returnFocus;
+        _returnFocus = null;
+        if (back != null && back.context != null) back.requestFocus();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return ListenableBuilder(
+      listenable: c,
+      builder: (context, _) {
+        final r = c.takeoverRequest;
+        _sync(r);
+        if (r == null) return const SizedBox.shrink();
+        final more = c.takeoverMore;
+        final card = JoinRequestCard(
+          key: ValueKey(r.id),
+          request: r,
+          tv: widget.tv,
+          big: !widget.banner,
+          denyNode: _deny,
+          onAllow: () => c.decideJoin(r.id, allow: true),
+          onDeny: () => c.decideJoin(r.id, allow: false),
+          onBlock: () => c.decideJoin(r.id, allow: false, block: true),
+        );
+        final content = Card(
+          key: const Key('joinTakeover'),
+          elevation: 8,
+          child: Padding(
+            padding: EdgeInsets.all(widget.banner ? 8 : 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.joinTakeoverTitle,
+                  style: widget.banner
+                      ? Theme.of(context).textTheme.titleMedium
+                      : Theme.of(context).textTheme.headlineSmall,
+                ),
+                card,
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (more > 0)
+                      Text(
+                        t.joinMoreWaiting(more),
+                        key: const Key('takeoverMore'),
+                      ),
+                    if (more > 0)
+                      FocusRing(
+                        child: OutlinedButton(
+                          key: const Key('denyAllButton'),
+                          onPressed: c.denyAllJoins,
+                          child: Text(t.joinDenyAll),
+                        ),
+                      ),
+                    FocusRing(
+                      child: TextButton(
+                        key: const Key('laterButton'),
+                        onPressed: () => c.snoozeRequest(r.id),
+                        child: Text(t.joinLater),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+        final body = CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): () =>
+                c.snoozeRequest(r.id),
+            const SingleActivator(LogicalKeyboardKey.goBack): () =>
+                c.snoozeRequest(r.id),
+          },
+          child: FocusScope(
+            child: widget.banner
+                ? Align(
+                    alignment: Alignment.topCenter,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: content,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : Material(
+                    type: MaterialType.transparency,
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(
+                          child: ColoredBox(color: Color(0xCC000000)),
+                        ),
+                        Center(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 760),
+                              child: content,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        );
+        return Semantics(
+          container: true,
+          liveRegion: true,
+          label: t.joinAnnounce(shortJoinName(r.name), r.check),
+          child: body,
+        );
+      },
+    );
+  }
+}
+
+/// Corner chip (with the number of waiting requests) while somebody presents. It appears when
+/// something moves and fades out ([visible]); it opens the menu in a dialog, and Back closes that
+/// dialog without deciding anything.
 class JoinChip extends StatelessWidget {
   const JoinChip({
     super.key,
     required this.controller,
     required this.settings,
     this.tv = false,
+    this.visible = true,
   });
 
   final ReceiverController controller;
   final AppSettings settings;
   final bool tv;
+  final bool visible;
 
   Future<void> _open(BuildContext context) => showDialog<void>(
     context: context,
@@ -693,30 +830,29 @@ class JoinChip extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final n = controller.requests.length;
-        return Material(
-          type: MaterialType.transparency,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (n > 0)
-                FocusRing(
-                  child: FilledButton.tonal(
-                    key: const Key('joinPill'),
+        return ExcludeFocus(
+          excluding: !visible,
+          child: IgnorePointer(
+            ignoring: !visible,
+            child: AnimatedOpacity(
+              key: const Key('joinChipFade'),
+              opacity: visible ? 1 : 0,
+              duration: const Duration(milliseconds: 500),
+              child: Material(
+                type: MaterialType.transparency,
+                child: FocusRing(
+                  child: OutlinedButton(
+                    key: const Key('joinChip'),
                     onPressed: () => _open(context),
-                    child: Text(t.joinPill(n)),
-                  ),
-                ),
-              if (n > 0) const SizedBox(width: 8),
-              FocusRing(
-                child: OutlinedButton(
-                  key: const Key('joinChip'),
-                  onPressed: () => _open(context),
-                  child: Text(
-                    t.joinChip(joinModeLabel(t, controller.joinMode)),
+                    child: Text(
+                      n > 0
+                          ? '${t.joinChip(joinModeLabel(t, controller.joinMode))} \u00B7 ${t.joinPill(n)}'
+                          : t.joinChip(joinModeLabel(t, controller.joinMode)),
+                    ),
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         );
       },
@@ -851,8 +987,12 @@ class _DisplayNameFieldState extends State<DisplayNameField> {
     text: widget.settings.displayName,
   );
 
+  /// Up / down arrows (D-pad) leave the field, like the other fields.
+  final _focus = textFieldFocusNode(debugLabel: 'displayNameField');
+
   @override
   void dispose() {
+    _focus.dispose();
     _text.dispose();
     super.dispose();
   }
@@ -863,6 +1003,7 @@ class _DisplayNameFieldState extends State<DisplayNameField> {
     return TextField(
       key: const Key('displayNameField'),
       controller: _text,
+      focusNode: _focus,
       enabled: widget.enabled,
       maxLength: maxDisplayNameChars,
       textInputAction: TextInputAction.next,

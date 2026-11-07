@@ -122,6 +122,10 @@ class FakeCoreApi implements CoreApi {
   final joinModeRequests = <UiJoinMode>[];
   final joinDecisions = <({BigInt? id, bool allow})>[];
   int removePeerCalls = 0;
+  final removePeerBlock = <bool>[];
+  final blockedRequests = <BigInt>[];
+  final unblocked = <BigInt>[];
+  int endRoomCalls = 0;
 
   @override
   bool setJoinMode(UiJoinMode mode) {
@@ -136,8 +140,27 @@ class FakeCoreApi implements CoreApi {
   }
 
   @override
-  bool removePeer() {
+  bool removePeer({bool block = false}) {
     removePeerCalls++;
+    removePeerBlock.add(block);
+    return true;
+  }
+
+  @override
+  bool denyAndBlockJoin(BigInt id) {
+    blockedRequests.add(id);
+    return true;
+  }
+
+  @override
+  bool unblock(BigInt id) {
+    unblocked.add(id);
+    return true;
+  }
+
+  @override
+  bool endRoom() {
+    endRoomCalls++;
     return true;
   }
 

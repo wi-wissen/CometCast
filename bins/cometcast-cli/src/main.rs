@@ -1128,6 +1128,36 @@ mod tests {
     }
 
     #[test]
+    fn parses_join_mode() {
+        use cc_proto::JoinMode;
+        // The default is open, so scripts keep working without a terminal.
+        assert!(matches!(
+            parse("receive"),
+            Ok(Command::Receive {
+                join_mode: JoinMode::Open,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse("receive --join-mode confirm"),
+            Ok(Command::Receive {
+                join_mode: JoinMode::Confirm,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse("receive --join-mode LOCKED"),
+            Ok(Command::Receive {
+                join_mode: JoinMode::Locked,
+                ..
+            })
+        ));
+        assert!(parse("receive --join-mode maybe").is_err());
+        assert!(parse("receive --join-mode").is_err());
+        assert!(parse("send k7m2qx --join-mode confirm").is_err());
+    }
+
+    #[test]
     fn parses_ca_file() {
         assert!(matches!(
             parse("receive --server https://h --ca-file /x/ca.pem"),

@@ -163,6 +163,14 @@ class JoinRequestView {
   final DateTime receivedAt;
 }
 
+/// A sender on the room's block list (blocked for the rest of this room session).
+class BlockedView {
+  const BlockedView({required this.id, required this.name});
+
+  final BigInt id;
+  final String name;
+}
+
 /// A short message about the join settings.
 enum JoinNote {
   /// The room was locked and this many waiting requests were discarded.
@@ -224,6 +232,32 @@ class ReceiverController extends ChangeNotifier {
 
   /// Name of the connected sender, or null.
   String? peerName;
+
+  /// Blocked senders (the host can unblock them).
+  List<BlockedView> blocks = const [];
+
+  /// Requests that the host hid with "Later": they stay in the join menu but not on the takeover.
+  final Set<BigInt> _snoozed = {};
+
+  /// The request that takes over the display now (the oldest one that was not hidden), or null.
+  JoinRequestView? get takeoverRequest {
+    for (final r in requests) {
+      if (!_snoozed.contains(r.id)) return r;
+    }
+    return null;
+  }
+
+  /// Other requests that wait behind [takeoverRequest].
+  int get takeoverMore {
+    final n = requests.where((r) => !_snoozed.contains(r.id)).length;
+    return n > 1 ? n - 1 : 0;
+  }
+
+  /// Hide the request from the takeover without deciding ("Later", Back).
+  void snoozeRequest(BigInt id) {
+    _snoozed.add(id);
+    notifyListeners();
+  }
 
   /// Something to tell the host about the join settings, or null.
   JoinNote? joinNote;
@@ -354,6 +388,8 @@ class ReceiverController extends ChangeNotifier {
     this.joinMode = joinMode;
     requests = const [];
     peerName = null;
+    blocks = const [];
+    _snoozed.clear();
     if (!_openRetried) joinNote = null;
     discardedCount = 0;
     connectionState = null;
@@ -424,6 +460,7 @@ class ReceiverController extends ChangeNotifier {
         }
       case ReceiverUiEvent_JoinRequestCancelled(:final id, :final reason):
         requests = requests.where((r) => r.id != id).toList();
+        _snoozed.remove(id);
         if (reason == 'locked') {
           discardedCount++;
           joinNote = JoinNote.lockedDiscarded;
@@ -434,6 +471,17 @@ class ReceiverController extends ChangeNotifier {
           joinNote = null;
           discardedCount = 0;
         }
+      case ReceiverUiEvent_Blocked(:final id, :final name):
+        if (blocks.every((b) => b.id != id)) {
+          blocks = [...blocks, BlockedView(id: id, name: name)];
+        }
+      case ReceiverUiEvent_Unblocked(:final id):
+        blocks = blocks.where((b) => b.id != id).toList();
+      case ReceiverUiEvent_RoomEnded():
+        // The host ended the session: the room and its code are gone. A new room (a new
+        // code) is created in the same mode at once.
+        _begin(_startServer, joinMode);
+        return;
       case ReceiverUiEvent_PeerJoined(:final name):
         peerName = name;
         senderJoined = true;
@@ -985,10 +1033,15 @@ class ReceiverController extends ChangeNotifier {
   /// Change who may join, at any time. The mode shown changes when the server confirms.
   void setJoinMode(UiJoinMode mode) => core.setJoinMode(mode);
 
-  /// Allow or deny a waiting request. It leaves the list at once.
-  void decideJoin(BigInt id, {required bool allow}) {
+  /// Allow or deny a waiting request. It leaves the list at once. With [block] (only a denial)
+  /// the sender's address is also blocked for the rest of this room session.
+  void decideJoin(BigInt id, {required bool allow, bool block = false}) {
     if (requests.every((r) => r.id != id)) return;
-    core.decideJoin(id: id, allow: allow);
+    if (block && !allow) {
+      core.denyAndBlockJoin(id);
+    } else {
+      core.decideJoin(id: id, allow: allow);
+    }
     requests = requests.where((r) => r.id != id).toList();
     notifyListeners();
   }
@@ -1001,9 +1054,16 @@ class ReceiverController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remove the connected sender. UNCERTAIN: one sender per receiver, so the receiver ends
-  /// (`senderLeft`) and a new room with a new code has to be started.
-  void removePeer() => core.removePeer();
+  /// End the presenter's session: remove the connected sender (optionally blocking it).
+  /// UNCERTAIN: one sender per receiver, so the receiver ends (`senderLeft`) and a new room with a
+  /// new code has to be started.
+  void removePeer({bool block = false}) => core.removePeer(block: block);
+
+  /// Take a sender off the block list.
+  void unblock(BigInt id) => core.unblock(id);
+
+  /// End the room session: everybody is dropped; a new room with a new code starts at once.
+  void endRoom() => core.endRoom();
 
   void dismissJoinNote() {
     if (joinNote == null) return;

@@ -132,13 +132,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // Visit order from the top: server field, the two suggested servers (chips), the
-    // "Share this screen" switch, code field, duration field, start button.
+    // "Share this screen" switch, code field, name field, duration field, start button.
     final order = <Key>[
       const Key('serverField'),
       const Key('serverSuggestion:relay.cometcast.de:443'),
       const Key('serverSuggestion:127.0.0.1:8443'),
       const Key('shareScreenSwitch'),
       const Key('codeField'),
+      const Key('displayNameField'),
       const Key('secondsField'),
       const Key('startButton'),
     ];

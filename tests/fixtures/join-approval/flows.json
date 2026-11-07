@@ -396,6 +396,157 @@
           }
         }
       ]
+    },
+    {
+      "id": "no_and_block",
+      "description": "The sender is blocked for the rest of the room session. It hears the same join_denied as for a plain denial; later joins from the same address bucket are denied at once and never reach the host.",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "join_decision",
+            "id": 3,
+            "allow": false,
+            "block": true
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "join_denied",
+            "message": "..."
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "blocked",
+            "id": 1,
+            "name": "Ana"
+          }
+        },
+        {
+          "from": "sender",
+          "to": "server",
+          "message": {
+            "type": "join_room",
+            "code": "K7M2QX",
+            "name": "Other name"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "join_denied",
+            "message": "..."
+          }
+        },
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "unblock",
+            "id": 1
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "unblocked",
+            "id": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "end_presentation_and_block",
+      "description": "remove_peer with block: the sender is removed and blocked.",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "remove_peer",
+            "block": true
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "error",
+            "code": "removed_by_host",
+            "message": "..."
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "peer_left"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "blocked",
+            "id": 2,
+            "name": "Ana"
+          }
+        }
+      ]
+    },
+    {
+      "id": "end_session",
+      "description": "The owner ends the room session; the same connection can create a new room (a new code).",
+      "steps": [
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "end_room"
+          }
+        },
+        {
+          "from": "server",
+          "to": "sender",
+          "message": {
+            "type": "peer_left"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "room_ended"
+          }
+        },
+        {
+          "from": "receiver",
+          "to": "server",
+          "message": {
+            "type": "create_room",
+            "join_mode": "open"
+          }
+        },
+        {
+          "from": "server",
+          "to": "receiver",
+          "message": {
+            "type": "room_created",
+            "code": "B4N9HT",
+            "join_mode": "open"
+          }
+        }
+      ]
     }
   ]
 }

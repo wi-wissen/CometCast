@@ -112,6 +112,18 @@ class _ReceivePageState extends State<ReceivePage> {
   /// A running or queued announcement has been stopped because of the policy.
   bool _announcementStopped = false;
 
+  /// The join menu chip is shown while something moves (pointer, touch, any key) and fades out.
+  bool _menuActive = false;
+  Timer? _menuTimer;
+
+  void _activity() {
+    _menuTimer?.cancel();
+    if (!_menuActive && mounted) setState(() => _menuActive = true);
+    _menuTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _menuActive = false);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +160,7 @@ class _ReceivePageState extends State<ReceivePage> {
 
   @override
   void dispose() {
+    _menuTimer?.cancel();
     widget.settings.removeListener(_onSettings);
     _controller.removeListener(_onControllerChanged);
     widget.settings.cancelDiscovery();
@@ -285,28 +298,50 @@ class _ReceivePageState extends State<ReceivePage> {
                 : _controller.image != null
                 ? _buildVideo(context)
                 : _buildForm(context);
-            // While somebody presents the join settings are a small chip (and a pill with
-            // the number of waiting requests) in a corner; they open on demand.
-            if (onForm ||
-                _controller.roomCode == null ||
-                _controller.phase != ReceiverPhase.running) {
-              return page;
-            }
-            return Stack(
-              children: [
-                page,
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: SafeArea(
-                    child: JoinChip(
-                      controller: _controller,
-                      settings: widget.settings,
-                      tv: _tv,
+            final running =
+                _controller.roomCode != null &&
+                _controller.phase == ReceiverPhase.running;
+            if (!running) return page;
+            // A request takes over the display (a dialog on the code page, a banner while
+            // somebody presents). While somebody presents the join menu is a small chip that
+            // appears when something moves and fades out; it opens on demand.
+            return Listener(
+              onPointerHover: (_) => _activity(),
+              onPointerDown: (_) => _activity(),
+              onPointerMove: (_) => _activity(),
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onKeyEvent: (_, _) {
+                  _activity();
+                  return KeyEventResult.ignored;
+                },
+                child: Stack(
+                  children: [
+                    page,
+                    if (!onForm)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: SafeArea(
+                          child: JoinChip(
+                            controller: _controller,
+                            settings: widget.settings,
+                            tv: _tv,
+                            visible: _menuActive,
+                          ),
+                        ),
+                      ),
+                    Positioned.fill(
+                      child: JoinTakeover(
+                        controller: _controller,
+                        banner: !onForm,
+                        tv: _tv,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             );
           },
         ),
@@ -601,15 +636,6 @@ class _ReceivePageState extends State<ReceivePage> {
           ),
           const SizedBox(height: 24),
           _RoomCodeCard(code: _controller.roomCode, tv: _tv),
-          if (_controller.roomCode != null &&
-              _controller.phase == ReceiverPhase.running) ...[
-            const SizedBox(height: 16),
-            JoinHostPanel(
-              controller: _controller,
-              settings: widget.settings,
-              tv: _tv,
-            ),
-          ],
           const SizedBox(height: 16),
           // liveRegion: screen readers announce changes of the status.
           Semantics(
@@ -642,6 +668,15 @@ class _ReceivePageState extends State<ReceivePage> {
               t.advertisedNote(_advertisedAs!),
               key: const Key('advertisedNote'),
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (_controller.roomCode != null &&
+              _controller.phase == ReceiverPhase.running) ...[
+            const SizedBox(height: 16),
+            JoinHostPanel(
+              controller: _controller,
+              settings: widget.settings,
+              tv: _tv,
             ),
           ],
           const SizedBox(height: 16),

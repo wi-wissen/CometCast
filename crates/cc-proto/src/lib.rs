@@ -219,7 +219,9 @@ pub fn sanitize_display_name(raw: Option<&str>, guest_number: u32) -> String {
     let mut out = String::new();
     let mut pending_space = false;
     for c in raw.unwrap_or("").chars() {
-        if is_unsafe_name_char(c) {
+        // A tab or a line break inside a name is a space, not an invisible character.
+        let spacing = matches!(c, '\t' | '\n' | '\r');
+        if !spacing && is_unsafe_name_char(c) {
             continue;
         }
         if c.is_whitespace() {
@@ -730,7 +732,7 @@ mod tests {
         // Control, bidi, zero-width, line separators: removed.
         assert_eq!(
             sanitize_display_name(Some("A\u{202E}b\u{200B}c\n\u{0}d\u{2066}e\u{FEFF}"), 1),
-            "Abcde"
+            "Abc de"
         );
         assert_eq!(
             sanitize_display_name(Some("\u{202E}\u{202D}"), 9),

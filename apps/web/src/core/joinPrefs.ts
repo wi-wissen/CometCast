@@ -30,7 +30,7 @@ export function saveJoinMode(mode: JoinMode): void {
 /** Removes control, bidi and invisible characters and cuts the name (the server does this too). */
 export function cleanName(raw: string): string {
   // eslint-disable-next-line no-control-regex
-  const cleaned = raw.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ue000-\uf8ff]/g, '')
+  const cleaned = raw.replace(/[\t\n\r]/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ue000-\uf8ff]/g, '')
   return Array.from(cleaned.replace(/\s+/g, ' ').trim()).slice(0, MAX_NAME_CHARS).join('')
 }
 

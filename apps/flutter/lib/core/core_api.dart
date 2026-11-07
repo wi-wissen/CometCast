@@ -37,6 +37,9 @@ export 'package:cometcast/src/rust/api.dart'
         stopReceiver,
         setJoinMode,
         decideJoin,
+        denyAndBlockJoin,
+        unblock,
+        endRoom,
         removePeer,
         startSender,
         startEncodedSender,
@@ -98,8 +101,20 @@ abstract class CoreApi {
   /// waits. False if no receiver runs.
   bool decideJoin({BigInt? id, required bool allow});
 
-  /// Remove the connected sender (the receiver then ends with `peerLeft`).
-  bool removePeer();
+  /// Remove the connected sender (end its presentation); with [block] also block its address for
+  /// the rest of this room session. The receiver then ends with `peerLeft`.
+  bool removePeer({bool block = false});
+
+  /// Deny the waiting request [id] and block the sender's address for the rest of this room
+  /// session (it gets the same "denied" as any denied sender). The host sees a `blocked` event.
+  bool denyAndBlockJoin(BigInt id);
+
+  /// Take a block list entry off the list (`id` from the `blocked` event).
+  bool unblock(BigInt id);
+
+  /// End the room session: everybody is dropped and the code is gone (`roomEnded` event, then the
+  /// stream ends). Start a new receiver for a new room.
+  bool endRoom();
 
   /// The received image or PDF page that waits, or null. Call it after a `contentFrameReady`
   /// event; fetching re-arms that event. Only the latest picture is kept.
@@ -277,7 +292,16 @@ class RustCoreApi implements CoreApi {
       rust.decideJoin(id: id, allow: allow);
 
   @override
-  bool removePeer() => rust.removePeer();
+  bool removePeer({bool block = false}) => rust.removePeer(block: block);
+
+  @override
+  bool denyAndBlockJoin(BigInt id) => rust.denyAndBlockJoin(id: id);
+
+  @override
+  bool unblock(BigInt id) => rust.unblock(id: id);
+
+  @override
+  bool endRoom() => rust.endRoom();
 
   @override
   Future<ContentFrame?> takeContentFrame() => rust.takeContentFrame();

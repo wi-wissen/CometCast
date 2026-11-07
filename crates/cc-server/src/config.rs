@@ -154,7 +154,7 @@ pub struct LimitsConfig {
     pub max_pending_per_ip: usize,
     /// A join request that the display device denied or let time out counts like this many
     /// failures toward a temporary ban of the sender's address (0 = never). UNCERTAIN: a
-    /// whole school behind one address shares this budget.
+    /// everybody behind one shared address shares this budget.
     pub denied_join_weight: u32,
 }
 

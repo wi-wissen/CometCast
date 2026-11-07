@@ -161,6 +161,17 @@ browser offers, not a real desktop). As a fallback there is a **TEST-ONLY** quer
 on the page: the sender then sends an animated canvas instead of the screen. Run
 `E2E_TEST_VIDEO=1 npm run e2e` to use it. Do not use it for anything else.
 
+## Join approval test
+
+`npm run build && E2E_CHROME=/usr/bin/google-chrome npm run e2e:join` starts a real server (join requests wait 5 s) and
+several Chromium pages and checks join approval ([protocol.md](../../docs/protocol.md#join-approval)): the default mode is
+open; "End presentation" removes a sender; in "Ask first" a request takes over the display with the same check number as
+on the sender's waiting screen, the name is plain text and "No" has the focus; Yes, No and keyboard-only answers; "Later"
+hides the takeover; locking discards waiting requests and tells the senders; "End and block" and "No and block" make
+the sender hear "denied" at once, unblocking lets it join again; a request nobody answers times out; cancelling while
+waiting tells the host; German texts; "End session" shows a new code. It does not test the banner (a request while
+somebody presents is refused with `room_full` by the server) or a TV remote.
+
 ## Open mode and TURN test
 
 `npm run build && npm run e2e:open` starts real servers (several processes) and checks, with headless Chromium and

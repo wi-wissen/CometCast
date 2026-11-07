@@ -23,7 +23,7 @@
     {
       "input": "A\u202eb\u200bc\nd\u0000e\u2066f\ufeff",
       "guest_number": 1,
-      "expected": "Abc de f",
+      "expected": "Abc def",
       "note": "bidi override/isolate, zero width, BOM and control characters are removed; the line break counts as white space"
     },
     {

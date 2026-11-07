@@ -63,10 +63,28 @@ bool setJoinMode({required UiJoinMode mode}) =>
 bool decideJoin({BigInt? id, required bool allow}) =>
     RustLib.instance.api.crateApiDecideJoin(id: id, allow: allow);
 
-/// Remove the connected sender. UNCERTAIN: one sender per receiver in this version, so the
-/// receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+/// Remove the connected sender (end its presentation); with `block` also block its address
+/// bucket for the rest of this room session. UNCERTAIN: one sender per receiver in this version,
+/// so the receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
 /// Returns `false` if no receiver runs.
-bool removePeer() => RustLib.instance.api.crateApiRemovePeer();
+bool removePeer({required bool block}) =>
+    RustLib.instance.api.crateApiRemovePeer(block: block);
+
+/// Deny the waiting request `id` and block the sender's address bucket for the rest of this room
+/// session: it gets the same `join_denied` as any denied sender and is not asked again; the
+/// host sees [`ReceiverUiEvent::Blocked`]. Returns `false` if no receiver runs.
+bool denyAndBlockJoin({required BigInt id}) =>
+    RustLib.instance.api.crateApiDenyAndBlockJoin(id: id);
+
+/// Take an entry off the block list (`id` from [`ReceiverUiEvent::Blocked`]). Returns `false`
+/// if no receiver runs.
+bool unblock({required BigInt id}) =>
+    RustLib.instance.api.crateApiUnblock(id: id);
+
+/// End the room session: the connected sender and everybody who waits are dropped, the code is
+/// gone and the stream ends with [`ReceiverUiEvent::RoomEnded`]. Start a new receiver for a new
+/// room. Returns `false` if no receiver runs.
+bool endRoom() => RustLib.instance.api.crateApiEndRoom();
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
 /// without padding), or `None`. Call it after a [`ReceiverUiEvent::FrameReady`].
@@ -769,6 +787,25 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// The mode.
     required UiJoinMode mode,
   }) = ReceiverUiEvent_JoinModeChanged;
+
+  /// A sender was added to the room's block list ("No and block", or "Remove and block").
+  const factory ReceiverUiEvent.blocked({
+    /// Block id for [`unblock`].
+    required BigInt id,
+
+    /// Cleaned display name (for the list only).
+    required String name,
+  }) = ReceiverUiEvent_Blocked;
+
+  /// An entry left the block list.
+  const factory ReceiverUiEvent.unblocked({
+    /// Block id.
+    required BigInt id,
+  }) = ReceiverUiEvent_Unblocked;
+
+  /// The room session was ended by [`end_room`]. The stream ends after this; start a new
+  /// receiver for a new room (a new code).
+  const factory ReceiverUiEvent.roomEnded() = ReceiverUiEvent_RoomEnded;
 
   /// The WebRTC connection state changed.
   const factory ReceiverUiEvent.connectionState({

@@ -25,7 +25,7 @@ cc-discovery.workspace = true
 cc-receiver.workspace = true
 cc-sender.workspace = true
 cc-transport.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["io-std", "io-util"] }
 cc-media.workspace = true
 # Only for `cometcast-cli codec` in release builds (h264-libloading): finds and downloads
 # Cisco's OpenH264 library. Not part of the OpenH264 source build.

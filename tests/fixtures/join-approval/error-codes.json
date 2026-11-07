@@ -45,6 +45,16 @@
       "code": "banned",
       "closes": true,
       "meaning": "too many failed, denied or unanswered joins"
+    },
+    {
+      "code": "no_such_block",
+      "closes": false,
+      "meaning": "unblock for an entry that is not on the list"
+    },
+    {
+      "code": "block_list_full",
+      "closes": false,
+      "meaning": "32 entries; unblock somebody first"
     }
   ]
 }

@@ -516,13 +516,15 @@ const maxDisplayNameChars = 40;
 /// Removes control, bidi and invisible characters, collapses white space and cuts the name. The
 /// server does the same; doing it here too keeps the field honest.
 String cleanDisplayName(String raw) {
-  final cleaned = raw.replaceAll(
-    RegExp(
-      '[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b-\\u200f\\u2028-\\u202e'
-      '\\u2060-\\u206f\\ufeff\\ue000-\\uf8ff]',
-    ),
-    '',
-  );
+  final cleaned = raw
+      .replaceAll(RegExp(r'[\t\n\r]'), ' ')
+      .replaceAll(
+        RegExp(
+          '[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b-\\u200f\\u2028-\\u202e'
+          '\\u2060-\\u206f\\ufeff\\ue000-\\uf8ff]',
+        ),
+        '',
+      );
   final single = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
   final runes = single.runes.toList();
   return String.fromCharCodes(runes.take(maxDisplayNameChars));

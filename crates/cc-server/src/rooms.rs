@@ -304,8 +304,8 @@ impl Rooms {
             return Err(JoinError::Full);
         }
         match room.mode {
-            JoinMode::Locked => return Err(JoinError::Locked),
-            _ if room.blocks.iter().any(|b| b.bucket == ip) => return Err(JoinError::Blocked),
+            JoinMode::Locked => Err(JoinError::Locked),
+            _ if room.blocks.iter().any(|b| b.bucket == ip) => Err(JoinError::Blocked),
             JoinMode::Open => {
                 room.guests += 1;
                 let name = sanitize_display_name(raw_name, room.guests);
@@ -410,8 +410,11 @@ impl Rooms {
         let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
         // "No and block": the denied request's address bucket is blocked, and every other
         // request of the same bucket ends with it.
-        if block && !allow {
-            if let Some(p) = taken.first() {
+        if block
+            && !allow
+            && let Some(p) = taken.first()
+        {
+            {
                 let (ip, name) = (p.ip, p.name.clone());
                 match Self::add_block(room, ip, &name) {
                     Ok(b) => out.blocked = b,

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Join approval (join modes `open`, `confirm`, `locked`): a real server, real WebSockets.
 
+#![allow(clippy::field_reassign_with_default)]
+
 use std::time::Duration;
 
 use cc_server::{ServerConfig, run};
