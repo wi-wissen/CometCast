@@ -56,6 +56,8 @@ flutter:
     # Licence texts for About (native-apps.md 21.7), copies made by tools/gen-third-party.mjs.
     - assets/licenses/THIRD_PARTY_LICENSES.md
     - assets/licenses/THIRD_PARTY_NOTICES.md
+    # UxPlay's licence file, copied here by the packaging where UxPlay ships (N106); empty otherwise.
+    - assets/licenses/uxplay/
     - assets/logo/cometcast-logo-dark.svg
     - assets/logo/cometcast-logo-light.svg
   # Atkinson Hyperlegible Next and Mono 5.3.0 (SIL OFL 1.1, assets/fonts/OFL-*.txt), the same

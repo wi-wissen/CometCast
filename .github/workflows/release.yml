@@ -271,6 +271,9 @@ jobs:
           Description: Comet Cast, share your screen, documents, links, media and files with displays in a room
            Sender and receiver app. See https://github.com/wi-wissen/CometCast
           CONTROL
+          # UxPlay is listed in the app only with its licence file (N106): a package that ships the
+          # program without UXPLAY_LICENSE.txt fails here.
+          tools/release-guard.sh uxplay-licence "$pkg"
           chmod -R u=rwX,go=rX "$pkg"
           dpkg-deb --root-owner-group --build "$pkg" "dist/cometcast_${VERSION}_amd64.deb"
           dpkg-deb --info "dist/cometcast_${VERSION}_amd64.deb"

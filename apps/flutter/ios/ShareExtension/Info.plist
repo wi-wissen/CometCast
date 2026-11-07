@@ -44,8 +44,13 @@
 			<!-- Exactly one item, and it is an image, a PDF or a web address (spec 15.3, N81: no
 			     Office types on iOS). A dictionary rule (SupportsImageWithMaxCount, ...) cannot
 			     limit a *file* to PDFs, so the predicate form is used; UTI-CONFORMS-TO is the
-			     documented predicate function. Several items, a ZIP or a video: the entry does
-			     not exist. UNCERTAIN: never tried in Xcode or on a device (docs/ios.md). -->
+			     documented predicate function. A file URL (public.file-url, what Files hands over
+			     for a ZIP, a Word file ...) conforms to public.url too: the web-address branch
+			     therefore excludes it, so the entry does not exist for such a file instead of
+			     failing after the tap (spec 15.14 N116 a). An image or a PDF that also registers
+			     a file URL still matches by its own branch. Several items, a ZIP or a video: the
+			     entry does not exist. UNCERTAIN: never tried in Xcode or on a device
+			     (docs/ios.md). -->
 			<key>NSExtensionActivationRule</key>
 			<string>SUBQUERY (
 				extensionItems,
@@ -56,9 +61,13 @@
 					$attachment,
 					ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
 					OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf"
-					OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+					OR (
+						ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+						AND NOT (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url")
+					)
 				).@count == 1
 			).@count == 1</string>
+		</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>

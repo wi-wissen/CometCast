@@ -47,13 +47,16 @@ private struct SecondaryButton: View {
 }
 
 private struct Disc: View {
+    /// The name of an icon of native-apps.md 13 in the extension's asset catalog (`file`, `link`,
+    /// `info`): a vector template image tinted with the token. No SF Symbols.
     let symbol: String
     var color = PresenterPalette.primary
     var fill = PresenterPalette.primarySoft
     var body: some View {
         ZStack {
             Circle().fill(fill).frame(width: 56, height: 56)
-            Image(systemName: symbol).font(.system(size: 28)).foregroundColor(color)
+            Image("icon-\(symbol)").renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 28, height: 28).foregroundColor(color)
         }
         .accessibilityHidden(true)
     }
@@ -135,7 +138,7 @@ struct ItemCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Disc(symbol: item.kind == .link ? "link" : "doc")
+            Disc(symbol: item.kind == .link ? "link" : "file")
             VStack(alignment: .leading, spacing: 4) {
                 if item.kind == .link {
                     Text(item.title).font(PresenterPalette.mono(15)).lineLimit(3)
@@ -228,7 +231,7 @@ struct ErrorPageView: View {
     var body: some View {
         let n = page.rawValue.prefix(1).uppercased() + page.rawValue.dropFirst()
         VStack(alignment: .leading, spacing: 14) {
-            Disc(symbol: "exclamationmark", color: PresenterPalette.error, fill: PresenterPalette.errorDisc)
+            Disc(symbol: "info", color: PresenterPalette.error, fill: PresenterPalette.errorDisc)
             Text(T("error\(n)Title")).font(PresenterPalette.ui(26, .bold))
             Text(T("errorWhy")).font(PresenterPalette.ui(13, .bold)).foregroundColor(PresenterPalette.fg2)
             Text(T("error\(n)Why")).font(PresenterPalette.ui(15)).foregroundColor(PresenterPalette.fg2)

@@ -12,8 +12,14 @@
 // apps (native-apps.md 21.7): unchanged to apps/flutter/assets/licenses/ and apps/apple-tv/Resources/Licenses/,
 // joined (notices first) to apps/web/public/third-party-licenses.txt (the web footer's "Licences" link).
 // `tools/release-guard.sh licenses-fresh` also fails when a copy differs from the root files.
+// UxPlay (spec 15.14 N106, native-apps.md 21.10 item 4): where a build ships UxPlay, the packaging runs
+// `--uxplay-licence` to write the licence file the app lists as "UxPlay" (GPL-3.0): the shipped UxPlay licence
+// file followed by the notices of its bundled parts. `tools/release-guard.sh uxplay-licence` fails a bundle that
+// holds UxPlay without that file.
 // Usage: node tools/gen-third-party.mjs [--check]     (--check: do not write, fail when out of date)
 //        node tools/gen-third-party.mjs --copies-only [--check]   (only the copies, no cargo/npm/pub needed)
+//        node tools/gen-third-party.mjs --uxplay-licence FILE [--uxplay-notices FILE] [--out DIR]
+//            (writes UXPLAY_LICENSE.txt to DIR, default apps/flutter/assets/licenses/uxplay)
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -232,6 +238,26 @@ function writeCopies(licencesText, noticesText) {
     mkdirSync(dirname(join(repo, f)), { recursive: true });
     writeFileSync(join(repo, f), t);
   }
+}
+
+const argValue = (flag) => {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+};
+
+if (process.argv.includes('--uxplay-licence')) {
+  const licenceFile = argValue('--uxplay-licence');
+  const noticesFile = argValue('--uxplay-notices');
+  if (!licenceFile || !existsSync(licenceFile)) { console.error('--uxplay-licence needs the UxPlay licence file that is shipped'); process.exit(1); }
+  if (noticesFile && !existsSync(noticesFile)) { console.error(`--uxplay-notices: no such file: ${noticesFile}`); process.exit(1); }
+  const licence = normalise(readFileSync(licenceFile, 'utf8'));
+  if (!licence) { console.error('the UxPlay licence file is empty'); process.exit(1); }
+  const notices = noticesFile ? normalise(readFileSync(noticesFile, 'utf8')) : '';
+  const outDir = resolve(argValue('--out') ?? join(repo, 'apps/flutter/assets/licenses/uxplay'));
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, 'UXPLAY_LICENSE.txt'), `${licence}\n${notices ? `\n${notices}\n` : ''}`);
+  console.log(`wrote ${join(outDir, 'UXPLAY_LICENSE.txt')}`);
+  process.exit(0);
 }
 
 if (process.argv.includes('--copies-only')) {

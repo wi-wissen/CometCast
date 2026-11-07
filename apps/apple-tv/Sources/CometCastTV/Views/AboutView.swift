@@ -19,7 +19,17 @@ struct AboutView: View {
     @FocusState private var focus: Focus?
 
     private var version: String { (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "" }
-    private var sourceUrl: String { "github.com/wi-wissen/CometCast" }
+    /// `github.com/wi-wissen/CometCast` from the branding file's source URL (spec 15.9).
+    private var sourceUrl: String {
+        Branding.sourceUrl.replacingOccurrences(of: #"^https?://"#, with: "", options: .regularExpression)
+    }
+    /// The host of the privacy page (`cometcast.de`); nil when the build has no privacy URL: then `about.webTv` is not
+    /// shown (spec 15.14 N108).
+    private var webHost: String? {
+        let url = Branding.privacyUrlDe.isEmpty ? Branding.privacyUrlEn : Branding.privacyUrlDe
+        guard let host = URL(string: url)?.host, !host.isEmpty else { return nil }
+        return host
+    }
 
     var body: some View {
         DialogCard {
@@ -31,9 +41,12 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: ref(6)) {
                 Text(L.t("about.version", ["version": version]))
                 Text(L.s("about.licence"))
-                Text(L.s("about.publisher"))
-                line("about.sourceTv", url: sourceUrl)
-                line("about.webTv", url: "cometcast.de")
+                // "Publisher: {name}", as written; not shown when the branding file has no name (N108).
+                if !Branding.publisherName.isEmpty {
+                    Text(L.t("about.publisher", ["name": Branding.publisherName]))
+                }
+                if !Branding.sourceUrl.isEmpty { line("about.sourceTv", url: sourceUrl) }
+                if let web = webHost { line("about.webTv", url: web) }
             }
             .dtype(DisplayType.hint).foregroundStyle(p.mut)
             HStack(spacing: ref(12)) {
@@ -141,7 +154,10 @@ struct LicencesView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: ref(Metrics.licenceRowHeight), alignment: .leading)
                     .padding(.horizontal, ref(8))
+                    // The entry the pane shows has the selected-tile look of 3.2: fill (none in OLED black) and a 2 px
+                    // `--acc` border; the border is always there (clear when not selected) so nothing moves (N100).
                     .background(RoundedRectangle(cornerRadius: ref(8)).fill(selected == i ? p.selectedTile : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: ref(8)).strokeBorder(selected == i ? p.acc : .clear, lineWidth: ref(2)))
                 }
                 .buttonStyle(.plain)
                 .focusEffectDisabled()

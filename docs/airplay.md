@@ -123,3 +123,21 @@ The display app of a mini-PC (Linux, macOS, Windows) runs UxPlay itself, through
 - **UxPlay found:** next to the running executable (where packages put it), then `PATH` (`locate_uxplay`). The Linux `.deb` has `Recommends: uxplay, gstreamer1.0-plugins-{base,good,bad}, avahi-daemon` (`release.yml`); macOS bundle and Windows packaging (MSYS2 build) are not done (item C10, UNCERTAIN). GPL-3.0 licence files of UxPlay and its bundled parts must be copied to `apps/flutter/assets/licenses/` where it is shipped (not done: nothing is shipped yet).
 - **Window.** UxPlay runs with `-fs`; `AirplayConfig::x11_display` sets its `DISPLAY` so the window opens on the screen of the Comet Cast window. UxPlay has no option to choose a monitor of one X screen; on Wayland and on macOS/Windows the window lands where the sink puts it. For a dialog during a mirror the Dart side calls `raiseWindow(true/false)` (`lib/window_control.dart`): the Linux runner implements `raise` (`gtk_window_set_keep_above`), Windows and macOS do not yet (the call answers false, the request then waits for the server's expiry).
 - **Limits (Beta, not shown on screen):** the host cannot press End over the UxPlay window; the mirror ends on the sending device, by switching AirPlay off in Settings, or by a Comet Cast presentation (`airplay_end_session`).
+
+## Device test plan: receiving with a real iPhone (release gate, spec 15.14 N115, native-apps.md 21.10 item 2)
+
+**Status: not run** (no iPhone, iPad or Mac was available). AirPlay receiving stays out of release builds until this plan passed on a real device with the packaged UxPlay. Machine: a Linux, macOS or Windows computer with the display app and the UxPlay that the package ships or recommends; one iPhone or iPad on the same network.
+
+| # | Do | Expect | Record |
+| --- | --- | --- | --- |
+| A1 | Display Settings, AirPlay on (Open). On the iPhone: Control Center, Screen Mirroring, pick the room name | The PIN dialog shows four digits; the iPhone asks for them; after entering them the iPhone screen is shown in UxPlay's window | Time until the room name is listed; the exact text of the PIN prompt |
+| A2 | Read the UxPlay output of A1 (`-d` is always passed) | **Exactly one** line `raop_rtp_mirror starting mirroring` per mirroring, after the PIN was shown in the same run | The whole log of one mirroring, with the log level of that line |
+| A3 | Stop mirroring on the iPhone | `Open connections: 0` appears and the app reports `Mirroring { active: false }` (the display is Idle again, the wake lock is released) | Whether the count reaches 0 after every stop; whether a second line `Open connections: 0` or a stuck count of 1 happens |
+| A4 | Mirror, stop, mirror again, five times; then mirror and switch the row off in Settings | One start line and one end per round; the end of the process ends the mirror | Any round with two start lines or no end |
+| A5 | Approval on: the request dialog (Yes, No) first, then the PIN; No refuses | The iPhone shows a failure; no PIN appears | The iPhone's wording |
+| A6 | Locked while a mirror runs; then Locked while idle | The running mirror stays; idle: the room name is no longer listed within 10 s | The time |
+| A7 | A Comet Cast presenter starts while the iPhone mirrors | The mirror ends with `toast.rxEnded`; while the presenter presents a pairing is refused without a dialog (N88) | How the iPhone reacts |
+| A8 | `airplay_receive_available()` on the packaged build | True only with a UxPlay that has both texts; the licence list has the entry "UxPlay" (GPL-3.0) second | The UxPlay version |
+
+After the run: replace the **UNCERTAIN** lines about the mirroring signal in this file by what was seen (device, iOS version, UxPlay version) and report each deviation as an issue.
+

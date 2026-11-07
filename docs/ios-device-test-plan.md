@@ -187,6 +187,18 @@ Partner: a desktop sender (`cometcast-cli send --screen`, or the Linux app), the
 | G4 | App Store Connect: privacy answers, export compliance, review notes (see ios.md, "App Store review notes") | The review notes and the privacy manifest agree with Xcode's **privacy report** | Required-reason API list in `PrivacyInfo.xcprivacy` (from memory) |
 | G5 | Remove the `UNVERIFIED` marker from the file names only after A to C, M1, M2 passed | | |
 
+## H. Share extension (round 5, native-apps.md 21.3 and 21.10 items 7 and 9c; spec 15.3, N107, N116)
+
+**Status: not run** (no Xcode and no device). The extension is written to the specification: activation predicate without `public.file-url` for the web-address branch, the section 13 icons `file`, `link` and `info` as vector template images (`ShareExtension/Assets.xcassets`), no SF Symbols, the address line `start.via` alone, no nearby section, settings in `share/share-settings.json`.
+
+| Id | Steps | Expected | UNCERTAIN / look for |
+| --- | --- | --- | --- |
+| H1 | In Files share a ZIP, a `.docx` and a video | **Comet Cast is not in the share sheet** for any of them | That the predicate (`UTI-CONFORMS-TO` with `NOT (... "public.file-url")` in the web-address branch) hides it; if it does not, report the registered type identifiers of the item |
+| H2 | Share a PDF from Files, a photo from Photos, a web address from Safari | Comet Cast is listed for each; a PDF that also registers a file URL still matches | Whether Files registers `public.file-url` next to `com.adobe.pdf` |
+| H3 | Share two items at once | Not listed | |
+| H4 | Open the sheet for a PDF (not connected) and while presenting (`share.stopClose`); Light and Dark; English and German | Screenshots of all eight, reviewed against spec 15.3 before release: the icon disc with the `file` icon in `p-primary`, the card, the address line (`via {dom}` only), the buttons | Any difference to spec 15.3, listed |
+| H5 | On the oldest supported iPhone: send a 64 MiB PDF from the extension; note `os_proc_available_memory` at the start, during and after | The extension is not killed | The numbers. If it does not fit, lower the extension's PDF limit (`MAX_DOCUMENT_BYTES` in `share.rs` and `ShareViewController.swift`); the refusal keeps the existing too-large text |
+
 ## Pass criteria
 
 | Area | Pass |
@@ -197,5 +209,6 @@ Partner: a desktop sender (`cometcast-cli send --screen`, or the Linux app), the
 | Receiving | C1 to C3, C5 pass; no codec card anywhere |
 | Failures | B9 to B11 give translated messages |
 | Network | D3 and D5 pass; D1, D2 and D4 are **recorded**, whatever the result |
+| Share extension | H1 to H3 pass; H4 screenshots reviewed; H5 measured and recorded |
 
 Anything marked "UNCERTAIN" in [ios.md](ios.md) that this plan settled should be turned into a statement there, with the device, the version and the number.

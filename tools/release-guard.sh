@@ -7,6 +7,9 @@
 #   tools/release-guard.sh skip-valid LIST        fail when LIST has a job name that is not known
 #   tools/release-guard.sh licenses-fresh [ROOT]  fail when THIRD_PARTY_LICENSES.md is missing or was generated
 #                                                 from other lock files than the ones in ROOT (default: the repository)
+#   tools/release-guard.sh uxplay-licence DIR     fail when DIR (a packaged bundle or staging folder) holds UxPlay
+#                                                 (a file `uxplay` or `uxplay.exe`) without UXPLAY_LICENSE.txt
+#                                                 (spec 15.14 N106: the licence entry is required wherever UxPlay ships)
 # Exit codes: 0 = free/valid, 1 = conflict or invalid, 2 = could not check (treated as a failure by
 # the workflow: a guard that cannot look must not wave the run through).
 # `tag-free` needs GH_TOKEN (a token that may list releases: drafts are only visible with
@@ -86,6 +89,18 @@ case "$cmd" in
     fi
     [ "$stale" -eq 0 ] || exit 1
     ;;
+  uxplay-licence)
+    # The app lists "UxPlay" (GPL-3.0) from the file UXPLAY_LICENSE.txt that the packaging copies next to the
+    # licence assets (tools/gen-third-party.mjs --uxplay-licence). A bundle that ships the program without it
+    # would list the AirPlay row without the entry: a release defect.
+    dir="${2:?bundle directory}"
+    [ -d "$dir" ] || { die "$dir is not a directory"; exit 2; }
+    if [ -n "$(find "$dir" -type f \( -name uxplay -o -name uxplay.exe \) -print -quit)" ]; then
+      if [ -z "$(find "$dir" -type f -name UXPLAY_LICENSE.txt -size +0c -print -quit)" ]; then
+        die "$dir ships UxPlay but has no UXPLAY_LICENSE.txt: run node tools/gen-third-party.mjs --uxplay-licence FILE and package its output"; exit 1
+      fi
+    fi
+    ;;
   skip-valid)
     list="${2-}"
     [ -z "$list" ] && exit 0
@@ -101,7 +116,7 @@ case "$cmd" in
     done
     ;;
   *)
-    echo "usage: $0 tag-free REPO TAG | image-free IMAGE VERSION | skip-valid LIST" >&2
+    echo "usage: $0 tag-free REPO TAG | image-free IMAGE VERSION | skip-valid LIST | licenses-fresh [ROOT] | uxplay-licence DIR" >&2
     exit 64
     ;;
 esac

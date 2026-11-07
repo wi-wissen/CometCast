@@ -49,6 +49,18 @@ expect "skip typo" 1 "$guard" skip-valid "linux,dokcer"
 expect "skip space" 1 "$guard" skip-valid "linux, docker"
 expect "skip trailing comma" 1 "$guard" skip-valid "linux,"
 
+# uxplay-licence
+ux="$tmp/ux"; mkdir -p "$ux/none/lib" "$ux/with/bin" "$ux/ok/bin" "$ux/ok/data" "$ux/win"
+: > "$ux/none/lib/libcc_ffi.so"
+: > "$ux/with/bin/uxplay"
+: > "$ux/ok/bin/uxplay"; echo "GNU GENERAL PUBLIC LICENSE" > "$ux/ok/data/UXPLAY_LICENSE.txt"
+: > "$ux/win/uxplay.exe"; : > "$ux/win/UXPLAY_LICENSE.txt"
+expect "uxplay not shipped" 0 "$guard" uxplay-licence "$ux/none"
+expect "uxplay shipped without the licence" 1 "$guard" uxplay-licence "$ux/with"
+expect "uxplay shipped with the licence" 0 "$guard" uxplay-licence "$ux/ok"
+expect "uxplay.exe with an empty licence file" 1 "$guard" uxplay-licence "$ux/win"
+expect "uxplay bundle missing" 2 "$guard" uxplay-licence "$ux/nope"
+
 # licenses-fresh
 lic="$tmp/lic"
 mkdir -p "$lic/apps/web" "$lic/apps/flutter"

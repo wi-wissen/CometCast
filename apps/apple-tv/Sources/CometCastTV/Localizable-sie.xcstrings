@@ -1231,13 +1231,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Published by Schulverwalter GmbH"
+            "value": "Publisher: {name} (N108)"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Herausgegeben von der Schulverwalter GmbH"
+            "value": "Herausgeber: {name}"
           }
         }
       }
