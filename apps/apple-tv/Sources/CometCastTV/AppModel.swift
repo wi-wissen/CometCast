@@ -25,6 +25,10 @@ final class AppModel: ObservableObject {
     @Published var pendingConfirmation: Relay?
     @Published var showStopConfirm = false
     @Published private(set) var iceServerCount = 0
+    /// When each waiting join request arrived (`nowMs`), for a countdown a designed UI may show; the server ends a
+    /// request after `joinRequestSecs` and says so, so this is only for display. Everything else about join approval
+    /// (mode, requests, block list, sender name, notice) is in `state`.
+    @Published private(set) var requestArrivals: [Int: Double] = [:]
     @Published var showStats = false { didSet { showStats ? startStats() : stopStats() } }
     @Published private(set) var statsText: [String] = []
     let discovery = Discovery()
@@ -155,6 +159,23 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: join approval (plumbing only; TODO(design): the screens that bind to this are not designed yet)
+
+    func setJoinMode(_ mode: JoinMode) { hostAction(.setJoinMode(mode)) }
+    func decide(_ id: Int, allow: Bool, block: Bool = false) { hostAction(.decide(id: id, allow: allow, block: block)) }
+    func denyAll() { hostAction(.denyAll) }
+    /// Ends the connected sender's presentation (the room stays).
+    func removePeer(block: Bool = false) { hostAction(.removePeer(block: block)) }
+    func unblock(_ id: Int) { hostAction(.unblock(id: id)) }
+    /// Ends the room session; a new room with a new code follows on the same connection.
+    func endRoom() { hostAction(.endRoom) }
+    func dismissNotice() { hostAction(.dismissNotice) }
+
+    private func hostAction(_ input: ReceiverInput) {
+        perform(machine.handle(input))
+        publish()
+    }
+
     // MARK: effects
 
     private func feed(_ input: ReceiverInput, gen: Int) {
@@ -249,6 +270,12 @@ final class AppModel: ObservableObject {
             log.info("phase \(self.machine.state.phase.rawValue, privacy: .public) error \(self.machine.state.errorCode ?? "-", privacy: .public) ice \(self.iceServerCount)")
         }
         state = machine.state
+        let waiting = Set(state.requests.map(\.id))
+        if waiting != Set(requestArrivals.keys) {
+            var next = requestArrivals.filter { waiting.contains($0.key) }
+            for id in waiting where next[id] == nil { next[id] = Self.nowMs }
+            requestArrivals = next
+        }
         UIApplication.shared.isIdleTimerDisabled = isRunning
         if !isRunning { discovery.start(browseAnnouncements: !choice.locked) }
     }

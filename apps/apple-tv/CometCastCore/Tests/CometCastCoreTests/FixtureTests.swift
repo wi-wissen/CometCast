@@ -110,19 +110,30 @@ final class FixtureTests: XCTestCase {
     }
 
     func testSignalingDecode() {
-        for c in Fixtures.cases(Fixtures.load("signaling.json"), "server_messages") {
+        let cs = Fixtures.cases(Fixtures.load("signaling.json"), "server_messages")
+        XCTAssertGreaterThan(cs.count, 30)
+        for c in cs {
+            // protocol version 2: the Swift decoder gives the shared result, no `expect_apple_tv` deviation
+            XCTAssertNil(c["expect_apple_tv"], "signaling.json must not carry a Swift deviation")
             let m = ServerMessage.decode(c["input"]?.stringValue ?? "")
-            XCTAssertEqual(m.map(Self.webShape) ?? .null, Fixtures.expected(c), "signaling: \(c["input"]?.stringValue ?? "")")
+            XCTAssertEqual(m.map(Self.webShape) ?? .null, c["expect"] ?? .null, "signaling: \(c["input"]?.stringValue ?? "")")
         }
     }
 
     static func webShape(_ m: ServerMessage) -> JSONValue {
         switch m {
         case .hello(let v): return .object(["type": .string("hello"), "proto_version": .number(v)])
-        case .roomCreated(let c): return .object(["type": .string("room_created"), "code": .string(c)])
+        case .roomCreated(let c, let m): return .object(["type": .string("room_created"), "code": .string(c), "join_mode": .string(m.rawValue)])
         case .joined: return .object(["type": .string("joined")])
-        case .peerJoined: return .object(["type": .string("peer_joined")])
+        case .peerJoined(let n): return .object(["type": .string("peer_joined"), "name": .string(n)])
         case .peerLeft: return .object(["type": .string("peer_left")])
+        case .roomEnded: return .object(["type": .string("room_ended")])
+        case .joinPending(let t, let c): return .object(["type": .string("join_pending"), "timeout_secs": .number(t), "check": .number(Double(c))])
+        case .joinRequest(let id, let n, let c): return .object(["type": .string("join_request"), "id": .number(Double(id)), "name": .string(n), "check": .number(Double(c))])
+        case .joinRequestCancelled(let id, let r): return .object(["type": .string("join_request_cancelled"), "id": .number(Double(id)), "reason": .string(r)])
+        case .joinModeChanged(let m): return .object(["type": .string("join_mode_changed"), "join_mode": .string(m.rawValue)])
+        case .blocked(let id, let n): return .object(["type": .string("blocked"), "id": .number(Double(id)), "name": .string(n)])
+        case .unblocked(let id): return .object(["type": .string("unblocked"), "id": .number(Double(id))])
         case .offer(let s): return .object(["type": .string("offer"), "sdp": .string(s)])
         case .answer(let s): return .object(["type": .string("answer"), "sdp": .string(s)])
         case .iceCandidate(let c): return .object(["type": .string("ice_candidate"), "candidate": .string(c)])

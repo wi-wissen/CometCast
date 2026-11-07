@@ -36,21 +36,11 @@
         "type": "room_created",
         "code": "ABC234",
         "join_mode": "confirm"
-      },
-      "expect_apple_tv": {
-        "type": "room_created",
-        "code": "ABC234"
-      },
-      "note_apple_tv": "TODO proto 2: see below"
+      }
     },
     {
       "input": "{\"type\":\"room_created\",\"code\":\"ABC234\"}",
-      "expect": null,
-      "expect_apple_tv": {
-        "type": "room_created",
-        "code": "ABC234"
-      },
-      "note_apple_tv": "TODO proto 2: the Swift client still decodes protocol 1 and must adopt join_mode (docs/appletv.md, 'Join approval')"
+      "expect": null
     },
     {
       "input": "{\"type\":\"room_created\"}",
@@ -68,22 +58,14 @@
     },
     {
       "input": "{\"type\":\"peer_joined\"}",
-      "expect": null,
-      "expect_apple_tv": {
-        "type": "peer_joined"
-      },
-      "note_apple_tv": "TODO proto 2: the Swift client still decodes protocol 1 and must adopt the sender name (docs/appletv.md, 'Join approval')"
+      "expect": null
     },
     {
       "input": "{\"type\":\"peer_joined\",\"name\":\"Ana\"}",
       "expect": {
         "type": "peer_joined",
         "name": "Ana"
-      },
-      "expect_apple_tv": {
-        "type": "peer_joined"
-      },
-      "note_apple_tv": "TODO proto 2: see above"
+      }
     },
     {
       "input": "{\"type\":\"peer_left\"}",

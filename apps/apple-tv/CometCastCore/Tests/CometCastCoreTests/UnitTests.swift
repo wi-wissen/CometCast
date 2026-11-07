@@ -106,9 +106,9 @@ final class AltchaBehaviourTests: XCTestCase {
 
 final class SignalingTests: XCTestCase {
     func testClientMessagesHaveTheProtocolShape() {
-        XCTAssertEqual(JSON.parse(ClientMessage.hello(role: .receiver).encode()), .object(["type": .string("hello"), "proto_version": .number(1), "role": .string("receiver")]))
-        XCTAssertEqual(JSON.parse(ClientMessage.createRoom(altcha: nil).encode()), .object(["type": .string("create_room")]))
-        XCTAssertEqual(JSON.parse(ClientMessage.createRoom(altcha: "abc=").encode()), .object(["type": .string("create_room"), "altcha": .string("abc=")]))
+        XCTAssertEqual(JSON.parse(ClientMessage.hello(role: .receiver).encode()), .object(["type": .string("hello"), "proto_version": .number(2), "role": .string("receiver")]))
+        XCTAssertEqual(JSON.parse(ClientMessage.createRoom(altcha: nil, joinMode: nil).encode()), .object(["type": .string("create_room")]))
+        XCTAssertEqual(JSON.parse(ClientMessage.createRoom(altcha: "abc=", joinMode: nil).encode()), .object(["type": .string("create_room"), "altcha": .string("abc=")]))
         XCTAssertEqual(JSON.parse(ClientMessage.answer(sdp: "v=0\r\n").encode()), .object(["type": .string("answer"), "sdp": .string("v=0\r\n")]))
         XCTAssertEqual(JSON.parse(ClientMessage.iceCandidate(candidate: "{}").encode()), .object(["type": .string("ice_candidate"), "candidate": .string("{}")]))
     }
@@ -138,12 +138,12 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         XCTAssertEqual(m.handle(.start), [.cancelAltcha, .resetContent, .closePeer, .closeSocket, .openSocket, .fetchIceServers])
         XCTAssertEqual(m.state.phase, .connecting)
-        XCTAssertEqual(m.handle(.serverReady), [.send(.createRoom(altcha: nil))])
-        XCTAssertEqual(m.handle(.message(.roomCreated(code: "ABC234"))), [])
+        XCTAssertEqual(m.handle(.serverReady), [.send(.createRoom(altcha: nil, joinMode: .open))])
+        XCTAssertEqual(m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open))), [])
         XCTAssertEqual(m.state.phase, .waitingSender)
         XCTAssertEqual(m.state.code, "ABC234")
         // messages before the ICE list are held
-        XCTAssertEqual(m.handle(.message(.peerJoined)), [])
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [])
         XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [])
         XCTAssertEqual(m.handle(.message(.iceCandidate(candidate: "C"))), [])
         XCTAssertEqual(m.state.phase, .waitingSender)
@@ -162,7 +162,7 @@ final class MachineTests: XCTestCase {
         XCTAssertFalse(m.state.hasVideo)
         XCTAssertEqual(m.state.code, "ABC234") // the code stays for the next sender
         // a new sender: a new peer
-        XCTAssertEqual(m.handle(.message(.peerJoined)), [.createPeer])
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.createPeer])
         XCTAssertEqual(m.state.phase, .negotiating)
     }
 
@@ -173,7 +173,7 @@ final class MachineTests: XCTestCase {
         _ = m.handle(.serverReady)
         XCTAssertEqual(m.handle(.message(.error(code: "altcha_required", message: ""))), [.solveAltcha])
         XCTAssertEqual(m.state.phase, .checking)
-        XCTAssertEqual(m.handle(.altchaSolved("PAYLOAD")), [.send(.createRoom(altcha: "PAYLOAD"))])
+        XCTAssertEqual(m.handle(.altchaSolved("PAYLOAD")), [.send(.createRoom(altcha: "PAYLOAD", joinMode: .open))])
         XCTAssertEqual(m.state.phase, .connecting)
         // a second altcha_required (the payload was refused) is an error: no endless loop
         let fx = m.handle(.message(.error(code: "altcha_required", message: "")))
@@ -201,7 +201,7 @@ final class MachineTests: XCTestCase {
             var m = ReceiverMachine()
             m.fetchesIce = false
             _ = m.handle(.start)
-            _ = m.handle(.message(.roomCreated(code: "ABC234")))
+            _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
             _ = m.handle(.message(.error(code: code, message: "x")))
             XCTAssertEqual(m.state.phase, .error, code)
             XCTAssertEqual(m.state.errorCode, code)
@@ -212,7 +212,7 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         m.fetchesIce = false
         _ = m.handle(.start)
-        _ = m.handle(.message(.roomCreated(code: "ABC234")))
+        _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
         XCTAssertEqual(m.handle(.message(.error(code: "not_in_room", message: ""))), [])
         XCTAssertEqual(m.state.phase, .waitingSender)
     }
@@ -221,7 +221,7 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         m.fetchesIce = false
         _ = m.handle(.start)
-        _ = m.handle(.message(.roomCreated(code: "ABC234")))
+        _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
         _ = m.handle(.socketClosed)
         XCTAssertEqual(m.state.errorCode, "connection_lost")
         XCTAssertEqual(m.handle(.socketClosed), []) // already in error
@@ -229,8 +229,8 @@ final class MachineTests: XCTestCase {
         _ = m.handle(.start)
         XCTAssertEqual(m.state.phase, .connecting)
         XCTAssertNil(m.state.errorCode)
-        _ = m.handle(.message(.roomCreated(code: "ABC234")))
-        _ = m.handle(.message(.peerJoined))
+        _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
+        _ = m.handle(.message(.peerJoined(name: "Ana")))
         _ = m.handle(.peerFailed)
         XCTAssertEqual(m.state.errorCode, "peer_failed")
         XCTAssertNil(m.state.sas)
@@ -243,7 +243,7 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         m.fetchesIce = false
         _ = m.handle(.start)
-        _ = m.handle(.message(.roomCreated(code: "ABC234")))
+        _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
         _ = m.handle(.message(.offer(sdp: "O")))
         _ = m.handle(.answerFailed)
         XCTAssertEqual(m.state.errorCode, "peer_failed")
@@ -253,8 +253,8 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         m.fetchesIce = false
         _ = m.handle(.start)
-        _ = m.handle(.message(.roomCreated(code: "ABC234")))
-        _ = m.handle(.message(.peerJoined))
+        _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
+        _ = m.handle(.message(.peerJoined(name: "Ana")))
         _ = m.handle(.message(.peerLeft))
         _ = m.handle(.sasReady("111 222"))
         XCTAssertNil(m.state.sas)
@@ -264,7 +264,7 @@ final class MachineTests: XCTestCase {
         var m = ReceiverMachine()
         m.fetchesIce = false
         _ = m.handle(.start)
-        for msg: ServerMessage in [.hello(protoVersion: 1), .joined, .answer(sdp: "x"), .control(cmd: .string("stop"))] {
+        for msg: ServerMessage in [.hello(protoVersion: 2), .joined, .joinPending(timeoutSecs: 60, check: 42), .answer(sdp: "x"), .control(cmd: .string("stop"))] {
             XCTAssertEqual(m.handle(.message(msg)), [])
         }
         XCTAssertEqual(m.state.phase, .connecting)

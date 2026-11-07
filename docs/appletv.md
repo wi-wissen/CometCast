@@ -111,16 +111,34 @@ The same scheme as the web client and the Rust cores (PoW v2, PBKDF2 with SHA-25
 
 Identical to `sas.ts`: SHA-256 over `cometcast/connection-check/v1\n<fp1>\n<fp2>` with the two lower-case DTLS fingerprints sorted, first four bytes as a number modulo 1 000 000, shown as `123 456`. Computed from the answer's SDP and the offer's SDP when the peer connects; shown on the code screen and as a small badge over the video; the explanation text is the web app's (the app does not enforce a comparison). Known-answer vectors are in `tests/fixtures/sas.json` and were produced by the web implementation.
 
-## Join approval (protocol version 2): TODO
+## Join approval (protocol version 2)
 
-**TODO, not done: the Swift client in `apps/apple-tv/CometCastCore` still speaks protocol version 1** (`protoVersion = 1` in `Signaling.swift`). The server, the web app, the Rust cores, `cc-ios` and `cometcast-cli` speak **protocol version 2** ([protocol.md](protocol.md#join-approval)). A version 1 client is answered with `proto_mismatch`, so the Apple TV app **cannot connect to a current server until it adopts version 2**. What it must do (nothing of this is implemented here):
+The Swift client speaks **protocol version 2** (`protoVersion = 2` in `Signaling.swift`), like the server, the web app, the Rust cores and the CLI ([protocol.md](protocol.md#join-approval)). The TV is the **owner of its room**: only the connection that created the room may decide who joins. Sender-side messages (`join_room` with `name`, `cancel_join`) exist in `ClientMessage` for the shared vectors, but the tvOS app is not a sender.
 
-- Send `proto_version: 2` in `hello`; `create_room` may carry `join_mode`, and `room_created` now carries `join_mode` (`open`, `confirm`, `locked`).
-- Receiver side (the TV): decode `join_request` (`id`, `name`, `check`), `join_request_cancelled`, `join_mode_changed`, `blocked`, `unblocked`; answer with `join_decision` (`allow`, optional `block`) and `set_join_mode`; show the sender name as unverified text, the two-digit check number, and a decision that is safe with a Siri Remote (hold to allow). `peer_joined` carries the sender `name`.
-- Sender side (not planned for tvOS): `join_room` with `name`, `join_pending`, `join_denied`, `room_locked`, `approval_timeout`.
-- Take the vectors of `tests/fixtures/join-approval/` into `FixtureTests.swift`, and remove the `expect_apple_tv` overrides (marked `note_apple_tv`, "TODO proto 2") from `tests/fixtures/signaling.json` when the decoder returns the version 2 shapes (`room_created.join_mode`, `peer_joined.name`).
+**Messages** (`CometCastCore/Signaling.swift`; strict decoding like `decodeServerMessage`: a missing or mistyped field gives `nil`, ids and check numbers must be integers):
 
-Until then the Swift fixture tests keep passing on the protocol 1 shapes through those overrides. Join approval is not part of the tvOS device test plan yet.
+| Direction | Message | Swift |
+| --- | --- | --- |
+| to server | `hello {proto_version: 2, role}` | `ClientMessage.hello` |
+| to server | `create_room {altcha?, join_mode}` | `.createRoom(altcha:joinMode:)`, always with a mode (`open` by default) |
+| to server | `set_join_mode`, `join_decision {id?, allow, block?}`, `remove_peer {block?}`, `unblock {id}`, `end_room` | `.setJoinMode`, `.joinDecision`, `.removePeer`, `.unblock`, `.endRoom`; `block` is only written when true, and for `join_decision` only with a denial of one request |
+| from server | `room_created {code, join_mode}` (mode required), `peer_joined {name}` (name required) | `.roomCreated(code:joinMode:)`, `.peerJoined(name:)` |
+| from server | `join_request {id, name, check}`, `join_request_cancelled {id, reason}`, `join_mode_changed`, `blocked {id, name}`, `unblocked {id}`, `room_ended`, `join_pending` | `.joinRequest`, `.joinRequestCancelled`, `.joinModeChanged`, `.blocked`, `.unblocked`, `.roomEnded`, `.joinPending` (the receiver ignores it) |
+
+**State machine** (`ReceiverMachine`, a port of the web `receiverSession.ts` join logic). New state in `ReceiverState`: `joinMode` (default `open`), `requests` (oldest first: `id`, cleaned `name`, two-digit `check`), `peerName`, `blocks`, `notice`. New inputs for the host's actions: `setJoinMode`, `decide(id:allow:block:)`, `denyAll`, `removePeer(block:)`, `unblock(id:)`, `endRoom`, `dismissNotice`; each returns a `send` effect and does nothing without a room (no code yet).
+
+- **Mode.** The wanted mode survives start, stop and new rooms. `create_room` carries it; if the server's `room_created.join_mode` differs, a `set_join_mode` follows. `join_mode_changed` is what changes `state.joinMode`. If the server answers `open_rooms_disabled` while the room is being created, the machine asks again with `confirm` (same ALTCHA payload) and sets the notice `openDisabled`.
+- **Requests.** A queue, no timer: the server ends a request after 60 s (`joinRequestSecs`, UNCERTAIN: an operator can change it) with `join_request_cancelled` (`timeout`, `left`, `cancelled`, `locked`, `room_full`, `blocked`). A decision removes the request at once (as the web client does); an unknown id is not sent. `locked` cancellations add up in the notice `lockedDiscarded(count:)` until the mode changes to something else.
+- **Block list.** `blocked` adds, `unblocked` removes, duplicates are ignored. It is cleared when the room ends.
+- **End the presentation / the session.** `removePeer` ends the connected sender's presentation (server answers `peer_left`, phase `peer_left`, the code stays). `endRoom` sends `end_room`; on `room_ended` the machine drops peer and content, clears requests and blocks and sends `create_room` again on the same connection (new code).
+- **Errors.** `no_such_request` and `no_such_block` are ignored, `block_list_full` sets the notice `blockListFull`, all other errors are terminal as before (and now also clear requests, blocks and sender name). `joinApprovalErrorCodes` lists the new codes; they have **no string-catalog entries** and so show the generic message (see TODO below). Deviation from the web client: the web client ends the session on `no_such_block` and `block_list_full`; the Swift machine does not, because the room is intact.
+- **Names.** `sanitizeDisplayName` repeats the server's rules (control, bidi, zero-width, invisible and private-use characters removed, white space collapsed, 40 Unicode scalars, `Guest N` when nothing is left; `N` is the request id, or the count of senders for `peer_joined`) as defence in depth. Markup is not removed: show every name as plain text.
+
+**App target** (`AppModel`, no views changed): `state` carries all of the above; `setJoinMode`, `decide`, `denyAll`, `removePeer`, `unblock`, `endRoom` and `dismissNotice` feed the machine; `requestArrivals` stamps when each request arrived for a possible countdown. `SignalingSocket` needed no change (the version check uses `protoVersion`).
+
+**TODO, decisions for the design (not made here):** the screens for a request (takeover on the code page, banner while presenting, Yes / No / No and block, the Siri Remote rules such as "hold to allow", ignoring presses for about 700 ms, focus on "No"), the host menu (mode, block list, end presentation, end session), the wording and translations of all of it and of the new error codes (`errors.<code>` keys), whether the chosen mode is remembered (`ConfigStore`), and the mode the app asks for by default (today `open`, as everywhere). Join approval is not part of the tvOS device test plan yet.
+
+**Tests.** `JoinApprovalTests.swift` reads `tests/fixtures/join-approval/` (messages, flows replayed against the machine, error codes, name vectors); `FixtureTests.testSignalingDecode` uses the shared `signaling.json` without any `expect_apple_tv` deviation.
 
 ## Content channel
 

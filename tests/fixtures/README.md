@@ -23,7 +23,7 @@ JSON vectors that several implementations must agree on. The **web client is the
 | `room-code.json` | `normalizeRoomCode`, `isValidRoomCode` | 15 |
 | `content-scenarios.json` | event sequences of the content receiver: chunking, limits, stall, throttling | 19 |
 
-The folder `join-approval/` (message wire formats, flows, error codes, name sanitising of protocol version 2) is read by `crates/cc-proto/tests/join_approval_fixtures.rs` (`cargo test -p cc-proto`) and, on the web side, by `apps/web/tests/joinApproval.test.ts`. **TODO:** the Swift package does not read it yet, because the Apple TV client has not adopted protocol version 2 ([docs/appletv.md](../../docs/appletv.md#join-approval-protocol-version-2-todo)). Until then `signaling.json` carries `expect_apple_tv` (protocol 1 shapes) on the cases that differ.
+The folder `join-approval/` (message wire formats, flows, error codes, name sanitising of protocol version 2) is read by `crates/cc-proto/tests/join_approval_fixtures.rs` (`cargo test -p cc-proto`), on the web side by `apps/web/tests/joinApproval.test.ts` and on the Apple TV side by `apps/apple-tv/CometCastCore/Tests/CometCastCoreTests/JoinApprovalTests.swift`. `signaling.json` has no Swift deviation any more: all three implementations return the same results.
 
 ## Format
 

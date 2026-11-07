@@ -2,7 +2,8 @@
 // UNCERTAIN: never compiled (no Xcode here).
 //
 // WebSocket to the signalling server (docs/protocol.md): one JSON text frame per message, binary frames are
-// ignored. hello is sent when the socket opens; the server's hello is checked for the protocol version.
+// ignored. hello is sent when the socket opens; the server's hello is checked for the protocol version (2, with join approval;
+// the join approval messages are plain `ClientMessage`/`ServerMessage` values, so nothing else is needed here).
 
 import CometCastCore
 import Foundation
