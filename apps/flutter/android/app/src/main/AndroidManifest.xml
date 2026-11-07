@@ -64,13 +64,24 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- App Links (native-apps.md 20.4): https://relay.cometcast.de/{CODE} opens the app on
-                 a phone or tablet that has it. Only the built-in relay's host; other hosts stay
-                 browser links. `/......` is a path of exactly six characters (the room code);
-                 /display and /app are longer or shorter and stay in the browser. autoVerify
-                 needs https://relay.cometcast.de/.well-known/assetlinks.json (deploy/well-known,
-                 docs/android.md). UNCERTAIN: "relay.cometcast.de" is the planned name only
-                 (crates/cc-discovery). -->
+            <!-- App Links (native-apps.md 20.4, amended by 21.6): https://cometcast.de/app/{CODE}
+                 opens the app on a phone or tablet that has it. `/app/......` is a path of
+                 `/app/` and exactly six characters (the room code); /app/display, /app and the
+                 rest of the website stay in the browser. autoVerify needs
+                 https://cometcast.de/.well-known/assetlinks.json (served by the website,
+                 deploy/well-known, .github/workflows/pages.yml, docs/android.md). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="cometcast.de"
+                      android:pathPattern="/app/......"/>
+            </intent-filter>
+            <!-- The old form https://relay.cometcast.de/{CODE} (links and QR codes made before
+                 the join address moved to cometcast.de/app) may stay until that host is retired.
+                 autoVerify needs the same file on relay.cometcast.de. UNCERTAIN:
+                 "relay.cometcast.de" is the planned name only (crates/cc-discovery). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>

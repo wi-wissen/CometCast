@@ -12,8 +12,8 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * App Links and the Google Play install referrer for Dart (native-apps.md 20.4), MethodChannel
  * `de.cometcast/links`:
- * - `initialLink` -> String?: the https link that started the activity (an App Link of the
- *   built-in relay's host, see the intent filter in AndroidManifest.xml), or null.
+ * - `initialLink` -> String?: the https link that started the activity (an App Link of
+ *   cometcast.de/app/{CODE}, see the intent filters in AndroidManifest.xml), or null.
  * - `installReferrer` -> String?: the `referrer` string of the Google Play install referrer, or
  *   null (not installed from Google Play, no referrer, service not available).
  * - Dart receives `link` (String) when a link arrives while the app runs ([onNewIntent]).
