@@ -90,6 +90,9 @@ function setCargoToml(root, version) {
   return m[2];
 }
 
+/** Crates of `vendor/` (third-party, patched in the tree); their version is not the project version. */
+const VENDORED = new Set(['mdns-sd']);
+
 function setCargoLock(root, oldVersion, version) {
   const rel = 'Cargo.lock';
   const path = join(root, rel);
@@ -98,8 +101,10 @@ function setCargoLock(root, oldVersion, version) {
   let changed = 0;
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
-    // Workspace crates (path dependencies) have no `source` line; registry crates do.
-    if (/^source = /m.test(block)) continue;
+    // Workspace crates (path dependencies) have no `source` line; registry crates do. The patched
+    // third-party crates under vendor/ (vendor/mdns-sd, wired in by [patch.crates-io]) have none
+    // either, but are not ours: they keep their own version.
+    if (/^source = /m.test(block) || VENDORED.has(/^name = "([^"]*)"$/m.exec(block)?.[1])) continue;
     const m = /^version = "([^"]*)"$/m.exec(block);
     if (!m) continue;
     if (m[1] !== oldVersion) fail(`${rel}: workspace crate with version ${m[1]}, expected ${oldVersion}`);
