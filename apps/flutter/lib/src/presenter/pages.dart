@@ -849,12 +849,11 @@ class RelayConfirmPage extends StatelessWidget {
       actionsRow: true,
       // Cancel first, Use this relay second; Cancel has the initial focus (decision 48).
       actions: [
-        PTapAutofocus(
-          child: PSecondaryButton(
-            key: const Key('relay-cancel'),
-            label: t.relayConfirmCancel,
-            onPressed: onCancel,
-          ),
+        PSecondaryButton(
+          key: const Key('relay-cancel'),
+          label: t.relayConfirmCancel,
+          autofocus: true,
+          onPressed: onCancel,
         ),
         PPrimaryButton(
           key: const Key('relay-use'),
@@ -874,20 +873,6 @@ class RelayConfirmPage extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Gives the first focusable inside the initial focus.
-class PTapAutofocus extends StatelessWidget {
-  const PTapAutofocus({super.key, required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Focus(
-    autofocus: true,
-    skipTraversal: true,
-    descendantsAreFocusable: true,
-    child: child,
-  );
 }
 
 // --- video codec (5.8) --------------------------------------------------------------------

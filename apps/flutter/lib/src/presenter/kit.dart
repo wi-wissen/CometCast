@@ -317,11 +317,15 @@ class PSecondaryButton extends StatelessWidget {
     required this.onPressed,
     this.icon,
     this.fullWidth = false,
+    this.autofocus = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final CcIconName? icon;
+
+  /// Takes the initial focus (the safe answer of a question, decision 48).
+  final bool autofocus;
 
   /// Fill the width even on the laptop (the two page buttons of a PDF).
   final bool fullWidth;
@@ -334,6 +338,7 @@ class PSecondaryButton extends StatelessWidget {
     return PTap(
       onPressed: onPressed,
       radius: 10,
+      autofocus: autofocus,
       builder: (_) => Container(
         constraints: BoxConstraints(
           minHeight: 48,

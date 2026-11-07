@@ -14,6 +14,7 @@ import 'package:cometcast/core/miracast.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 import 'package:cometcast/miracast_controller.dart';
 import 'package:cometcast/miracast_page.dart';
+import 'package:cometcast/src/presenter/kit.dart';
 
 import 'fake_miracast.dart';
 
@@ -459,10 +460,12 @@ void main() {
         findsNothing,
         reason: 'nothing before consent',
       );
-      final deny = tester.widget<TextButton>(
-        find.byKey(const Key('miracastDeny')),
+      // The first focus is on Decline: an accidental Enter must not share a screen.
+      final focused = FocusManager.instance.primaryFocus!.context!;
+      expect(
+        focused.findAncestorWidgetOfExactType<PSecondaryButton>()?.key,
+        const Key('miracastDeny'),
       );
-      expect(deny.autofocus, isTrue);
       await tester.tap(find.byKey(const Key('miracastDeny')));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();

@@ -23,7 +23,6 @@ import 'core/miracast.dart';
 import 'miracast_controller.dart';
 import 'src/design/icons.dart';
 import 'src/presenter/kit.dart';
-import 'src/presenter/pages.dart' show PTapAutofocus;
 
 /// Longest receiver name Windows accepts, as far as we know (crates/cc-miracast policy.rs).
 // UNCERTAIN: a conservative guess, the Rust side validates too.
@@ -189,11 +188,10 @@ class _MiracastPageState extends State<MiracastPage> {
           const SingleActivator(LogicalKeyboardKey.escape): () =>
               Navigator.of(context).maybePop(),
         },
-        child: Focus(
-          autofocus: true,
-          child: Material(
-            type: MaterialType.transparency,
-            child: _c.pending != null
+        child: Material(
+          type: MaterialType.transparency,
+          child: Builder(
+            builder: (context) => _c.pending != null
                 ? _consent(context, _c.pending!)
                 : _main(context),
           ),
@@ -213,12 +211,11 @@ class _MiracastPageState extends State<MiracastPage> {
       child: PPage(
         actionsRow: true,
         actions: [
-          PTapAutofocus(
-            child: PSecondaryButton(
-              key: const Key('miracastDeny'),
-              label: t.miracastConsentDeny,
-              onPressed: () => _answer(r, false),
-            ),
+          PSecondaryButton(
+            key: const Key('miracastDeny'),
+            label: t.miracastConsentDeny,
+            autofocus: true,
+            onPressed: () => _answer(r, false),
           ),
           PPrimaryButton(
             key: const Key('miracastAllow'),
