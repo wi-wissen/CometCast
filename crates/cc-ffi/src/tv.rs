@@ -263,9 +263,10 @@ pub(crate) trait TvLink: Send {
 fn map_sender(e: &SenderError) -> TvFail {
     match e {
         SenderError::Auth(_) => TvFail::Refused(e.to_string()),
-        SenderError::Status { status, .. } if matches!(status, 401 | 403 | 470) => {
-            TvFail::Refused(e.to_string())
-        }
+        SenderError::Status {
+            status: 401 | 403 | 470,
+            ..
+        } => TvFail::Refused(e.to_string()),
         SenderError::Io(_) | SenderError::Timeout(_) => TvFail::Lost(e.to_string()),
         SenderError::Unsupported(_) | SenderError::Input(_) | SenderError::TooLarge(_) => {
             TvFail::Unsupported(e.to_string())
@@ -966,8 +967,7 @@ mod tests {
             }
             *lock(&test_support::FACTORY) = None;
             clear_registry();
-            let calls = lock(&self.script).calls.clone();
-            calls
+            lock(&self.script).calls.clone()
         }
     }
 
