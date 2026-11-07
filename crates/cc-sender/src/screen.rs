@@ -48,6 +48,11 @@ pub struct ScreenOptions {
     pub display: Option<String>,
     /// Id of the capture source (from `ScreenSource::list_sources`). `None` = whole desktop.
     pub source_id: Option<String>,
+    /// Use the system's own screen picker (`cc_capture::open_picker`): the person chooses a
+    /// screen or window in a dialog the system draws. `display` is then only the X11 fallback
+    /// display, and `source_id` is ignored. A cancelled picker ends `prepare` with
+    /// [`PrepareError::Denied`].
+    pub picker: bool,
     /// How often the screen is looked at.
     pub fps: u32,
     /// Encoder target bit rate in bits per second.
@@ -62,6 +67,7 @@ impl Default for ScreenOptions {
         Self {
             display: None,
             source_id: None,
+            picker: false,
             fps: 15,
             bitrate_bps: 2_000_000,
             refresh: RefreshConfig::default(),
@@ -288,19 +294,55 @@ pub(crate) struct Prepared {
     pub(crate) counters: Arc<Counters>,
 }
 
-/// Open the capture source and the encoder.
-pub(crate) fn prepare(options: ScreenOptions, counters: Arc<Counters>) -> Result<Prepared, String> {
-    let mut source = cc_capture::open_default(options.display.as_deref(), options.fps)
-        .map_err(|e| e.to_string())?;
-    let list = source.list_sources().map_err(|e| e.to_string())?;
-    let chosen = match &options.source_id {
-        Some(id) => list
+/// Why the screen could not be prepared.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PrepareError {
+    /// The person cancelled the system picker or the system refused (`capture_denied`).
+    Denied(String),
+    /// Anything else (`capture_unavailable`).
+    Failed(String),
+}
+
+impl From<String> for PrepareError {
+    fn from(s: String) -> Self {
+        Self::Failed(s)
+    }
+}
+
+pub(crate) fn capture_err(e: cc_capture::CaptureError) -> PrepareError {
+    match e {
+        cc_capture::CaptureError::Denied => PrepareError::Denied(e.to_string()),
+        other => PrepareError::Failed(other.to_string()),
+    }
+}
+
+/// Open the capture source and the encoder. With `options.picker` this blocks while the
+/// system picker is open (call it from a blocking thread).
+pub(crate) fn prepare(
+    options: ScreenOptions,
+    counters: Arc<Counters>,
+) -> Result<Prepared, PrepareError> {
+    let mut source = if options.picker {
+        cc_capture::open_picker(&cc_capture::PickerOptions {
+            fps: options.fps,
+            x11_display: options.display.clone(),
+            ..cc_capture::PickerOptions::default()
+        })
+    } else {
+        cc_capture::open_default(options.display.as_deref(), options.fps)
+    }
+    .map_err(capture_err)?;
+    let list = source.list_sources().map_err(capture_err)?;
+    let chosen = match (&options.source_id, options.picker) {
+        (Some(id), false) => list
             .iter()
             .find(|s| &s.id == id)
             .ok_or_else(|| format!("no capture source {id:?}"))?,
-        None => list.first().ok_or("no capture source available")?,
+        _ => list
+            .first()
+            .ok_or_else(|| "no capture source available".to_string())?,
     };
-    source.start(chosen).map_err(|e| e.to_string())?;
+    source.start(chosen).map_err(capture_err)?;
     let encoder = H264Encoder::new(&H264Config {
         bitrate_bps: options.bitrate_bps,
         fps: options.fps as f32,

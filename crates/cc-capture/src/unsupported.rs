@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Capture backends that do not exist yet. Each one implements [`ScreenSource`] and answers
-//! every call with [`CaptureError::Unsupported`]; their crates are deliberately not pulled in.
+//! Stand-ins for capture backends that are not compiled in. Each one implements [`ScreenSource`]
+//! and answers every call with [`CaptureError::Unsupported`]. [`WaylandPipeWire`] is what
+//! `open_picker` reports on Linux when the crate was built without the `wayland` feature;
+//! [`Windows`] and [`MacOs`] are kept for code that wants a value of the right type on a system
+//! whose real backend (`windows_wgc`, `macos_sck`) is only built on that system.
 
 use crate::{Capture, CaptureError, CaptureSource, ScreenSource};
 
@@ -33,29 +36,22 @@ macro_rules! stub {
 }
 
 stub!(
-    /// Linux/Wayland through the desktop portal and PipeWire.
-    ///
-    /// UNCERTAIN: the plan names the xdg-desktop-portal ScreenCast interface plus PipeWire as
-    /// the way; how well it works on typical office PC desktops (GNOME, KDE, wlroots) is not tested.
+    /// Linux/Wayland through the desktop portal and PipeWire: the real backend is
+    /// `wayland::WaylandSource` (cargo feature `wayland`); this is the answer without it.
     WaylandPipeWire,
-    "Wayland capture (desktop portal + PipeWire) is not implemented"
+    "Wayland capture needs a build with the `wayland` feature (desktop portal + PipeWire)"
 );
 
 stub!(
-    /// Windows.
-    ///
-    /// UNCERTAIN: the plan mentions DXGI desktop duplication; not looked at yet.
+    /// Windows: the real backend is `windows_wgc::WgcSource` (Windows targets only).
     Windows,
-    "Windows capture is not implemented"
+    "Windows capture is only built on Windows"
 );
 
 stub!(
-    /// macOS.
-    ///
-    /// UNCERTAIN: the plan mentions ScreenCaptureKit; not looked at yet, and it needs a
-    /// screen-recording permission prompt that has not been designed.
+    /// macOS: the real backend is `macos_sck::SckSource` (macOS targets only).
     MacOs,
-    "macOS capture is not implemented"
+    "macOS capture is only built on macOS"
 );
 
 #[cfg(test)]

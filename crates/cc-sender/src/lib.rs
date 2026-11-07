@@ -266,10 +266,25 @@ impl SenderCore {
             // Open the screen and the encoder before anything is negotiated, so a missing
             // display or encoder is an error of `start`.
             let prepared = match options.screen.take() {
-                Some(screen_options) => Some(
-                    screen::prepare(screen_options, Arc::clone(&counters))
-                        .map_err(TransportError::Invalid)?,
-                ),
+                Some(screen_options) => {
+                    // The system picker blocks until the person chooses: not on the async
+                    // threads.
+                    let counters = Arc::clone(&counters);
+                    let prepared = tokio::task::spawn_blocking(move || {
+                        screen::prepare(screen_options, counters)
+                    })
+                    .await
+                    .map_err(|e| TransportError::Invalid(format!("capture setup failed: {e}")))?;
+                    Some(prepared.map_err(|e| match e {
+                        // The code `capture_denied` travels as a `Server` error code, which
+                        // `TransportError::code` returns unchanged.
+                        screen::PrepareError::Denied(message) => TransportError::Server {
+                            code: "capture_denied".into(),
+                            message,
+                        },
+                        screen::PrepareError::Failed(m) => TransportError::Invalid(m),
+                    })?)
+                }
                 None => None,
             };
             let codec = if prepared.is_some() || options.external.is_some() {

@@ -426,9 +426,12 @@ Stream<PresenterUiEvent> startPresenter({
 Future<void> stopPresenter() => RustLib.instance.api.crateApiStopPresenter();
 
 /// Share the screen in the joined presenter session. `Some(request)`: the X11 screen with these
-/// settings. `None`: the system picker of the desktop (native-apps.md 20.3); this core has no
-/// picker yet and reports `capture_unavailable`. A cancelled or refused capture is
-/// `capture_denied`; neither ends the session. Returns `false` if no presenter session runs.
+/// settings. `None`: the system picker of the desktop (native-apps.md 20.3): the xdg-desktop-portal
+/// ScreenCast picker on Linux (build feature `wayland`; X11 whole desktop where no portal
+/// exists), `GraphicsCapturePicker` on Windows, `SCContentSharingPicker` on macOS 14+. A
+/// cancelled or refused capture is `capture_denied`, a system without a usable backend
+/// `capture_unavailable`; neither ends the session. Returns `false` if no presenter session
+/// runs. The picker blocks a worker thread while it is open, not the app.
 bool presentScreen({ScreenRequest? screen}) =>
     RustLib.instance.api.crateApiPresentScreen(screen: screen);
 

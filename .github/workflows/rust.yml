@@ -17,7 +17,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown,x86_64-pc-windows-gnu
+          targets: wasm32-unknown-unknown,x86_64-pc-windows-gnu,aarch64-apple-darwin
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -30,8 +30,28 @@ jobs:
       # code on Windows targets. Clippy for the gnu target needs no C compiler for these two
       # crates (docs/miracast.md, "What was verified"). Nothing is linked or run.
       - run: cargo clippy -p cc-miracast -p cc-miracast-ffi --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+      # The screen capture backends with the system picker: Windows Graphics Capture (windows
+      # crate) and ScreenCaptureKit (objc2 crates) only compile their own platform's code. For
+      # these two targets a type check and clippy need no SDK and no C compiler (docs/capture.md,
+      # "Desktop capture with the system picker"). Nothing is linked or run.
+      - run: cargo clippy -p cc-capture --target x86_64-pc-windows-gnu -- -D warnings
+      - run: cargo clippy -p cc-capture --target aarch64-apple-darwin -- -D warnings
       # cc-proto must stay usable in the browser (WebAssembly).
       - run: cargo check -p cc-proto --target wasm32-unknown-unknown
+  # Wayland screen capture (desktop portal + PipeWire, cargo feature `wayland` of cc-capture).
+  # Needs the PipeWire development files; the loopback test runs against a real PipeWire daemon
+  # with a fake screen producer (tools/pipewire-loopback-test.sh). The portal is not tested.
+  wayland:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpipewire-0.3-dev libclang-dev pipewire wireplumber dbus
+      - run: cargo clippy -p cc-capture --features wayland --all-targets -- -D warnings
+      - run: cargo test -p cc-capture --features wayland
+      - run: tools/pipewire-loopback-test.sh
   # The release variant of the CLI must not contain an OpenH264 source build (docs/capture.md,
   # "H.264 licensing"). The other job builds with the development default `h264-source`.
   release-variant:

@@ -40,6 +40,9 @@ default = ["h264-source"]
 h264 = ["dep:cc-media"]
 h264-source = ["h264", "cc-media/h264-source", "cc-sender/h264-source"]
 h264-libloading = ["h264", "cc-media/h264-libloading", "cc-sender/h264-libloading", "dep:cc-codec"]
+# Linux: system screen picker through the desktop portal and PipeWire (Wayland). Needs
+# libpipewire-0.3-dev to build and libpipewire-0.3.so.0 at run time; see docs/capture.md.
+wayland = ["cc-sender/wayland"]
 
 [dependencies]
 cc-proto.workspace = true

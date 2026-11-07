@@ -18,6 +18,8 @@ workspace = true
 default = ["h264-source"]
 h264-source = ["cc-media/h264-source"]
 h264-libloading = ["cc-media/h264-libloading"]
+# Linux: capture through the desktop portal and PipeWire on Wayland (needs libpipewire-0.3-dev).
+wayland = ["cc-capture/wayland"]
 
 [dependencies]
 cc-proto.workspace = true

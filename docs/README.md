@@ -9,7 +9,8 @@
 | [../bins/cometcast-server/README.md](../bins/cometcast-server/README.md) | Server README: quick start, settings table, modes, hardening checklist, troubleshooting |
 | [../deploy/README.md](../deploy/README.md) | Deployment guide: Docker Compose, reverse proxy (Caddy, nginx), TLS, coturn, firewall, upgrade |
 | [website.md](website.md) | The static website (cometcast.de): layout, GitHub Pages setup the owner does once, DNS, web app and relay hosting |
-| [capture.md](capture.md) | Real screen content from the native sender (X11) as H.264: capture, change detection, encoder, key frames, numbers seen, limits, licensing questions |
+| [capture.md](capture.md) | Real screen content from the native sender as H.264: X11 capture, the system-picker backends (Wayland portal + PipeWire, Windows Graphics Capture, macOS ScreenCaptureKit; built to specification), change detection, encoder, key frames, numbers seen, limits, licensing questions |
+| [linux-wayland-test-plan.md](linux-wayland-test-plan.md), [windows-capture-test-plan.md](windows-capture-test-plan.md), [macos-capture-test-plan.md](macos-capture-test-plan.md) | Manual checklists for the desktop screen picker on each system (measurement points A10, A11, A1 and spike 1); nothing in them has been run |
 | [transport.md](transport.md) | The native WebRTC path (`cc-transport`, receiver and sender cores, CLI): what works and what does not |
 | [web-m2.md](web-m2.md) | Web app toolbar, image, link and PDF transfer over the control DataChannel (message format, limits, PDF rendering in the browser) |
 | [android.md](android.md) | Android and Android TV build (cargo-ndk), TV readiness, screen capture, receiver video, PDF/Office workers, what is untested |

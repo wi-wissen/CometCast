@@ -32,7 +32,8 @@ use crate::{content, encoded, office};
 /// What the app asks of the running session.
 pub(crate) enum PCmd {
     /// Share the screen: X11 capture with these settings (`None`: the system picker of the
-    /// desktop, 20.3, not available yet: reported as `capture_unavailable`).
+    /// desktop, 20.3: portal on Linux, `GraphicsCapturePicker`, `SCContentSharingPicker`; a
+    /// cancelled picker is `capture_denied`, a system without one `capture_unavailable`).
     Screen(Option<ScreenRequest>),
     /// Share H.264 that the host pushes with `push_encoded_frame` (Android, iOS).
     Encoded,
@@ -183,20 +184,21 @@ pub(crate) async fn drive(
                 match cmd {
                     PCmd::Screen(request) => {
                         abort_jobs(&mut send_job, &mut preparing);
-                        let screen = request.map(|r| ScreenOptions {
-                            display: r.display,
-                            source_id: r.monitor_id,
-                            fps: r.fps.clamp(1, 60),
-                            bitrate_bps: r.bitrate_kbps.clamp(100, 50_000).saturating_mul(1000),
-                            ..ScreenOptions::default()
-                        });
-                        let Some(screen) = screen else {
-                            // The system picker (20.3) is not built into this core yet.
-                            let _ = events.add(PresenterUiEvent::Error {
-                                code: "capture_unavailable".into(),
-                                message: "the system screen picker is not available".into(),
-                            });
-                            continue;
+                        // `Some`: the X11 whole-desktop settings of the request. `None`: the
+                        // system picker (native-apps.md 20.3): cc-capture picks the portal, the
+                        // Windows picker or the macOS picker; the defaults are 15 fps, 2 Mbit/s.
+                        let screen = match request {
+                            Some(r) => ScreenOptions {
+                                display: r.display,
+                                source_id: r.monitor_id,
+                                fps: r.fps.clamp(1, 60),
+                                bitrate_bps: r.bitrate_kbps.clamp(100, 50_000).saturating_mul(1000),
+                                ..ScreenOptions::default()
+                            },
+                            None => ScreenOptions {
+                                picker: true,
+                                ..ScreenOptions::default()
+                            },
                         };
                         match session
                             .present(Presentation::Media {
@@ -416,6 +418,16 @@ mod tests {
         assert_eq!(code, "capture_unavailable");
         let (code, _) = start_failure(&TransportError::Closed);
         assert_eq!(code, "connection_lost");
+    }
+
+    #[test]
+    fn a_cancelled_picker_is_capture_denied() {
+        // cc-sender reports a cancelled system picker as a server-style error with this code.
+        let (code, _) = start_failure(&TransportError::Server {
+            code: "capture_denied".into(),
+            message: "screen capture was cancelled or refused".into(),
+        });
+        assert_eq!(code, "capture_denied");
     }
 
     #[test]

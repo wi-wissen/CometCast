@@ -407,3 +407,43 @@ fn stop_does_not_wait_forever_for_a_stuck_capture_call() {
     assert!(!joined, "the thread is still stuck");
     assert!(took < Duration::from_millis(1500), "stop took {took:?}");
 }
+
+#[test]
+fn a_cancelled_picker_is_reported_as_denied_and_other_errors_as_failed() {
+    use crate::screen::{PrepareError, capture_err};
+    use cc_capture::CaptureError;
+    assert!(matches!(
+        capture_err(CaptureError::Denied),
+        PrepareError::Denied(_)
+    ));
+    assert!(matches!(
+        capture_err(CaptureError::Unsupported("x")),
+        PrepareError::Failed(_)
+    ));
+    assert!(matches!(
+        capture_err(CaptureError::Display("x".into())),
+        PrepareError::Failed(_)
+    ));
+}
+
+#[test]
+fn the_picker_option_goes_through_the_picker_backend_selection() {
+    use crate::screen::{PrepareError, prepare};
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        // A real Wayland session with the `wayland` feature would open its picker here.
+        eprintln!("skipped: WAYLAND_DISPLAY is set");
+        return;
+    }
+    // No X server there: the picker selection falls to the X11 fallback (or finds no
+    // portal) and fails as "unavailable", never as "denied".
+    let options = ScreenOptions {
+        picker: true,
+        display: Some(":9999".into()),
+        ..ScreenOptions::default()
+    };
+    match prepare(options, Arc::new(Counters::default())) {
+        Err(PrepareError::Failed(_)) => {}
+        Err(PrepareError::Denied(m)) => panic!("unexpected denial: {m}"),
+        Ok(_) => panic!("no capture backend can work here"),
+    }
+}

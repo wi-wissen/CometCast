@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "cc-capture"
-description = "Screen capture trait and an X11 backend"
+description = "Screen capture trait, an X11 backend and system-picker backends (Wayland portal, Windows, macOS)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,14 +9,64 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-[lints]
-workspace = true
+# Same lints as the workspace, except `unsafe_code` is `deny` instead of `forbid`: the Windows
+# and macOS backends call system APIs that are `unsafe` in their bindings. Only the platform
+# modules `windows_wgc` and `macos_sck` opt out, each with an `#![allow(unsafe_code)]` and a
+# comment saying why. Everything else (including all decision logic) stays safe.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
 
 [dependencies]
 thiserror.workspace = true
 x11rb.workspace = true
 
+# Linux only. Pure Rust (MIT) client of the ScreenCast portal; its tokio runtime is the
+# workspace one. Pinned exactly: the API changed between 0.11 and 0.14.
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "=0.14.0", default-features = false, features = ["tokio", "screencast"], optional = true }
+# Safe Rust bindings to libpipewire-0.3 (MIT). Needs the C library at build and run time.
+pipewire = { version = "=0.10.1", features = ["v0_3_34"], optional = true }
+tokio = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+
+# Windows only. Same crate and version as cc-miracast; only the features this backend needs.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Graphics_Capture", # GraphicsCapturePicker, GraphicsCaptureItem, frame pool, session
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_System_WinRT", # RoInitialize
+    "Win32_System_WinRT_Direct3D11", # CreateDirect3D11DeviceFromDXGIDevice, DXGI access
+    "Win32_UI_Shell", # IInitializeWithWindow (owner window of the picker)
+    "Win32_UI_WindowsAndMessaging", # GetForegroundWindow
+] }
+
+# macOS only. objc2 and its framework crates (MIT or Zlib OR Apache-2.0 OR MIT).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSString", "NSError", "NSArray", "NSDictionary", "NSValue", "NSProcessInfo"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFBase", "CFCGTypes"] }
+objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMSampleBuffer", "CMTime", "CMFormatDescription", "objc2-core-video"] }
+objc2-core-video = { version = "0.3", default-features = false, features = ["std", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn", "CVBase"] }
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "dispatch2", "objc2-core-foundation", "objc2-core-media", "objc2-core-graphics", "SCStream", "SCContentSharingPicker", "SCShareableContent", "SCError"] }
+
 [features]
+# Desktop portal + PipeWire capture for Wayland. Needs `libpipewire-0.3-dev` (and libclang for
+# the bindings) to build and `libpipewire-0.3.so.0` at run time. Not in `default`, so a plain
+# `cargo build` works without the C library; release builds for Linux enable it.
+wayland = ["dep:ashpd", "dep:pipewire", "dep:tokio", "dep:futures-util"]
 # Helpers that start Xvfb and draw test windows; used by tests of other crates.
 test-support = []
 
