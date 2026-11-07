@@ -368,7 +368,7 @@ impl ScreenSource for X11Source {
             Err(e) => return Err(e),
         };
         // The fourth byte is padding with unspecified content; make it opaque.
-        for px in bgra.chunks_exact_mut(4) {
+        for px in bgra.as_chunks_mut::<4>().0.iter_mut() {
             px[3] = 255;
         }
         let run = self.running.as_mut().ok_or(CaptureError::NotStarted)?;

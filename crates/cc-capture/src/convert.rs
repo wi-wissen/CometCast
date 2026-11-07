@@ -136,11 +136,16 @@ pub fn to_bgra(
         let dst_row = &mut out[row * cw as usize * 4..(row + 1) * cw as usize * 4];
         if format == PixelFormat::Bgrx || format == PixelFormat::Bgra {
             dst_row.copy_from_slice(src_row);
-            for px in dst_row.chunks_exact_mut(4) {
+            for px in dst_row.as_chunks_mut::<4>().0.iter_mut() {
                 px[3] = 255;
             }
         } else {
-            for (d, s) in dst_row.chunks_exact_mut(4).zip(src_row.chunks_exact(bpp)) {
+            for (d, s) in dst_row
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(src_row.chunks_exact(bpp))
+            {
                 d[0] = s[ob];
                 d[1] = s[og];
                 d[2] = s[or];
@@ -206,7 +211,7 @@ mod tests {
     #[test]
     fn crop_cuts_the_visible_part() {
         let mut src = vec![0u8; 4 * 4 * 4];
-        for (i, px) in src.chunks_exact_mut(4).enumerate() {
+        for (i, px) in src.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             px[0] = i as u8;
         }
         let crop = Crop {

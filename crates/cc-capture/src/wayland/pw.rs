@@ -506,7 +506,12 @@ mod tests {
                     let d = &mut buf.datas_mut()[0];
                     if let Some(bytes) = d.data() {
                         let blue = level.load(Ordering::Relaxed) as u8;
-                        for px in bytes.chunks_exact_mut(4).take((W * H) as usize) {
+                        for px in bytes
+                            .as_chunks_mut::<4>()
+                            .0
+                            .iter_mut()
+                            .take((W * H) as usize)
+                        {
                             px.copy_from_slice(&[blue, 7, 9, 0]);
                         }
                     }

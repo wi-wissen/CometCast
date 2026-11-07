@@ -44,7 +44,9 @@ fn assert_color(img: &RenderedPage, x: u32, y: u32, rgb: [u8; 3], tol: u8) {
 
 fn non_white(img: &RenderedPage) -> usize {
     img.rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| p[0] < 250 || p[1] < 250 || p[2] < 250)
         .count()
 }
@@ -338,7 +340,9 @@ fn encoders_round_trip() {
     } else {
         let rgb: Vec<u8> = img
             .rgba
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2]])
             .collect();
         assert_eq!(buf, rgb);

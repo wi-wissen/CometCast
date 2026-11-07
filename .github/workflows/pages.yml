@@ -7,6 +7,11 @@ on:
   # started by hand (Actions tab, Run workflow). Re-enable the push/pull_request triggers
   # (see git history of this file) before a release.
   workflow_dispatch:
+    inputs:
+      require_pages:
+        description: 'Fail (instead of skipping the deploy) when GitHub Pages is not enabled for the repository'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,15 +21,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # Builds the static site and the web app and checks the links. Needs no Pages setting, so it is
+  # a real check of the site even where Pages is not enabled.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
-      pages: write
-      id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -72,9 +74,54 @@ jobs:
           cp deploy/well-known/assetlinks.json deploy/well-known/apple-app-site-association stage/.well-known/
       - name: Check links of the staged artifact (/app/ must exist now)
         run: node tools/check-site-links.mjs stage
-      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: stage
+
+  # Owner setting: Settings > Pages > Source must be "GitHub Actions" (docs/website.md). Without
+  # it the API answers 404 and actions/configure-pages fails with "Get Pages site failed". That
+  # is not a defect of the site, so it is detected here: the deploy is skipped with a visible
+  # warning, or fails with a clear message when the dispatch input require_pages is set.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Is GitHub Pages enabled for this repository?
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRE: ${{ inputs.require_pages }}
+        run: |
+          set +e
+          out="$(gh api "repos/${GITHUB_REPOSITORY}/pages" 2>&1)"
+          code=$?
+          set -e
+          msg=""
+          if [ "$code" -ne 0 ]; then
+            msg="GitHub Pages is not enabled for ${GITHUB_REPOSITORY}. A repository owner must set Settings > Pages > Build and deployment > Source = GitHub Actions (docs/website.md). API answer: ${out}"
+          elif [ "$(printf '%s' "$out" | jq -r '.build_type')" != "workflow" ]; then
+            msg="GitHub Pages of ${GITHUB_REPOSITORY} is not set to build with GitHub Actions (build_type is $(printf '%s' "$out" | jq -r '.build_type')). Set Settings > Pages > Source = GitHub Actions."
+          fi
+          if [ -z "$msg" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$REQUIRE" = "true" ]; then
+            echo "::error::$msg"
+            exit 1
+          fi
+          echo "::warning::$msg The build and link checks passed; the deploy is skipped."
+      - uses: actions/configure-pages@v5
+        if: steps.pages.outputs.enabled == 'true'
       - id: deployment
+        if: steps.pages.outputs.enabled == 'true'
         uses: actions/deploy-pages@v4

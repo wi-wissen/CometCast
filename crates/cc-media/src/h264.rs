@@ -276,7 +276,7 @@ impl DecodedFrame {
     /// Mean colour over the whole picture.
     pub fn mean_rgb(&self) -> [f64; 3] {
         let mut sum = [0u64; 3];
-        for px in self.rgb.chunks_exact(3) {
+        for px in self.rgb.as_chunks::<3>().0.iter() {
             for (s, c) in sum.iter_mut().zip(px) {
                 *s += u64::from(*c);
             }
@@ -293,7 +293,9 @@ impl DecodedFrame {
         }
         let hits = self
             .rgb
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|px| px.iter().zip(rgb).all(|(a, b)| a.abs_diff(b) <= tolerance))
             .count();
         hits as f64 / total as f64
@@ -556,7 +558,7 @@ mod tests {
                 sizes.push(f.data.len());
                 let pic = dec.decode(&f.data).unwrap().unwrap();
                 let mut se = 0f64;
-                for (i, d) in pic.rgb.chunks_exact(3).enumerate() {
+                for (i, d) in pic.rgb.as_chunks::<3>().0.iter().enumerate() {
                     let want = px[i * 4 + 2];
                     se += (f64::from(d[0]) - f64::from(want)).powi(2);
                 }
