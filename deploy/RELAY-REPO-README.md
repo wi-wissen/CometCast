@@ -24,9 +24,9 @@ reference a tested commit or tag of the main repository instead of copying files
 ## Decision needed before setup (UNCERTAIN)
 
 The server has two modes. In **open** mode ALTCHA is always on and the server **refuses to start with a `[turn]` section**
-(no `/ice-servers`). TURN credentials exist only in **internal** mode. The current `docs/SETUP.md` says the default relay is
+(no TURN credentials). TURN credentials exist only in **internal** mode. Since the `[stun]` section (allowed in both modes) an open server can still list a public STUN server at `/ice-servers` (no credentials), which direct connections across NATs need; the STUN service is a separate STUN-only program. The current `docs/SETUP.md` says the default relay is
 `open` and also lists coturn ports; those two do not fit together as the server is built today. Choose:
-(a) public relay in `open` mode without TURN (direct connections and the own-Wi-Fi fallback only), or (b) a different arrangement for
+(a) public relay in `open` mode without TURN but with `[stun]` (STUN-assisted direct connections and the own-Wi-Fi fallback only), or (b) a different arrangement for
 TURN on the public host (not designed). Also note the main repository's example config uses `8443`; the SETUP text says `443`
 (use a reverse proxy on 443 or change `listen`). Also, the web app on `cometcast.de` calls the relay cross-origin: set `allowed_origins = ["https://cometcast.de"]`
 (CORS for `/ice-servers` and `/altcha/challenge`, and an `Origin` check on `/ws`; see `docs/server.md`, "Web app on another origin").

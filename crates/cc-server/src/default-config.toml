@@ -98,7 +98,13 @@ base_counter = 1000       # size of the search; doubles per pressure level
 max_difficulty_factor = 8
 ttl_secs = 300
 
-# Short-lived TURN credentials at GET /ice-servers (internal mode only).
+# Public STUN servers handed out at GET /ice-servers, in BOTH modes (no credentials, no
+# media relayed). At most 4 URLs, only stun: / stuns: with host[:port]. Remove the "#" to use.
+# [stun]
+# urls = ["stun:relay.example.org:3478"]
+
+# Short-lived TURN credentials at GET /ice-servers (internal mode only; a [turn] section is
+# refused in open mode). With [stun] too, /ice-servers lists both.
 # Remove the leading "#" and fill in to switch on. coturn runs separately.
 # [turn]
 # urls = ["turn:relay.example.org:3478?transport=udp", "turns:relay.example.org:5349?transport=tcp"]

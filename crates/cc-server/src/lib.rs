@@ -38,14 +38,14 @@ use tower_http::services::ServeDir;
 pub use config::{
     AltchaConfig, AltchaMode, ConfigError, DEFAULT_HELLO_TIMEOUT, DEFAULT_IDLE_ROOM_TIMEOUT,
     DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_NO_ROOM_TIMEOUT, DEFAULT_OUTGOING_QUEUE_LEN,
-    DEFAULT_WIDE_FAILURE_FACTOR, LimitsConfig, Mode, NetworkConfig, Secret, ServerConfig,
-    TlsConfig, TurnConfig,
+    DEFAULT_WIDE_FAILURE_FACTOR, LimitsConfig, MAX_STUN_URLS, Mode, NetworkConfig, Secret,
+    ServerConfig, TlsConfig, TurnConfig, check_stun_url,
 };
 pub use file_config::{
     DEFAULT_CONFIG_TOML, check_allowed_origins_text, load_config, overrides_from_env,
 };
 pub use health::healthcheck;
-pub use turn::{IceServer, credential_for, ice_servers};
+pub use turn::{IceServer, credential_for, ice_servers, ice_servers_for};
 
 /// Version of this server library (from Cargo.toml).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -93,7 +93,7 @@ pub(crate) fn deny_response(deny: limits::Deny) -> Response {
 }
 
 /// Build the HTTP router: `/ws` (WebSocket), `/healthz`, `/altcha/challenge`,
-/// `/ice-servers` (only with TURN configured), and optionally static files.
+/// `/ice-servers` (only with `[stun]` or `[turn]` configured), and optionally static files.
 ///
 /// The router needs the peer address of each connection, so serve it with
 /// `into_make_service_with_connect_info::<SocketAddr>()` (as [`run`] does).

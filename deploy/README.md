@@ -14,7 +14,7 @@ Deep reference and test notes: [docs/server.md](../docs/server.md).
 | --- | --- |
 | One container, no internet needed (office, meeting room) | Docker image alone: it bundles the web app. `mode = "internal"`. |
 | Calls across networks (media through TURN) | Docker compose with coturn. TURN credentials work in **internal** mode only. |
-| Your own public server | `mode = "open"` (ALTCHA always, no TURN). Behind a reverse proxy. |
+| Your own public server | `mode = "open"` (ALTCHA always, no TURN; optional `[stun]` list so direct connections work across NATs, the STUN service itself is separate). Behind a reverse proxy. |
 
 ## Quick start with Docker Compose
 
@@ -173,7 +173,7 @@ Open only what you use; the TURN ports only with TURN. coturn's CLI port (5766) 
 ## Open and internal in practice
 
 - **Internal:** `network.allow` = your networks, ALTCHA optional or `always`, TURN allowed, large limits.
-- **Open:** ALTCHA always, strict limits, no `[turn]` (the server refuses to start with one), no images or files.
+- **Open:** ALTCHA always, strict limits, no `[turn]` (the server refuses to start with one), no images or files. `[stun] urls = [...]` is allowed (public STUN list at `/ice-servers`, no credentials, no ALTCHA for that call; the STUN service itself is not part of this compose file).
 - ALTCHA: set `altcha.secret_file` so puzzles survive restarts and work on several instances.
 
 ## Limits and bans

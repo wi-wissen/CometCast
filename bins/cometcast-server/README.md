@@ -169,7 +169,8 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `altcha.base_counter` | 1000 | | Search size; doubles per pressure level |
 | `altcha.max_difficulty_factor` | 8 | | Cap on the multiplier |
 | `altcha.ttl_secs` | 300 | | Puzzle lifetime |
-| `turn.urls`, `turn.stun_urls` | not set | not allowed | URLs given to clients |
+| `stun.urls` | `[]` | `[]` | Public STUN URLs listed at `/ice-servers`; allowed in **both** modes; max 4, only `stun:`/`stuns:` `host[:port]`, no credentials |
+| `turn.urls`, `turn.stun_urls` | not set | not allowed | URLs given to clients (`turn.stun_urls` is checked like `stun.urls`) |
 | `turn.secret` / `secret_file` | not set | not allowed | Shared secret with coturn |
 | `turn.ttl_secs` | 3600 | | Credential lifetime |
 
@@ -183,12 +184,14 @@ Notes that the table cannot show: `ban_secs` repeats its last value; the failure
 | For | An organisation's own devices | A public server, mediation only |
 | ALTCHA for `create_room` | Optional (`altcha.mode`), can be `always` | Always; the server refuses to start otherwise |
 | Limits | Large defaults | Strict defaults |
-| `/ice-servers` and `[turn]` | Available when `[turn]` is set | **Not available; the server refuses to start with a `[turn]` section** |
+| `/ice-servers` with `[stun]` | STUN list, no credentials | same |
+| `/ice-servers` with `[turn]` | TURN credentials (plus the STUN list) | **Not available; the server refuses to start with a `[turn]` section** |
 | Image/file storage | Not built | Never |
 
-Consequence: a TURN relay with credentials from this server only works in internal mode.
-Whether the public relay needs a different arrangement is not decided (see
-[deploy/RELAY-REPO-README.md](../../deploy/RELAY-REPO-README.md)).
+Consequence: a TURN relay with credentials from this server only works in internal mode. An open
+server can still help direct connections across NATs by listing a public STUN server (`[stun]`;
+no `ALTCHA` for that call, per-address `http_per_min` applies, CORS as for the other endpoints).
+The STUN service is a separate program, see [docs/server.md](../../docs/server.md#stun-list-and-ice-servers).
 
 ## HTTP endpoints
 
@@ -197,7 +200,7 @@ Whether the public relay needs a different arrangement is not decided (see
 | `GET /ws` | WebSocket signalling |
 | `GET /healthz` | `200 ok`; always allowed from loopback, so health checks keep working |
 | `GET /altcha/challenge` | A new ALTCHA puzzle (JSON, `no-store`) |
-| `GET /ice-servers` | TURN credentials (JSON); `404` without `[turn]` |
+| `GET /ice-servers` | STUN list and, with `[turn]`, TURN credentials (JSON); `404` with neither `[stun]` nor `[turn]` |
 | anything else | Static files from `web_dir`, if set |
 
 Refusals: `403` (not allowed or banned, with `Retry-After` when banned), `429` (rate limit),
@@ -230,7 +233,7 @@ one TURN quota (looks like an outage). Examples for Caddy and nginx: [deploy/REA
 
 ## Logs and metrics
 
-The server prints a start banner (version, listen address, mode, ALTCHA, TURN, web dir) and warnings
+The server prints a start banner (version, listen address, mode, ALTCHA, STUN, TURN, web dir) and warnings
 to standard output and standard error. There is no log level setting, no access log and **no metrics
 endpoint** (the count of untracked failures is kept internally only). Check a running server with
 `/healthz`. In Docker: `docker compose logs cometcast-server`.
@@ -249,7 +252,7 @@ renewal (no reload yet).
 - Secrets only via `secret_file` with mode 0600/0640; never in the config file, `--set` or the environment.
 - Set `network.allow` to your networks for an internal server.
 - Set `network.trusted_proxies` only to your proxy's address; make the proxy overwrite `X-Forwarded-For`.
-- Open only the ports you use; the TURN ports only with TURN.
+- Open only the ports you use; the TURN ports only with TURN, UDP 3478 only if you run a STUN service.
 - Pin the Docker base images by digest before a production build.
 - Keep `open` mode TURN-free (the server enforces it) and do not lower its limits without measuring.
 - Restart after certificate renewal.
@@ -265,7 +268,7 @@ renewal (no reload yet).
 | `400` on every request | The trusted proxy sends a broken `X-Forwarded-For`. |
 | `429` / `rate_limited` | Limits per address; many users behind one NAT hit the open-mode defaults. Use internal mode or raise the limits. |
 | `altcha_invalid` after a restart | Random secret changed. Set `altcha.secret_file`. |
-| `/ice-servers` gives `404` | No `[turn]` section (or open mode). |
+| `/ice-servers` gives `404` | Neither a `[stun]` nor a `[turn]` section (`[turn]` is refused in open mode; use `[stun]` there). |
 | TURN error 486 for everybody | A proxy without `trusted_proxies`: the whole world shares one TURN user name and its quota. |
 | coturn starts but TURN does not authenticate | coturn could not read `turnserver.conf` and started with defaults. See [deploy/README.md](../../deploy/README.md#troubleshooting). |
 | Screen sharing does not start in the browser | Needs HTTPS (or `localhost`) and a desktop browser (UNCERTAIN: mobile browsers not checked). |

@@ -19,7 +19,7 @@ JSON vectors that several implementations must agree on. The **web client is the
 | `altcha.json` | puzzles (solution and payload), challenge limits, solve errors, HTTP error mapping | 7 + 19 + 5 + 8 |
 | `relay.json` | `parseRelay` | 72 |
 | `signaling.json` | `decodeServerMessage` | 38 |
-| `ice-servers.json` | `parseIceServers` | 30 |
+| `ice-servers.json` | `parseIceServers` | 32 |
 | `room-code.json` | `normalizeRoomCode`, `isValidRoomCode` | 15 |
 | `content-scenarios.json` | event sequences of the content receiver: chunking, limits, stall, throttling | 19 |
 

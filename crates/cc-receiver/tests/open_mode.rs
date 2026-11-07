@@ -242,3 +242,32 @@ async fn ice_servers_come_from_an_internal_server_with_turn() {
         .unwrap();
     assert!(none.is_empty());
 }
+
+#[tokio::test]
+async fn open_server_with_stun_hands_out_a_credential_free_list() {
+    // Open mode: no TURN, but a public STUN list. The native clients take it as it is.
+    let mut config = ServerConfig::for_mode(Mode::Open);
+    config.stun_urls = vec!["stun:relay.example.org:3478".into()];
+    let server = start(config).await;
+    let addr = ServerAddr::parse(&server).unwrap();
+    let list = ice::fetch_ice_servers(&addr, &TlsTrust::system())
+        .await
+        .unwrap();
+    assert_eq!(list.len(), 1, "{list:?}");
+    assert_eq!(list[0].urls, ["stun:relay.example.org:3478"]);
+    assert!(list[0].username.is_none() && list[0].credential.is_none());
+
+    // An open server without `[stun]` still answers 404, read as "no list" (not an error).
+    let plain = start(ServerConfig::for_mode(Mode::Open)).await;
+    let plain = ServerAddr::parse(&plain).unwrap();
+    let resp = net::http_get(&plain, "/ice-servers", &TlsTrust::system())
+        .await
+        .unwrap();
+    assert_eq!(resp.status, 404);
+    assert!(
+        ice::fetch_ice_servers(&plain, &TlsTrust::system())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

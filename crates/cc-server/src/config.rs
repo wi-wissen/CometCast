@@ -20,7 +20,7 @@ use serde::Deserialize;
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
     /// Public server that anyone may use. Mediation only: ALTCHA is always required
-    /// to create a room, limits are strict, no TURN credentials are issued.
+    /// to create a room, limits are strict, no TURN credentials are issued (a plain STUN list may be).
     Open,
     /// Server inside an organisation, for its own devices only. ALTCHA is optional,
     /// TURN credentials may be issued, limits are larger.
@@ -333,6 +333,83 @@ pub struct ServerConfig {
     pub altcha: AltchaConfig,
     /// Short-lived TURN credentials. `None` = not offered.
     pub turn: Option<TurnConfig>,
+    /// Public STUN servers handed out at `GET /ice-servers` (`[stun] urls`). Allowed in BOTH
+    /// modes: STUN needs no credentials and relays no media, so open servers may offer it
+    /// (TURN stays internal-only). Empty = none.
+    pub stun_urls: Vec<String>,
+}
+
+/// Most STUN URLs that `[stun] urls` (and `[turn] stun_urls`) may hold.
+pub const MAX_STUN_URLS: usize = 4;
+
+/// Check one STUN URL: `stun:` or `stuns:` (lowercase), a host name, IPv4 address or
+/// `[IPv6]`, and an optional `:port` (1-65535). No credentials (`@`), path, query, spaces.
+/// Returns the reason when it is not acceptable.
+pub fn check_stun_url(url: &str) -> Result<(), String> {
+    let rest = url
+        .strip_prefix("stun:")
+        .or_else(|| url.strip_prefix("stuns:"))
+        .ok_or("only stun: and stuns: URLs are allowed")?;
+    if rest.contains('@') {
+        return Err("credentials in a STUN URL are not allowed".into());
+    }
+    if rest.contains(['/', '?', '#']) {
+        return Err("a STUN URL has no path, query or fragment (use stun:host:port)".into());
+    }
+    let (host, port, is_ipv6) = if let Some(inner) = rest.strip_prefix('[') {
+        let (h, after) = inner.split_once(']').ok_or("missing ] in IPv6 address")?;
+        if h.parse::<std::net::Ipv6Addr>().is_err() {
+            return Err("bad IPv6 address".into());
+        }
+        let port = match after {
+            "" => None,
+            _ => Some(after.strip_prefix(':').ok_or("junk after ]")?),
+        };
+        (h, port, true)
+    } else {
+        match rest.split_once(':') {
+            Some((h, p)) => (h, Some(p), false),
+            None => (rest, None, false),
+        }
+    };
+    if !is_ipv6 {
+        let ok = !host.is_empty()
+            && host.len() <= 253
+            && host
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+            && !host.starts_with(['.', '-'])
+            && !host.ends_with('-');
+        if !ok {
+            return Err("bad host name".into());
+        }
+    }
+    if let Some(p) = port
+        && !(p.bytes().all(|b| b.is_ascii_digit()) && matches!(p.parse::<u16>(), Ok(n) if n >= 1))
+    {
+        return Err("bad port (1-65535)".into());
+    }
+    Ok(())
+}
+
+/// Validate a list of STUN URLs (`what` names the setting in messages).
+fn check_stun_list(what: &str, urls: &[String]) -> Result<(), ConfigError> {
+    if urls.len() > MAX_STUN_URLS {
+        return Err(ConfigError::new(format!(
+            "{what}: at most {MAX_STUN_URLS} STUN URLs"
+        )));
+    }
+    for u in urls {
+        // A URL with credentials is not echoed back (it would end up in logs).
+        check_stun_url(u).map_err(|e| {
+            if u.contains('@') {
+                ConfigError::new(format!("{what}: {e}"))
+            } else {
+                ConfigError::new(format!("{what}: {u:?}: {e}"))
+            }
+        })?;
+    }
+    Ok(())
 }
 
 /// Shortest accepted secret (ALTCHA, TURN). UNCERTAIN: 16 is a placeholder; `openssl rand -hex 32`
@@ -383,7 +460,22 @@ impl ServerConfig {
             limits: LimitsConfig::for_mode(mode),
             altcha: AltchaConfig::for_mode(mode),
             turn: None,
+            stun_urls: Vec::new(),
         }
+    }
+
+    /// All STUN URLs offered at `/ice-servers`: `[stun] urls`, then `[turn] stun_urls`
+    /// (without duplicates).
+    pub fn all_stun_urls(&self) -> Vec<String> {
+        let mut out = self.stun_urls.clone();
+        if let Some(t) = &self.turn {
+            for u in &t.stun_urls {
+                if !out.contains(u) {
+                    out.push(u.clone());
+                }
+            }
+        }
+        out
     }
 
     /// Check that the settings make sense together.
@@ -486,7 +578,9 @@ impl ServerConfig {
                 "altcha.secret must be at least {MIN_SECRET_LEN} characters (make one with: openssl rand -hex 32)"
             )));
         }
+        check_stun_list("stun.urls", &self.stun_urls)?;
         if let Some(turn) = &self.turn {
+            check_stun_list("turn.stun_urls", &turn.stun_urls)?;
             if turn.urls.is_empty() && turn.stun_urls.is_empty() {
                 return Err(ConfigError::new("turn needs at least one url or stun_url"));
             }
