@@ -266,6 +266,7 @@ jobs:
           Priority: optional
           Architecture: amd64
           Depends: libc6 (>= 2.35), libgtk-3-0 (>= 3.24.33), libglib2.0-0 (>= 2.72), libstdc++6 (>= 12), libgcc-s1 (>= 12)
+          Recommends: uxplay, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, avahi-daemon
           Maintainer: Comet Cast contributors <noreply@users.noreply.github.com>
           Description: Comet Cast, share your screen, documents, links, media and files with displays in a room
            Sender and receiver app. See https://github.com/wi-wissen/CometCast

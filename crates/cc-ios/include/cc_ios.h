@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define CC_IOS_ABI_VERSION 2
+#define CC_IOS_ABI_VERSION 3
 
 /* Broadcast state (CcIosStatus.state). */
 enum {
@@ -117,6 +117,30 @@ bool cc_ios_keyframe_requested(void);
 
 /* Stop and release everything. Safe when nothing runs. May block for a few seconds. */
 void cc_ios_stop(void);
+
+/* Share extension (native-apps.md 21.3, version 3). One session per process, polling instead of
+ * callbacks. Every event is one JSON object (UTF-8) with an "event" field: waiting, joined,
+ * connection_code, page, content_prepared, content_rejected, progress, content_sent, presenting,
+ * stopped, ended, error (docs/ios.md lists the fields). */
+
+/* config_json: {"code":"K7QM2W","server":"host:port","name":"Anna","log_dir":"/path"} (name and
+ * log_dir optional). Returns 0 when started, else an error number (1 bad code, 2 bad relay,
+ * 7 internal, 8 already running). */
+int32_t cc_ios_share_start(const char *config_json);
+
+/* {"file":"/path"} or {"link":"https://..."}. Returns 1 when queued, 0 otherwise. The checks run
+ * afterwards and are reported as events. */
+int32_t cc_ios_share_present(const char *json);
+
+/* {"cmd":"prev"} or {"cmd":"next"}. Returns 1 when queued, 0 otherwise. */
+int32_t cc_ios_share_cmd(const char *json);
+
+/* Copies the next event (NUL-terminated) into buf. Returns its length (> 0), 0 when none waits,
+ * or the negative size needed when len is too small (the event stays queued). Never blocks. */
+int32_t cc_ios_share_poll(uint8_t *buf, size_t len);
+
+/* "Stop and close": stops showing and leaves. Blocks up to about four seconds. */
+void cc_ios_share_stop(void);
 
 int32_t cc_ios_abi_version(void);
 

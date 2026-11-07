@@ -15,6 +15,7 @@
 pub mod address;
 pub mod announce;
 pub mod display;
+pub mod join;
 pub mod merge;
 pub mod nearby;
 pub mod policy;
@@ -30,6 +31,7 @@ pub use display::{
     AnnounceBackend, AnnounceError, DisplayAnnouncement, DisplayAnnouncer, DisplayState,
     MdnsBackend,
 };
+pub use join::{AddressParse, BUILT_IN_JOIN_ADDRESS, join_address, server_for_address};
 pub use merge::{Merged, merge};
 pub use nearby::{
     NearbyChange, NearbyScreen, NearbySearch, NearbyTracker, RawEvent, RawRecord, RawSink,

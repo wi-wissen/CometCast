@@ -34,6 +34,29 @@ void main() {
       );
     });
 
+    test('https://cometcast.de/app/{CODE} names the built-in relay (21.6)', () {
+      expect(
+        parseLinkUrl('https://cometcast.de/app/K7QM2W', normalize),
+        const LinkTarget(code: 'K7QM2W', server: 'relay.cometcast.de'),
+      );
+      expect(
+        parseLinkUrl('https://cometcast.de:443/app/k7q-m2w/', normalize)!.code,
+        'K7QM2W',
+      );
+      // Not a join link: other paths of the website, a wrong code, another host or port.
+      expect(
+        parseLinkUrl('https://cometcast.de/app/display', normalize),
+        isNull,
+      );
+      expect(parseLinkUrl('https://cometcast.de/app/', normalize), isNull);
+      expect(parseLinkUrl('https://cometcast.de/x/K7QM2W', normalize), isNull);
+      expect(
+        parseLinkUrl('https://cometcast.de:8443/app/K7QM2W', normalize),
+        isNull,
+      );
+      expect(parseLinkUrl('https://example.org/app/K7QM2W', normalize), isNull);
+    });
+
     test('?server= names the server', () {
       expect(
         parseLinkUrl(

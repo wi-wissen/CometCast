@@ -64,6 +64,7 @@ targets:
           - Runner.entitlements
           - Runner-Bridging-Header.h
       - path: Shared
+      - path: ShareExtension/ShareLogic.swift
       - path: Runner/Runner-Bridging-Header.h
         buildPhase: none
       - path: Flutter/AppFrameworkInfo.plist
@@ -90,6 +91,9 @@ targets:
         OTHER_LDFLAGS: $(inherited) -force_load $(SRCROOT)/build/rust/$(PLATFORM_NAME)/libcc_ffi.a -framework Security -framework SystemConfiguration -framework CoreFoundation -lresolv -lc++
     dependencies:
       - target: BroadcastExtension
+        embed: true
+        codeSign: true
+      - target: ShareExtension
         embed: true
         codeSign: true
     preBuildScripts:
@@ -144,6 +148,46 @@ targets:
         script: '"$SRCROOT/../../../tools/ios-build-rust.sh" cc-ios'
         basedOnDependencyAnalysis: false
 
+  # The share sheet (native-apps.md 21.3, decision N82): SwiftUI, no Flutter engine, its own
+  # connection through the same libcc_ios.a as the broadcast extension (ABI version 3).
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+        excludes:
+          - Info.plist
+          - ShareExtension.entitlements
+          - cc_ios-Bridging-Header.h
+      - path: ShareExtension/cc_ios-Bridging-Header.h
+        buildPhase: none
+      - path: Shared/BroadcastShared.swift
+      # The two presenter fonts, bundled in the extension (section 11).
+      - path: ../assets/fonts/AtkinsonHyperlegibleNext-400.ttf
+      - path: ../assets/fonts/AtkinsonHyperlegibleNext-500.ttf
+      - path: ../assets/fonts/AtkinsonHyperlegibleNext-700.ttf
+      - path: ../assets/fonts/AtkinsonHyperlegibleMono-500.ttf
+      - path: ../assets/fonts/AtkinsonHyperlegibleMono-700.ttf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(COMETCAST_SHARE_BUNDLE_ID)
+        PROVISIONING_PROFILE_SPECIFIER: $(COMETCAST_SHARE_PROFILE)
+        PRODUCT_NAME: $(TARGET_NAME)
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/ShareExtension.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: ShareExtension/cc_ios-Bridging-Header.h
+        HEADER_SEARCH_PATHS: $(inherited) $(SRCROOT)/../../../crates/cc-ios/include
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(inherited) $(SRCROOT)/build/rust/iphoneos
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(inherited) $(SRCROOT)/build/rust/iphonesimulator
+        OTHER_LDFLAGS: $(inherited) -lcc_ios -framework Security -framework SystemConfiguration -framework CoreFoundation -lresolv -lc++
+    preBuildScripts:
+      - name: Build Rust core (cc-ios)
+        script: '"$SRCROOT/../../../tools/ios-build-rust.sh" cc-ios'
+        basedOnDependencyAnalysis: false
+
   RunnerTests:
     type: bundle.unit-test
     platform: iOS
@@ -164,6 +208,7 @@ schemes:
       targets:
         Runner: all
         BroadcastExtension: all
+        ShareExtension: all
       preActions:
         - name: Run Prepare Flutter Framework Script
           script: '/bin/sh "$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh" prepare'

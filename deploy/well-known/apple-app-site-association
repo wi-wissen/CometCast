@@ -4,7 +4,7 @@
       {
         "appIDs": ["REPLACE_WITH_THE_TEAM_ID.de.cometcast.cometcast"],
         "components": [
-          { "/": "/??????", "comment": "A room code: exactly six characters. /display and /app stay in the browser." }
+          { "/": "/app/??????", "comment": "A room code: /app/ and exactly six characters. /app/display and the rest of the website stay in the browser." }
         ]
       }
     ]

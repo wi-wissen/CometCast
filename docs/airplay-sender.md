@@ -105,3 +105,7 @@ The receiver's answers are untrusted. Size caps: HTTP head 16 KiB, body 4 MiB, p
 * Windows and macOS capture backends (`cc-capture` has none yet), Wayland.
 * Conversion of PNG or other photo formats (only JPEG is accepted; no re-encoding).
 * Storing credentials in the system key store.
+
+## Round 5: TVs in the presenter app (native-apps.md 21.5)
+
+`watch::Watch` (a running search), `photo::jpeg_for_photo` (PNG, WebP, GIF, JPEG to a JPEG of at most 3840 px, flattened on white), `photo::check_media_link` (a link whose path ends in a media extension; a web page is `tv_unsupported_content`) and the credential store folder of `set_tv_data_dir` serve `start_tv_presenter` in `cc-ffi` (`tv.rs`). Pairing: when no credentials are stored and the receiver advertises PIN pairing, the app shows `PairingRequired` after the TV displays its code and calls `tv_pair(pin)`; the credentials are kept per device id. A wrong code is `tv_pair_wrong` (inline; the TV shows a new code). Tested with a fake link (session logic) and the existing fake receivers (protocol). **Device check with one Apple TV: not done.** UNCERTAIN: a link without a media extension that would play is refused.

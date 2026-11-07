@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1339283702;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2001239814;
 
 // Section: executor
 
@@ -47,6 +47,213 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
+fn wire__crate__api__airplay_answer_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "airplay_answer",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_allow = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::airplay_answer(api_allow))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__airplay_end_session_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "airplay_end_session",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::airplay_end_session())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__airplay_receive_available_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "airplay_receive_available",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::airplay_receive_available())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__airplay_set_ask_first_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "airplay_set_ask_first",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_ask = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::airplay_set_ask_first(api_ask))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__airplay_set_locked_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "airplay_set_locked",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_locked = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::airplay_set_locked(api_locked))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__airplay_set_refusing_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "airplay_set_refusing",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_refusing = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::airplay_set_refusing(api_refusing))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__app_version_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "app_version",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::app_version())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__capture_info_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -394,6 +601,36 @@ fn wire__crate__api__init_app_impl(
         },
     )
 }
+fn wire__crate__api__join_address_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "join_address",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_server = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::join_address(api_server))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__keyframe_requested_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -581,6 +818,35 @@ fn wire__crate__api__nearby_native_seen_impl(
         },
     )
 }
+fn wire__crate__api__office_convert_available_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "office_convert_available",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::office_convert_available())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__office_worker_path_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -696,6 +962,42 @@ fn wire__crate__api__present_screen_impl(
                 let output_ok = Ok::<_, ()>(crate::api::present_screen(api_screen))?;
                 std::result::Result::Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__api__probe_server_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "probe_server",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_server = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(crate::api::probe_server(api_server).await)?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
         },
     )
 }
@@ -971,6 +1273,66 @@ fn wire__crate__api__server_defaults_impl(
         },
     )
 }
+fn wire__crate__api__server_for_address_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "server_for_address",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_input = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::server_for_address(api_input))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__set_cast_trust_anchors_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_cast_trust_anchors",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::set_cast_trust_anchors(api_path))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__set_codec_dir_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1168,6 +1530,38 @@ fn wire__crate__api__set_office_worker_impl(
         },
     )
 }
+fn wire__crate__api__set_tv_data_dir_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_tv_data_dir",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::set_tv_data_dir(api_path);
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__set_video_max_size_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1264,6 +1658,50 @@ fn wire__crate__api__start_advertising_impl(
                         let output_ok = Ok::<_, ()>(
                             crate::api::start_advertising(api_name, api_preferred_server).await,
                         )?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__start_airplay_receive_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_airplay_receive",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_name = <String>::sse_decode(&mut deserializer);
+            let api_ask_first = <bool>::sse_decode(&mut deserializer);
+            let api_events = <StreamSink<
+                crate::api::AirplayUiEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>({
+                            crate::api::start_airplay_receive(api_name, api_ask_first, api_events)
+                                .await;
+                        })?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -1542,6 +1980,48 @@ fn wire__crate__api__start_sender_impl(
         },
     )
 }
+fn wire__crate__api__start_tv_presenter_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_tv_presenter",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            let api_events = <StreamSink<
+                crate::api::PresenterUiEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>({
+                            crate::api::start_tv_presenter(api_id, api_events).await;
+                        })?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__stop_advertising_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1573,6 +2053,37 @@ fn wire__crate__api__stop_advertising_impl(
                     std::result::Result::Ok(output_ok)
                 })())
             }
+        },
+    )
+}
+fn wire__crate__api__stop_airplay_receive_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_airplay_receive",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::stop_airplay_receive();
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -1806,6 +2317,37 @@ fn wire__crate__api__stop_watching_receivers_impl(
         },
     )
 }
+fn wire__crate__api__stop_watching_tvs_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_watching_tvs",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::stop_watching_tvs();
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__take_content_frame_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1903,6 +2445,42 @@ fn wire__crate__api__take_frame_impl(
                 transform_result_sse::<_, ()>(
                     (move || async move {
                         let output_ok = Ok::<_, ()>(crate::api::take_frame().await)?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__tv_pair_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "tv_pair",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_pin = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(crate::api::tv_pair(api_pin).await)?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -2095,6 +2673,47 @@ fn wire__crate__api__watch_receivers_impl(
         },
     )
 }
+fn wire__crate__api__watch_tvs_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "watch_tvs",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_events = <StreamSink<
+                crate::api::TvUiEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>({
+                            crate::api::watch_tvs(api_events).await;
+                        })?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 
 // Section: dart2rust
 
@@ -2103,6 +2722,16 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <String>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::anyhow::anyhow!("{}", inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<crate::api::AirplayUiEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
     }
 }
 
@@ -2176,11 +2805,38 @@ impl SseDecode
     }
 }
 
+impl SseDecode for StreamSink<crate::api::TvUiEvent, flutter_rust_bridge::for_generated::SseCodec> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
 impl SseDecode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <Vec<u8>>::sse_decode(deserializer);
         return String::from_utf8(inner).unwrap();
+    }
+}
+
+impl SseDecode for crate::api::AddressParse {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_server = <String>::sse_decode(deserializer);
+                return crate::api::AddressParse::Ok { server: var_server };
+            }
+            1 => {
+                return crate::api::AddressParse::Invalid;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -2195,6 +2851,45 @@ impl SseDecode for crate::api::AdvertiseOutcome {
             3 => crate::api::AdvertiseOutcome::Superseded,
             _ => unreachable!("Invalid variant for AdvertiseOutcome: {}", inner),
         };
+    }
+}
+
+impl SseDecode for crate::api::AirplayUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                return crate::api::AirplayUiEvent::Advertising;
+            }
+            1 => {
+                return crate::api::AirplayUiEvent::NotAnnouncing;
+            }
+            2 => {
+                return crate::api::AirplayUiEvent::Request;
+            }
+            3 => {
+                let mut var_pin = <String>::sse_decode(deserializer);
+                return crate::api::AirplayUiEvent::Pin { pin: var_pin };
+            }
+            4 => {
+                return crate::api::AirplayUiEvent::PinDone;
+            }
+            5 => {
+                let mut var_active = <bool>::sse_decode(deserializer);
+                return crate::api::AirplayUiEvent::Mirroring { active: var_active };
+            }
+            6 => {
+                let mut var_code = <String>::sse_decode(deserializer);
+                return crate::api::AirplayUiEvent::Failed { code: var_code };
+            }
+            7 => {
+                return crate::api::AirplayUiEvent::Stopped;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -2799,6 +3494,9 @@ impl SseDecode for crate::api::PresenterUiEvent {
         let mut tag_ = <i32>::sse_decode(deserializer);
         match tag_ {
             0 => {
+                return crate::api::PresenterUiEvent::PairingRequired;
+            }
+            1 => {
                 let mut var_timeoutSecs = <u32>::sse_decode(deserializer);
                 let mut var_check = <u8>::sse_decode(deserializer);
                 let mut var_roomName = <Option<String>>::sse_decode(deserializer);
@@ -2808,17 +3506,17 @@ impl SseDecode for crate::api::PresenterUiEvent {
                     room_name: var_roomName,
                 };
             }
-            1 => {
+            2 => {
                 let mut var_roomName = <Option<String>>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::Joined {
                     room_name: var_roomName,
                 };
             }
-            2 => {
+            3 => {
                 let mut var_sas = <String>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::ConnectionCode { sas: var_sas };
             }
-            3 => {
+            4 => {
                 let mut var_page = <u32>::sse_decode(deserializer);
                 let mut var_pages = <u32>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::Page {
@@ -2826,11 +3524,11 @@ impl SseDecode for crate::api::PresenterUiEvent {
                     pages: var_pages,
                 };
             }
-            4 => {
+            5 => {
                 let mut var_name = <String>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::Converting { name: var_name };
             }
-            5 => {
+            6 => {
                 let mut var_name = <String>::sse_decode(deserializer);
                 let mut var_kind = <crate::api::UiContentKind>::sse_decode(deserializer);
                 let mut var_size = <u64>::sse_decode(deserializer);
@@ -2844,11 +3542,11 @@ impl SseDecode for crate::api::PresenterUiEvent {
                     host: var_host,
                 };
             }
-            6 => {
+            7 => {
                 let mut var_reason = <crate::api::UiSendRejection>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::ContentRejected { reason: var_reason };
             }
-            7 => {
+            8 => {
                 let mut var_sent = <u64>::sse_decode(deserializer);
                 let mut var_total = <u64>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::Progress {
@@ -2856,24 +3554,24 @@ impl SseDecode for crate::api::PresenterUiEvent {
                     total: var_total,
                 };
             }
-            8 => {
+            9 => {
                 return crate::api::PresenterUiEvent::ContentSent;
             }
-            9 => {
+            10 => {
                 let mut var_ok = <bool>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::HandoverResult { ok: var_ok };
             }
-            10 => {
+            11 => {
                 return crate::api::PresenterUiEvent::Presenting;
             }
-            11 => {
+            12 => {
                 return crate::api::PresenterUiEvent::PresentingStopped;
             }
-            12 => {
+            13 => {
                 let mut var_code = <String>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::Ended { code: var_code };
             }
-            13 => {
+            14 => {
                 let mut var_code = <String>::sse_decode(deserializer);
                 let mut var_message = <String>::sse_decode(deserializer);
                 return crate::api::PresenterUiEvent::Error {
@@ -2885,6 +3583,19 @@ impl SseDecode for crate::api::PresenterUiEvent {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseDecode for crate::api::ProbeResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::ProbeResult::Ok,
+            1 => crate::api::ProbeResult::NotCometCast,
+            2 => crate::api::ProbeResult::Unreachable,
+            _ => unreachable!("Invalid variant for ProbeResult: {}", inner),
+        };
     }
 }
 
@@ -3276,6 +3987,55 @@ impl SseDecode for crate::api::ServerDiscovery {
     }
 }
 
+impl SseDecode for crate::api::TvKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::TvKind::Cast,
+            1 => crate::api::TvKind::AirPlay,
+            _ => unreachable!("Invalid variant for TvKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::TvUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_id = <String>::sse_decode(deserializer);
+                let mut var_name = <String>::sse_decode(deserializer);
+                let mut var_kind = <crate::api::TvKind>::sse_decode(deserializer);
+                let mut var_addresses = <Vec<String>>::sse_decode(deserializer);
+                let mut var_canScreen = <bool>::sse_decode(deserializer);
+                let mut var_canPhoto = <bool>::sse_decode(deserializer);
+                let mut var_canVideo = <bool>::sse_decode(deserializer);
+                return crate::api::TvUiEvent::Seen {
+                    id: var_id,
+                    name: var_name,
+                    kind: var_kind,
+                    addresses: var_addresses,
+                    can_screen: var_canScreen,
+                    can_photo: var_canPhoto,
+                    can_video: var_canVideo,
+                };
+            }
+            1 => {
+                let mut var_id = <String>::sse_decode(deserializer);
+                return crate::api::TvUiEvent::Gone { id: var_id };
+            }
+            2 => {
+                return crate::api::TvUiEvent::Unavailable;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for u32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3489,29 +4249,34 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__api__capture_info_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__discover_servers_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__ensure_codec_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__set_display_announcing_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__start_presenter_impl(port, ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__stop_nearby_screens_impl(port, ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__stop_presenter_impl(port, ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
-        53 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
-        54 => wire__crate__api__take_encoded_video_impl(port, ptr, rust_vec_len, data_len),
-        55 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
-        58 => wire__crate__api__watch_native_announcements_impl(port, ptr, rust_vec_len, data_len),
-        59 => wire__crate__api__watch_nearby_screens_impl(port, ptr, rust_vec_len, data_len),
-        60 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__capture_info_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__discover_servers_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__ensure_codec_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__probe_server_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__set_display_announcing_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__start_airplay_receive_impl(port, ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__start_presenter_impl(port, ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
+        58 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
+        59 => wire__crate__api__start_tv_presenter_impl(port, ptr, rust_vec_len, data_len),
+        60 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
+        63 => wire__crate__api__stop_nearby_screens_impl(port, ptr, rust_vec_len, data_len),
+        64 => wire__crate__api__stop_presenter_impl(port, ptr, rust_vec_len, data_len),
+        66 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
+        67 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
+        68 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
+        71 => wire__crate__api__take_encoded_video_impl(port, ptr, rust_vec_len, data_len),
+        72 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
+        73 => wire__crate__api__tv_pair_impl(port, ptr, rust_vec_len, data_len),
+        76 => wire__crate__api__watch_native_announcements_impl(port, ptr, rust_vec_len, data_len),
+        77 => wire__crate__api__watch_nearby_screens_impl(port, ptr, rust_vec_len, data_len),
+        78 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
+        79 => wire__crate__api__watch_tvs_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3524,49 +4289,83 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        2 => wire__crate__api__check_room_code_impl(ptr, rust_vec_len, data_len),
-        3 => wire__crate__api__codec_info_impl(ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__codec_state_impl(ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__decide_join_impl(ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__deny_and_block_join_impl(ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__docs_worker_path_impl(ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__end_room_impl(ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__keyframe_requested_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__local_network_available_impl(ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__nearby_native_gone_impl(ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__nearby_native_permission_impl(ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__nearby_native_reset_impl(ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__nearby_native_seen_impl(ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__office_worker_path_impl(ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__present_content_impl(ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__present_encoded_impl(ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__present_screen_impl(ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__remove_peer_impl(ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__request_handover_impl(ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__request_video_keyframe_impl(ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__set_codec_dir_impl(ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__set_join_mode_impl(ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__set_office_worker_impl(ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__set_video_passthrough_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__stop_native_announcements_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__stop_presenting_impl(ptr, rust_vec_len, data_len),
-        56 => wire__crate__api__unblock_impl(ptr, rust_vec_len, data_len),
-        57 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
+        1 => wire__crate__api__airplay_answer_impl(ptr, rust_vec_len, data_len),
+        2 => wire__crate__api__airplay_end_session_impl(ptr, rust_vec_len, data_len),
+        3 => wire__crate__api__airplay_receive_available_impl(ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__airplay_set_ask_first_impl(ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__airplay_set_locked_impl(ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__airplay_set_refusing_impl(ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__app_version_impl(ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__check_room_code_impl(ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__codec_info_impl(ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__codec_state_impl(ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__decide_join_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__deny_and_block_join_impl(ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__docs_worker_path_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__end_room_impl(ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__join_address_impl(ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__keyframe_requested_impl(ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__local_network_available_impl(ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__nearby_native_gone_impl(ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__nearby_native_permission_impl(ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__nearby_native_reset_impl(ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__nearby_native_seen_impl(ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__office_convert_available_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__office_worker_path_impl(ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__present_content_impl(ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__present_encoded_impl(ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__present_screen_impl(ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__remove_peer_impl(ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__request_handover_impl(ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__request_video_keyframe_impl(ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__server_for_address_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__set_cast_trust_anchors_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__set_codec_dir_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__set_join_mode_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__set_office_worker_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__set_tv_data_dir_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__set_video_passthrough_impl(ptr, rust_vec_len, data_len),
+        61 => wire__crate__api__stop_airplay_receive_impl(ptr, rust_vec_len, data_len),
+        62 => wire__crate__api__stop_native_announcements_impl(ptr, rust_vec_len, data_len),
+        65 => wire__crate__api__stop_presenting_impl(ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__stop_watching_tvs_impl(ptr, rust_vec_len, data_len),
+        74 => wire__crate__api__unblock_impl(ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
 
 // Section: rust2dart
 
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::AddressParse {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::AddressParse::Ok { server } => {
+                [0.into_dart(), server.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::AddressParse::Invalid => [1.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::AddressParse {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::AddressParse> for crate::api::AddressParse {
+    fn into_into_dart(self) -> crate::api::AddressParse {
+        self
+    }
+}
 // Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::AdvertiseOutcome {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
@@ -3584,6 +4383,36 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::AdvertiseOutcome>
     for crate::api::AdvertiseOutcome
 {
     fn into_into_dart(self) -> crate::api::AdvertiseOutcome {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::AirplayUiEvent {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::AirplayUiEvent::Advertising => [0.into_dart()].into_dart(),
+            crate::api::AirplayUiEvent::NotAnnouncing => [1.into_dart()].into_dart(),
+            crate::api::AirplayUiEvent::Request => [2.into_dart()].into_dart(),
+            crate::api::AirplayUiEvent::Pin { pin } => {
+                [3.into_dart(), pin.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::AirplayUiEvent::PinDone => [4.into_dart()].into_dart(),
+            crate::api::AirplayUiEvent::Mirroring { active } => {
+                [5.into_dart(), active.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::AirplayUiEvent::Failed { code } => {
+                [6.into_dart(), code.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::AirplayUiEvent::Stopped => [7.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::AirplayUiEvent {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::AirplayUiEvent> for crate::api::AirplayUiEvent {
+    fn into_into_dart(self) -> crate::api::AirplayUiEvent {
         self
     }
 }
@@ -4015,31 +4844,32 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::NearbyUiEvent> for crate::api
 impl flutter_rust_bridge::IntoDart for crate::api::PresenterUiEvent {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
+            crate::api::PresenterUiEvent::PairingRequired => [0.into_dart()].into_dart(),
             crate::api::PresenterUiEvent::WaitingForApproval {
                 timeout_secs,
                 check,
                 room_name,
             } => [
-                0.into_dart(),
+                1.into_dart(),
                 timeout_secs.into_into_dart().into_dart(),
                 check.into_into_dart().into_dart(),
                 room_name.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::PresenterUiEvent::Joined { room_name } => {
-                [1.into_dart(), room_name.into_into_dart().into_dart()].into_dart()
+                [2.into_dart(), room_name.into_into_dart().into_dart()].into_dart()
             }
             crate::api::PresenterUiEvent::ConnectionCode { sas } => {
-                [2.into_dart(), sas.into_into_dart().into_dart()].into_dart()
+                [3.into_dart(), sas.into_into_dart().into_dart()].into_dart()
             }
             crate::api::PresenterUiEvent::Page { page, pages } => [
-                3.into_dart(),
+                4.into_dart(),
                 page.into_into_dart().into_dart(),
                 pages.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::PresenterUiEvent::Converting { name } => {
-                [4.into_dart(), name.into_into_dart().into_dart()].into_dart()
+                [5.into_dart(), name.into_into_dart().into_dart()].into_dart()
             }
             crate::api::PresenterUiEvent::ContentPrepared {
                 name,
@@ -4048,7 +4878,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::PresenterUiEvent {
                 pages,
                 host,
             } => [
-                5.into_dart(),
+                6.into_dart(),
                 name.into_into_dart().into_dart(),
                 kind.into_into_dart().into_dart(),
                 size.into_into_dart().into_dart(),
@@ -4057,25 +4887,25 @@ impl flutter_rust_bridge::IntoDart for crate::api::PresenterUiEvent {
             ]
             .into_dart(),
             crate::api::PresenterUiEvent::ContentRejected { reason } => {
-                [6.into_dart(), reason.into_into_dart().into_dart()].into_dart()
+                [7.into_dart(), reason.into_into_dart().into_dart()].into_dart()
             }
             crate::api::PresenterUiEvent::Progress { sent, total } => [
-                7.into_dart(),
+                8.into_dart(),
                 sent.into_into_dart().into_dart(),
                 total.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            crate::api::PresenterUiEvent::ContentSent => [8.into_dart()].into_dart(),
+            crate::api::PresenterUiEvent::ContentSent => [9.into_dart()].into_dart(),
             crate::api::PresenterUiEvent::HandoverResult { ok } => {
-                [9.into_dart(), ok.into_into_dart().into_dart()].into_dart()
+                [10.into_dart(), ok.into_into_dart().into_dart()].into_dart()
             }
-            crate::api::PresenterUiEvent::Presenting => [10.into_dart()].into_dart(),
-            crate::api::PresenterUiEvent::PresentingStopped => [11.into_dart()].into_dart(),
+            crate::api::PresenterUiEvent::Presenting => [11.into_dart()].into_dart(),
+            crate::api::PresenterUiEvent::PresentingStopped => [12.into_dart()].into_dart(),
             crate::api::PresenterUiEvent::Ended { code } => {
-                [12.into_dart(), code.into_into_dart().into_dart()].into_dart()
+                [13.into_dart(), code.into_into_dart().into_dart()].into_dart()
             }
             crate::api::PresenterUiEvent::Error { code, message } => [
-                13.into_dart(),
+                14.into_dart(),
                 code.into_into_dart().into_dart(),
                 message.into_into_dart().into_dart(),
             ]
@@ -4091,6 +4921,23 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::PresenterUiEvent>
     for crate::api::PresenterUiEvent
 {
     fn into_into_dart(self) -> crate::api::PresenterUiEvent {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::ProbeResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Ok => 0.into_dart(),
+            Self::NotCometCast => 1.into_dart(),
+            Self::Unreachable => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::ProbeResult {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::ProbeResult> for crate::api::ProbeResult {
+    fn into_into_dart(self) -> crate::api::ProbeResult {
         self
     }
 }
@@ -4445,6 +5292,61 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::ServerDiscovery>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::TvKind {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Cast => 0.into_dart(),
+            Self::AirPlay => 1.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::TvKind {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::TvKind> for crate::api::TvKind {
+    fn into_into_dart(self) -> crate::api::TvKind {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::TvUiEvent {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::TvUiEvent::Seen {
+                id,
+                name,
+                kind,
+                addresses,
+                can_screen,
+                can_photo,
+                can_video,
+            } => [
+                0.into_dart(),
+                id.into_into_dart().into_dart(),
+                name.into_into_dart().into_dart(),
+                kind.into_into_dart().into_dart(),
+                addresses.into_into_dart().into_dart(),
+                can_screen.into_into_dart().into_dart(),
+                can_photo.into_into_dart().into_dart(),
+                can_video.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::TvUiEvent::Gone { id } => {
+                [1.into_dart(), id.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::TvUiEvent::Unavailable => [2.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::TvUiEvent {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::TvUiEvent> for crate::api::TvUiEvent {
+    fn into_into_dart(self) -> crate::api::TvUiEvent {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::UiCodecInfo {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4649,6 +5551,15 @@ impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
 }
 
 impl SseEncode
+    for StreamSink<crate::api::AirplayUiEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
     for StreamSink<crate::api::ContentSenderUiEvent, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -4711,10 +5622,35 @@ impl SseEncode
     }
 }
 
+impl SseEncode for StreamSink<crate::api::TvUiEvent, flutter_rust_bridge::for_generated::SseCodec> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
 impl SseEncode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<u8>>::sse_encode(self.into_bytes(), serializer);
+    }
+}
+
+impl SseEncode for crate::api::AddressParse {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::AddressParse::Ok { server } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(server, serializer);
+            }
+            crate::api::AddressParse::Invalid => {
+                <i32>::sse_encode(1, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -4733,6 +5669,44 @@ impl SseEncode for crate::api::AdvertiseOutcome {
             },
             serializer,
         );
+    }
+}
+
+impl SseEncode for crate::api::AirplayUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::AirplayUiEvent::Advertising => {
+                <i32>::sse_encode(0, serializer);
+            }
+            crate::api::AirplayUiEvent::NotAnnouncing => {
+                <i32>::sse_encode(1, serializer);
+            }
+            crate::api::AirplayUiEvent::Request => {
+                <i32>::sse_encode(2, serializer);
+            }
+            crate::api::AirplayUiEvent::Pin { pin } => {
+                <i32>::sse_encode(3, serializer);
+                <String>::sse_encode(pin, serializer);
+            }
+            crate::api::AirplayUiEvent::PinDone => {
+                <i32>::sse_encode(4, serializer);
+            }
+            crate::api::AirplayUiEvent::Mirroring { active } => {
+                <i32>::sse_encode(5, serializer);
+                <bool>::sse_encode(active, serializer);
+            }
+            crate::api::AirplayUiEvent::Failed { code } => {
+                <i32>::sse_encode(6, serializer);
+                <String>::sse_encode(code, serializer);
+            }
+            crate::api::AirplayUiEvent::Stopped => {
+                <i32>::sse_encode(7, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -5276,31 +6250,34 @@ impl SseEncode for crate::api::PresenterUiEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         match self {
+            crate::api::PresenterUiEvent::PairingRequired => {
+                <i32>::sse_encode(0, serializer);
+            }
             crate::api::PresenterUiEvent::WaitingForApproval {
                 timeout_secs,
                 check,
                 room_name,
             } => {
-                <i32>::sse_encode(0, serializer);
+                <i32>::sse_encode(1, serializer);
                 <u32>::sse_encode(timeout_secs, serializer);
                 <u8>::sse_encode(check, serializer);
                 <Option<String>>::sse_encode(room_name, serializer);
             }
             crate::api::PresenterUiEvent::Joined { room_name } => {
-                <i32>::sse_encode(1, serializer);
+                <i32>::sse_encode(2, serializer);
                 <Option<String>>::sse_encode(room_name, serializer);
             }
             crate::api::PresenterUiEvent::ConnectionCode { sas } => {
-                <i32>::sse_encode(2, serializer);
+                <i32>::sse_encode(3, serializer);
                 <String>::sse_encode(sas, serializer);
             }
             crate::api::PresenterUiEvent::Page { page, pages } => {
-                <i32>::sse_encode(3, serializer);
+                <i32>::sse_encode(4, serializer);
                 <u32>::sse_encode(page, serializer);
                 <u32>::sse_encode(pages, serializer);
             }
             crate::api::PresenterUiEvent::Converting { name } => {
-                <i32>::sse_encode(4, serializer);
+                <i32>::sse_encode(5, serializer);
                 <String>::sse_encode(name, serializer);
             }
             crate::api::PresenterUiEvent::ContentPrepared {
@@ -5310,7 +6287,7 @@ impl SseEncode for crate::api::PresenterUiEvent {
                 pages,
                 host,
             } => {
-                <i32>::sse_encode(5, serializer);
+                <i32>::sse_encode(6, serializer);
                 <String>::sse_encode(name, serializer);
                 <crate::api::UiContentKind>::sse_encode(kind, serializer);
                 <u64>::sse_encode(size, serializer);
@@ -5318,33 +6295,33 @@ impl SseEncode for crate::api::PresenterUiEvent {
                 <Option<String>>::sse_encode(host, serializer);
             }
             crate::api::PresenterUiEvent::ContentRejected { reason } => {
-                <i32>::sse_encode(6, serializer);
+                <i32>::sse_encode(7, serializer);
                 <crate::api::UiSendRejection>::sse_encode(reason, serializer);
             }
             crate::api::PresenterUiEvent::Progress { sent, total } => {
-                <i32>::sse_encode(7, serializer);
+                <i32>::sse_encode(8, serializer);
                 <u64>::sse_encode(sent, serializer);
                 <u64>::sse_encode(total, serializer);
             }
             crate::api::PresenterUiEvent::ContentSent => {
-                <i32>::sse_encode(8, serializer);
+                <i32>::sse_encode(9, serializer);
             }
             crate::api::PresenterUiEvent::HandoverResult { ok } => {
-                <i32>::sse_encode(9, serializer);
+                <i32>::sse_encode(10, serializer);
                 <bool>::sse_encode(ok, serializer);
             }
             crate::api::PresenterUiEvent::Presenting => {
-                <i32>::sse_encode(10, serializer);
-            }
-            crate::api::PresenterUiEvent::PresentingStopped => {
                 <i32>::sse_encode(11, serializer);
             }
-            crate::api::PresenterUiEvent::Ended { code } => {
+            crate::api::PresenterUiEvent::PresentingStopped => {
                 <i32>::sse_encode(12, serializer);
+            }
+            crate::api::PresenterUiEvent::Ended { code } => {
+                <i32>::sse_encode(13, serializer);
                 <String>::sse_encode(code, serializer);
             }
             crate::api::PresenterUiEvent::Error { code, message } => {
-                <i32>::sse_encode(13, serializer);
+                <i32>::sse_encode(14, serializer);
                 <String>::sse_encode(code, serializer);
                 <String>::sse_encode(message, serializer);
             }
@@ -5352,6 +6329,23 @@ impl SseEncode for crate::api::PresenterUiEvent {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseEncode for crate::api::ProbeResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::ProbeResult::Ok => 0,
+                crate::api::ProbeResult::NotCometCast => 1,
+                crate::api::ProbeResult::Unreachable => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 
@@ -5678,6 +6672,58 @@ impl SseEncode for crate::api::ServerDiscovery {
         <bool>::sse_encode(self.announcements_allowed, serializer);
         <Vec<crate::api::DiscoveryWarning>>::sse_encode(self.notices, serializer);
         <Vec<String>>::sse_encode(self.warnings, serializer);
+    }
+}
+
+impl SseEncode for crate::api::TvKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::TvKind::Cast => 0,
+                crate::api::TvKind::AirPlay => 1,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::TvUiEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::TvUiEvent::Seen {
+                id,
+                name,
+                kind,
+                addresses,
+                can_screen,
+                can_photo,
+                can_video,
+            } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(id, serializer);
+                <String>::sse_encode(name, serializer);
+                <crate::api::TvKind>::sse_encode(kind, serializer);
+                <Vec<String>>::sse_encode(addresses, serializer);
+                <bool>::sse_encode(can_screen, serializer);
+                <bool>::sse_encode(can_photo, serializer);
+                <bool>::sse_encode(can_video, serializer);
+            }
+            crate::api::TvUiEvent::Gone { id } => {
+                <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(id, serializer);
+            }
+            crate::api::TvUiEvent::Unavailable => {
+                <i32>::sse_encode(2, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 

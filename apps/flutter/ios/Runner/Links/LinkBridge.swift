@@ -4,7 +4,7 @@
 //   installReferrer -> null      iOS has no install referrer: the app asks to scan again
 // Dart receives `link` (String) when a link arrives while the app runs.
 //
-// Only the built-in relay's host opens the app (Runner.entitlements: associated domains, and the
+// Only cometcast.de/app/{CODE} opens the app (Runner.entitlements: associated domains, and the
 // apple-app-site-association file on that host, deploy/well-known). Dart decides what a link
 // means (code, server, trust); this class only passes https links on.
 //

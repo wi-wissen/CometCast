@@ -19,6 +19,14 @@ class LinkFilterTest {
     }
 
     @Test
+    fun theJoinAddressFormIsHandedToDart() {
+        assertEquals(
+            "https://cometcast.de/app/K7QM2W",
+            LinkFilter.acceptText("https://cometcast.de/app/K7QM2W"),
+        )
+    }
+
+    @Test
     fun everythingElseIsDropped() {
         assertNull(LinkFilter.acceptText(null))
         assertNull(LinkFilter.acceptText(""))

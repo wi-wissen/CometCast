@@ -34,11 +34,13 @@ pub mod hls;
 pub mod http;
 pub mod legacy;
 pub mod mirror;
+pub mod photo;
 mod plistx;
 pub mod screen;
 pub mod srp;
 pub mod tlv;
 pub mod ts;
+pub mod watch;
 
 #[cfg(test)]
 mod testfake;

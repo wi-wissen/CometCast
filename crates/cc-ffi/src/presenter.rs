@@ -45,6 +45,14 @@ pub(crate) enum PCmd {
     StopPresenting,
     /// Ask the display to hold this hand-over token (iOS, native-apps.md 20.5).
     Handover(String),
+    /// The code of a TV that asked for pairing (`tv_pair`); the answer says whether it worked.
+    /// Only TV sessions (`tv.rs`) use it.
+    Pair {
+        /// The code the TV shows.
+        pin: String,
+        /// Whether the pairing worked.
+        reply: oneshot::Sender<bool>,
+    },
 }
 
 static CMDS: Mutex<Option<mpsc::UnboundedSender<PCmd>>> = Mutex::new(None);
@@ -262,6 +270,10 @@ pub(crate) async fn drive(
                         if control.is_some() {
                             session.stop_presenting();
                         }
+                    }
+                    PCmd::Pair { reply, .. } => {
+                        // Not a TV session: nothing to pair.
+                        let _ = reply.send(false);
                     }
                     PCmd::Handover(token) => {
                         abort_jobs(&mut send_job, &mut preparing);

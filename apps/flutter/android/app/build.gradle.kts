@@ -32,6 +32,18 @@ android {
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // The share target's Office types (AndroidManifest.xml, native-apps.md 21.2): only in
+        // builds that ship libcc_office_worker.so, which all build types below do. A build
+        // without the worker passes -PcometcastNoOfficeWorker=true and registers a type that
+        // nothing shares instead.
+        val officeShared = project.findProperty("cometcastNoOfficeWorker") != "true"
+        val none = "application/x-cometcast-unused"
+        manifestPlaceholders["shareMimeDocx"] =
+            if (officeShared) "application/vnd.openxmlformats-officedocument.wordprocessingml.document" else none
+        manifestPlaceholders["shareMimePptx"] =
+            if (officeShared) "application/vnd.openxmlformats-officedocument.presentationml.presentation" else none
+        manifestPlaceholders["shareMimeXlsx"] =
+            if (officeShared) "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else none
     }
 
     // Release signing comes from the environment (or Gradle properties of the person building,

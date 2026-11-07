@@ -542,3 +542,71 @@ fn death_by_signal_is_reported_as_signal() {
     sup.stop();
     let _ = fs::remove_dir_all(dir);
 }
+
+// --- the trusted "mirroring" signal (native-apps.md 21.4) ---------------------------------
+
+#[test]
+fn mirroring_start_comes_from_uxplays_line_after_a_pin() {
+    let (path, dir) = launcher("mirror", "mirror");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    let seen = collect_until(&rx, WAIT, |e| {
+        *e == AirplayEvent::MirroringChanged { active: true }
+    });
+    let pos = |want: &AirplayEvent| seen.iter().position(|e| e == want).unwrap();
+    assert!(
+        pos(&AirplayEvent::PinShown { pin: "9876".into() })
+            < pos(&AirplayEvent::MirroringChanged { active: true })
+    );
+    // The process ends (stop): the mirroring ends with it, before the exit is reported.
+    let rest = stop_and_get_exit(&mut sup, &rx);
+    let end = rest
+        .iter()
+        .position(|e| *e == AirplayEvent::MirroringChanged { active: false })
+        .expect("no end of the mirroring");
+    let exit = rest
+        .iter()
+        .position(|e| matches!(e, AirplayEvent::ProcessExited { .. }))
+        .unwrap();
+    assert!(end < exit, "{rest:?}");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn mirroring_ends_when_the_last_connection_closes() {
+    let (path, dir) = launcher("mirror-ends", "mirror-ends");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    let seen = collect_until(&rx, WAIT, |e| {
+        *e == AirplayEvent::MirroringChanged { active: false }
+    });
+    let started = seen
+        .iter()
+        .filter(|e| **e == AirplayEvent::MirroringChanged { active: true })
+        .count();
+    assert_eq!(started, 1, "{seen:?}");
+    sup.stop();
+    // No second end when the process stops afterwards.
+    let mut more = Vec::new();
+    while let Ok(e) = rx.try_recv() {
+        more.push(e);
+    }
+    assert!(
+        !more.contains(&AirplayEvent::MirroringChanged { active: false }),
+        "{more:?}"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_mirror_line_without_a_pin_is_not_believed() {
+    let (path, dir) = launcher("mirror-spoof", "mirror-spoof");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    let seen = collect_until(&rx, WAIT, |e| *e == AirplayEvent::ClientDisconnected);
+    assert!(
+        !seen
+            .iter()
+            .any(|e| matches!(e, AirplayEvent::MirroringChanged { .. })),
+        "{seen:?}"
+    );
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}

@@ -77,6 +77,14 @@ pub struct AirplayConfig {
     pub video_sink: Option<String>,
     /// Turn audio off (`-as 0`). Normally false.
     pub audio_off: bool,
+    /// Debug logging (`-d`). The receiving app needs it: the end of a mirroring is UxPlay's debug
+    /// line `Open connections: 0` (see [`crate::MIRRORING_STARTED_LINE`]). Off by default for the
+    /// CLI's experiments, on for [`crate::AirplayReceiver`].
+    pub debug_log: bool,
+    /// The X11 display UxPlay opens its window on (the `DISPLAY` variable of the process), so the
+    /// full-screen mirror lands on the screen of the Comet Cast window. `None` = inherit.
+    /// UxPlay has no option to choose a monitor of one X screen.
+    pub x11_display: Option<String>,
 }
 
 impl Default for AirplayConfig {
@@ -91,6 +99,8 @@ impl Default for AirplayConfig {
             ports: PortMode::default(),
             video_sink: None,
             audio_off: false,
+            debug_log: false,
+            x11_display: None,
         }
     }
 }
@@ -110,6 +120,9 @@ pub enum ConfigError {
     /// The video sink is empty, starts with `-` or has control characters.
     #[error("bad video sink name")]
     BadSink,
+    /// The X11 display is empty, starts with `-` or has control characters.
+    #[error("bad X11 display name")]
+    BadDisplay,
 }
 
 fn clean_text(s: &str) -> bool {
@@ -145,6 +158,11 @@ impl AirplayConfig {
         {
             return Err(ConfigError::BadSink);
         }
+        if let Some(d) = &self.x11_display
+            && !clean_text(d)
+        {
+            return Err(ConfigError::BadDisplay);
+        }
         Ok(())
     }
 
@@ -168,6 +186,9 @@ impl AirplayConfig {
             PinMode::PerConnection => a.push(pin_flag.into()),
             // UxPlay's help: "-pin[xxxx]" (no space between flag and digits).
             PinMode::Fixed(p) => a.push(format!("{pin_flag}{p}")),
+        }
+        if self.debug_log {
+            a.push("-d".into());
         }
         if self.fullscreen {
             a.push("-fs".into());
@@ -264,12 +285,13 @@ mod tests {
             ports: PortMode::Base(7100),
             video_sink: Some("fakesink".into()),
             audio_off: true,
+            debug_log: true,
             ..AirplayConfig::default()
         };
         assert_eq!(
             c.build_args().unwrap(),
             [
-                "-n", "Room 204", "-nh", "-pw1234", "-h265", "-p", "7100", "-vs", "fakesink",
+                "-n", "Room 204", "-nh", "-pw1234", "-d", "-h265", "-p", "7100", "-vs", "fakesink",
                 "-as", "0"
             ]
         );
@@ -304,6 +326,25 @@ mod tests {
             ..base
         };
         assert_eq!(c.validate(), Err(ConfigError::BadSink));
+        let c = AirplayConfig {
+            x11_display: Some("-x".into()),
+            ..AirplayConfig::default()
+        };
+        assert_eq!(c.validate(), Err(ConfigError::BadDisplay));
+    }
+
+    #[test]
+    fn pin_is_always_requested_and_never_remembered() {
+        // N87: a PIN for every connection; `-reg` (remember paired devices) never.
+        let a = AirplayConfig::default().build_args().unwrap();
+        assert!(a.iter().any(|x| x == "-pin"));
+        assert!(!a.iter().any(|x| x.starts_with("-reg")));
+        // `-d` is known to the real 1.68 help text.
+        let c = AirplayConfig {
+            debug_log: true,
+            ..AirplayConfig::default()
+        };
+        assert!(unsupported_flags(HELP_168, &c.build_args().unwrap()).is_empty());
     }
 
     #[test]

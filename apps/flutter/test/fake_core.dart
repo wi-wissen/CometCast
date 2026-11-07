@@ -489,6 +489,153 @@ class FakeCoreApi implements CoreApi {
   /// The controller of the newest search.
   StreamController<NearbyUiEvent> get search => nearbySearches.last;
 
+  // --- round 5 ---
+
+  String version = '0.1.0';
+
+  @override
+  String appVersion() => version;
+
+  /// What probeServer answers.
+  ProbeResult probeResult = ProbeResult.ok;
+  final probed = <String>[];
+
+  @override
+  String joinAddress(String server) {
+    var v = server.trim().replaceFirst(
+      RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'),
+      '',
+    );
+    v = v.replaceFirst(RegExp(r'/+$'), '');
+    if (v == 'relay.cometcast.de:443' || v == 'relay.cometcast.de') {
+      return 'cometcast.de/app';
+    }
+    return v.endsWith(':443') ? v.substring(0, v.length - 4) : v;
+  }
+
+  @override
+  AddressParse serverForAddress(String input) {
+    var v = input.trim().replaceFirst(
+      RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'),
+      '',
+    );
+    v = v
+        .replaceFirst(RegExp(r'/(app/?)?$'), '')
+        .split('/')
+        .first
+        .toLowerCase();
+    if (v.isEmpty || v.contains(' ') || v.contains('@')) {
+      return const AddressParse.invalid();
+    }
+    if (v == 'cometcast.de' || v == 'relay.cometcast.de') {
+      return const AddressParse.ok(server: 'relay.cometcast.de:443');
+    }
+    return AddressParse.ok(server: v.contains(':') ? v : '$v:443');
+  }
+
+  @override
+  Future<ProbeResult> probeServer(String server) async {
+    probed.add(server);
+    return probeResult;
+  }
+
+  bool airplayAvailable = false;
+  final airplayStarts = <({String name, bool askFirst})>[];
+  final airplayControllers = <StreamController<AirplayUiEvent>>[];
+  final airplayCalls = <String>[];
+
+  @override
+  bool airplayReceiveAvailable() => airplayAvailable;
+
+  @override
+  Stream<AirplayUiEvent> startAirplayReceive({
+    required String name,
+    required bool askFirst,
+  }) {
+    airplayStarts.add((name: name, askFirst: askFirst));
+    final c = StreamController<AirplayUiEvent>();
+    airplayControllers.add(c);
+    return c.stream;
+  }
+
+  @override
+  bool airplaySetAskFirst(bool ask) {
+    airplayCalls.add('askFirst:$ask');
+    return true;
+  }
+
+  @override
+  bool airplaySetLocked(bool locked) {
+    airplayCalls.add('locked:$locked');
+    return true;
+  }
+
+  @override
+  bool airplaySetRefusing(bool refusing) {
+    airplayCalls.add('refusing:$refusing');
+    return true;
+  }
+
+  @override
+  bool airplayAnswer(bool allow) {
+    airplayCalls.add('answer:$allow');
+    return true;
+  }
+
+  @override
+  bool airplayEndSession() {
+    airplayCalls.add('end');
+    return true;
+  }
+
+  @override
+  void stopAirplayReceive() => airplayCalls.add('stop');
+
+  bool officeConvert = true;
+
+  @override
+  bool officeConvertAvailable() => officeConvert;
+
+  final tvWatchers = <StreamController<TvUiEvent>>[];
+  int tvStops = 0;
+
+  @override
+  Stream<TvUiEvent> watchTvs() {
+    final c = StreamController<TvUiEvent>();
+    tvWatchers.add(c);
+    return c.stream;
+  }
+
+  @override
+  void stopWatchingTvs() => tvStops++;
+
+  final tvStarts = <String>[];
+  final tvSessions = <StreamController<PresenterUiEvent>>[];
+  final tvPins = <String>[];
+  bool tvPairResult = true;
+
+  @override
+  Stream<PresenterUiEvent> startTvPresenter({required String id}) {
+    tvStarts.add(id);
+    final c = StreamController<PresenterUiEvent>();
+    tvSessions.add(c);
+    return c.stream;
+  }
+
+  @override
+  Future<bool> tvPair(String pin) async {
+    tvPins.add(pin);
+    return tvPairResult;
+  }
+
+  String? tvDataDir;
+
+  @override
+  void setTvDataDir(String? path) => tvDataDir = path;
+
+  @override
+  bool setCastTrustAnchors(String? path) => path != null;
+
   @override
   Stream<NearbyUiEvent> watchNearbyScreens({required bool native}) {
     nearbyNativeFlags.add(native);

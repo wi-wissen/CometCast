@@ -86,6 +86,13 @@ impl CastDevice {
         dev
     }
 
+    /// Does the device have a screen (`ca` bit 0, "video out", `receiver_info.h`)? An audio-only
+    /// device (a speaker) does not. Without a `ca` value the answer is yes (UNCERTAIN: a device
+    /// that leaves the key out is assumed to be a TV).
+    pub fn has_video_out(&self) -> bool {
+        self.capabilities.is_none_or(|c| c & 1 == 1)
+    }
+
     /// The address to connect to: the first IPv4 address, else the first address.
     pub fn connect_ip(&self) -> Option<IpAddr> {
         self.addresses.first().copied()
@@ -182,6 +189,21 @@ mod tests {
         assert_eq!(d.port, 8009);
         // IPv4 sorts before IPv6.
         assert_eq!(d.connect_ip(), Some("192.168.1.20".parse().unwrap()));
+    }
+
+    #[test]
+    fn video_out_is_bit_zero_of_ca() {
+        let d = |ca: Option<&str>| {
+            CastDevice::from_txt(
+                "A._googlecast._tcp.local.",
+                8009,
+                ["10.0.0.2".parse().unwrap()],
+                ca.map(|c| ("ca", c)),
+            )
+        };
+        assert!(d(Some("463365")).has_video_out()); // a Chromecast
+        assert!(!d(Some("4")).has_video_out()); // audio out only: a speaker
+        assert!(d(None).has_video_out());
     }
 
     #[test]

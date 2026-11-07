@@ -64,13 +64,24 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- App Links (native-apps.md 20.4): https://relay.cometcast.de/{CODE} opens the app on
-                 a phone or tablet that has it. Only the built-in relay's host; other hosts stay
-                 browser links. `/......` is a path of exactly six characters (the room code);
-                 /display and /app are longer or shorter and stay in the browser. autoVerify
-                 needs https://relay.cometcast.de/.well-known/assetlinks.json (deploy/well-known,
-                 docs/android.md). UNCERTAIN: "relay.cometcast.de" is the planned name only
-                 (crates/cc-discovery). -->
+            <!-- App Links (native-apps.md 20.4, amended by 21.6): https://cometcast.de/app/{CODE}
+                 opens the app on a phone or tablet that has it. `/app/......` is a path of
+                 `/app/` and exactly six characters (the room code); /app/display, /app and the
+                 rest of the website stay in the browser. autoVerify needs
+                 https://cometcast.de/.well-known/assetlinks.json (served by the website,
+                 deploy/well-known, .github/workflows/pages.yml, docs/android.md). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="cometcast.de"
+                      android:pathPattern="/app/......"/>
+            </intent-filter>
+            <!-- The old form https://relay.cometcast.de/{CODE} (links and QR codes made before
+                 the join address moved to cometcast.de/app) may stay until that host is retired.
+                 autoVerify needs the same file on relay.cometcast.de. UNCERTAIN:
+                 "relay.cometcast.de" is the planned name only (crates/cc-discovery). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -78,6 +89,26 @@
                 <data android:scheme="https"
                       android:host="relay.cometcast.de"
                       android:pathPattern="/......"/>
+            </intent-filter>
+            <!-- Share target (native-apps.md 21.2, spec 15.3): one item from the share sheet of
+                 another app opens the app's share page. No SEND_MULTIPLE, no */*. The Office
+                 types come from manifest placeholders: they are the three OOXML types in builds
+                 that ship libcc_office_worker.so (every build type of build.gradle.kts), and a
+                 type nothing shares otherwise (-PcometcastNoOfficeWorker=true). `text/plain`
+                 cannot be filtered by content: the app shows share.noLink for text without an
+                 address. The TV launcher ignores it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="image/png"/>
+                <data android:mimeType="image/jpeg"/>
+                <data android:mimeType="image/webp"/>
+                <data android:mimeType="image/gif"/>
+                <data android:mimeType="application/pdf"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="${shareMimeDocx}"/>
+                <data android:mimeType="${shareMimePptx}"/>
+                <data android:mimeType="${shareMimeXlsx}"/>
             </intent-filter>
             <!-- Android TV / Google TV launcher row. The banner (320x180 dp, drawable-xhdpi) is
                  also set on the activity because some launchers read it from there. -->

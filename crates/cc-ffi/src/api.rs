@@ -1665,6 +1665,61 @@ pub fn server_defaults() -> ServerDefaults {
     server_defaults_with(&cc_discovery::DiscoverOptions::default())
 }
 
+/// The version of the core (`cc-ffi`'s package version, with a pre-release suffix when it has
+/// one). The About page shows it and links the source of this tag (`v{version}`).
+#[frb(sync)]
+pub fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
+}
+
+/// The join address (`{dom}`) of `server`: where a browser finds the web app. The built-in relay
+/// gives `cometcast.de/app`, every other server its host with `:port` only if not 443.
+#[frb(sync)]
+pub fn join_address(server: String) -> String {
+    cc_discovery::join_address(&server)
+}
+
+/// What [`server_for_address`] made of the typed text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddressParse {
+    /// The server to use (`host:port`; the built-in relay as in the built-in list).
+    Ok {
+        /// The server address.
+        server: String,
+    },
+    /// Not an address that can be used.
+    Invalid,
+}
+
+/// Turn what a person typed in the address field ("via {dom} · Change", spec 15.7) into a
+/// server: scheme, trailing `/`, a path (except `/app`) and `:443` are dropped; `cometcast.de`
+/// and `cometcast.de/app` give the built-in relay; names, IP literals and `.local` names work.
+#[frb(sync)]
+pub fn server_for_address(input: String) -> AddressParse {
+    match cc_discovery::server_for_address(&input) {
+        cc_discovery::AddressParse::Ok(server) => AddressParse::Ok { server },
+        cc_discovery::AddressParse::Invalid => AddressParse::Invalid,
+    }
+}
+
+/// The answer of [`probe_server`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeResult {
+    /// A Comet Cast server answered `GET /healthz`.
+    Ok,
+    /// Something answered, but not like a Comet Cast server (no `/healthz`).
+    NotCometCast,
+    /// No answer within 5 seconds, no connection, or the certificate was refused.
+    Unreachable,
+}
+
+/// Is there a Comet Cast server at `server`? `GET https://{server}/healthz`, 5 seconds, the
+/// certificate is checked (no self-signed exception). Used by the address field before an
+/// address is accepted.
+pub async fn probe_server(server: String) -> ProbeResult {
+    crate::address::probe(&server).await
+}
+
 /// The result of asking all sources for servers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerDiscovery {
@@ -2582,6 +2637,10 @@ pub fn send_content_cmd(cmd: UiContentCmd) -> bool {
 /// The apps map the code, never the English `message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PresenterUiEvent {
+    /// A TV asks for its pairing code (AirPlay, the first time; `start_tv_presenter` only): the
+    /// TV shows a code, the app asks for it and calls [`tv_pair`]. Nothing can be shown before
+    /// `Joined`.
+    PairingRequired,
     /// The room needs the host's approval: show the waiting page with the check number (the
     /// display shows the same number). Nothing is presented until `Joined`.
     WaitingForApproval {
@@ -2795,6 +2854,324 @@ pub fn stop_presenting() -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// TVs without Comet Cast: Google Cast and AirPlay receivers (desktop presenter, spec 15.5)
+// ---------------------------------------------------------------------------
+
+/// Which way a TV is reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TvKind {
+    /// Google Cast (Chromecast, Google TV): the screen.
+    Cast,
+    /// AirPlay (Apple TV, many smart TVs): the screen as a video a few seconds behind, a photo,
+    /// a media link.
+    AirPlay,
+}
+
+/// What [`watch_tvs`] reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TvUiEvent {
+    /// A TV appeared or changed.
+    Seen {
+        /// Stable id for [`start_tv_presenter`] (`cast:<id>` or `airplay:<id>`).
+        id: String,
+        /// The name the TV gives itself, cleaned.
+        name: String,
+        /// Cast or AirPlay.
+        kind: TvKind,
+        /// Its addresses as text. The app hides a TV whose address is also the address of a
+        /// Comet Cast screen in the nearby list (decision N84).
+        addresses: Vec<String>,
+        /// Can show the screen. For Cast false when the program has no trust anchors to check
+        /// the device ([`set_cast_trust_anchors`]) or the device has no screen.
+        can_screen: bool,
+        /// Can show a photo (AirPlay).
+        can_photo: bool,
+        /// Can play a media link (AirPlay).
+        can_video: bool,
+    },
+    /// A TV went away.
+    Gone {
+        /// The id of its last `Seen`.
+        id: String,
+    },
+    /// Searching is not possible here (no multicast, or a platform without TV sending); the
+    /// stream ends after this.
+    Unavailable,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static WATCH_TVS: Slot = Slot::new();
+
+/// List the TVs on the network (mDNS `_googlecast._tcp` and `_airplay._tcp`) until
+/// [`stop_watching_tvs`] is called or Dart stops listening. Run it exactly while the nearby
+/// search runs and the switch is on. Desktops only: elsewhere the stream gets `Unavailable`.
+pub async fn watch_tvs(events: StreamSink<TvUiEvent>) {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = events.add(TvUiEvent::Unavailable);
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let generation = WATCH_TVS.begin();
+        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        WATCH_TVS.store(stop_tx);
+        if !WATCH_TVS.is_current(generation) {
+            return;
+        }
+        crate::tv::watch(events, stop_rx);
+    }
+}
+
+/// Stop [`watch_tvs`] (does nothing if none runs).
+#[frb(sync)]
+pub fn stop_watching_tvs() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        WATCH_TVS.stop();
+        crate::tv::clear_registry();
+    }
+}
+
+/// Open a presenter session to the TV `id` (from `Seen`). Events are those of
+/// [`start_presenter`]: `PairingRequired` (AirPlay, the first time; answer with [`tv_pair`]),
+/// then `Joined { room_name }` with the TV's name; `present_screen` (the whole screen; a Cast
+/// device needs trust anchors), `present_content` (AirPlay: a picture, re-encoded as JPEG here,
+/// or a link to a media file or stream), `stop_presenting` and `stop_presenter` work on it
+/// unchanged. Errors: `tv_refused` and `tv_lost` end the stream; `tv_pair_wrong` and
+/// `tv_unsupported_content` are inline and do not. Replaces a running presenter session.
+pub async fn start_tv_presenter(id: String, events: StreamSink<PresenterUiEvent>) {
+    let generation = SENDER.begin();
+    encoded::replace(None);
+    content_sender::clear_cmd_channel();
+    presenter::clear();
+    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    SENDER.store(stop_tx);
+    if !SENDER.is_current(generation) {
+        return;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = stop_rx;
+        let _ = id;
+        let _ = events.add(PresenterUiEvent::Error {
+            code: "tv_lost".into(),
+            message: "sending to TVs is not available on this platform".into(),
+        });
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let panic_sink = events.clone();
+        spawn_guarded(
+            async move {
+                crate::tv::run(id, events, stop_rx, presenter::install).await;
+                presenter::clear();
+            },
+            move || {
+                let _ = panic_sink.add(PresenterUiEvent::Error {
+                    code: "unknown".into(),
+                    message: "internal error: the TV task panicked".into(),
+                });
+            },
+        );
+    }
+}
+
+/// Give the TV the code it shows (after `PairingRequired`). `true` = the TV accepted it (then
+/// `Joined` follows and the credentials are kept for next time); `false` = wrong code (the
+/// event `Error { tv_pair_wrong }` was sent, the TV shows a new code) or no TV session waits.
+pub async fn tv_pair(pin: String) -> bool {
+    let (tx, rx) = oneshot::channel();
+    if !presenter::send(presenter::PCmd::Pair { pin, reply: tx }) {
+        return false;
+    }
+    rx.await.unwrap_or(false)
+}
+
+/// The folder where pairing credentials of AirPlay TVs are kept (one file in it); `None` = the
+/// default place of the user's configuration folder. Set it to the app's data folder.
+#[frb(sync)]
+pub fn set_tv_data_dir(path: Option<String>) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::tv::set_data_dir(path.as_deref());
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let _ = path;
+}
+
+/// Load the PEM file with trust anchors for checking Cast devices (`None` removes them). The
+/// program embeds none (docs/cast.md); without them no Cast device can show the screen.
+/// Returns whether anchors are loaded now.
+#[frb(sync)]
+pub fn set_cast_trust_anchors(path: Option<String>) -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::tv::set_cast_anchors(path.as_deref())
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = path;
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AirPlay receive on the display (desktop, native-apps.md 21.4)
+// ---------------------------------------------------------------------------
+
+/// What the AirPlay receiver tells the display app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AirplayUiEvent {
+    /// The receiver is ready and offered to devices.
+    Advertising,
+    /// The receiver is not offered (Locked stopped it).
+    NotAnnouncing,
+    /// Approval on: a device wants to connect; ask the host ([`airplay_answer`]), the PIN
+    /// follows.
+    Request,
+    /// Show this PIN on the screen.
+    Pin {
+        /// Four digits, read from UxPlay.
+        pin: String,
+    },
+    /// The attempt is over: close the request or PIN dialog.
+    PinDone,
+    /// A device started or stopped mirroring (a trusted signal: UxPlay's own output).
+    Mirroring {
+        /// True while a picture is shown.
+        active: bool,
+    },
+    /// The receiver cannot run: `not_installed`, `gstreamer_missing`, `no_dnssd`, `bad_config`,
+    /// `failed`.
+    Failed {
+        /// The code the app maps to a state line.
+        code: String,
+    },
+    /// The receiver was stopped. The stream ends.
+    Stopped,
+}
+
+/// Can this computer receive AirPlay? True where the `uxplay` program is found (next to the
+/// app, then `PATH`) **and** prints the lines the mirroring signal needs. Release builds with a
+/// UxPlay without them do not list AirPlay. False on phones, tablets and TVs.
+#[frb(sync)]
+pub fn airplay_receive_available() -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::airplay_rx::available()
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        false
+    }
+}
+
+/// Start the AirPlay receiver with the room name as its name (empty: "Comet Cast"). `ask_first`
+/// = the display is in Approval on. Replaces a running receiver. Events end with `Stopped`.
+pub async fn start_airplay_receive(
+    name: String,
+    ask_first: bool,
+    events: StreamSink<AirplayUiEvent>,
+) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::airplay_rx::start(&name, ask_first, events);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (name, ask_first);
+        let _ = events.add(AirplayUiEvent::Failed {
+            code: "not_installed".into(),
+        });
+    }
+}
+
+/// Change the join mode between Open (`false`) and Approval on (`true`). `false` if no receiver
+/// runs.
+#[frb(sync)]
+pub fn airplay_set_ask_first(ask: bool) -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::airplay_rx::with(|r| r.set_ask_first(ask))
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = ask;
+        false
+    }
+}
+
+/// Locked (`true`): no new device, the service stops as soon as no mirroring runs (a running
+/// one stays until it ends); `false` starts it again. `false` if no receiver runs.
+#[frb(sync)]
+pub fn airplay_set_locked(locked: bool) -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::airplay_rx::with(|r| r.set_locked(locked))
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = locked;
+        false
+    }
+}
+
+/// A Comet Cast presenter presents (`true`): every new pairing is refused without a request
+/// ("Comet Cast first", decision N88); `false` when it stopped. `false` if no receiver runs.
+#[frb(sync)]
+pub fn airplay_set_refusing(refusing: bool) -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::airplay_rx::with(|r| r.set_refusing(refusing))
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = refusing;
+        false
+    }
+}
+
+/// Answer the open `Request`. `false` if none is open.
+#[frb(sync)]
+pub fn airplay_answer(allow: bool) -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::airplay_rx::answer(allow)
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = allow;
+        false
+    }
+}
+
+/// End the running mirroring (a Comet Cast presentation starts, the host stops it). `false` if
+/// no receiver runs.
+#[frb(sync)]
+pub fn airplay_end_session() -> bool {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::airplay_rx::with(cc_airplay::AirplayReceiver::end_session)
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        false
+    }
+}
+
+/// Stop the AirPlay receiver and end a running mirroring. Does nothing if none runs.
+#[frb(sync)]
+pub fn stop_airplay_receive() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::airplay_rx::stop();
+}
+
+/// Can this device convert Office files (`.docx .pptx .xlsx`)? True where the conversion worker
+/// is found (Linux, Windows, macOS, Android builds that ship it); always false on iOS and iPadOS
+/// (no child processes, decision N81). The switch in the app settings is the app's own (default
+/// on): off means the picker no longer offers Office files.
+#[frb(sync)]
+pub fn office_convert_available() -> bool {
+    office::available()
+}
+
+// ---------------------------------------------------------------------------
 // H.264 codec (Cisco OpenH264), downloaded on first use in release builds
 // ---------------------------------------------------------------------------
 
@@ -2930,6 +3307,63 @@ pub fn set_codec_dir(path: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_version_is_the_package_version() {
+        assert_eq!(app_version(), env!("CARGO_PKG_VERSION"));
+        assert!(!app_version().is_empty());
+    }
+
+    #[test]
+    fn join_address_and_typed_addresses() {
+        assert_eq!(
+            join_address("relay.cometcast.de:443".into()),
+            "cometcast.de/app"
+        );
+        assert_eq!(
+            join_address("cast.musterfirma.de:443".into()),
+            "cast.musterfirma.de"
+        );
+        assert_eq!(
+            server_for_address("cometcast.de".into()),
+            AddressParse::Ok {
+                server: "relay.cometcast.de:443".into()
+            }
+        );
+        assert_eq!(
+            server_for_address("https://cometcast.de/app/".into()),
+            AddressParse::Ok {
+                server: "relay.cometcast.de:443".into()
+            }
+        );
+        assert_eq!(
+            server_for_address("CAST.Musterfirma.de:443/x".into()),
+            AddressParse::Ok {
+                server: "cast.musterfirma.de:443".into()
+            }
+        );
+        assert_eq!(
+            server_for_address("not an address".into()),
+            AddressParse::Invalid
+        );
+    }
+
+    #[test]
+    fn office_conversion_follows_the_worker() {
+        set_office_worker(None);
+        // Not iOS here: available exactly when a worker is found.
+        assert_eq!(office_convert_available(), office_worker_path().is_some());
+    }
+
+    #[test]
+    fn airplay_calls_need_a_running_receiver() {
+        stop_airplay_receive();
+        assert!(!airplay_set_ask_first(true));
+        assert!(!airplay_set_locked(true));
+        assert!(!airplay_set_refusing(true));
+        assert!(!airplay_answer(true));
+        assert!(!airplay_end_session());
+    }
 
     /// The hand-over request is refused before anything is queued when the token is not a
     /// valid one or no presenter session runs (native-apps.md 20.5).

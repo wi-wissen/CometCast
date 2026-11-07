@@ -13,6 +13,830 @@ part of 'api.dart';
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
+mixin _$AddressParse {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AddressParse);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AddressParse()';
+}
+
+
+}
+
+/// @nodoc
+class $AddressParseCopyWith<$Res>  {
+$AddressParseCopyWith(AddressParse _, $Res Function(AddressParse) __);
+}
+
+
+/// Adds pattern-matching-related methods to [AddressParse].
+extension AddressParsePatterns on AddressParse {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AddressParse_Ok value)?  ok,TResult Function( AddressParse_Invalid value)?  invalid,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case AddressParse_Ok() when ok != null:
+return ok(_that);case AddressParse_Invalid() when invalid != null:
+return invalid(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AddressParse_Ok value)  ok,required TResult Function( AddressParse_Invalid value)  invalid,}){
+final _that = this;
+switch (_that) {
+case AddressParse_Ok():
+return ok(_that);case AddressParse_Invalid():
+return invalid(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AddressParse_Ok value)?  ok,TResult? Function( AddressParse_Invalid value)?  invalid,}){
+final _that = this;
+switch (_that) {
+case AddressParse_Ok() when ok != null:
+return ok(_that);case AddressParse_Invalid() when invalid != null:
+return invalid(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String server)?  ok,TResult Function()?  invalid,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case AddressParse_Ok() when ok != null:
+return ok(_that.server);case AddressParse_Invalid() when invalid != null:
+return invalid();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String server)  ok,required TResult Function()  invalid,}) {final _that = this;
+switch (_that) {
+case AddressParse_Ok():
+return ok(_that.server);case AddressParse_Invalid():
+return invalid();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String server)?  ok,TResult? Function()?  invalid,}) {final _that = this;
+switch (_that) {
+case AddressParse_Ok() when ok != null:
+return ok(_that.server);case AddressParse_Invalid() when invalid != null:
+return invalid();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class AddressParse_Ok extends AddressParse {
+  const AddressParse_Ok({required this.server}): super._();
+  
+
+/// The server address.
+ final  String server;
+
+/// Create a copy of AddressParse
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AddressParse_OkCopyWith<AddressParse_Ok> get copyWith => _$AddressParse_OkCopyWithImpl<AddressParse_Ok>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AddressParse_Ok&&(identical(other.server, server) || other.server == server));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,server);
+}
+
+@override
+String toString() {
+    return 'AddressParse.ok(server: $server)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AddressParse_OkCopyWith<$Res> implements $AddressParseCopyWith<$Res> {
+  factory $AddressParse_OkCopyWith(AddressParse_Ok value, $Res Function(AddressParse_Ok) _then) = _$AddressParse_OkCopyWithImpl;
+@useResult
+$Res call({
+ String server
+});
+
+
+
+
+}
+/// @nodoc
+class _$AddressParse_OkCopyWithImpl<$Res>
+    implements $AddressParse_OkCopyWith<$Res> {
+  _$AddressParse_OkCopyWithImpl(this._self, this._then);
+
+  final AddressParse_Ok _self;
+  final $Res Function(AddressParse_Ok) _then;
+
+/// Create a copy of AddressParse
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? server = null,}) {
+  return _then(AddressParse_Ok(
+server: null == server ? _self.server : server // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AddressParse_Invalid extends AddressParse {
+  const AddressParse_Invalid(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AddressParse_Invalid);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AddressParse.invalid()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+mixin _$AirplayUiEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AirplayUiEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $AirplayUiEventCopyWith<$Res>  {
+$AirplayUiEventCopyWith(AirplayUiEvent _, $Res Function(AirplayUiEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [AirplayUiEvent].
+extension AirplayUiEventPatterns on AirplayUiEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AirplayUiEvent_Advertising value)?  advertising,TResult Function( AirplayUiEvent_NotAnnouncing value)?  notAnnouncing,TResult Function( AirplayUiEvent_Request value)?  request,TResult Function( AirplayUiEvent_Pin value)?  pin,TResult Function( AirplayUiEvent_PinDone value)?  pinDone,TResult Function( AirplayUiEvent_Mirroring value)?  mirroring,TResult Function( AirplayUiEvent_Failed value)?  failed,TResult Function( AirplayUiEvent_Stopped value)?  stopped,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case AirplayUiEvent_Advertising() when advertising != null:
+return advertising(_that);case AirplayUiEvent_NotAnnouncing() when notAnnouncing != null:
+return notAnnouncing(_that);case AirplayUiEvent_Request() when request != null:
+return request(_that);case AirplayUiEvent_Pin() when pin != null:
+return pin(_that);case AirplayUiEvent_PinDone() when pinDone != null:
+return pinDone(_that);case AirplayUiEvent_Mirroring() when mirroring != null:
+return mirroring(_that);case AirplayUiEvent_Failed() when failed != null:
+return failed(_that);case AirplayUiEvent_Stopped() when stopped != null:
+return stopped(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AirplayUiEvent_Advertising value)  advertising,required TResult Function( AirplayUiEvent_NotAnnouncing value)  notAnnouncing,required TResult Function( AirplayUiEvent_Request value)  request,required TResult Function( AirplayUiEvent_Pin value)  pin,required TResult Function( AirplayUiEvent_PinDone value)  pinDone,required TResult Function( AirplayUiEvent_Mirroring value)  mirroring,required TResult Function( AirplayUiEvent_Failed value)  failed,required TResult Function( AirplayUiEvent_Stopped value)  stopped,}){
+final _that = this;
+switch (_that) {
+case AirplayUiEvent_Advertising():
+return advertising(_that);case AirplayUiEvent_NotAnnouncing():
+return notAnnouncing(_that);case AirplayUiEvent_Request():
+return request(_that);case AirplayUiEvent_Pin():
+return pin(_that);case AirplayUiEvent_PinDone():
+return pinDone(_that);case AirplayUiEvent_Mirroring():
+return mirroring(_that);case AirplayUiEvent_Failed():
+return failed(_that);case AirplayUiEvent_Stopped():
+return stopped(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AirplayUiEvent_Advertising value)?  advertising,TResult? Function( AirplayUiEvent_NotAnnouncing value)?  notAnnouncing,TResult? Function( AirplayUiEvent_Request value)?  request,TResult? Function( AirplayUiEvent_Pin value)?  pin,TResult? Function( AirplayUiEvent_PinDone value)?  pinDone,TResult? Function( AirplayUiEvent_Mirroring value)?  mirroring,TResult? Function( AirplayUiEvent_Failed value)?  failed,TResult? Function( AirplayUiEvent_Stopped value)?  stopped,}){
+final _that = this;
+switch (_that) {
+case AirplayUiEvent_Advertising() when advertising != null:
+return advertising(_that);case AirplayUiEvent_NotAnnouncing() when notAnnouncing != null:
+return notAnnouncing(_that);case AirplayUiEvent_Request() when request != null:
+return request(_that);case AirplayUiEvent_Pin() when pin != null:
+return pin(_that);case AirplayUiEvent_PinDone() when pinDone != null:
+return pinDone(_that);case AirplayUiEvent_Mirroring() when mirroring != null:
+return mirroring(_that);case AirplayUiEvent_Failed() when failed != null:
+return failed(_that);case AirplayUiEvent_Stopped() when stopped != null:
+return stopped(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  advertising,TResult Function()?  notAnnouncing,TResult Function()?  request,TResult Function( String pin)?  pin,TResult Function()?  pinDone,TResult Function( bool active)?  mirroring,TResult Function( String code)?  failed,TResult Function()?  stopped,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case AirplayUiEvent_Advertising() when advertising != null:
+return advertising();case AirplayUiEvent_NotAnnouncing() when notAnnouncing != null:
+return notAnnouncing();case AirplayUiEvent_Request() when request != null:
+return request();case AirplayUiEvent_Pin() when pin != null:
+return pin(_that.pin);case AirplayUiEvent_PinDone() when pinDone != null:
+return pinDone();case AirplayUiEvent_Mirroring() when mirroring != null:
+return mirroring(_that.active);case AirplayUiEvent_Failed() when failed != null:
+return failed(_that.code);case AirplayUiEvent_Stopped() when stopped != null:
+return stopped();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  advertising,required TResult Function()  notAnnouncing,required TResult Function()  request,required TResult Function( String pin)  pin,required TResult Function()  pinDone,required TResult Function( bool active)  mirroring,required TResult Function( String code)  failed,required TResult Function()  stopped,}) {final _that = this;
+switch (_that) {
+case AirplayUiEvent_Advertising():
+return advertising();case AirplayUiEvent_NotAnnouncing():
+return notAnnouncing();case AirplayUiEvent_Request():
+return request();case AirplayUiEvent_Pin():
+return pin(_that.pin);case AirplayUiEvent_PinDone():
+return pinDone();case AirplayUiEvent_Mirroring():
+return mirroring(_that.active);case AirplayUiEvent_Failed():
+return failed(_that.code);case AirplayUiEvent_Stopped():
+return stopped();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  advertising,TResult? Function()?  notAnnouncing,TResult? Function()?  request,TResult? Function( String pin)?  pin,TResult? Function()?  pinDone,TResult? Function( bool active)?  mirroring,TResult? Function( String code)?  failed,TResult? Function()?  stopped,}) {final _that = this;
+switch (_that) {
+case AirplayUiEvent_Advertising() when advertising != null:
+return advertising();case AirplayUiEvent_NotAnnouncing() when notAnnouncing != null:
+return notAnnouncing();case AirplayUiEvent_Request() when request != null:
+return request();case AirplayUiEvent_Pin() when pin != null:
+return pin(_that.pin);case AirplayUiEvent_PinDone() when pinDone != null:
+return pinDone();case AirplayUiEvent_Mirroring() when mirroring != null:
+return mirroring(_that.active);case AirplayUiEvent_Failed() when failed != null:
+return failed(_that.code);case AirplayUiEvent_Stopped() when stopped != null:
+return stopped();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class AirplayUiEvent_Advertising extends AirplayUiEvent {
+  const AirplayUiEvent_Advertising(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_Advertising);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AirplayUiEvent.advertising()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AirplayUiEvent_NotAnnouncing extends AirplayUiEvent {
+  const AirplayUiEvent_NotAnnouncing(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_NotAnnouncing);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AirplayUiEvent.notAnnouncing()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AirplayUiEvent_Request extends AirplayUiEvent {
+  const AirplayUiEvent_Request(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_Request);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AirplayUiEvent.request()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AirplayUiEvent_Pin extends AirplayUiEvent {
+  const AirplayUiEvent_Pin({required this.pin}): super._();
+  
+
+/// Four digits, read from UxPlay.
+ final  String pin;
+
+/// Create a copy of AirplayUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AirplayUiEvent_PinCopyWith<AirplayUiEvent_Pin> get copyWith => _$AirplayUiEvent_PinCopyWithImpl<AirplayUiEvent_Pin>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_Pin&&(identical(other.pin, pin) || other.pin == pin));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,pin);
+}
+
+@override
+String toString() {
+    return 'AirplayUiEvent.pin(pin: $pin)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AirplayUiEvent_PinCopyWith<$Res> implements $AirplayUiEventCopyWith<$Res> {
+  factory $AirplayUiEvent_PinCopyWith(AirplayUiEvent_Pin value, $Res Function(AirplayUiEvent_Pin) _then) = _$AirplayUiEvent_PinCopyWithImpl;
+@useResult
+$Res call({
+ String pin
+});
+
+
+
+
+}
+/// @nodoc
+class _$AirplayUiEvent_PinCopyWithImpl<$Res>
+    implements $AirplayUiEvent_PinCopyWith<$Res> {
+  _$AirplayUiEvent_PinCopyWithImpl(this._self, this._then);
+
+  final AirplayUiEvent_Pin _self;
+  final $Res Function(AirplayUiEvent_Pin) _then;
+
+/// Create a copy of AirplayUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? pin = null,}) {
+  return _then(AirplayUiEvent_Pin(
+pin: null == pin ? _self.pin : pin // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AirplayUiEvent_PinDone extends AirplayUiEvent {
+  const AirplayUiEvent_PinDone(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_PinDone);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AirplayUiEvent.pinDone()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AirplayUiEvent_Mirroring extends AirplayUiEvent {
+  const AirplayUiEvent_Mirroring({required this.active}): super._();
+  
+
+/// True while a picture is shown.
+ final  bool active;
+
+/// Create a copy of AirplayUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AirplayUiEvent_MirroringCopyWith<AirplayUiEvent_Mirroring> get copyWith => _$AirplayUiEvent_MirroringCopyWithImpl<AirplayUiEvent_Mirroring>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_Mirroring&&(identical(other.active, active) || other.active == active));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,active);
+}
+
+@override
+String toString() {
+    return 'AirplayUiEvent.mirroring(active: $active)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AirplayUiEvent_MirroringCopyWith<$Res> implements $AirplayUiEventCopyWith<$Res> {
+  factory $AirplayUiEvent_MirroringCopyWith(AirplayUiEvent_Mirroring value, $Res Function(AirplayUiEvent_Mirroring) _then) = _$AirplayUiEvent_MirroringCopyWithImpl;
+@useResult
+$Res call({
+ bool active
+});
+
+
+
+
+}
+/// @nodoc
+class _$AirplayUiEvent_MirroringCopyWithImpl<$Res>
+    implements $AirplayUiEvent_MirroringCopyWith<$Res> {
+  _$AirplayUiEvent_MirroringCopyWithImpl(this._self, this._then);
+
+  final AirplayUiEvent_Mirroring _self;
+  final $Res Function(AirplayUiEvent_Mirroring) _then;
+
+/// Create a copy of AirplayUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? active = null,}) {
+  return _then(AirplayUiEvent_Mirroring(
+active: null == active ? _self.active : active // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AirplayUiEvent_Failed extends AirplayUiEvent {
+  const AirplayUiEvent_Failed({required this.code}): super._();
+  
+
+/// The code the app maps to a state line.
+ final  String code;
+
+/// Create a copy of AirplayUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AirplayUiEvent_FailedCopyWith<AirplayUiEvent_Failed> get copyWith => _$AirplayUiEvent_FailedCopyWithImpl<AirplayUiEvent_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_Failed&&(identical(other.code, code) || other.code == code));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,code);
+}
+
+@override
+String toString() {
+    return 'AirplayUiEvent.failed(code: $code)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AirplayUiEvent_FailedCopyWith<$Res> implements $AirplayUiEventCopyWith<$Res> {
+  factory $AirplayUiEvent_FailedCopyWith(AirplayUiEvent_Failed value, $Res Function(AirplayUiEvent_Failed) _then) = _$AirplayUiEvent_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String code
+});
+
+
+
+
+}
+/// @nodoc
+class _$AirplayUiEvent_FailedCopyWithImpl<$Res>
+    implements $AirplayUiEvent_FailedCopyWith<$Res> {
+  _$AirplayUiEvent_FailedCopyWithImpl(this._self, this._then);
+
+  final AirplayUiEvent_Failed _self;
+  final $Res Function(AirplayUiEvent_Failed) _then;
+
+/// Create a copy of AirplayUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? code = null,}) {
+  return _then(AirplayUiEvent_Failed(
+code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AirplayUiEvent_Stopped extends AirplayUiEvent {
+  const AirplayUiEvent_Stopped(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is AirplayUiEvent_Stopped);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'AirplayUiEvent.stopped()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$CaptureSupport {
 
 
@@ -3514,10 +4338,11 @@ extension PresenterUiEventPatterns on PresenterUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult Function( PresenterUiEvent_Joined value)?  joined,TResult Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult Function( PresenterUiEvent_Page value)?  page,TResult Function( PresenterUiEvent_Converting value)?  converting,TResult Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult Function( PresenterUiEvent_Progress value)?  progress,TResult Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult Function( PresenterUiEvent_Presenting value)?  presenting,TResult Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult Function( PresenterUiEvent_Ended value)?  ended,TResult Function( PresenterUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PresenterUiEvent_PairingRequired value)?  pairingRequired,TResult Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult Function( PresenterUiEvent_Joined value)?  joined,TResult Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult Function( PresenterUiEvent_Page value)?  page,TResult Function( PresenterUiEvent_Converting value)?  converting,TResult Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult Function( PresenterUiEvent_Progress value)?  progress,TResult Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult Function( PresenterUiEvent_Presenting value)?  presenting,TResult Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult Function( PresenterUiEvent_Ended value)?  ended,TResult Function( PresenterUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
-case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+case PresenterUiEvent_PairingRequired() when pairingRequired != null:
+return pairingRequired(_that);case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
 return waitingForApproval(_that);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that);case PresenterUiEvent_Page() when page != null:
@@ -3549,10 +4374,11 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PresenterUiEvent_WaitingForApproval value)  waitingForApproval,required TResult Function( PresenterUiEvent_Joined value)  joined,required TResult Function( PresenterUiEvent_ConnectionCode value)  connectionCode,required TResult Function( PresenterUiEvent_Page value)  page,required TResult Function( PresenterUiEvent_Converting value)  converting,required TResult Function( PresenterUiEvent_ContentPrepared value)  contentPrepared,required TResult Function( PresenterUiEvent_ContentRejected value)  contentRejected,required TResult Function( PresenterUiEvent_Progress value)  progress,required TResult Function( PresenterUiEvent_ContentSent value)  contentSent,required TResult Function( PresenterUiEvent_HandoverResult value)  handoverResult,required TResult Function( PresenterUiEvent_Presenting value)  presenting,required TResult Function( PresenterUiEvent_PresentingStopped value)  presentingStopped,required TResult Function( PresenterUiEvent_Ended value)  ended,required TResult Function( PresenterUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PresenterUiEvent_PairingRequired value)  pairingRequired,required TResult Function( PresenterUiEvent_WaitingForApproval value)  waitingForApproval,required TResult Function( PresenterUiEvent_Joined value)  joined,required TResult Function( PresenterUiEvent_ConnectionCode value)  connectionCode,required TResult Function( PresenterUiEvent_Page value)  page,required TResult Function( PresenterUiEvent_Converting value)  converting,required TResult Function( PresenterUiEvent_ContentPrepared value)  contentPrepared,required TResult Function( PresenterUiEvent_ContentRejected value)  contentRejected,required TResult Function( PresenterUiEvent_Progress value)  progress,required TResult Function( PresenterUiEvent_ContentSent value)  contentSent,required TResult Function( PresenterUiEvent_HandoverResult value)  handoverResult,required TResult Function( PresenterUiEvent_Presenting value)  presenting,required TResult Function( PresenterUiEvent_PresentingStopped value)  presentingStopped,required TResult Function( PresenterUiEvent_Ended value)  ended,required TResult Function( PresenterUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
-case PresenterUiEvent_WaitingForApproval():
+case PresenterUiEvent_PairingRequired():
+return pairingRequired(_that);case PresenterUiEvent_WaitingForApproval():
 return waitingForApproval(_that);case PresenterUiEvent_Joined():
 return joined(_that);case PresenterUiEvent_ConnectionCode():
 return connectionCode(_that);case PresenterUiEvent_Page():
@@ -3580,10 +4406,11 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult? Function( PresenterUiEvent_Joined value)?  joined,TResult? Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( PresenterUiEvent_Page value)?  page,TResult? Function( PresenterUiEvent_Converting value)?  converting,TResult? Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult? Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult? Function( PresenterUiEvent_Progress value)?  progress,TResult? Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult? Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult? Function( PresenterUiEvent_Presenting value)?  presenting,TResult? Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult? Function( PresenterUiEvent_Ended value)?  ended,TResult? Function( PresenterUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PresenterUiEvent_PairingRequired value)?  pairingRequired,TResult? Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult? Function( PresenterUiEvent_Joined value)?  joined,TResult? Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( PresenterUiEvent_Page value)?  page,TResult? Function( PresenterUiEvent_Converting value)?  converting,TResult? Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult? Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult? Function( PresenterUiEvent_Progress value)?  progress,TResult? Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult? Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult? Function( PresenterUiEvent_Presenting value)?  presenting,TResult? Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult? Function( PresenterUiEvent_Ended value)?  ended,TResult? Function( PresenterUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
-case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+case PresenterUiEvent_PairingRequired() when pairingRequired != null:
+return pairingRequired(_that);case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
 return waitingForApproval(_that);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that);case PresenterUiEvent_Page() when page != null:
@@ -3614,9 +4441,10 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult Function( String? roomName)?  joined,TResult Function( String sas)?  connectionCode,TResult Function( int page,  int pages)?  page,TResult Function( String name)?  converting,TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult Function( UiSendRejection reason)?  contentRejected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  contentSent,TResult Function( bool ok)?  handoverResult,TResult Function()?  presenting,TResult Function()?  presentingStopped,TResult Function( String code)?  ended,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  pairingRequired,TResult Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult Function( String? roomName)?  joined,TResult Function( String sas)?  connectionCode,TResult Function( int page,  int pages)?  page,TResult Function( String name)?  converting,TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult Function( UiSendRejection reason)?  contentRejected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  contentSent,TResult Function( bool ok)?  handoverResult,TResult Function()?  presenting,TResult Function()?  presentingStopped,TResult Function( String code)?  ended,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
-case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+case PresenterUiEvent_PairingRequired() when pairingRequired != null:
+return pairingRequired();case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
 return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that.roomName);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that.sas);case PresenterUiEvent_Page() when page != null:
@@ -3648,9 +4476,10 @@ return error(_that.code,_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( int timeoutSecs,  int check,  String? roomName)  waitingForApproval,required TResult Function( String? roomName)  joined,required TResult Function( String sas)  connectionCode,required TResult Function( int page,  int pages)  page,required TResult Function( String name)  converting,required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  contentPrepared,required TResult Function( UiSendRejection reason)  contentRejected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  contentSent,required TResult Function( bool ok)  handoverResult,required TResult Function()  presenting,required TResult Function()  presentingStopped,required TResult Function( String code)  ended,required TResult Function( String code,  String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  pairingRequired,required TResult Function( int timeoutSecs,  int check,  String? roomName)  waitingForApproval,required TResult Function( String? roomName)  joined,required TResult Function( String sas)  connectionCode,required TResult Function( int page,  int pages)  page,required TResult Function( String name)  converting,required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  contentPrepared,required TResult Function( UiSendRejection reason)  contentRejected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  contentSent,required TResult Function( bool ok)  handoverResult,required TResult Function()  presenting,required TResult Function()  presentingStopped,required TResult Function( String code)  ended,required TResult Function( String code,  String message)  error,}) {final _that = this;
 switch (_that) {
-case PresenterUiEvent_WaitingForApproval():
+case PresenterUiEvent_PairingRequired():
+return pairingRequired();case PresenterUiEvent_WaitingForApproval():
 return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined():
 return joined(_that.roomName);case PresenterUiEvent_ConnectionCode():
 return connectionCode(_that.sas);case PresenterUiEvent_Page():
@@ -3678,9 +4507,10 @@ return error(_that.code,_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult? Function( String? roomName)?  joined,TResult? Function( String sas)?  connectionCode,TResult? Function( int page,  int pages)?  page,TResult? Function( String name)?  converting,TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult? Function( UiSendRejection reason)?  contentRejected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  contentSent,TResult? Function( bool ok)?  handoverResult,TResult? Function()?  presenting,TResult? Function()?  presentingStopped,TResult? Function( String code)?  ended,TResult? Function( String code,  String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  pairingRequired,TResult? Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult? Function( String? roomName)?  joined,TResult? Function( String sas)?  connectionCode,TResult? Function( int page,  int pages)?  page,TResult? Function( String name)?  converting,TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult? Function( UiSendRejection reason)?  contentRejected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  contentSent,TResult? Function( bool ok)?  handoverResult,TResult? Function()?  presenting,TResult? Function()?  presentingStopped,TResult? Function( String code)?  ended,TResult? Function( String code,  String message)?  error,}) {final _that = this;
 switch (_that) {
-case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+case PresenterUiEvent_PairingRequired() when pairingRequired != null:
+return pairingRequired();case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
 return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that.roomName);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that.sas);case PresenterUiEvent_Page() when page != null:
@@ -3701,6 +4531,38 @@ return error(_that.code,_that.message);case _:
 }
 
 }
+
+/// @nodoc
+
+
+class PresenterUiEvent_PairingRequired extends PresenterUiEvent {
+  const PresenterUiEvent_PairingRequired(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_PairingRequired);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'PresenterUiEvent.pairingRequired()';
+}
+
+
+}
+
+
+
 
 /// @nodoc
 
@@ -7767,6 +8629,370 @@ as String,
 
 
 }
+
+/// @nodoc
+mixin _$TvUiEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is TvUiEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'TvUiEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $TvUiEventCopyWith<$Res>  {
+$TvUiEventCopyWith(TvUiEvent _, $Res Function(TvUiEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [TvUiEvent].
+extension TvUiEventPatterns on TvUiEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( TvUiEvent_Seen value)?  seen,TResult Function( TvUiEvent_Gone value)?  gone,TResult Function( TvUiEvent_Unavailable value)?  unavailable,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case TvUiEvent_Seen() when seen != null:
+return seen(_that);case TvUiEvent_Gone() when gone != null:
+return gone(_that);case TvUiEvent_Unavailable() when unavailable != null:
+return unavailable(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( TvUiEvent_Seen value)  seen,required TResult Function( TvUiEvent_Gone value)  gone,required TResult Function( TvUiEvent_Unavailable value)  unavailable,}){
+final _that = this;
+switch (_that) {
+case TvUiEvent_Seen():
+return seen(_that);case TvUiEvent_Gone():
+return gone(_that);case TvUiEvent_Unavailable():
+return unavailable(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( TvUiEvent_Seen value)?  seen,TResult? Function( TvUiEvent_Gone value)?  gone,TResult? Function( TvUiEvent_Unavailable value)?  unavailable,}){
+final _that = this;
+switch (_that) {
+case TvUiEvent_Seen() when seen != null:
+return seen(_that);case TvUiEvent_Gone() when gone != null:
+return gone(_that);case TvUiEvent_Unavailable() when unavailable != null:
+return unavailable(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String id,  String name,  TvKind kind,  List<String> addresses,  bool canScreen,  bool canPhoto,  bool canVideo)?  seen,TResult Function( String id)?  gone,TResult Function()?  unavailable,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case TvUiEvent_Seen() when seen != null:
+return seen(_that.id,_that.name,_that.kind,_that.addresses,_that.canScreen,_that.canPhoto,_that.canVideo);case TvUiEvent_Gone() when gone != null:
+return gone(_that.id);case TvUiEvent_Unavailable() when unavailable != null:
+return unavailable();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String id,  String name,  TvKind kind,  List<String> addresses,  bool canScreen,  bool canPhoto,  bool canVideo)  seen,required TResult Function( String id)  gone,required TResult Function()  unavailable,}) {final _that = this;
+switch (_that) {
+case TvUiEvent_Seen():
+return seen(_that.id,_that.name,_that.kind,_that.addresses,_that.canScreen,_that.canPhoto,_that.canVideo);case TvUiEvent_Gone():
+return gone(_that.id);case TvUiEvent_Unavailable():
+return unavailable();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String id,  String name,  TvKind kind,  List<String> addresses,  bool canScreen,  bool canPhoto,  bool canVideo)?  seen,TResult? Function( String id)?  gone,TResult? Function()?  unavailable,}) {final _that = this;
+switch (_that) {
+case TvUiEvent_Seen() when seen != null:
+return seen(_that.id,_that.name,_that.kind,_that.addresses,_that.canScreen,_that.canPhoto,_that.canVideo);case TvUiEvent_Gone() when gone != null:
+return gone(_that.id);case TvUiEvent_Unavailable() when unavailable != null:
+return unavailable();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class TvUiEvent_Seen extends TvUiEvent {
+  const TvUiEvent_Seen({required this.id, required this.name, required this.kind, required  List<String> addresses, required this.canScreen, required this.canPhoto, required this.canVideo}): _addresses = addresses,super._();
+  
+
+/// Stable id for [`start_tv_presenter`] (`cast:<id>` or `airplay:<id>`).
+ final  String id;
+/// The name the TV gives itself, cleaned.
+ final  String name;
+/// Cast or AirPlay.
+ final  TvKind kind;
+/// Its addresses as text. The app hides a TV whose address is also the address of a
+/// Comet Cast screen in the nearby list (decision N84).
+ final  List<String> _addresses;
+/// Its addresses as text. The app hides a TV whose address is also the address of a
+/// Comet Cast screen in the nearby list (decision N84).
+ List<String> get addresses {
+  if (_addresses is EqualUnmodifiableListView) return _addresses;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_addresses);
+}
+
+/// Can show the screen. For Cast false when the program has no trust anchors to check
+/// the device ([`set_cast_trust_anchors`]) or the device has no screen.
+ final  bool canScreen;
+/// Can show a photo (AirPlay).
+ final  bool canPhoto;
+/// Can play a media link (AirPlay).
+ final  bool canVideo;
+
+/// Create a copy of TvUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$TvUiEvent_SeenCopyWith<TvUiEvent_Seen> get copyWith => _$TvUiEvent_SeenCopyWithImpl<TvUiEvent_Seen>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is TvUiEvent_Seen&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.kind, kind) || other.kind == kind)&&const DeepCollectionEquality().equals(other.addresses, _addresses)&&(identical(other.canScreen, canScreen) || other.canScreen == canScreen)&&(identical(other.canPhoto, canPhoto) || other.canPhoto == canPhoto)&&(identical(other.canVideo, canVideo) || other.canVideo == canVideo));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,name,kind,const DeepCollectionEquality().hash(_addresses),canScreen,canPhoto,canVideo);
+}
+
+@override
+String toString() {
+    return 'TvUiEvent.seen(id: $id, name: $name, kind: $kind, addresses: $addresses, canScreen: $canScreen, canPhoto: $canPhoto, canVideo: $canVideo)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $TvUiEvent_SeenCopyWith<$Res> implements $TvUiEventCopyWith<$Res> {
+  factory $TvUiEvent_SeenCopyWith(TvUiEvent_Seen value, $Res Function(TvUiEvent_Seen) _then) = _$TvUiEvent_SeenCopyWithImpl;
+@useResult
+$Res call({
+ String id, String name, TvKind kind, List<String> addresses, bool canScreen, bool canPhoto, bool canVideo
+});
+
+
+
+
+}
+/// @nodoc
+class _$TvUiEvent_SeenCopyWithImpl<$Res>
+    implements $TvUiEvent_SeenCopyWith<$Res> {
+  _$TvUiEvent_SeenCopyWithImpl(this._self, this._then);
+
+  final TvUiEvent_Seen _self;
+  final $Res Function(TvUiEvent_Seen) _then;
+
+/// Create a copy of TvUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? kind = null,Object? addresses = null,Object? canScreen = null,Object? canPhoto = null,Object? canVideo = null,}) {
+  return _then(TvUiEvent_Seen(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as TvKind,addresses: null == addresses ? _self._addresses : addresses // ignore: cast_nullable_to_non_nullable
+as List<String>,canScreen: null == canScreen ? _self.canScreen : canScreen // ignore: cast_nullable_to_non_nullable
+as bool,canPhoto: null == canPhoto ? _self.canPhoto : canPhoto // ignore: cast_nullable_to_non_nullable
+as bool,canVideo: null == canVideo ? _self.canVideo : canVideo // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class TvUiEvent_Gone extends TvUiEvent {
+  const TvUiEvent_Gone({required this.id}): super._();
+  
+
+/// The id of its last `Seen`.
+ final  String id;
+
+/// Create a copy of TvUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$TvUiEvent_GoneCopyWith<TvUiEvent_Gone> get copyWith => _$TvUiEvent_GoneCopyWithImpl<TvUiEvent_Gone>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is TvUiEvent_Gone&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id);
+}
+
+@override
+String toString() {
+    return 'TvUiEvent.gone(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $TvUiEvent_GoneCopyWith<$Res> implements $TvUiEventCopyWith<$Res> {
+  factory $TvUiEvent_GoneCopyWith(TvUiEvent_Gone value, $Res Function(TvUiEvent_Gone) _then) = _$TvUiEvent_GoneCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$TvUiEvent_GoneCopyWithImpl<$Res>
+    implements $TvUiEvent_GoneCopyWith<$Res> {
+  _$TvUiEvent_GoneCopyWithImpl(this._self, this._then);
+
+  final TvUiEvent_Gone _self;
+  final $Res Function(TvUiEvent_Gone) _then;
+
+/// Create a copy of TvUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(TvUiEvent_Gone(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class TvUiEvent_Unavailable extends TvUiEvent {
+  const TvUiEvent_Unavailable(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is TvUiEvent_Unavailable);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'TvUiEvent.unavailable()';
+}
+
+
+}
+
+
+
 
 /// @nodoc
 mixin _$UiCodecState {

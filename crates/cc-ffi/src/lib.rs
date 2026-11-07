@@ -18,6 +18,9 @@ compile_error!(
      `h264-libloading` (releases); see docs/capture.md, \"H.264 licensing\""
 );
 
+mod address;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod airplay_rx;
 pub mod api;
 mod content;
 mod content_sender;
@@ -25,6 +28,8 @@ mod encoded;
 mod nearby;
 mod office;
 mod presenter;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod tv;
 mod video;
 
 // Generated code uses `unsafe` (C calls) and has no docs, so it opts out of those lints.

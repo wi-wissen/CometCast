@@ -8,6 +8,7 @@ import de.cometcast.cometcast.links.LinkBridge
 import de.cometcast.cometcast.nearby.NearbyBridge
 import de.cometcast.cometcast.platform.PlatformBridge
 import de.cometcast.cometcast.scanner.QrBridge
+import de.cometcast.cometcast.share.ShareBridge
 import de.cometcast.cometcast.video.VideoBridge
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,6 +18,7 @@ class MainActivity : FlutterActivity() {
     private var videoBridge: VideoBridge? = null
     private var linkBridge: LinkBridge? = null
     private var nearbyBridge: NearbyBridge? = null
+    private var shareBridge: ShareBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -29,16 +31,20 @@ class MainActivity : FlutterActivity() {
         QrBridge(this, flutterEngine)
         // Screens on the same network (spec 14): NsdManager browse, results go to the Rust core.
         nearbyBridge = NearbyBridge(this, flutterEngine)
+        // The share sheet of other apps (ACTION_SEND, native-apps.md 21.2).
+        shareBridge = ShareBridge(this, flutterEngine)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         linkBridge?.onNewIntent(intent)
+        shareBridge?.onNewIntent(intent)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         videoBridge?.release()
         nearbyBridge?.release()
+        shareBridge?.release()
         super.cleanUpFlutterEngine(flutterEngine)
     }
 

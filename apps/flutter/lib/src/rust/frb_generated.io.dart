@@ -25,6 +25,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<AirplayUiEvent> dco_decode_StreamSink_airplay_ui_event_Sse(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<ContentSenderUiEvent>
   dco_decode_StreamSink_content_sender_ui_event_Sse(dynamic raw);
 
@@ -57,10 +62,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<TvUiEvent> dco_decode_StreamSink_tv_ui_event_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
+  AddressParse dco_decode_address_parse(dynamic raw);
+
+  @protected
   AdvertiseOutcome dco_decode_advertise_outcome(dynamic raw);
+
+  @protected
+  AirplayUiEvent dco_decode_airplay_ui_event(dynamic raw);
 
   @protected
   AnnounceStatus dco_decode_announce_status(dynamic raw);
@@ -198,6 +212,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PresenterUiEvent dco_decode_presenter_ui_event(dynamic raw);
 
   @protected
+  ProbeResult dco_decode_probe_result(dynamic raw);
+
+  @protected
   PushResult dco_decode_push_result(dynamic raw);
 
   @protected
@@ -223,6 +240,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ServerDiscovery dco_decode_server_discovery(dynamic raw);
+
+  @protected
+  TvKind dco_decode_tv_kind(dynamic raw);
+
+  @protected
+  TvUiEvent dco_decode_tv_ui_event(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -267,6 +290,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<AirplayUiEvent> sse_decode_StreamSink_airplay_ui_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<ContentSenderUiEvent>
   sse_decode_StreamSink_content_sender_ui_event_Sse(
     SseDeserializer deserializer,
@@ -301,10 +329,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<TvUiEvent> sse_decode_StreamSink_tv_ui_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AddressParse sse_decode_address_parse(SseDeserializer deserializer);
+
+  @protected
   AdvertiseOutcome sse_decode_advertise_outcome(SseDeserializer deserializer);
+
+  @protected
+  AirplayUiEvent sse_decode_airplay_ui_event(SseDeserializer deserializer);
 
   @protected
   AnnounceStatus sse_decode_announce_status(SseDeserializer deserializer);
@@ -478,6 +517,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PresenterUiEvent sse_decode_presenter_ui_event(SseDeserializer deserializer);
 
   @protected
+  ProbeResult sse_decode_probe_result(SseDeserializer deserializer);
+
+  @protected
   PushResult sse_decode_push_result(SseDeserializer deserializer);
 
   @protected
@@ -505,6 +547,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ServerDiscovery sse_decode_server_discovery(SseDeserializer deserializer);
+
+  @protected
+  TvKind sse_decode_tv_kind(SseDeserializer deserializer);
+
+  @protected
+  TvUiEvent sse_decode_tv_ui_event(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -554,6 +602,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_airplay_ui_event_Sse(
+    RustStreamSink<AirplayUiEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_content_sender_ui_event_Sse(
     RustStreamSink<ContentSenderUiEvent> self,
     SseSerializer serializer,
@@ -596,11 +650,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_tv_ui_event_Sse(
+    RustStreamSink<TvUiEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_address_parse(AddressParse self, SseSerializer serializer);
 
   @protected
   void sse_encode_advertise_outcome(
     AdvertiseOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_airplay_ui_event(
+    AirplayUiEvent self,
     SseSerializer serializer,
   );
 
@@ -824,6 +893,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_probe_result(ProbeResult self, SseSerializer serializer);
+
+  @protected
   void sse_encode_push_result(PushResult self, SseSerializer serializer);
 
   @protected
@@ -864,6 +936,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     ServerDiscovery self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_tv_kind(TvKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tv_ui_event(TvUiEvent self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);

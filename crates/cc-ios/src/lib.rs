@@ -11,6 +11,7 @@
 //!   use it directly.
 //! * [`ffi`]: the `extern "C"` functions declared in `include/cc_ios.h`. The only module
 //!   with `unsafe`.
+//! * [`share`]: the engine of the share extension (one item, remote controls, polling).
 //! * [`log`]: a small size-bounded log file in the App Group container, because an extension
 //!   has no console that a person can read after the fact.
 //!
@@ -20,5 +21,6 @@
 pub mod engine;
 pub mod ffi;
 pub mod log;
+pub mod share;
 
 pub use engine::{Config, ErrorCode, PushCode, State, Status};

@@ -2,18 +2,17 @@
 //! Comet Cast's own rules around AirPlay. These are plain functions, so they can be tested
 //! without any UxPlay process.
 //!
-//! Decisions taken from the project plan (the plan text is data, the numbers are UNCERTAIN):
-//! * The display device has a switch "allow foreign devices". When it is switched on, the
-//!   AirPlay service runs for 10 minutes ([`FOREIGN_WINDOW`]).
+//! Decisions (docs/design/first-run-and-display.md, N87 and N88):
+//! * Admission follows the display's **join mode**, not a time window: Open lets a device in
+//!   with the PIN, Approval on asks the operator first, Locked turns new devices away. The
+//!   switch in Settings is the permission. (This replaces the 10-minute "allow foreign devices"
+//!   window of the first version.)
+//! * A PIN is always required (`-pin`, never `-reg`, see [`crate::config`]).
 //! * At most one active AirPlay session ([`MAX_ACTIVE_SESSIONS`]).
-//! * After the window is over, new devices are rejected, but a mirroring that is already
-//!   running continues. The service is stopped when that session ends.
-
-use std::time::Duration;
-
-/// How long foreign devices may start a new connection after the switch was turned on.
-/// UNCERTAIN: 10 minutes is the planning decision, not measured or user-tested.
-pub const FOREIGN_WINDOW: Duration = Duration::from_secs(10 * 60);
+//! * While a Comet Cast presenter presents, new pairings are refused without any question
+//!   ("Comet Cast first").
+//! * Locked stops the service as soon as no session is active; a running mirroring stays until
+//!   it ends.
 
 /// Largest number of AirPlay sessions that may run at the same time.
 /// UNCERTAIN: planning decision. Note that UxPlay itself serves one mirroring at a time by
@@ -21,48 +20,68 @@ pub const FOREIGN_WINDOW: Duration = Duration::from_secs(10 * 60);
 /// test what a second device sees.
 pub const MAX_ACTIVE_SESSIONS: usize = 1;
 
+/// The join mode of the display, as far as AirPlay is concerned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinMode {
+    /// Open: a device gets in with the PIN, no question.
+    Open,
+    /// Approval on: the operator is asked first, then the PIN.
+    Approval,
+    /// Locked: no new device; a running mirror stays.
+    Locked,
+}
+
 /// What the policy knows at the moment a device wants to start a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PolicyState {
-    /// Time since "allow foreign devices" was switched on. `None` = the switch is off.
-    pub since_enabled: Option<Duration>,
+    /// The join mode of the display.
+    pub join_mode: JoinMode,
     /// Number of sessions that are active right now.
     pub active_sessions: usize,
+    /// A Comet Cast presenter presents right now (decision N88: Comet Cast first).
+    pub comet_cast_presenting: bool,
 }
 
 /// Why a new device was turned away.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RejectReason {
-    /// "Allow foreign devices" is off.
-    Disabled,
-    /// The time window is over.
-    WindowExpired,
+    /// The display is Locked.
+    Locked,
     /// Another AirPlay session is active already.
     SessionActive,
+    /// A Comet Cast presenter presents (no dialog, the device shows its own failure).
+    CometCastFirst,
 }
 
 /// Answer to "may this new device start a session?".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Admission {
-    /// Yes (the app may still ask the operator, see [`ConfirmHook`]).
+    /// Yes, the PIN follows at once (Open).
     Allow,
+    /// Ask the operator first, then show the PIN (Approval on).
+    Ask,
     /// No.
     Reject(RejectReason),
 }
 
 /// Decide about a NEW device. A session that already runs is never touched by this function.
 pub fn admit_new_session(state: PolicyState) -> Admission {
-    match state.since_enabled {
-        None => Admission::Reject(RejectReason::Disabled),
-        Some(t) if t >= FOREIGN_WINDOW => Admission::Reject(RejectReason::WindowExpired),
-        Some(_) if state.active_sessions >= MAX_ACTIVE_SESSIONS => {
-            Admission::Reject(RejectReason::SessionActive)
-        }
-        Some(_) => Admission::Allow,
+    if state.join_mode == JoinMode::Locked {
+        return Admission::Reject(RejectReason::Locked);
+    }
+    if state.comet_cast_presenting {
+        return Admission::Reject(RejectReason::CometCastFirst);
+    }
+    if state.active_sessions >= MAX_ACTIVE_SESSIONS {
+        return Admission::Reject(RejectReason::SessionActive);
+    }
+    match state.join_mode {
+        JoinMode::Open => Admission::Allow,
+        JoinMode::Approval | JoinMode::Locked => Admission::Ask,
     }
 }
 
-/// What to do with the UxPlay process after the window.
+/// What to do with the UxPlay process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServiceAction {
     /// Leave UxPlay running.
@@ -71,22 +90,13 @@ pub enum ServiceAction {
     Stop,
 }
 
-/// Should the UxPlay process still run? A running mirroring continues past the window;
-/// the process stops as soon as the window is over and no session is active.
+/// Should the UxPlay process still run? Locked stops it, but a running mirroring continues:
+/// the process stops as soon as the display is Locked and no session is active.
 pub fn service_action(state: PolicyState) -> ServiceAction {
-    match state.since_enabled {
-        None => {
-            if state.active_sessions > 0 {
-                // Switch turned off while someone mirrors. UNCERTAIN: the plan only
-                // decides about the expiry of the window; we keep the picture running here
-                // too, so the picture never breaks off without a clear decision.
-                ServiceAction::KeepRunning
-            } else {
-                ServiceAction::Stop
-            }
-        }
-        Some(t) if t >= FOREIGN_WINDOW && state.active_sessions == 0 => ServiceAction::Stop,
-        Some(_) => ServiceAction::KeepRunning,
+    if state.join_mode == JoinMode::Locked && state.active_sessions == 0 {
+        ServiceAction::Stop
+    } else {
+        ServiceAction::KeepRunning
     }
 }
 
@@ -160,59 +170,81 @@ impl ConfirmHook for AcceptAll {
 mod tests {
     use super::*;
 
-    fn st(since: Option<u64>, active: usize) -> PolicyState {
+    fn st(join_mode: JoinMode, active: usize, presenting: bool) -> PolicyState {
         PolicyState {
-            since_enabled: since.map(Duration::from_secs),
+            join_mode,
             active_sessions: active,
+            comet_cast_presenting: presenting,
         }
     }
 
     #[test]
-    fn allows_inside_window_without_session() {
-        assert_eq!(admit_new_session(st(Some(0), 0)), Admission::Allow);
-        assert_eq!(admit_new_session(st(Some(599), 0)), Admission::Allow);
-    }
-
-    #[test]
-    fn rejects_when_off() {
+    fn open_lets_a_device_in_without_a_question() {
         assert_eq!(
-            admit_new_session(st(None, 0)),
-            Admission::Reject(RejectReason::Disabled)
+            admit_new_session(st(JoinMode::Open, 0, false)),
+            Admission::Allow
         );
     }
 
     #[test]
-    fn rejects_after_ten_minutes() {
+    fn approval_on_asks_first() {
         assert_eq!(
-            admit_new_session(st(Some(600), 0)),
-            Admission::Reject(RejectReason::WindowExpired)
+            admit_new_session(st(JoinMode::Approval, 0, false)),
+            Admission::Ask
         );
+    }
+
+    #[test]
+    fn locked_turns_new_devices_away() {
         assert_eq!(
-            admit_new_session(st(Some(3600), 0)),
-            Admission::Reject(RejectReason::WindowExpired)
+            admit_new_session(st(JoinMode::Locked, 0, false)),
+            Admission::Reject(RejectReason::Locked)
         );
     }
 
     #[test]
     fn only_one_session() {
+        for m in [JoinMode::Open, JoinMode::Approval] {
+            assert_eq!(
+                admit_new_session(st(m, 1, false)),
+                Admission::Reject(RejectReason::SessionActive)
+            );
+        }
+    }
+
+    #[test]
+    fn comet_cast_comes_first_in_every_mode() {
+        for m in [JoinMode::Open, JoinMode::Approval] {
+            assert_eq!(
+                admit_new_session(st(m, 0, true)),
+                Admission::Reject(RejectReason::CometCastFirst)
+            );
+        }
         assert_eq!(
-            admit_new_session(st(Some(10), 1)),
-            Admission::Reject(RejectReason::SessionActive)
+            admit_new_session(st(JoinMode::Locked, 0, true)),
+            Admission::Reject(RejectReason::Locked)
         );
     }
 
     #[test]
-    fn running_mirroring_continues_after_window() {
-        assert_eq!(service_action(st(Some(599), 0)), ServiceAction::KeepRunning);
-        assert_eq!(service_action(st(Some(600), 1)), ServiceAction::KeepRunning);
+    fn locked_stops_the_service_once_no_session_is_active() {
+        // A running mirroring stays until it ends ("Connected stay").
         assert_eq!(
-            service_action(st(Some(7200), 1)),
+            service_action(st(JoinMode::Locked, 1, false)),
             ServiceAction::KeepRunning
         );
-        // The session ended after the window: now the service stops.
-        assert_eq!(service_action(st(Some(7200), 0)), ServiceAction::Stop);
-        assert_eq!(service_action(st(None, 0)), ServiceAction::Stop);
-        assert_eq!(service_action(st(None, 1)), ServiceAction::KeepRunning);
+        assert_eq!(
+            service_action(st(JoinMode::Locked, 0, false)),
+            ServiceAction::Stop
+        );
+        assert_eq!(
+            service_action(st(JoinMode::Locked, 0, true)),
+            ServiceAction::Stop
+        );
+        for m in [JoinMode::Open, JoinMode::Approval] {
+            assert_eq!(service_action(st(m, 0, false)), ServiceAction::KeepRunning);
+            assert_eq!(service_action(st(m, 1, true)), ServiceAction::KeepRunning);
+        }
     }
 
     #[test]

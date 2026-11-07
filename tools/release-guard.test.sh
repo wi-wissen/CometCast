@@ -68,4 +68,24 @@ expect "licenses older than pubspec.lock" 1 "$guard" licenses-fresh "$lic"
 printf '# no hashes\n' > "$lic/THIRD_PARTY_LICENSES.md"
 expect "licenses without hash lines" 1 "$guard" licenses-fresh "$lic"
 
+# the copies for the apps (native-apps.md 21.7), checked when the root notices file exists
+mk_lic
+printf 'notices\n' > "$lic/THIRD_PARTY_NOTICES.md"
+expect "licence copies missing" 1 "$guard" licenses-fresh "$lic"
+mkdir -p "$lic/apps/flutter/assets/licenses" "$lic/apps/apple-tv/Resources/Licenses" "$lic/apps/web/public"
+mk_copies() {
+  for d in apps/flutter/assets/licenses apps/apple-tv/Resources/Licenses; do
+    cp "$lic/THIRD_PARTY_LICENSES.md" "$lic/THIRD_PARTY_NOTICES.md" "$lic/$d/"
+  done
+  { cat "$lic/THIRD_PARTY_NOTICES.md"; printf '\n'; cat "$lic/THIRD_PARTY_LICENSES.md"; } > "$lic/apps/web/public/third-party-licenses.txt"
+}
+mk_copies
+expect "licence copies fresh" 0 "$guard" licenses-fresh "$lic"
+printf 'x\n' >> "$lic/apps/flutter/assets/licenses/THIRD_PARTY_NOTICES.md"
+expect "flutter copy differs" 1 "$guard" licenses-fresh "$lic"
+mk_copies; printf 'x\n' >> "$lic/apps/apple-tv/Resources/Licenses/THIRD_PARTY_LICENSES.md"
+expect "apple tv copy differs" 1 "$guard" licenses-fresh "$lic"
+mk_copies; printf 'x\n' >> "$lic/apps/web/public/third-party-licenses.txt"
+expect "web copy differs" 1 "$guard" licenses-fresh "$lic"
+
 if [ "$fails" -eq 0 ]; then echo "all passed"; else echo "$fails failed"; exit 1; fi

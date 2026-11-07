@@ -22,3 +22,22 @@ Future<bool> setWindowFullscreen(bool on) async {
     return false;
   }
 }
+
+/// Raises the Comet Cast window above other windows (UxPlay's full-screen mirror) while a
+/// dialog needs the person (`on` true) and lowers it again afterwards (`on` false), as in
+/// native-apps.md 21.4. Returns whether the platform did it; where it cannot (no handler: the
+/// Windows and macOS runners do not implement it yet), the request waits for the server's
+/// expiry and the caller shows nothing new.
+typedef RaiseWindow = Future<bool> Function(bool on);
+
+Future<bool> raiseWindow(bool on) async {
+  try {
+    await const MethodChannel(windowChannelName)
+        .invokeMethod<void>('raise', on);
+    return true;
+  } on MissingPluginException {
+    return false;
+  } on PlatformException {
+    return false;
+  }
+}

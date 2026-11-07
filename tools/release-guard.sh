@@ -71,6 +71,19 @@ case "$cmd" in
       if [ -z "$want" ]; then die "THIRD_PARTY_LICENSES.md has no $key line"; stale=1
       elif [ "$want" != "$have" ]; then die "THIRD_PARTY_LICENSES.md is older than $lock (checksum differs): run node tools/gen-third-party.mjs and commit"; stale=1; fi
     done
+    # The copies for the apps (native-apps.md 21.7): the same text as the root files, the web copy has the
+    # notices first. A copy that is missing or differs fails like a stale file.
+    notices="$root/THIRD_PARTY_NOTICES.md"
+    if [ -f "$notices" ]; then
+      for d in apps/flutter/assets/licenses apps/apple-tv/Resources/Licenses; do
+        for n in THIRD_PARTY_LICENSES.md THIRD_PARTY_NOTICES.md; do
+          cmp -s "$root/$n" "$root/$d/$n" || { die "$d/$n is missing or differs from $n: run node tools/gen-third-party.mjs"; stale=1; }
+        done
+      done
+      web="$root/apps/web/public/third-party-licenses.txt"
+      { sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$notices"; printf '\n'; cat "$f"; } | cmp -s - "$web" \
+        || { die "apps/web/public/third-party-licenses.txt is missing or differs from the root files: run node tools/gen-third-party.mjs"; stale=1; }
+    fi
     [ "$stale" -eq 0 ] || exit 1
     ;;
   skip-valid)

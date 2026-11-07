@@ -48,8 +48,15 @@ String? canonicalServer(String raw) {
   return port == 443 ? host : '$host:$port';
 }
 
+/// The built-in relay's server as the links name it (`canonicalServer` form).
+const builtInRelayServer = 'relay.cometcast.de';
+
+/// The website host whose `/app/{CODE}` links stand for the built-in relay (native-apps.md 21.6).
+const _joinHost = 'cometcast.de';
+
 /// The code and server of an accepted URL form: `https://{host}/{CODE}` and
-/// `https://{host}/{CODE}?server={server}`. The server is `{server}` if given, else `{host}`.
+/// `https://{host}/{CODE}?server={server}`, plus (native-apps.md 21.6) `https://cometcast.de/app/{CODE}`,
+/// which names the built-in relay. The server is `{server}` if given, else `{host}`.
 /// Anything else (another scheme, no code, a code of the wrong length or alphabet, a bad
 /// `server` parameter, a user name in the URL) is null: no code.
 LinkTarget? parseLinkUrl(String text, CodeNormalizer normalize) {
@@ -59,10 +66,17 @@ LinkTarget? parseLinkUrl(String text, CodeNormalizer normalize) {
     return null;
   }
   final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-  if (segments.length != 1) return null;
-  final code = normalize(Uri.decodeComponent(segments.single));
+  final isJoinForm =
+      uri.host.toLowerCase() == _joinHost &&
+      (!uri.hasPort || uri.port == 443) &&
+      segments.length == 2 &&
+      segments.first.toLowerCase() == 'app';
+  if (!isJoinForm && segments.length != 1) return null;
+  final code = normalize(Uri.decodeComponent(segments.last));
   if (code == null) return null;
-  final hostPort = uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  final hostPort = isJoinForm
+      ? builtInRelayServer
+      : (uri.hasPort ? '${uri.host}:${uri.port}' : uri.host);
   final server = _serverParam(uri.queryParametersAll, hostPort);
   return server == null ? null : LinkTarget(code: code, server: server);
 }
