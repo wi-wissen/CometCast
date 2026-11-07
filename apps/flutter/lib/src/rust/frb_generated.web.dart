@@ -66,6 +66,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
   UiCodecInfo dco_decode_box_autoadd_ui_codec_info(dynamic raw);
 
   @protected
@@ -147,6 +150,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
   UiCodecInfo? dco_decode_opt_box_autoadd_ui_codec_info(dynamic raw);
 
   @protected
@@ -202,6 +208,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiContentKind dco_decode_ui_content_kind(dynamic raw);
+
+  @protected
+  UiJoinMode dco_decode_ui_join_mode(dynamic raw);
 
   @protected
   UiSendRejection dco_decode_ui_send_rejection(dynamic raw);
@@ -261,6 +270,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   UiCodecInfo sse_decode_box_autoadd_ui_codec_info(
@@ -364,6 +376,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
   UiCodecInfo? sse_decode_opt_box_autoadd_ui_codec_info(
     SseDeserializer deserializer,
   );
@@ -425,6 +440,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiContentKind sse_decode_ui_content_kind(SseDeserializer deserializer);
+
+  @protected
+  UiJoinMode sse_decode_ui_join_mode(SseDeserializer deserializer);
 
   @protected
   UiSendRejection sse_decode_ui_send_rejection(SseDeserializer deserializer);
@@ -497,6 +515,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_ui_codec_info(
@@ -628,6 +649,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_ui_codec_info(
     UiCodecInfo? self,
     SseSerializer serializer,
@@ -707,6 +731,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_content_kind(UiContentKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_join_mode(UiJoinMode self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_send_rejection(

@@ -10,6 +10,7 @@
 //! interface, so it is not translated (the i18n rules in docs/i18n.md are for the apps).
 
 mod airplay_send;
+mod approval;
 
 use std::process::ExitCode;
 use std::time::Duration;
@@ -30,6 +31,7 @@ use cc_transport::{IceServerConfig, TlsTrust};
 const USAGE: &str = "\
 Usage:
   cometcast-cli receive [--server HOST:PORT] [--bind ADDR] [--ca-file PEM] [--decode]
+                        [--join-mode open|confirm|locked]
   cometcast-cli send <CODE> [--server HOST:PORT] [--seconds N] [--bind ADDR] [--ca-file PEM]
                     [--screen [--display :N] [--fps N] [--bitrate-kbps N]]
   cometcast-cli airplay [--name NAME] [--uxplay-path PATH] [--video-sink SINK] [--seconds N]
@@ -57,6 +59,8 @@ Options:
   --display NAME      send --screen: X11 display such as :99 (default: $DISPLAY)
   --fps N             send --screen: how often the screen is looked at (default 15)
   --bitrate-kbps N    send --screen: encoder target bit rate (default 2000)
+  --join-mode MODE    receive: who may join the room: open (default: anybody with the code),
+                      confirm (every join asks on this terminal: y/n) or locked (nobody)
   --decode            receive: decode H.264 video with OpenH264 and print the picture size and
                       mean colour once per second (proof that the stream decodes; no display)
   --bind ADDR         Local UDP address for WebRTC (default 0.0.0.0:0; use 127.0.0.1:0 for same-machine tests)
@@ -98,6 +102,7 @@ enum Command {
     Receive {
         common: Common,
         decode: bool,
+        join_mode: cc_proto::JoinMode,
     },
     Send {
         code: RoomCode,
@@ -214,6 +219,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
     let mut positional = Vec::new();
     let mut screen = false;
     let mut decode = false;
+    let mut join_mode: Option<cc_proto::JoinMode> = None;
     let mut display = None;
     let mut fps = None;
     let mut bitrate_kbps = None;
@@ -254,6 +260,10 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
             }
             "--screen" => screen = true,
             "--decode" => decode = true,
+            "--join-mode" => {
+                let v = args.next().ok_or("--join-mode needs a value")?;
+                join_mode = Some(v.parse::<cc_proto::JoinMode>()?);
+            }
             "--display" => display = Some(args.next().ok_or("--display needs a value")?),
             "--fps" => {
                 let v = args.next().ok_or("--fps needs a value")?;
@@ -282,9 +292,18 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Command, String>
             || fps.is_some()
             || bitrate_kbps.is_some()
         {
-            return Err("receive takes only --server, --bind, --ca-file and --decode".into());
+            return Err(
+                "receive takes only --server, --bind, --ca-file, --decode and --join-mode".into(),
+            );
         }
-        return Ok(Command::Receive { common, decode });
+        return Ok(Command::Receive {
+            common,
+            decode,
+            join_mode: join_mode.unwrap_or(cc_proto::JoinMode::Open),
+        });
+    }
+    if join_mode.is_some() {
+        return Err("--join-mode belongs to receive".into());
     }
     if decode {
         return Err("--decode belongs to receive".into());
@@ -386,7 +405,11 @@ async fn async_main() -> ExitCode {
         Command::Miracast { name } => miracast(name).await,
         Command::Cast(c) => cast::run(c).await,
         Command::Discover(d) => discover::run(d).await,
-        Command::Receive { common, decode } => receive(common, decode).await,
+        Command::Receive {
+            common,
+            decode,
+            join_mode,
+        } => receive(common, decode, join_mode).await,
         Command::Send {
             code,
             seconds,
@@ -712,8 +735,9 @@ impl DecodeCheck {
     }
 }
 
-async fn receive(common: Common, decode: bool) -> ExitCode {
+async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) -> ExitCode {
     let mut opts = ReceiverOptions::new(common.server);
+    opts.join_mode = join_mode;
     let mut checker = None;
     let mut tap_rx = None;
     let mut tap_handle: Option<cc_transport::VideoTap> = None;
@@ -760,7 +784,16 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
     let mut got_content = false;
     println!("Room code: {}", core.room_code());
     print_ice_servers(core.ice_servers());
+    println!("Join mode: {}", core.join_mode());
     println!("Waiting for a sender (Ctrl-C to quit)...");
+    // Approvals are typed on stdin. In `open` mode stdin is not read at all, so scripts that
+    // run `receive` without a terminal behave as before. With `confirm` or `locked`, stdin
+    // is read; when it ends, waiting requests are denied (nobody can answer them).
+    let mut stdin_lines = Some(tokio::io::AsyncBufReadExt::lines(
+        tokio::io::BufReader::new(tokio::io::stdin()),
+    ));
+    let interactive = join_mode != cc_proto::JoinMode::Open;
+    let mut queue = approval::Queue::default();
     let mut last_packets = 0;
     let mut got_video = false;
     let ctrl_c = tokio::signal::ctrl_c();
@@ -797,8 +830,74 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
                 }
                 None => content_events = None,
             },
+            line = async {
+                match stdin_lines.as_mut() {
+                    Some(l) if interactive => l.next_line().await,
+                    _ => std::future::pending().await,
+                }
+            } => match line {
+                Ok(Some(line)) => match approval::parse_line(&line) {
+                    Some(approval::TermCmd::Allow) => {
+                        if let Some(w) = queue.first().cloned() {
+                            core.decide_join(w.id, true);
+                            queue.remove(w.id);
+                            println!("Allowed \"{}\".", w.name);
+                            ask_next(&queue);
+                        } else {
+                            println!("Nobody is waiting.");
+                        }
+                    }
+                    Some(approval::TermCmd::Deny) => {
+                        if let Some(w) = queue.first().cloned() {
+                            core.decide_join(w.id, false);
+                            queue.remove(w.id);
+                            println!("Denied \"{}\".", w.name);
+                            ask_next(&queue);
+                        } else {
+                            println!("Nobody is waiting.");
+                        }
+                    }
+                    Some(approval::TermCmd::DenyAll) => {
+                        core.deny_all_joins();
+                        queue.clear();
+                        println!("Denied everybody who waited.");
+                    }
+                    Some(approval::TermCmd::SetMode(m)) => core.set_join_mode(m),
+                    Some(approval::TermCmd::Kick) => core.remove_peer(),
+                    Some(approval::TermCmd::Help) | None => println!("{}", approval::HELP),
+                },
+                // stdin ended: nobody can answer any more.
+                Ok(None) | Err(_) => {
+                    stdin_lines = None;
+                    if queue.len() > 0 {
+                        core.deny_all_joins();
+                        queue.clear();
+                    }
+                    println!("Input closed: join requests are denied from now on if the mode needs approval.");
+                    if core.join_mode() == cc_proto::JoinMode::Confirm {
+                        core.set_join_mode(cc_proto::JoinMode::Locked);
+                    }
+                }
+            },
             ev = core.next_event() => match ev {
-                Some(ReceiverEvent::PeerJoined) => println!("Sender joined."),
+                Some(ReceiverEvent::JoinRequest { id, name, check }) => {
+                    queue.push(approval::Waiting { id, name, check });
+                    if queue.len() == 1 {
+                        ask_next(&queue);
+                    } else {
+                        println!("Another request is waiting ({} in total).", queue.len());
+                    }
+                }
+                Some(ReceiverEvent::JoinRequestCancelled { id, reason }) => {
+                    let was_first = queue.first().is_some_and(|w| w.id == id);
+                    queue.remove(id);
+                    println!("A request ended ({reason}).");
+                    if was_first {
+                        ask_next(&queue);
+                    }
+                }
+                Some(ReceiverEvent::JoinModeChanged(m)) => println!("Join mode: {m}"),
+                Some(ReceiverEvent::PeerJoined { name }) => println!("Sender joined: \"{name}\"."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
                 Some(ReceiverEvent::VideoTrack { mime, .. }) => {
                     got_video = true;
@@ -837,6 +936,31 @@ async fn receive(common: Common, decode: bool) -> ExitCode {
     }
 }
 
+/// Print the question for the oldest waiting request, if any.
+fn ask_next(queue: &approval::Queue) {
+    if let Some(w) = queue.first() {
+        println!("{}", approval::question(w, queue.len() - 1));
+    }
+}
+
+/// Tell the person that the room waits for the host (printed while `SenderCore::start` waits).
+fn spawn_join_notice() -> tokio::sync::mpsc::UnboundedSender<cc_sender::JoinProgress> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Some(cc_sender::JoinProgress::Pending {
+            timeout_secs,
+            check,
+        }) = rx.recv().await
+        {
+            println!(
+                "Waiting for the host to allow you (check number {check:02}, \
+                 up to {timeout_secs} s). Nothing is sent until then."
+            );
+        }
+    });
+    tx
+}
+
 async fn send(
     code: RoomCode,
     seconds: Option<u64>,
@@ -860,6 +984,7 @@ async fn send(
         ..ScreenOptions::default()
     });
     opts.duration = seconds.map(Duration::from_secs);
+    opts.join_progress = Some(spawn_join_notice());
     opts.trust = match load_trust(common.ca_file.as_deref()) {
         Ok(t) => t,
         Err(e) => {
@@ -918,6 +1043,11 @@ async fn send(
                     println!("Receiver left.");
                     core.stop().await;
                     return if connected { ExitCode::SUCCESS } else { ExitCode::from(3) };
+                }
+                Some(SenderEvent::RemovedByHost) => {
+                    println!("The host removed you from the room.");
+                    core.stop().await;
+                    return ExitCode::from(3);
                 }
                 Some(SenderEvent::Error(e)) => {
                     eprintln!("error: {e}");

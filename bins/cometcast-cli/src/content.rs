@@ -289,6 +289,7 @@ async fn send(cmd: Cmd) -> Result<(), String> {
     }
     let mut opts = ContentSenderOptions::new(cmd.server, cmd.code);
     opts.trust = trust;
+    opts.join_progress = Some(crate::spawn_join_notice());
     if let Some(b) = cmd.bind {
         opts.session.udp_bind = vec![b];
     }
@@ -304,6 +305,7 @@ async fn send(cmd: Cmd) -> Result<(), String> {
                 match ev {
                     SenderEvent::Error(e) => return e,
                     SenderEvent::PeerLeft => return "the receiver left".to_string(),
+                    SenderEvent::RemovedByHost => return "the host removed you".to_string(),
                     _ => {}
                 }
             }

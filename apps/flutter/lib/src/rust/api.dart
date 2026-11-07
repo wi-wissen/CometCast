@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `is_current`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `hash`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -40,14 +40,33 @@ Stream<ReceiverUiEvent> startReceiver({
   required String server,
   String? udpBind,
   required bool content,
+  required UiJoinMode joinMode,
 }) => RustLib.instance.api.crateApiStartReceiver(
   server: server,
   udpBind: udpBind,
   content: content,
+  joinMode: joinMode,
 );
 
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
 Future<void> stopReceiver() => RustLib.instance.api.crateApiStopReceiver();
+
+/// Change who may join the running receiver's room, at any time. `Locked` also refuses
+/// everybody who waits. The server confirms with [`ReceiverUiEvent::JoinModeChanged`].
+/// Returns `false` if no receiver runs.
+bool setJoinMode({required UiJoinMode mode}) =>
+    RustLib.instance.api.crateApiSetJoinMode(mode: mode);
+
+/// Allow or deny a waiting request (`id` from [`ReceiverUiEvent::JoinRequest`]). `id: None`
+/// with `allow: false` denies everybody who waits (`None` with `true` does nothing).
+/// Returns `false` if no receiver runs.
+bool decideJoin({BigInt? id, required bool allow}) =>
+    RustLib.instance.api.crateApiDecideJoin(id: id, allow: allow);
+
+/// Remove the connected sender. UNCERTAIN: one sender per receiver in this version, so the
+/// receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+/// Returns `false` if no receiver runs.
+bool removePeer() => RustLib.instance.api.crateApiRemovePeer();
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
 /// without padding), or `None`. Call it after a [`ReceiverUiEvent::FrameReady`].
@@ -93,12 +112,14 @@ Stream<SenderUiEvent> startSender({
   int? seconds,
   String? udpBind,
   ScreenRequest? screen,
+  String? name,
 }) => RustLib.instance.api.crateApiStartSender(
   code: code,
   server: server,
   seconds: seconds,
   udpBind: udpBind,
   screen: screen,
+  name: name,
 );
 
 /// Start a sender whose video the host pushes: join the room `code` on `server` and send the
@@ -113,10 +134,12 @@ Stream<SenderUiEvent> startEncodedSender({
   required String code,
   required String server,
   String? udpBind,
+  String? name,
 }) => RustLib.instance.api.crateApiStartEncodedSender(
   code: code,
   server: server,
   udpBind: udpBind,
+  name: name,
 );
 
 /// Stop the running sender (does nothing if none runs). The Dart stream then ends.
@@ -224,8 +247,9 @@ LinkCheck validateLink({required String input}) =>
     RustLib.instance.api.crateApiValidateLink(input: input);
 
 /// Use this program to render PDFs (an absolute path) instead of looking for one; `None` goes
-/// back to the default search. For tests and for hosts whose layout differs. The path is not
-/// checked for ownership: only pass a path the app itself controls.
+/// back to the default search. For tests and for hosts whose layout differs. Only pass a path
+/// the app itself controls. It must pass the same trust check as the Office worker (`cc-docs::check_worker_file`: absolute,
+/// owned by this user or root, not writable by others); otherwise there is no worker.
 void setDocsWorker({String? path}) =>
     RustLib.instance.api.crateApiSetDocsWorker(path: path);
 
@@ -263,11 +287,13 @@ Stream<ContentSenderUiEvent> startContentSender({
   required String server,
   String? udpBind,
   required ContentSource source,
+  String? name,
 }) => RustLib.instance.api.crateApiStartContentSender(
   code: code,
   server: server,
   udpBind: udpBind,
   source: source,
+  name: name,
 );
 
 /// Queue a presenter command for the running content sender. Returns `false` if no content
@@ -482,6 +508,27 @@ sealed class ContentSenderUiEvent with _$ContentSenderUiEvent {
     required String name,
   }) = ContentSenderUiEvent_Converting;
 
+  /// The room needs the host's approval: show a waiting screen with the check number.
+  /// Nothing is sent until `Joined`.
+  const factory ContentSenderUiEvent.waitingForApproval({
+    /// Seconds until the server gives up.
+    required int timeoutSecs,
+
+    /// Two-digit check number (the display shows the same number).
+    required int check,
+  }) = ContentSenderUiEvent_WaitingForApproval;
+
+  /// The join was refused: `join_denied`, `room_locked` or `approval_timeout`. The stream
+  /// ends after this.
+  const factory ContentSenderUiEvent.joinRefused({
+    /// Server code.
+    required String code,
+  }) = ContentSenderUiEvent_JoinRefused;
+
+  /// The host removed this sender. The stream ends after this.
+  const factory ContentSenderUiEvent.removedByHost() =
+      ContentSenderUiEvent_RemovedByHost;
+
   /// The room was joined and the offer sent.
   const factory ContentSenderUiEvent.joined() = ContentSenderUiEvent_Joined;
 
@@ -684,10 +731,44 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
   const factory ReceiverUiEvent.roomCode({
     /// The room code, uppercase.
     required String code,
+
+    /// The join mode the room has.
+    required UiJoinMode joinMode,
   }) = ReceiverUiEvent_RoomCode;
 
-  /// A sender joined the room.
-  const factory ReceiverUiEvent.peerJoined() = ReceiverUiEvent_PeerJoined;
+  /// A sender joined the room (it is allowed to present).
+  const factory ReceiverUiEvent.peerJoined({
+    /// Cleaned display name of the sender (plain text, at most 40 characters).
+    required String name,
+  }) = ReceiverUiEvent_PeerJoined;
+
+  /// Join mode `confirm`: somebody waits for a decision ([`decide_join`]). The name is
+  /// untrusted text that the server cleaned: show it as plain text.
+  const factory ReceiverUiEvent.joinRequest({
+    /// Request id for [`decide_join`].
+    required BigInt id,
+
+    /// Cleaned display name.
+    required String name,
+
+    /// Two-digit check number; the sender's waiting screen shows the same number.
+    required int check,
+  }) = ReceiverUiEvent_JoinRequest;
+
+  /// A waiting request ended: `left`, `cancelled`, `timeout`, `locked` or `room_full`.
+  const factory ReceiverUiEvent.joinRequestCancelled({
+    /// Request id.
+    required BigInt id,
+
+    /// Why.
+    required String reason,
+  }) = ReceiverUiEvent_JoinRequestCancelled;
+
+  /// The join mode in force now (confirmed by the server).
+  const factory ReceiverUiEvent.joinModeChanged({
+    /// The mode.
+    required UiJoinMode mode,
+  }) = ReceiverUiEvent_JoinModeChanged;
 
   /// The WebRTC connection state changed.
   const factory ReceiverUiEvent.connectionState({
@@ -881,7 +962,28 @@ class ScreenRequest {
 sealed class SenderUiEvent with _$SenderUiEvent {
   const SenderUiEvent._();
 
-  /// The room was joined and the offer sent. Always the first event.
+  /// The room needs the host's approval: show a waiting screen with the check number (the
+  /// display shows the same number). Nothing is sent until `Joined`.
+  const factory SenderUiEvent.waitingForApproval({
+    /// Seconds until the server gives up.
+    required int timeoutSecs,
+
+    /// Two-digit check number.
+    required int check,
+  }) = SenderUiEvent_WaitingForApproval;
+
+  /// The join was refused: `join_denied`, `room_locked` or `approval_timeout`. The stream
+  /// ends after this.
+  const factory SenderUiEvent.joinRefused({
+    /// Server code.
+    required String code,
+  }) = SenderUiEvent_JoinRefused;
+
+  /// The host removed this sender from the room. The stream ends after this.
+  const factory SenderUiEvent.removedByHost() = SenderUiEvent_RemovedByHost;
+
+  /// The room was joined and the offer sent. Always the first event unless the room asked
+  /// for approval first.
   const factory SenderUiEvent.joined() = SenderUiEvent_Joined;
 
   /// The WebRTC connection state changed.
@@ -1237,6 +1339,18 @@ enum UiContentKind {
 
   /// A link.
   link,
+}
+
+/// Who may join a room (docs/protocol.md, "Join approval").
+enum UiJoinMode {
+  /// Anybody who knows the code joins at once.
+  open,
+
+  /// Every join waits for an explicit allow or deny on this device.
+  confirm,
+
+  /// Nobody can join.
+  locked,
 }
 
 /// Why something cannot be sent. Found before anything is connected.

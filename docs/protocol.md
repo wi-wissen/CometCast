@@ -1,15 +1,19 @@
-# Comet Cast signalling protocol (version 1)
+# Comet Cast signalling protocol (version 2)
 
 The server only mediates: it hands out room codes and relays WebRTC
 offer/answer/ICE and control messages between one receiver and one sender.
 It never stores or forwards media, images or files. Code: `crates/cc-proto`
 (messages) and `crates/cc-server` (server).
 
+Version 2 added **join approval** (the display device decides who may join, see
+[Join approval](#join-approval)). The project is at version 0.1, so there is no compatibility
+with version 1: a client that says `proto_version` 1 gets `proto_mismatch`.
+
 ## Transport
 
 - WebSocket at path `/ws`. Every message is one JSON **text** frame (binary frames are rejected).
 - Each message is an object with a `"type"` field in `snake_case`.
-- One receiver and one sender per room in v0.1.
+- One receiver and one sender per room (no change in version 2: several waiting senders are possible, only one is let in).
 - `GET /healthz` returns `200` with body `ok`.
 - `GET /altcha/challenge` returns an ALTCHA puzzle (JSON); `GET /ice-servers` returns
   short-lived TURN credentials when the server has TURN configured (otherwise `404`).
@@ -31,8 +35,12 @@ Client to server:
 | type | fields | who | meaning |
 |---|---|---|---|
 | `hello` | `proto_version`, `role` (`sender`/`receiver`) | both | Must be the first message. |
-| `create_room` | optional `altcha` (string) | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. The web app and the native clients first send `create_room` without the field; after `altcha_required` they fetch and solve a puzzle and send `create_room` again on the same connection (the connection stays open after `altcha_required`). Payload and solving scheme: [web README](../apps/web/README.md#open-servers-and-turn) and [transport.md](transport.md). |
-| `join_room` | `code` | sender | Join the room with this code (case-insensitive, 6 characters). |
+| `create_room` | optional `altcha` (string), optional `join_mode` | receiver | Ask for a new room. `altcha` is the base64 text of a solved ALTCHA payload (see [server.md](server.md)). Servers in internal mode do not need it, open servers answer `altcha_required` without it. Clients that never send the field keep working with servers that do not require it. The web app and the native clients first send `create_room` without the field; after `altcha_required` they fetch and solve a puzzle and send `create_room` again on the same connection (the connection stays open after `altcha_required`). Payload and solving scheme: [web README](../apps/web/README.md#open-servers-and-turn) and [transport.md](transport.md). `join_mode` (`open`, `confirm`, `locked`) sets who may join; without it the server's `default_join_mode` applies (see [Join approval](#join-approval)). |
+| `join_room` | `code`, optional `name` | sender | Join the room with this code (case-insensitive, 6 characters). `name` is shown to the display device when it has to approve; the server cleans it. |
+| `set_join_mode` | `join_mode` | receiver (owner) | Change who may join, at any time. |
+| `join_decision` | `id` (optional), `allow` | receiver (owner) | Allow or deny the waiting request `id`. Without `id`, `allow: false` denies all waiting requests. |
+| `remove_peer` | - | receiver (owner) | Remove the connected sender from the room. |
+| `cancel_join` | - | sender | Stop waiting for approval. |
 | `offer` | `sdp` | both | WebRTC offer, relayed to the peer. |
 | `answer` | `sdp` | both | WebRTC answer, relayed to the peer. |
 | `ice_candidate` | `candidate` | both | ICE candidate, relayed to the peer. |
@@ -43,9 +51,13 @@ Server to client:
 | type | fields | sent to | meaning |
 |---|---|---|---|
 | `hello` | `proto_version` | the client that said hello | Handshake accepted. |
-| `room_created` | `code` | receiver | Show this code on screen. |
-| `joined` | - | sender | Join succeeded. |
-| `peer_joined` | - | receiver | A sender joined the room. |
+| `room_created` | `code`, `join_mode` | receiver | Show this code on screen. `join_mode` is the mode the room really has. |
+| `joined` | - | sender | Join succeeded (in `confirm` mode: the host allowed it). |
+| `peer_joined` | `name` | receiver | A sender is in the room now. `name` is the cleaned display name (`Guest N` if none). |
+| `join_pending` | `timeout_secs`, `check` | sender | The join waits for the host's decision. `check` is a two-digit number (10 to 99) that the display shows on the request too. |
+| `join_request` | `id`, `name`, `check` | receiver (owner) | Somebody wants to join (mode `confirm`). Nothing else about the joiner is passed on. |
+| `join_request_cancelled` | `id`, `reason` | receiver (owner) | A waiting request is gone: `left`, `cancelled`, `timeout`, `locked` or `room_full`. |
+| `join_mode_changed` | `join_mode` | receiver (owner) | Answer to `set_join_mode`: the mode now in force. |
 | `offer` / `answer` / `ice_candidate` / `control` | as above | the other peer | Relayed unchanged. |
 | `peer_left` | - | the remaining peer | The other side disconnected. |
 | `error` | `code`, `message` | the client that caused it | See error codes. |
@@ -96,11 +108,87 @@ sequenceDiagram
 Who sends the offer is up to the clients; the server does not care. (That media
 goes peer to peer is the design goal; it is not checked by this server.)
 
+## How the room code works (investigated 2026-11)
+
+This section records what the code does today, read from `crates/cc-server/src/rooms.rs` and
+`ws.rs`. Some people expect the code to change every few minutes. **It does not.**
+
+| Question | Answer |
+|---|---|
+| Does it rotate? | No. A room keeps its code until it ends. There is no timer that changes it. |
+| How long does a code live? | Until the receiver disconnects, or the room is removed: no sender for `idle_room_secs` (30 min by default), or `max_room_lifetime_secs` (12 h in open mode, 24 h in internal mode) at the latest. After a sender left, the same code accepts a new sender (web receiver). The native receiver core ends when its sender leaves, so a native receiver shows a new code for every session; the web receiver does not. |
+| How is it made? | 6 characters from a 32-symbol alphabet, drawn with the `rand` crate's thread RNG (documented there as cryptographically secure; UNCERTAIN: not audited here). 32^6 = 2^30, about 1.07 billion codes (30 bits). A collision with a live room is redrawn. |
+| One sender or many? | One sender per room. A second `join_room` gets `room_full`. |
+| What could a joiner send before it was accepted? | In version 1 nothing was held back: after `join_room` the sender was a normal peer at once, so everybody who knew the code could relay `offer`, `answer`, `ice_candidate` and `control` messages (`control` includes page commands and `stop`) to the receiver, which then answered the offer. In version 2 the default mode is still `open` and behaves like that; `confirm` and `locked` close this gap (see below). |
+| How is guessing limited? | Failed joins count toward per-address bans (default 10 per 10 minutes in open mode, 30 in internal mode, escalating 1 / 5 / 30 minutes) and toward a server-wide brake; IPv6 is counted per /64 and /48. A rough figure: with 100 live rooms one random guess hits some room with probability about 100 / 2^30, i.e. 1e-7. UNCERTAIN: this is arithmetic on the defaults, not a measured or reviewed attack analysis. Anyone who has *seen* the code (a screenshot, a photo of the display) needs no guessing: that is what join approval is for. |
+
+**Optional "new code every N minutes / after each session":** not built. A rotating code
+would not stop somebody who already joined and would need every client to cope with a code
+that changes under a person who is typing it. The tools for the same goal are the join modes
+(lock after the wanted presenter is in) and removing a peer; a native receiver already gets a
+new code per session, and the web receiver can start a new room with its "Stop" button.
+
+## Join approval
+
+Added in version 2. The room owner (the receiver that created it, usually a display device)
+chooses who may join, and may change the choice at any time.
+
+| mode | meaning |
+|---|---|
+| `open` | `join_room` succeeds at once. The sender is a peer immediately. The default everywhere. |
+| `confirm` | The server holds every joiner in a **pending** state until the owner allows or denies it. |
+| `locked` | `join_room` is answered with `room_locked`. |
+
+The server enforces this; a client cannot skip it.
+
+- **Who is the owner.** Only the connection that created the room (`create_room`) may send `set_join_mode`, `join_decision` and `remove_peer`. The server checks the connection, not any name or id in a message. A sender gets `wrong_role`; a receiver connection that does not own a room gets `not_in_room`; request ids are room-local, so an owner cannot touch another room.
+- **What a pending joiner can do.** Nothing is relayed. `offer`, `answer`, `ice_candidate` and `control` get `join_pending` back and never reach the owner. It may send `cancel_join`, or disconnect.
+- **What the owner learns.** Only `join_request { id, name, check }`. `name` is untrusted text: the server removes control, bidi, zero-width and invisible characters (and the private-use range), collapses white space, cuts at 40 characters and uses `Guest N` (N counts joiners of the room) when nothing is left. Clients must show it as plain text (no markup). The IP address and everything else about the joiner stay on the server.
+- **Check number.** The server draws a two-digit number (10 to 99) per pending request, unique among the room's waiting requests, and sends it to the owner (`join_request.check`) and to the joiner (`join_pending.check`). A person at the display can match the person in front of them with the request. It is not a secret and not an authentication.
+- **Decision.** `join_decision {id, allow:true}` makes the joiner a peer: it gets `joined`, the owner gets `peer_joined`, and relaying starts. `allow:false` gives the joiner `join_denied`. All other waiting requests then get `room_full` (one sender per room) and the owner gets `join_request_cancelled` with reason `room_full`. A join into a room that already has a sender gets `room_full` at once, in every mode.
+- **Mode changes.** `set_join_mode` is answered with `join_mode_changed`. `locked` ends all waiting requests (`room_locked` to the joiners, `join_request_cancelled` reason `locked` to the owner) but does not remove a sender who is already in. `open` and `confirm` do not auto-approve waiting requests. There is no "lock" for a sender who is in: use `remove_peer` (the sender gets `removed_by_host` and has to join again; the room stays; on the native receiver core the session ends instead, see [How the room code works](#how-the-room-code-works-investigated-2026-11)).
+- **Limits.** `limits.max_pending_per_room` (8) and `limits.max_pending_per_ip` (3 open, 8 internal) bound waiting requests; beyond that `join_room` gets `rate_limited`. Pending requests time out after `join_approval_secs` (60 s): the joiner gets `approval_timeout`, the owner `join_request_cancelled` reason `timeout`. A denied or timed-out request counts `limits.denied_join_weight` (2) failures toward the address ban, so repeated denials or timeouts lead to a cooldown (`banned`, connection closed) using the same machinery as failed joins; `join_room` itself is still subject to the usual join rate limit. UNCERTAIN: many people behind one address share this budget; the weight is a placeholder.
+- **Server settings.** `default_join_mode` (`open` by default; `confirm` allowed; never `locked`) is the mode of rooms whose creator names none; `allow_open_rooms = false` makes the server refuse `open` (`open_rooms_disabled`) for operators who want approval everywhere (then `default_join_mode` must be `confirm`). See [server.md](server.md).
+- **Client defaults.** The web app, the Flutter app and the CLI send `join_mode: "open"` unless the person chose something else.
+
+```mermaid
+sequenceDiagram
+    participant R as Receiver (owner)
+    participant S as Server
+    participant D as Sender
+    R->>S: create_room {join_mode: confirm}
+    S-->>R: room_created {code, join_mode}
+    D->>S: join_room {code, name}
+    S-->>D: join_pending {timeout_secs, check}
+    S-->>R: join_request {id, name, check}
+    D->>S: offer
+    S-->>D: error join_pending
+    R->>S: join_decision {id, allow: true}
+    S-->>D: joined
+    S-->>R: peer_joined {name}
+    D->>S: offer
+    S-->>R: offer
+```
+
+Exact message shapes and test vectors for other implementations (for example a Swift client)
+are in `tests/fixtures/join-approval/*.json`; `crates/cc-proto` and
+`crates/cc-server/tests/join_approval.rs` check the same shapes.
+
+### Receive paths with their own approval
+
+Join approval covers **Comet Cast protocol connections only** (web, Flutter, CLI and the Apple
+TV app through this server). Other receive paths have their own mechanisms and are not
+affected by `join_mode`, `remove_peer` or room locks: AirPlay through UxPlay has its own PIN
+setting of UxPlay, Miracast has the Windows connection consent (see [miracast.md](miracast.md)),
+Google Cast is started by the sender's own app (see [cast.md](cast.md)). UNCERTAIN: which of
+these a given deployment enables depends on the settings of those programs, which this
+document does not check.
+
 ## Rooms
 
 - Codes are 6 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, generated by
   the server with a random source; on a collision it draws again.
-- A room ends when its receiver disconnects. The sender, if present, gets `peer_left`.
+- A room ends when its receiver disconnects. The sender, if present, gets `peer_left`; senders that wait for approval get `room_not_found`.
 - If the sender disconnects, the receiver gets `peer_left` and the room stays;
   a new sender may join with the same code.
 - A room that has no sender for longer than the idle timeout is removed and its
@@ -119,8 +207,8 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 | code | when | closes |
 |---|---|---|
 | `bad_hello` | First message is not a valid `hello`, or no hello arrived in time. | yes |
-| `proto_mismatch` | `proto_version` differs from the server's (currently 1). | yes |
-| `wrong_role` | `create_room` from a sender, or `join_room` from a receiver. | no |
+| `proto_mismatch` | `proto_version` differs from the server's (currently 2). | yes |
+| `wrong_role` | `create_room` from a sender, or `join_room` from a receiver; also `set_join_mode`, `join_decision` or `remove_peer` from a sender, and `cancel_join` from a receiver. Counts as a bad message. | no |
 | `room_not_found` | `join_room` with a code that has no room. A code that is syntactically invalid (wrong length or characters) is treated the same way. A `code` that is not a string is `bad_message`. | no |
 | `room_full` | `join_room` for a room that already has a sender. | no |
 | `not_in_room` | A relay message while not in a room or while the peer is not there. | no |
@@ -128,8 +216,15 @@ An `error` message is `{"type":"error","code":"...","message":"..."}`.
 | `altcha_invalid` | `create_room` with an `altcha` payload that is malformed, wrongly signed, expired, not solved or already used. | no |
 | `altcha_too_hard` | Client-side only, never sent by the server: the puzzle from `GET /altcha/challenge` asks for more work than the client accepts (`cost` above 10 000 or `keyLength` above 64, see [transport.md](transport.md)). | no |
 | `altcha_expired` | Client-side only: the puzzle's `expiresAt` was already in the past on arrival (also happens when the device clock is far ahead). | no |
-| `rate_limited` | Too many `create_room` / `join_room` messages from this address, or the server has reached its maximum number of rooms. The message text says which. Try again later. | no |
-| `banned` | Too many failed joins: the address is banned for a while. | yes |
+| `rate_limited` | Too many `create_room` / `join_room` messages from this address, the server has reached its maximum number of rooms, or too many senders already wait for approval (per room or per address). The message text says which. Try again later. | no |
+| `banned` | Too many failed joins, or too many denied / unanswered join requests: the address is banned for a while. | yes |
+| `join_pending` | A sender that waits for approval tried to relay `offer`, `answer`, `ice_candidate` or `control`. Nothing is forwarded. | no |
+| `join_denied` | The host denied the join request. | no |
+| `room_locked` | The room's join mode is `locked` (also sent to waiting senders when the host locks the room). | no |
+| `approval_timeout` | Nobody decided within `join_approval_secs` (60 s by default). | no |
+| `removed_by_host` | The host removed this sender with `remove_peer`. The connection stays open. | no |
+| `open_rooms_disabled` | `create_room` or `set_join_mode` asked for mode `open` on a server with `allow_open_rooms = false`. | no |
+| `no_such_request` | `join_decision` named a request that is not (or no longer) waiting. | no |
 | `bad_message` | Unparsable JSON, unknown type, binary frame, second `hello`, or `create_room`/`join_room` while already in a room. | no |
 
 A message larger than the size limit makes the connection fail and close
@@ -156,7 +251,7 @@ The hello deadline is fixed at connect time; WebSocket pings do not extend it.
 ## Not done yet
 
 Authentication for internal servers, ALTCHA when joining a room (only `create_room`
-needs it today), and more than one sender per room. The web app, the native cores and the CLI
+needs it today), more than one sender per room, and a rotating room code. The web app, the native cores and the CLI
 solve ALTCHA for `create_room` and use `GET /ice-servers` (see [transport.md](transport.md)); the
 `cc-ffi` and the Flutter apps were not changed here; `cc-ffi` still compiles (it uses
 `ReceiverOptions::new` / `SenderOptions::new`) and so gets ALTCHA solving and the TURN list from the Rust

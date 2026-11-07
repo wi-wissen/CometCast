@@ -267,6 +267,7 @@ fn pdf_pages(bytes: &[u8], worker: &Worker) -> Result<Option<u32>, UiSendRejecti
 enum Interrupt {
     Stop,
     PeerLeft,
+    Removed,
     Error(String),
 }
 
@@ -291,6 +292,7 @@ async fn guarded<T>(
                     }
                 }
                 Some(SenderEvent::PeerLeft) => return Err(Interrupt::PeerLeft),
+                Some(SenderEvent::RemovedByHost) => return Err(Interrupt::Removed),
                 Some(SenderEvent::Error(m)) => return Err(Interrupt::Error(m)),
                 Some(_) => {}
                 None => return Err(Interrupt::Error("the connection ended".into())),
@@ -404,6 +406,7 @@ pub(crate) async fn drive(
                         continue;
                     }
                     Some(SenderEvent::PeerLeft) => return Some(ContentSenderUiEvent::PeerLeft),
+                    Some(SenderEvent::RemovedByHost) => return Some(ContentSenderUiEvent::RemovedByHost),
                     Some(SenderEvent::Error(message)) => {
                         return Some(ContentSenderUiEvent::Error { message });
                     }
@@ -438,6 +441,7 @@ fn interrupt_event(i: Interrupt) -> Option<ContentSenderUiEvent> {
     match i {
         Interrupt::Stop => None,
         Interrupt::PeerLeft => Some(ContentSenderUiEvent::PeerLeft),
+        Interrupt::Removed => Some(ContentSenderUiEvent::RemovedByHost),
         Interrupt::Error(message) => Some(ContentSenderUiEvent::Error { message }),
     }
 }

@@ -26,13 +26,13 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use cc_proto::{RoomCode, RoomCodeError};
+use cc_proto::{JoinMode, RoomCode, RoomCodeError};
 use cc_receiver::{ContentOptions, ReceiverCore, ReceiverEvent, ReceiverOptions};
 use cc_sender::{
     ContentSender, ContentSenderOptions, ExternalInput, PushOutcome, ScreenOptions, SenderCore,
     SenderEvent, SenderOptions,
 };
-use cc_transport::{ConnectionState, MediaSnapshot};
+use cc_transport::{ConnectionState, JoinProgress, MediaSnapshot, TransportError};
 use flutter_rust_bridge::frb;
 use tokio::sync::oneshot;
 
@@ -142,6 +142,37 @@ impl From<ConnectionState> for UiConnectionState {
 // Receiver
 // ---------------------------------------------------------------------------
 
+/// Who may join a room (docs/protocol.md, "Join approval").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiJoinMode {
+    /// Anybody who knows the code joins at once.
+    Open,
+    /// Every join waits for an explicit allow or deny on this device.
+    Confirm,
+    /// Nobody can join.
+    Locked,
+}
+
+impl From<JoinMode> for UiJoinMode {
+    fn from(m: JoinMode) -> Self {
+        match m {
+            JoinMode::Open => Self::Open,
+            JoinMode::Confirm => Self::Confirm,
+            JoinMode::Locked => Self::Locked,
+        }
+    }
+}
+
+impl From<UiJoinMode> for JoinMode {
+    fn from(m: UiJoinMode) -> Self {
+        match m {
+            UiJoinMode::Open => Self::Open,
+            UiJoinMode::Confirm => Self::Confirm,
+            UiJoinMode::Locked => Self::Locked,
+        }
+    }
+}
+
 /// What the receiver tells the UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReceiverUiEvent {
@@ -149,9 +180,36 @@ pub enum ReceiverUiEvent {
     RoomCode {
         /// The room code, uppercase.
         code: String,
+        /// The join mode the room has.
+        join_mode: UiJoinMode,
     },
-    /// A sender joined the room.
-    PeerJoined,
+    /// A sender joined the room (it is allowed to present).
+    PeerJoined {
+        /// Cleaned display name of the sender (plain text, at most 40 characters).
+        name: String,
+    },
+    /// Join mode `confirm`: somebody waits for a decision ([`decide_join`]). The name is
+    /// untrusted text that the server cleaned: show it as plain text.
+    JoinRequest {
+        /// Request id for [`decide_join`].
+        id: u64,
+        /// Cleaned display name.
+        name: String,
+        /// Two-digit check number; the sender's waiting screen shows the same number.
+        check: u8,
+    },
+    /// A waiting request ended: `left`, `cancelled`, `timeout`, `locked` or `room_full`.
+    JoinRequestCancelled {
+        /// Request id.
+        id: u64,
+        /// Why.
+        reason: String,
+    },
+    /// The join mode in force now (confirmed by the server).
+    JoinModeChanged {
+        /// The mode.
+        mode: UiJoinMode,
+    },
     /// The WebRTC connection state changed.
     ConnectionState {
         /// New state.
@@ -330,7 +388,14 @@ fn stats_event(s: MediaSnapshot) -> ReceiverUiEvent {
 
 fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
     match e {
-        ReceiverEvent::PeerJoined => ReceiverUiEvent::PeerJoined,
+        ReceiverEvent::PeerJoined { name } => ReceiverUiEvent::PeerJoined { name },
+        ReceiverEvent::JoinRequest { id, name, check } => {
+            ReceiverUiEvent::JoinRequest { id, name, check }
+        }
+        ReceiverEvent::JoinRequestCancelled { id, reason } => {
+            ReceiverUiEvent::JoinRequestCancelled { id, reason }
+        }
+        ReceiverEvent::JoinModeChanged(m) => ReceiverUiEvent::JoinModeChanged { mode: m.into() },
         ReceiverEvent::State(s) => ReceiverUiEvent::ConnectionState { state: s.into() },
         ReceiverEvent::VideoTrack { mime, codec } => ReceiverUiEvent::VideoTrack {
             mime,
@@ -393,6 +458,25 @@ impl Slot {
     }
 }
 
+/// Commands of the UI to the running receiver (join approval).
+enum ReceiverCmd {
+    SetMode(JoinMode),
+    Decide { id: Option<u64>, allow: bool },
+    RemovePeer,
+}
+
+/// The command channel of the running receiver (replaced at every start).
+static RECEIVER_CMDS: Mutex<Option<tokio::sync::mpsc::UnboundedSender<ReceiverCmd>>> =
+    Mutex::new(None);
+
+fn send_receiver_cmd(cmd: ReceiverCmd) -> bool {
+    RECEIVER_CMDS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .is_some_and(|tx| tx.send(cmd).is_ok())
+}
+
 static RECEIVER: Slot = Slot::new();
 static SENDER: Slot = Slot::new();
 
@@ -429,13 +513,16 @@ pub async fn start_receiver(
     server: String,
     udp_bind: Option<String>,
     content: bool,
+    join_mode: UiJoinMode,
     events: StreamSink<ReceiverUiEvent>,
 ) {
     let generation = RECEIVER.begin();
+    *RECEIVER_CMDS.lock().unwrap_or_else(|p| p.into_inner()) = None;
     let video_generation = VIDEO.reset();
     let content_generation = CONTENT.reset();
     let worker = content::worker();
     let mut options = ReceiverOptions::new(server);
+    options.join_mode = join_mode.into();
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
     }
@@ -474,6 +561,7 @@ pub async fn start_receiver(
         || events
             .add(ReceiverUiEvent::RoomCode {
                 code: core.room_code().as_str().to_owned(),
+                join_mode: core.join_mode().into(),
             })
             .is_err()
     {
@@ -487,6 +575,8 @@ pub async fn start_receiver(
         core.stop().await;
         return;
     }
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<ReceiverCmd>();
+    *RECEIVER_CMDS.lock().unwrap_or_else(|p| p.into_inner()) = Some(cmd_tx);
     let panic_sink = events.clone();
     let mut content_events = core.take_content_events();
     let (width_tx, mut width_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
@@ -522,6 +612,12 @@ pub async fn start_receiver(
                         }
                     }
                     Some(w) = width_rx.recv() => core.set_content_target_width(w),
+                    Some(cmd) = cmd_rx.recv() => match cmd {
+                        ReceiverCmd::SetMode(m) => core.set_join_mode(m),
+                        ReceiverCmd::Decide { id: Some(id), allow } => core.decide_join(id, allow),
+                        ReceiverCmd::Decide { id: None, .. } => core.deny_all_joins(),
+                        ReceiverCmd::RemovePeer => core.remove_peer(),
+                    },
                     _ = keyframe_tick.tick() => {
                         if VIDEO.take_keyframe_request() {
                             // Fails while no track exists yet; the decoder asks again.
@@ -591,9 +687,37 @@ const CONTENT_DRAIN: Duration = Duration::from_secs(2);
 
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
 pub fn stop_receiver() {
+    *RECEIVER_CMDS.lock().unwrap_or_else(|p| p.into_inner()) = None;
     RECEIVER.stop();
     VIDEO.stop();
     CONTENT.reset();
+}
+
+/// Change who may join the running receiver's room, at any time. `Locked` also refuses
+/// everybody who waits. The server confirms with [`ReceiverUiEvent::JoinModeChanged`].
+/// Returns `false` if no receiver runs.
+#[frb(sync)]
+pub fn set_join_mode(mode: UiJoinMode) -> bool {
+    send_receiver_cmd(ReceiverCmd::SetMode(mode.into()))
+}
+
+/// Allow or deny a waiting request (`id` from [`ReceiverUiEvent::JoinRequest`]). `id: None`
+/// with `allow: false` denies everybody who waits (`None` with `true` does nothing).
+/// Returns `false` if no receiver runs.
+#[frb(sync)]
+pub fn decide_join(id: Option<u64>, allow: bool) -> bool {
+    if id.is_none() && allow {
+        return false;
+    }
+    send_receiver_cmd(ReceiverCmd::Decide { id, allow })
+}
+
+/// Remove the connected sender. UNCERTAIN: one sender per receiver in this version, so the
+/// receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+/// Returns `false` if no receiver runs.
+#[frb(sync)]
+pub fn remove_peer() -> bool {
+    send_receiver_cmd(ReceiverCmd::RemovePeer)
 }
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
@@ -681,7 +805,24 @@ pub fn set_video_max_size(width: u32, height: u32) {
 /// What the sender tells the UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SenderUiEvent {
-    /// The room was joined and the offer sent. Always the first event.
+    /// The room needs the host's approval: show a waiting screen with the check number (the
+    /// display shows the same number). Nothing is sent until `Joined`.
+    WaitingForApproval {
+        /// Seconds until the server gives up.
+        timeout_secs: u32,
+        /// Two-digit check number.
+        check: u8,
+    },
+    /// The join was refused: `join_denied`, `room_locked` or `approval_timeout`. The stream
+    /// ends after this.
+    JoinRefused {
+        /// Server code.
+        code: String,
+    },
+    /// The host removed this sender from the room. The stream ends after this.
+    RemovedByHost,
+    /// The room was joined and the offer sent. Always the first event unless the room asked
+    /// for approval first.
     Joined,
     /// The WebRTC connection state changed.
     ConnectionState {
@@ -749,12 +890,28 @@ pub struct ScreenRequest {
     pub bitrate_kbps: u32,
 }
 
+/// The server code of a refused join that the UI shows with its own text.
+fn join_refusal(e: &TransportError) -> Option<String> {
+    match e {
+        TransportError::Server { code, .. }
+            if matches!(
+                code.as_str(),
+                "join_denied" | "room_locked" | "approval_timeout"
+            ) =>
+        {
+            Some(code.clone())
+        }
+        _ => None,
+    }
+}
+
 fn map_sender_event(e: SenderEvent) -> SenderUiEvent {
     match e {
         SenderEvent::State(s) => SenderUiEvent::ConnectionState { state: s.into() },
         SenderEvent::Streaming { frames_sent } => SenderUiEvent::Streaming { frames_sent },
         SenderEvent::Finished { frames_sent } => SenderUiEvent::Finished { frames_sent },
         SenderEvent::PeerLeft => SenderUiEvent::PeerLeft,
+        SenderEvent::RemovedByHost => SenderUiEvent::RemovedByHost,
         SenderEvent::Error(message) => SenderUiEvent::Error { message },
     }
 }
@@ -771,9 +928,10 @@ pub async fn start_sender(
     seconds: Option<u32>,
     udp_bind: Option<String>,
     screen: Option<ScreenRequest>,
+    name: Option<String>,
     events: StreamSink<SenderUiEvent>,
 ) {
-    run_sender(code, server, seconds, udp_bind, screen, None, events).await;
+    run_sender(code, server, seconds, udp_bind, screen, None, name, events).await;
 }
 
 /// Start a sender whose video the host pushes: join the room `code` on `server` and send the
@@ -788,10 +946,21 @@ pub async fn start_encoded_sender(
     code: String,
     server: String,
     udp_bind: Option<String>,
+    name: Option<String>,
     events: StreamSink<SenderUiEvent>,
 ) {
     let input = ExternalInput::default();
-    run_sender(code, server, None, udp_bind, None, Some(input), events).await;
+    run_sender(
+        code,
+        server,
+        None,
+        udp_bind,
+        None,
+        Some(input),
+        name,
+        events,
+    )
+    .await;
 }
 
 /// Parse the room code and only then install the encoded input (closing the previous one). An
@@ -812,6 +981,7 @@ fn accept_code_and_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_sender(
     code: String,
     server: String,
@@ -819,6 +989,7 @@ async fn run_sender(
     udp_bind: Option<String>,
     screen: Option<ScreenRequest>,
     external: Option<ExternalInput>,
+    name: Option<String>,
     events: StreamSink<SenderUiEvent>,
 ) {
     let generation = SENDER.begin();
@@ -846,11 +1017,43 @@ async fn run_sender(
         bitrate_bps: r.bitrate_kbps.clamp(100, 50_000).saturating_mul(1000),
         ..ScreenOptions::default()
     });
-    let mut core = match SenderCore::start(options).await {
-        Ok(core) => core,
-        Err(e) => {
-            let _ = events.add(SenderUiEvent::Error {
-                message: e.to_string(),
+    options.name = name;
+    // Stoppable while the join waits for the host's decision.
+    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
+    SENDER.store(stop_tx);
+    let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel();
+    options.join_progress = Some(ptx);
+    let notice_sink = events.clone();
+    tokio::spawn(async move {
+        while let Some(JoinProgress::Pending {
+            timeout_secs,
+            check,
+        }) = prx.recv().await
+        {
+            let _ = notice_sink.add(SenderUiEvent::WaitingForApproval {
+                timeout_secs: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
+                check,
+            });
+        }
+    });
+    let started = tokio::select! {
+        r = SenderCore::start(options) => Some(r),
+        _ = &mut stop_rx => None,
+    };
+    let mut core = match started {
+        // Stopped (cancelled) while connecting or waiting: dropping the join request
+        // withdraws it on the server.
+        None => {
+            encoded::clear_if(external.as_ref());
+            return;
+        }
+        Some(Ok(core)) => core,
+        Some(Err(e)) => {
+            let _ = events.add(match join_refusal(&e) {
+                Some(code) => SenderUiEvent::JoinRefused { code },
+                None => SenderUiEvent::Error {
+                    message: e.to_string(),
+                },
             });
             encoded::clear_if(external.as_ref());
             return;
@@ -861,8 +1064,6 @@ async fn run_sender(
         encoded::clear_if(external.as_ref());
         return;
     }
-    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
-    SENDER.store(stop_tx);
     if !SENDER.is_current(generation) {
         core.stop().await;
         encoded::clear_if(external.as_ref());
@@ -1671,6 +1872,22 @@ pub enum ContentSenderUiEvent {
         /// The file name as picked.
         name: String,
     },
+    /// The room needs the host's approval: show a waiting screen with the check number.
+    /// Nothing is sent until `Joined`.
+    WaitingForApproval {
+        /// Seconds until the server gives up.
+        timeout_secs: u32,
+        /// Two-digit check number (the display shows the same number).
+        check: u8,
+    },
+    /// The join was refused: `join_denied`, `room_locked` or `approval_timeout`. The stream
+    /// ends after this.
+    JoinRefused {
+        /// Server code.
+        code: String,
+    },
+    /// The host removed this sender. The stream ends after this.
+    RemovedByHost,
     /// The room was joined and the offer sent.
     Joined,
     /// The WebRTC connection state changed.
@@ -1733,6 +1950,7 @@ pub async fn start_content_sender(
     server: String,
     udp_bind: Option<String>,
     source: ContentSource,
+    name: Option<String>,
     events: StreamSink<ContentSenderUiEvent>,
 ) {
     let generation = SENDER.begin();
@@ -1814,11 +2032,38 @@ pub async fn start_content_sender(
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
     }
-    let sender = match ContentSender::start(options).await {
-        Ok(s) => s,
-        Err(e) => {
-            let _ = events.add(ContentSenderUiEvent::Error {
-                message: e.to_string(),
+    options.name = name;
+    // Stoppable while the join waits for the host's decision.
+    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
+    SENDER.store(stop_tx);
+    let (ptx, mut prx) = tokio::sync::mpsc::unbounded_channel();
+    options.join_progress = Some(ptx);
+    let notice_sink = events.clone();
+    tokio::spawn(async move {
+        while let Some(JoinProgress::Pending {
+            timeout_secs,
+            check,
+        }) = prx.recv().await
+        {
+            let _ = notice_sink.add(ContentSenderUiEvent::WaitingForApproval {
+                timeout_secs: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
+                check,
+            });
+        }
+    });
+    let started = tokio::select! {
+        r = ContentSender::start(options) => Some(r),
+        _ = &mut stop_rx => None,
+    };
+    let sender = match started {
+        None => return,
+        Some(Ok(s)) => s,
+        Some(Err(e)) => {
+            let _ = events.add(match join_refusal(&e) {
+                Some(code) => ContentSenderUiEvent::JoinRefused { code },
+                None => ContentSenderUiEvent::Error {
+                    message: e.to_string(),
+                },
             });
             return;
         }
@@ -1827,8 +2072,6 @@ pub async fn start_content_sender(
         sender.stop().await;
         return;
     }
-    let (stop_tx, stop_rx) = oneshot::channel::<()>();
-    SENDER.store(stop_tx);
     if !SENDER.is_current(generation) {
         sender.stop().await;
         return;
