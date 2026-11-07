@@ -26,7 +26,7 @@ A device is either a **display** (spec 4, shows the picture) or a **presenter** 
 | Android tablet, iPad | yes | yes | App first-run page (spec 5.3) |
 | Linux, Windows, macOS | yes | yes | App first-run page (spec 5.3) |
 
-Choosing the display role on tablets and computers: the app first-run page (spec 5.3) ends with one text link, `app.beDisplay` ("Use this device as the screen", spec 11.7), styled exactly like the `{dom}/display` link of `start.beDisplay` (spec 5.2: `p-primary`, underlined, 15). It opens the setup wizard. Once setup is finished, the app starts in the display role on every launch. Going back to the presenter role is done like changing the room name: reset the app's data (spec 10). There is no role switch in Settings (spec D2: Settings holds join mode and appearance only).
+Choosing the display role on tablets and computers: the app first-run page (spec 5.3) ends with one text link, `app.beDisplay` ("Use this device as the screen", spec 11.7), styled exactly like the `{dom}/display` link of `start.beDisplay` (spec 5.2: `p-primary`, underlined, 15). It opens the setup wizard. Once setup is finished, the app starts in the display role on every launch. Going back to the presenter role is done like changing the room name: reset the app's data (spec 10). There is no role switch in Settings (spec D2, amended by N91: join mode, appearance, About, and on desktop displays the AirPlay/Miracast switches).
 
 ## 2. What must be identical on every platform
 
@@ -79,7 +79,7 @@ Presenter pages use the phone layout below 720 logical px of window width and th
 | 5.7 disconnected | `bye.title` and `bye.again` only (note below) | Same | Same |
 | 6 error pages | Same; "Scan QR code again" only where the system scanner exists; `error.outdated` with `titleApp` / `nowApp` / Try again; `error.noScreen` never | Same | No rescan button; otherwise as Android |
 
-Windows Miracast page (N39): presenter kit; pairing as three single-choice option rows; phone: content scrolls above the pinned [Start receiving, Back] with ≥ 24 free above the action area; laptop: [Start receiving, Back] in one row under the content; consent page in the relay-page layout with the PIN digits (only) in mono, [Decline, Allow], initial focus Decline.
+Windows Miracast page (N39; retired once the display switch of spec 15.4 ships, N86): presenter kit; pairing as three single-choice option rows; phone: content scrolls above the pinned [Start receiving, Back] with ≥ 24 free above the action area; laptop: [Start receiving, Back] in one row under the content; consent page in the relay-page layout with the PIN digits (only) in mono, [Decline, Allow], initial focus Decline.
 
 Note on 5.7: `bye.body` says "You can close this tab", which is wrong in an app. In the apps, the disconnected page shows `bye.title` and the button only; the body line is omitted. (No new copy.)
 
@@ -172,12 +172,12 @@ TV text input: a text field gets focus like a button (with the ring) and opens t
 
 ## 9. Not in this round
 
-- **Share sheet entry points** ("Share to Comet Cast" from other apps, Android `ACTION_SEND`, iOS share extension, macOS share menu): not designed, not built.
+- **Share sheet entry points** on macOS, Windows and Linux (the share menu). Android `ACTION_SEND` and the iOS/iPadOS share extension are designed in spec 15.3 (section 21).
 - The annotation toolbar on native display apps (tablets, computers): not built until the owner decides on drawing tools (spec 12). Existing annotation code in the Flutter receiver stays behind a build flag that is off.
 - ~~The list of nearby screens (discovery without a code)~~: now designed for all presenter apps (spec 14, section 4.1 above).
-- The Miracast receiver page (Windows) is reachable only through the text link `app.miracast` (spec N18) and is rebuilt with the presenter kit, not redesigned.
+- The Miracast receiver page (Windows) is reachable only through the text link `app.miracast` (spec N18) and is rebuilt with the presenter kit, not redesigned; it is retired once the display switch of spec 15.4 ships (N86).
 - The annotation toolbar stays unreachable in every Flutter build of this round (confirmed in the Flutter review, N20).
-- AirPlay, Google Cast and Miracast receiving screens (beyond the existing Windows page above), widgets, notifications other than the system's capture notification, home-screen shortcuts, Picture in Picture, multiple windows.
+- Google Cast receiving; AirPlay and Miracast receiving outside desktop display apps (spec 15.4, section 21.4); widgets, notifications other than the system's capture notification, home-screen shortcuts, Picture in Picture, multiple windows.
 - Any OLED black for presenter pages; any platform-specific appearance (Material You, Liquid Glass, Mica, vibrancy).
 
 ## 10. Flutter: tokens and theme
@@ -418,7 +418,7 @@ Screen sharing on Linux, Windows and macOS opens the system picker directly (sec
 
 ### 20.4 Links, install referrer and scanner (Flutter + platform)
 
-- **Accepted URL forms** (link, referrer, scanned QR): `https://{host}/{CODE}` and `https://{host}/{CODE}?server={server}`, `{CODE}` = 6 characters of the code alphabet (spaces and dashes removed; anything else = no code). The server is `{server}` if given, else `{host}`.
+- **Accepted URL forms** (link, referrer, scanned QR; amended by 21.6: also `https://cometcast.de/app/{CODE}`, and App Links move to `cometcast.de`): `https://{host}/{CODE}` and `https://{host}/{CODE}?server={server}`, `{CODE}` = 6 characters of the code alphabet (spaces and dashes removed; anything else = no code). The server is `{server}` if given, else `{host}`.
 - **App Links / Universal Links:** only for the built-in relay's host (`assetlinks.json`, `apple-app-site-association` served there, path `/*` with a 6-character code). Other hosts stay browser links.
 - **Android install referrer:** `code` and `server` parameters, same rules (spec 12: still an assumption; without it Android behaves like iOS).
 - **Trust:** a server that is the built-in relay, the policy server, the DNS server, the in-house box or confirmed on this device before is used at once (chip). Any other server opens the relay confirmation page (spec 7.2, `relay.confirm.bodyApp`) before anything connects; Use stores it as confirmed. A link never changes the stored "last used" server until a join succeeded.
@@ -443,3 +443,80 @@ The web display must accept the same `handover` messages to keep the promise aga
 - Error and failure lines show the key's text only; technical reasons (`message`, "network error", "no library") go to the log (N46).
 - `capture_unavailable`, `capture_os_old`, `capture_no_portal` and the unsupported codec: the page `error.capture` (spec 6, N56; replaces `error.other` + Back of N33).
 
+
+## 21. Round 5: share entry, receiving and sending without Comet Cast, Office, address, settings, About (spec 15)
+
+Added 2026-11-07 for spec section 15 (decisions N80–N96). Like section 20, the behaviour is binding and the names are proposals; keep the additions minimal. Which platform gets which surface: spec 15.2. Work items: [fix-list-round5.md](fix-list-round5.md).
+
+### 21.1 Platform mapping
+
+| Spec | Android phone / tablet | iPhone / iPad | Linux / Windows / macOS presenter | Linux / Windows / macOS display ("mini-PC") | Android TV | Apple TV |
+| --- | --- | --- | --- | --- | --- | --- |
+| 15.3 share entry | Intent filter on the main activity (21.2); the app's share page | Share extension target `ShareExtension` (21.3); the sheet is the whole flow | n/a | n/a | n/a | n/a |
+| 15.4 AirPlay receive | n/a | n/a | n/a | Linux, macOS, Windows where `airplay_receive_available()`; UxPlay as a companion process (21.4) | n/a | n/a: nothing shown (N84) |
+| 15.4 Miracast receive | n/a | n/a | page retired after F9 (N86) | Windows 10/11 only, `cc-miracast-ffi` (21.4) | n/a | n/a |
+| 15.5 TVs without Comet Cast | n/a | n/a | Rows in the nearby card; `watch_tvs` (21.5) | n/a | n/a | n/a |
+| 15.6 Office | Worker `libcc_office_worker.so` (as built) | none | Worker next to the executable (as built) | n/a | n/a | n/a |
+| 15.7 address line | yes | yes | yes | n/a | n/a | n/a |
+| 15.8 app settings | Office switch + About | entry opens About | Office + TV switches + About | n/a | n/a | n/a |
+| 15.9 About | presenter page | presenter page | presenter page | Settings header → dialog + viewer (with search) | dialog + viewer (no search) | the same in SwiftUI (no search) |
+
+Focus and Back additions (sections 5 and 6): app settings, About and the licence text page: Back = `common.back`. Pair page: Back → start page. Share page: Back = Cancel; Presenting from the share page: nothing (as 5.6). Display About dialog: Back = Close (focus returns to About); licence viewer: Back closes it; in the text pane Left returns to the list. PIN dialog: Back = Cancel. AirPlay/Miracast request: Back does nothing (an answer is required, as 4.4).
+
+### 21.2 Android share target
+
+- `AndroidManifest.xml`, on the main activity (the TV launcher ignores it): one `<intent-filter>` with `android.intent.action.SEND`, category `DEFAULT`, `mimeType` entries `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `application/pdf`, `text/plain`, and, **only in builds that ship `libcc_office_worker.so`**, the three OOXML MIME types of `file_picker.dart`. No `SEND_MULTIPLE`, no `*/*`. `android:label` = "Comet Cast".
+- Kotlin `ShareBridge` (channel `cometcast/share`): on `onCreate` / `onNewIntent` with `ACTION_SEND` it takes `EXTRA_STREAM` (copy the `content://` stream into `cacheDir/share/<random>/<display name>`, refusing beyond the size limits of spec 15.3 while copying) or `EXTRA_TEXT` (first `http(s)://` address, else "no link"). `takeSharedItem()` → `{kind: file|link|noLink|tooLarge, path, name, size, mime, url}` or null; the share page reads it once. The copies are deleted when the presentation of the item ends or the app starts again.
+- Flutter: `PresenterPage.share` (new) before the normal pages; it uses the existing `PresenterSessionController`: when joined (or waiting), `present_content(ContentSource.File{path} | Link)` on "Show on …"; otherwise `start_presenter` then `present_content`, skipping "What to show". The Office switch (spec 15.6) is checked before `present_content` (`sendReject.officeOff`).
+
+### 21.3 iOS / iPadOS share extension
+
+- New target `ShareExtension` (`apps/flutter/ios/ShareExtension`, in `project.yml`), SwiftUI, **no Flutter engine** (memory). `NSExtensionActivationRule` (dictionary form): `NSExtensionActivationSupportsImageWithMaxCount = 1`, `NSExtensionActivationSupportsWebURLWithMaxCount = 1`, `NSExtensionActivationSupportsFileWithMaxCount = 1` limited by a predicate to `com.adobe.pdf` and `public.image`. No Office types (N81). Display name "Comet Cast".
+- The sheet draws the presenter pages of spec 15.3 with the presenter tokens (section 10 values as a Swift `PresenterPalette`, same hex, sRGB), the fonts (section 11, bundled in the extension) and the icons (section 13). Pages: share, waiting, Presenting, the error pages of spec 6 that a join can end in, the relay confirmation page (an announced or remembered server, as the app). No scanner; the nearby section only when `NWBrowser` reports the permission as granted (the extension never triggers the prompt).
+- Core: the extension links the same `cc-ios` static library as the broadcast extension. New C functions (ABI version bumped): `cc_ios_share_start(config_json)` (server, code, name; joins), `cc_ios_share_present(json)` (`{"file":path}` or `{"link":url}`), `cc_ios_share_cmd(json)` (`prev`, `next`), `cc_ios_share_poll(buf, len) -> i32` (one JSON event per call with the shapes of `PresenterUiEvent`: waiting with check and timeout, joined with `room_name`, page, progress, presenting, stopped, ended, error with `code`), `cc_ios_share_stop()`. Polling, no callbacks (as `cc-miracast-ffi`).
+- App Group `config.json` gains `name`, `confirmed_servers`, `last_server` written by the app; the extension reads them and writes back only `name`.
+- Memory: share extensions get far less memory than apps; the engineers measure a 64 MiB PDF send in the extension on the oldest supported iPhone. If it does not fit, the extension's PDF limit is lowered and the refusal is the existing too-large text (no new copy).
+- `de.lproj` / `en.lproj` strings from the shipped set (du); a Sie build takes the Sie set (section 16).
+
+### 21.4 AirPlay and Miracast receiving (desktop display)
+
+- **UxPlay packaging:** shipped as a companion program next to the app where licensing and build allow (Linux: in the package or as a declared dependency with GStreamer `plugins-base/-good/-bad` and Avahi; macOS: inside the app bundle with GStreamer; Windows: the MSYS2 build of `docs/airplay.md`, UNCERTAIN). Its GPL-3.0 licence and the notices of its bundled parts are shipped next to it and appear in About (spec 15.9). `airplay_receive_available()` is false when the program or its runtime is missing; the AirPlay row is then not listed.
+- **cc-ffi (new, wraps `cc-airplay`):** `airplay_receive_available() -> bool` (sync); `start_airplay_receive(name: String, ask_first: bool, events: StreamSink<AirplayUiEvent>)`; `airplay_set_ask_first(ask: bool)` (join mode change Open ↔ Approval on); `airplay_answer(allow: bool)`; `airplay_end_session()`; `stop_airplay_receive()`. `AirplayUiEvent`: `Advertising`, `Request` (Approval on: before the PIN), `Pin { pin }` (only from the supervisor's `PinShown`), `PinDone` (pairing finished or given up), `Mirroring { active: bool }`, `Failed { code }`, `Stopped`. `cc-airplay` policy: the `FOREIGN_WINDOW` admission is replaced by the join mode (N87): the app starts the supervisor when the switch is on and the mode is not Locked, stops it on Locked once no session is active (`service_action` with "Locked" in place of "window over"). UxPlay is always started with a PIN (`-pin` without a fixed value, never `-reg`).
+- **Mirroring signal (blocking for release):** `Mirroring { active }` must come from a source the core trusts (a UxPlay output line of the shipped version, or the window appearing and closing; the engineers choose and document it in `docs/airplay.md`). Without it, wake lock, "Comet Cast first" and `toast.rxEnded` cannot work, and AirPlay stays out of release builds.
+- **Window:** UxPlay full screen on the monitor of the Comet Cast window (`-fs`, display chosen by the app). When a dialog must be shown during a mirror, `window_control.dart` raises the Comet Cast window above UxPlay and lowers it again afterwards; if a platform cannot, the dialog's request waits for the server's expiry (no new copy).
+- **Miracast:** the existing `cc-miracast-ffi` and `miracast_controller.dart`, now started by the display: name = room name; pairing `RequirePin` always; consent answered by the app at once in Open, after the request dialog in Approval on; frames into the Presenting stage of the display (spec 4.5) with the name tag of spec 15.4; End and Locked stop the receiver as spec 15.4 says. The diagnosis (`MiracastStatus` / `diagnosis.rs`) maps to the state lines: adapter unsupported → `noHw`, feature missing → `noFeature`, disabled by policy → `policy`, every other failure → `failed`; the long `miracast.*` hint texts stay for the log and the retired page only.
+- **Precedence (N88):** on the display's `Presenting` from a Comet Cast presenter: AirPlay `airplay_answer(false)` for any request, Miracast consent declined. On a Comet Cast presentation starting while AirPlay or Miracast shows: `airplay_end_session()` / Miracast disconnect, then the Comet Cast picture.
+
+### 21.5 Sending to Google Cast and AirPlay TVs (desktop presenter)
+
+- **cc-ffi (new, wraps `cc-cast` and `cc-airplay-sender`):** `watch_tvs(events: StreamSink<TvUiEvent>)` / `stop_watching_tvs()`; `TvUiEvent::Seen { id, name, kind: Cast|AirPlay, addresses: Vec<String>, can_screen, can_photo, can_video }`, `Gone { id }`. The app hides rows by spec 15.5 (addresses shared with a Comet Cast row, nothing it can show).
+- `start_tv_presenter(id: String, events: StreamSink<PresenterUiEvent>)` opens a presenter session to the TV; afterwards the existing `present_screen`, `present_content` (AirPlay: an image is re-encoded as JPEG in the core; a link is checked as a playable media URL), `stop_presenting` and `stop_presenter` work on it unchanged. New `PresenterUiEvent::PairingRequired` and `tv_pair(pin: String) -> bool`. Pairing credentials are stored by the core in the app's data folder (`cc-airplay-sender` `creds`), per device id. New error codes: `tv_refused`, `tv_lost`, `tv_pair_wrong` (inline, not a page), `tv_unsupported_content` (inline). `Joined { room_name }` carries the TV's name, so the existing "What to show" header works.
+- Search: started and stopped with the nearby search (spec 14.5) and only while the switch is on. mDNS `_googlecast._tcp` and `_airplay._tcp`; no permission on Linux and Windows; macOS through the same Local Network handling as section 4.1.
+- The H.264 encoder: the codec page of spec 5.8 on Linux and Windows, as for Comet Cast.
+
+### 21.6 Join address, links and the address line
+
+- **cc-discovery / cc-ffi (new, sync):** `join_address(server: String) -> String`: the built-in relay (`relay.cometcast.de:443`) → `cometcast.de/app`; every other server → its `displayHost` form. `server_for_address(input: String) -> AddressParse { Ok { server }, Invalid }`: trims, drops a scheme and a trailing `/` and any path except `/app`, drops `:443`; `cometcast.de` and `cometcast.de/app` → the built-in relay; IP literals and `.local` names allowed (in-house box). **Async:** `probe_server(server: String) -> ProbeResult { Ok, NotCometCast, Unreachable }`: `GET https://{server}/healthz` (`docs/server.md`), 5 s, TLS checked (no self-signed exception).
+- The display apps show `join_address(server)` as `{dom}` and encode `https://{dom}/{CODE}` in the QR code (`display_logic.dart` `joinUrl`); the in-house box keeps the IP rule of spec 4.2.
+- **Links (20.4 amended):** accepted forms add `https://cometcast.de/app/{CODE}` (→ the built-in relay). App Links and Universal Links move to host `cometcast.de`, path `/app/` + 6 characters (`assetlinks.json` and `apple-app-site-association` served by the website under `/.well-known/`); the old `relay.cometcast.de/{CODE}` form stays accepted when it comes in. The install referrer carries the code and server as before.
+- The address line state (default, last used, typed, policy) comes from `server_defaults()` (`locked` → `start.viaPolicy`) and the stored last server (`settings.dart`).
+
+### 21.7 About: version and licence assets
+
+- `app_version() -> String` (new, sync): `env!("CARGO_PKG_VERSION")` of `cc-ffi` (keeps a pre-release suffix that the Flutter version drops, `docs/releasing.md`). Apple TV: `CFBundleShortVersionString`. The source link uses the tag `v{version}`.
+- **Bundling:** `tools/gen-third-party.mjs` (after writing the root files) copies `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md` unchanged to `apps/flutter/assets/licenses/` (listed under `flutter: assets:` in `pubspec.yaml`), to a `Licenses` resource folder of the Apple TV app target (`apps/apple-tv/project.yml`) and, for the web, to `apps/web/public/third-party-licenses.txt` (the two files joined, notices first). `tools/release-guard.sh licenses-fresh` also fails when a copy differs from the root file. UxPlay's licence files are added to the same asset folder where UxPlay is shipped (desktop packages).
+- **Reading:** parsed once per app run on first opening of the list, off the UI thread (Dart `compute`, Swift background task), into entries `{name, licence, text, featured}` by the rules of spec 15.9; the list is lazy. Flutter's `LicenseRegistry.licenses` is one more entry ("Flutter engine"). No network.
+- The store listings link the privacy page of spec N83.
+
+### 21.8 Not in this round
+
+Share entries on macOS, Windows or Linux; sharing several items; receiving Google Cast; AirPlay or Miracast receiving on tablets, phones, TVs or the web; sending to TVs from phones or the browser; real AirPlay mirroring (FairPlay); Office conversion on iOS or in the browser; a web About page.
+
+### 21.9 Acceptance per platform (additions to section 19)
+
+1. Android: the share sheet lists Comet Cast for a PNG, a PDF, a link and (worker builds) a PPTX, and not for a ZIP or two photos; connected → one tap shows the item; not connected → name, nearby, scan, code, Show.
+2. iOS and iPadOS: the same for PNG, PDF and a Safari link; no Office; "Stop and close" and swiping the sheet away both stop the picture on the display within 2 s.
+3. Windows mini-PC with a Miracast-capable adapter: Settings shows both rows; Open → PIN on the screen → mirror with name tag; Approval on → request first; Locked → the PC is no longer offered in the sender's list within 10 s.
+4. Linux mini-PC with UxPlay: an iPhone finds the room name in Screen Mirroring, enters the PIN from the screen, mirrors; a Comet Cast presenter that starts ends the mirror with `toast.rxEnded`.
+5. Desktop presenter with the TV switch on: a Chromecast and an Apple TV appear under `tv.title`; an Apple TV that runs Comet Cast appears only as a Comet Cast row.
+6. About on every app opens, the search finds "openh264", "Atkinson" and "tokio"; the licence texts match the root files of the same commit.

@@ -21,7 +21,7 @@ Where this document and the mockup disagree, this document wins. Known places wh
 | # | Decision |
 | --- | --- |
 | D1 | The default join mode is **Open**. The setup wizard preselects Open. |
-| D2 | Join mode and appearance live in **Settings** on the display. Nothing else is in Settings. |
+| D2 | Join mode and appearance live in **Settings** on the display. Nothing else is in Settings. **Amended (decision N91):** on desktop display apps also the "Without the app" section (AirPlay, Miracast), and on every display an About button in the header (15.4, 15.9). |
 | D3 | **Dark** is the default appearance. |
 | D4 | **OLED black** means true black (`#000000`) for the background and all surfaces, with **no pixel drift** or position shifting. |
 | D5 | In the idle state the display **dims after about 5 to 10 minutes** without activity (this spec: 7 minutes, see 8.6). The system screensaver and sleep are blocked **only while someone is presenting**. The screen is kept awake during an active presentation and released when the display returns to idle or the session ends. |
@@ -40,7 +40,7 @@ Where this document and the mockup disagree, this document wins. Known places wh
 | Security code | Six digits (`171 852`) computed on both sides from the connection's keys. Shown in the name tag on the display and on the presenter's "Presenting" page; if they differ, the connection may be intercepted. Not the check number, not the join code. |
 | Room name | The name chosen in setup step 1. Shown on the idle screen and, through the protocol field `room_name`, on the presenter's waiting, "What to show" and "Presenting" pages. |
 | Join mode | Open, Approval on (`Mit Freigabe`), Locked. |
-| `{dom}` | The address of the server the display uses, e.g. `cometcast.de`, `cast.musterfirma.de`, `cast-box.local`. Host name only; `:port` is added only when the port is not 443 (decision N12), on the idle screen, in the wizard, in `idle.offline.title` and in the QR URL alike. |
+| `{dom}` | The address of the server the display uses, e.g. `cometcast.de/app`, `cast.musterfirma.de`, `cast-box.local`. It is the **join address**, where a browser finds the web app: for the built-in relay `relay.cometcast.de` it is `cometcast.de/app` (decision N85, 15.1). Host name only (plus that `/app`); `:port` is added only when the port is not 443 (decision N12), on the idle screen, in the wizard, in `idle.offline.title` and in the QR URL alike. |
 
 ## 3. Design tokens
 
@@ -260,6 +260,7 @@ Content (card 600 wide, scrim behind):
 1. Header row: `settings.title` (section-label style, `--mut`) left; Close button right: × icon + `settings.close` (remote: `settings.closeRemote`, i.e. "Close (Back key)").
 2. Section `settings.join.label` ("Joining"): three tiles Open / Approval on / Locked (icon + word), then one line describing the current mode (`settings.join.*Text`).
 3. Section `settings.appearance`: four tiles Dark / Light / OLED black / Automatic.
+4. Desktop display apps only: section `settings.receive.label` with the AirPlay and Miracast switch rows (15.4). The header row also has the About button left of Close (15.9).
 
 Selected tile: border `--acc`, fill = selected tile fill (OLED black: no fill, see 3.2), bold. Changes apply at once; there is no Save button. The dialog stays open after a change.
 
@@ -378,7 +379,7 @@ Code handling: the field shows what is typed, in uppercase; it never drops chara
 - App first-run page: heading `app.welcome`; code chip with `app.codeFromLink` (Android) or `app.codeScanned` (after scanning); if there is no code: `app.scanAgainBody` and a secondary button `app.scanQr`; name field; primary `app.connect` (disabled while there is no code).
 - **Screens on the same network:** the app start page gets the section of [14](#14-screens-on-the-same-network-apps-only) between the name field (which moves up) and the code. One tap on a found screen connects without a code.
 - Platform variants (details in [native-apps.md](native-apps.md)): devices without a camera (computers) show the code field of 5.2 instead of `app.scanQr`; on tablets and computers the page ends with the text link `app.beDisplay`, which starts the display setup (4.1). Scanning uses the system scanner (not designed by us). In the apps the disconnected page (5.7) omits `bye.body` (it speaks of a browser tab).
-- **Order of the app first-run page (decision N22, replaces the two items above where they differ):** 1. brand row (logo 28 + "Comet Cast", as 5.2); 2. heading `app.welcome`; 3. name field `start.nameLabel`; 4. the code part: either the **code chip** (code from a link, the install referrer or a scan: `XXX XXX` mono + green tick + `app.codeFromLink` / `app.codeScanned`) or, without a code, [section `nearby.title` + divider `start.or`, when spec 14 is built] then the secondary button `app.scanQr` (only where a system scanner exists) and below it the **code field** of 5.2 (label `start.codeLabel`, placeholder `XXX XXX` in `p-fg3`, same rules); 5. primary `app.connect` (phone layout: at the bottom; laptop layout: follows the content); 6. tablets and computers only, after Connect (in the phone layout below it, as the last item of the bottom area): the text link `app.beDisplay`, and on Windows below it the text link `app.miracast` (same style, decision N18). **Placement of the links (decision N37):** each link is one line of 15 `p-primary`, underlined, in a tap area 44 high (the text centred in it); the two areas touch (no extra gap), so the two lines are 44 apart. Laptop layout: left-aligned with Connect, the first tap area starts 12 below Connect. Phone layout: centred in the bottom area, the first tap area starts 8 below Connect; the 22 bottom padding follows the last area. With a code field, Connect is always enabled and validates on submit (5.2: `start.codeEmpty`, `error.code`); with neither chip nor field it does not exist.
+- **Order of the app first-run page (decision N22, replaces the two items above where they differ):** 1. brand row (logo 28 + "Comet Cast", as 5.2); 2. heading `app.welcome`; 3. name field `start.nameLabel`; 4. the code part: either the **code chip** (code from a link, the install referrer or a scan: `XXX XXX` mono + green tick + `app.codeFromLink` / `app.codeScanned`) or, without a code, [section `nearby.title` + divider `start.or`, when spec 14 is built] then the secondary button `app.scanQr` (only where a system scanner exists) and below it the **code field** of 5.2 (label `start.codeLabel`, placeholder `XXX XXX` in `p-fg3`, same rules); 5. primary `app.connect` (phone layout: at the bottom; laptop layout: follows the content); 6. tablets and computers only, after Connect (in the phone layout below it, as the last item of the bottom area): the text link `app.beDisplay`, and on Windows below it the text link `app.miracast` (same style, decision N18; retired with the Miracast page once the display switch of 15.4 ships, decision N86). The brand row carries the settings button at its right end (15.8). **Placement of the links (decision N37):** each link is one line of 15 `p-primary`, underlined, in a tap area 44 high (the text centred in it); the two areas touch (no extra gap), so the two lines are 44 apart. Laptop layout: left-aligned with Connect, the first tap area starts 12 below Connect. Phone layout: centred in the bottom area, the first tap area starts 8 below Connect; the 22 bottom padding follows the last area. With a code field, Connect is always enabled and validates on submit (5.2: `start.codeEmpty`, `error.code`); with neither chip nor field it does not exist.
 - `app.scanAgainBody` (15 `p-fg2`, above the scan button) is shown only on the first launch after an install that brought no code (iOS from the store, Android without referrer); never when the app was opened before (it says "once more").
 - **Scan result** (decision N7): the URL forms of a link (native-apps.md 20.4). A valid code for a known server → chip `app.codeScanned`; a server this device has not confirmed → the relay confirmation page (7.2) first; anything else (not our URL, no valid code) → nothing changes and the line `app.scanWrong` (13/700 `p-error`) appears under the scan button until the next tap. Cancelling the scanner changes nothing.
 
@@ -403,7 +404,7 @@ Bottom: secondary `what.disconnect` → "Disconnected" page; toast `toast.left` 
 - Screen in the app → the system prompt (Android "Start recording or casting", iOS "Start Broadcast").
 - Cancelling the system dialog returns to this page without an error (`capture_denied` never shows an error page).
 - **Desktop apps (decision N55):** the system picker opens on every tap of Screen (no remembered choice). When the system cannot share at all, the screen-sharing page `error.capture` (6) follows instead of the picker. A shared window that is minimised keeps its last picture on the display; a shared window that is closed, or a share ended in the system's own UI, ends the presentation like Stop (presenter back here, display to Idle, no toast, no message).
-- File → file page. **App (decision N16):** the browser variant below on every app platform (the system picker already offers recent files; no media permission is asked). Body `file.bodyApp` where the app can convert Office files (desktops with the conversion component), else `file.bodyWeb`; while an Office file is converted the progress line shows `file.converting` (small print, no bar). The recent-files grid, `file.title` and `file.body` are not used. **Browser** (a browser cannot list recent files): heading `what.file`, body `file.bodyWeb`, primary `file.pick` (opens the system file dialog: PNG, JPEG, WebP, GIF, PDF), then while sending a progress line (small print "{name} · {n} %" + 6 px bar), an inline error in `p-error` if it fails, secondary `common.back` at the bottom. Picking a file starts presenting. Cancelling the dialog changes nothing.
+- File → file page. **App (decision N16):** the browser variant below on every app platform (the system picker already offers recent files; no media permission is asked). Body `file.bodyApp` where the app can convert Office files (where the conversion component is found and the Office switch of 15.8 is on: desktops and Android; decision N81), else `file.bodyWeb`; while an Office file is converted the progress line shows `file.converting` (small print, no bar). The recent-files grid, `file.title` and `file.body` are not used. **Browser** (a browser cannot list recent files): heading `what.file`, body `file.bodyWeb`, primary `file.pick` (opens the system file dialog: PNG, JPEG, WebP, GIF, PDF), then while sending a progress line (small print "{name} · {n} %" + 6 px bar), an inline error in `p-error` if it fails, secondary `common.back` at the bottom. Picking a file starts presenting. Cancelling the dialog changes nothing.
 - Link → link page: heading `what.link`, field `link.label` (type url), `link.hint`, primary `link.go`, secondary `common.back`. The display asks its host before opening (4.5).
 - Replacing what is shown: "Stop showing", then pick again (the display shows Idle in between). No "replace" action.
 
@@ -473,7 +474,7 @@ Focus order (rows top to bottom):
 | Screen | Rows |
 | --- | --- |
 | Idle | [Settings] |
-| Settings | [Close] · [Open, Approval on, Locked] · [Dark, Light, OLED black, Automatic] |
+| Settings | [About, Close] · [Open, Approval on, Locked] · [Dark, Light, OLED black, Automatic]; desktop display apps also · [AirPlay] · [Miracast] where listed (15.4) |
 | Join request | [Yes, No, No and block] |
 | Link card | [Open, Dismiss]; media link [Play, Open, Dismiss]; platform without a browser [Dismiss] or [Play, Dismiss] (Back = Dismiss) |
 | Media playing in the link card | [Stop] (Back = close the card) |
@@ -548,10 +549,10 @@ Pages wider than 720 px use the two-column layouts given in 5.2 and the error pa
 - Showing several presenters at once (split screen).
 - Renaming the room, changing the server address or re-running setup from Settings. To change these, reset the app's data (TV) or clear site data (`/display`). A later round may add this.
 - OLED black on presenter pages.
-- AirPlay, Miracast and Google Cast receiving (covered elsewhere; not part of this flow).
+- Google Cast receiving; AirPlay and Miracast receiving anywhere but desktop display apps (those: section 15.4).
 - The mockup's own frame: chapter tabs, simulated remote, scenario buttons, notes, device switcher, the "view from 4 m" preview, the host instructions panel.
 - Store pages, system share dialogs and camera chips: they are drawn by the operating system.
-- Share sheet entry points ("Share to Comet Cast" from other apps) on any platform: not in this round (native-apps.md, section 9).
+- Share sheet entry points ("Share to Comet Cast" from other apps) on any platform other than Android and iOS/iPadOS (those: section 15.3).
 
 ## 11. Copy
 
@@ -1275,3 +1276,283 @@ The apps (receivers of the announcement) must:
 | `ios.localNetworkUsage` (`NSLocalNetworkUsageDescription`, shown by the system) | Comet Cast looks for screens on the same Wi-Fi so you do not have to type a code. | Comet Cast sucht Bildschirme im selben WLAN, damit du keinen Code tippen musst. | Comet Cast sucht Bildschirme im selben WLAN, damit Sie keinen Code tippen müssen. |
 
 `{name}` is inserted already quoted (`common.quoted`), or `common.noName`. `{mode}` is the subtitle text of the row (`nearby.open`, `nearby.approval`). Reused without change: `start.nameLabel`, `start.or`, `start.codeLabel`, `app.scanQr`, `app.connect`, `common.quoted`, `common.noName`, `common.cancel`, `relay.confirm.title`, `relay.confirm.risk`, `relay.confirm.use`. The existing system prompt text of the Apple TV (`docs/appletv-device-test-plan.md`, B1) is for the display and stays.
+
+## 15. Share sheet, receiving and sending without Comet Cast, Office files, the screen's address, settings and About (round 5)
+
+Added 2026-11-07. Clickable mockup (DE du / EN): https://claude.ai/artifact/CWAeQPZwPvuZUxfvHLEgtM. It was drawn before sections 14 and N48–N69 existed; **where it and this section disagree, this section wins** (15.12 lists the places). Platform details are in [native-apps.md](native-apps.md) section 21; the work items in [fix-list-round5.md](fix-list-round5.md). The owner has not commented; the decisions below are the designer's (owner rule: decide what can be decided).
+
+### 15.1 Decisions
+
+The five questions the mockup left open are N81–N85.
+
+- **N80 Scope.** This round adds: the share entry on Android and iOS/iPadOS (15.3), AirPlay and Miracast receiving on desktop display apps (15.4), sending to Google Cast and AirPlay TVs from the desktop presenter app (15.5), the Office limits line and switch (15.6), the screen's address line in the presenter apps (15.7), the presenter app settings page (15.8) and About with the licence list on every app and a footer line on the web start page (15.9). Nothing else changes. Section 10 and native-apps.md 9 are amended to match.
+- **N81 Office files (question 1).** Converted on tap, on the presenting device, by the bundled `cc-office-worker` (office2pdf), for `.docx`, `.pptx`, `.xlsx` only; OpenDocument and legacy files are not offered (the picker filters them; a shared one gets the existing refusal). Platforms: where `office_worker_path()` finds the worker, that is Linux, Windows, macOS and Android; **not iOS/iPadOS** (no child processes) and **not the web**. No dialog before; the fidelity is unmeasured, so while a converted file is shown the presenter's page carries one line with the limits and the way out "Pick my own PDF instead" (15.6). It is **not** labelled Beta (it is a local conversion that the person sees the result of at once), it is **on by default**, and the app settings have a switch to turn it off; off means the picker no longer offers Office files (no error page).
+- **N82 iOS share extension (question 2).** The extension cannot rely on opening the app, so it does the whole job itself, like the broadcast extension: its own connection, its own join, the content, the page turning. The sheet stays open as the remote; **"Stop and close" (and closing the sheet) stops showing and leaves**. A screen in Approval on asks the host again for the extension's join (the app is not running and cannot hand its join over; accepted). Android opens the app instead, which keeps the app's existing join (one tap when already connected).
+- **N83 Publisher and legal pages (question 3).** About names the publisher, **Schulverwalter GmbH**, and links "Privacy" to `https://cometcast.de/datenschutz/` (English UI: `https://cometcast.de/en/privacy/`) and "Imprint" to `https://cometcast.de/impressum/` (`/en/imprint/`). The store listings use the same privacy address. The apps show these links always (the apps are published by Schulverwalter GmbH, whatever server they use). The web start page shows them only on the cometcast.de deployment; a self-hosted server shows its operator's pages when its `config.json` names them (`privacy_url`, `imprint_url`), otherwise none (15.9). The content of both pages is the owner's (legal text; `docs/website.md` checklist).
+- **N84 AirPlay on an Apple TV (question 4).** On Apple TV, AirPlay is tvOS's own receiver and bypasses Comet Cast. The Apple TV app therefore shows **nothing** about AirPlay: no idle line, no switch, and the join mode texts stay about Comet Cast only. In the desktop app's list of TVs without Comet Cast (15.5), a Google Cast or AirPlay receiver whose IP address is also the address of a Comet Cast screen in the list is **hidden**, so people pick the Comet Cast row, which honours the join mode. On desktop display apps (15.4), where Comet Cast runs the AirPlay and Miracast receivers itself, the join mode does apply to them and Locked stops them.
+- **N85 The screen's address (question 5).** `{dom}` is the **join address**: where a browser reaches the web app for this server, not the relay's host. A self-hosted server serves the web app itself, so its join address is its host (unchanged). The public relay `relay.cometcast.de` deliberately serves no web app; its join address is **`cometcast.de/app`** (the static web app). So for the built-in relay the idle screen shows `cometcast.de/app`, the QR code encodes `https://cometcast.de/app/{CODE}`, and the app links and the install referrer move to that form (native-apps.md 21.6). Where `{dom}` already ends in `/app`, the text `{dom}/app` (for example in `idle.appLine`) is written as `{dom}`. In the presenter apps, a person who types the code sees under the code field which address the app will use, "via {dom} · Change", and can type the address the screen shows (15.7); there is no `wss://` field anywhere. The web keeps its rule: the page uses the server it was loaded from (on cometcast.de: the built-in relay); a `?server=` link still gets the relay confirmation of 7.2 (decision 37; the mockup's "does nothing in the browser" is not built).
+- **N86 Miracast belongs to the display role.** Receiving Miracast is a display feature: Windows display apps get a switch in Settings (15.4). The presenter-side Miracast page and the text link `app.miracast` (N18, N39) are **retired** once the display switch has passed its device test (fix list round 5, item F9); until then they stay as built.
+- **N87 Joining by AirPlay and Miracast follows the join mode.** Open: the device gets in with the code the screen shows (PIN dialog, no question). Approval on: the request dialog first (variant of 4.4), then the PIN. Locked: the receivers stop announcing; a running mirror stays until it ends ("Connected stay"). A PIN is **always** required, so only someone who sees the screen can connect (Miracast reaches beyond the network). This replaces the 10-minute "allow foreign devices" window of `cc-airplay` (`FOREIGN_WINDOW`): the switch is the permission, the join mode the admission.
+- **N88 One picture at a time; Comet Cast first.** While a Comet Cast presenter presents, new AirPlay and Miracast pairings are refused without any dialog (the device shows its own failure). While AirPlay or Miracast shows, a Comet Cast join request still appears, and when a Comet Cast presenter starts presenting, the AirPlay or Miracast session is ended (toast `toast.rxEnded`). Reason: only Comet Cast has the host's approval rules and End.
+- **N89 Beta.** AirPlay and Miracast receiving and sending to Google Cast and AirPlay TVs are **Beta**: each is **off by default**, switched on by a switch whose title carries the Beta chip (15.10), and every row that names such a way says "· Beta". The idle line (15.4) does not say Beta (it is for the people in the room). Which features are Beta is one table in the code (`lib/src/beta.dart`); when a feature passes its device test plan, the engineers remove it from the table (the chip and the "· Beta" go; the default stays off until the designer changes it). No other feature may use the chip.
+- **N90 Presenter app settings.** A small page in the presenter role (15.8): the Office switch (where conversion exists), the TV switch (desktops), and About. **No appearance choice**: presenter pages keep following the device (3.3; the mockup's "Aussehen" row is not built). Where neither switch exists (iOS/iPadOS), the entry opens About directly.
+- **N91 D2 amended.** The display's Settings hold join mode and appearance, **plus**, on desktop display apps only, the "Without the app" section (AirPlay, Miracast), and in the header an About button. Nothing else: no role switch, no server, no room name (section 10 stays).
+- **N92 About content.** Version (the core's version, `app_version()`), "Free software under the GPL-3.0", the publisher, links to the source of this version, privacy and imprint, and the licence list read from `THIRD_PARTY_LICENSES.md` and `THIRD_PARTY_NOTICES.md`, bundled with every app as assets (15.9, native-apps.md 21.7). Parts with their own notice come first (Cisco OpenH264, UxPlay where shipped, Atkinson Hyperlegible, the Office fonts), a search filters everything.
+- **N93 Sending to TVs without Comet Cast.** Only in the desktop presenter app (Linux, Windows, macOS); phones have this in the system, the browser cannot. The TVs are rows in the nearby card of the start page (14), under their own label, shown only when the switch is on and at least one was found. Only what the way can do is offered: Google Cast the screen; AirPlay the screen (as a video, a few seconds behind), a photo and a video link. TVs that only accept mirroring are not listed (real AirPlay mirroring needs FairPlay, which the project does not use).
+- **N94 Android share target is the app.** `ACTION_SEND` with one item opens the app's share page (15.3); `ACTION_SEND_MULTIPLE` is not registered. Office types are registered only in builds that ship the Office worker.
+- **N95 Mockup not redrawn.** The deviations in 15.12 are listed for the engineers; the mockup stays as published.
+- **N96 Design status.** With the items of [fix-list-round5.md](fix-list-round5.md) done and the device test plans of AirPlay, Miracast, Cast and the AirPlay sender passed, these surfaces are design-complete. Screenshots per 15.11; no further design review round is needed unless a device test changes what can be offered.
+
+### 15.2 Who gets what
+
+| Surface | Android phone / tablet | iPhone / iPad | Linux / Windows / macOS (presenter) | Linux / Windows / macOS (display role: "mini-PC") | Android TV, Apple TV, tablet in display role | Web |
+| --- | --- | --- | --- | --- | --- | --- |
+| Share entry (15.3) | yes (opens the app) | yes (share extension, works alone) | no | no | no | no |
+| AirPlay receive (15.4) | no | no | no | yes, where UxPlay is shipped (`airplay_receive_available()`) | no (Apple TV: tvOS's own AirPlay, N84) | no |
+| Miracast receive (15.4) | no | no | no (page retired, N86) | Windows only, where the adapter can | no | no |
+| Send to Google Cast / AirPlay TVs (15.5) | no | no | yes (Beta switch) | no | no | no |
+| Office conversion (15.6) | yes (worker in the APK) | no | yes | n/a | n/a | no |
+| Address line (15.7) | yes | yes | yes | n/a | n/a | no (page uses its own server) |
+| App settings (15.8) | yes | About only | yes | n/a (display Settings) | n/a (display Settings) | no |
+| About (15.9) | yes | yes | yes | in display Settings | in display Settings (Apple TV: SwiftUI) | footer line on the start page |
+
+"Mini-PC" in this section means a Flutter desktop build in the display role. Tablets, TVs and the web display get none of 15.4.
+
+### 15.3 Share entry (Android, iOS, iPadOS)
+
+**Where it appears.** In the system share sheet of other apps, as "Comet Cast", only for one item of these kinds: image (PNG, JPEG, WebP, GIF, at most 10 MiB), PDF (at most 64 MiB), Office (`.docx .pptx .xlsx`, at most 50 MiB; Android builds with the worker only, N81, N94), a web link (iOS: `public.url` with `http`/`https`; Android: `text/plain`, see below). For any other type (ZIP, video, several items) the entry does not exist; there is never an error afterwards for a type we did not register. Android `text/plain` cannot be filtered by content: if the shared text contains no `http://` or `https://` address, the page shows `share.noLink`.
+
+**The share page** (presenter kit, phone layout; Android: a page of the app opened by the intent; iOS/iPadOS: the extension's sheet, the system draws its frame, iPad as a centred sheet):
+
+1. Heading `share.title`.
+2. The item card (`p-surface`, 1 px `p-divider` card value, radius 14, padding 14, gap 12): icon 28 in `p-primary` on a 56 disc `p-primary-soft` (`file` for files and images, `link` for links); title 17/700 `p-fg`, the file name shortened in the middle keeping the extension (as 3.5 transfer pill), a link shown as its host + path in 15 mono `p-fg` wrapping anywhere; meta line 13 `p-fg3`: `share.metaPdf`, `share.metaImage`, `share.metaOffice`, `share.metaLink`. While an Office file converts after "Show", the meta line is replaced by `file.converting` (small print, no bar). A refusal (size, damaged file, Office off, no link) replaces the meta line by the existing `sendReject.*` text (or `share.noLink`, `sendReject.officeOff`) in 13/700 `p-error`; then the only action is secondary `common.cancel`, which closes the page (Android: back to the app it came from).
+3. **Already connected** (Android only: the app holds a join, waiting or joined, not presenting): primary `share.showOn` (`{room}` quoted; without a room name `share.showHere`), below it secondary `share.otherScreen` (leaves the room, then shows 4). One tap on `share.showOn` presents at once. While the app is presenting, the share page replaces what is shown (Stop, then present; no question).
+4. **Not connected:** the app start page parts in the order of 5.3/14: name field `start.nameLabel`, the nearby section (14; iOS extension: only when the Local Network permission was already granted to the app, otherwise the section is not shown; the extension never asks), divider `start.or`, `app.scanQr` (Android only; the iOS extension has no scanner), the code field with the address line of 15.7, primary `share.show` (instead of `app.connect`; same enabling and validation rules). A tap on a nearby row presents directly, as `share.show`.
+5. After the join: Open → **Presenting** (5.6) directly, there is no "What to show" (the content is chosen); Approval on → waiting page (5.4), then Presenting; every failure → the error pages of 6, whose primary or Back returns to this share page with the item kept.
+6. Presenting: 5.6 with `presenting.file` / `presenting.link`, the PDF page row, `presenting.converted` for Office (15.6). Android: `presenting.stop` → "What to show" (the app continues normally). iOS/iPadOS: the primary reads `share.stopClose`; it stops, leaves and closes the sheet; closing the sheet by swiping does the same.
+
+Name, confirmed servers and the last used server are shared with the app (Android: the same app; iOS: the App Group). The iOS extension writes nothing back except the name.
+
+System Back (Android): on the share page = `common.cancel`; on waiting = withdraw (back to the share page); on Presenting = nothing (5 of native-apps.md). Escape on an iPad keyboard = Cancel / Stop and close.
+
+### 15.4 AirPlay and Miracast on desktop display apps ("Without the app")
+
+Only Flutter desktop builds in the display role (15.2). Everything below uses the display tokens (3.2) on the 960 × 540 canvas.
+
+**Settings dialog (4.3), new parts.**
+
+- Header row: `settings.title` left; right: **About** (secondary button style of the Close button: `info` icon 20 + `about.open`), gap 8, then Close. Focus row [About, Close].
+- After the appearance section, section `settings.receive.label`, shown only when at least one way exists on this device. One **switch row** per way (AirPlay first, Miracast second; a way the device cannot do at all is not listed, for example Miracast on Linux and macOS, AirPlay without UxPlay):
+  - Row: full card width, min height 50, radius 12, border 2 `--line`, fill `--panel2` (OLED black `#000000`), padding 8 14, gap 12. Left: title 16/700 `--fg` (`settings.receive.airplay` / `.miracast`) followed by the Beta chip (15.10); below it the sub line 15 `--mut` (`settings.receive.airplaySub` / `.miracastSub`, or a state line, below). Right: the display switch (15.10).
+  - The whole row is the focusable control (focus ring of 3.5 on the row, no scale change of the switch); OK/Enter/click toggles. Rows are their own focus rows, so the Settings rows become [About, Close] · [Open, Approval on, Locked] · [Dark, Light, OLED black, Automatic] · [AirPlay] · [Miracast].
+  - State lines (replace the sub line): `settings.receive.noHw`, `settings.receive.noFeature`, `settings.receive.policy` (switch off and disabled: 40 % opacity, not focusable, the row keeps its place); `settings.receive.failed` (switch stays on; turning it off and on retries); `settings.receive.locked` while the join mode is Locked (switch stays as set; the service is paused).
+  - The dialog stays within the canvas: with both rows it is about 480 ref high in EN and DE; it scrolls never.
+- Stored per device; default off (N89). Turning a switch on starts that receiver at once with the room name as its name (empty: "Comet Cast"); off stops it and ends a running mirror.
+
+**Idle screen (4.2).** When at least one receiver runs (switch on, started, join mode not Locked), the footer's left column gets a first line above `idle.appLine`: `idle.alsoVia.both`, `.airplay` or `.miracast` (15/700 `--fg`, line height 1.3; `idle.appLine` stays 15/400 `--mut` below it, gap 2). The top row's room name is the name to pick in the device's list; nothing else is added. The line also shows in "Idle, offline" (the receivers do not need the server). It is hidden in Locked, during setup and when no receiver runs.
+
+**Joining.**
+
+| Join mode | AirPlay | Miracast |
+| --- | --- | --- |
+| Open | Pairing request → PIN dialog at once | Connection request → PIN dialog at once (consent answered by the app, pairing "PIN required") |
+| Approval on | Request dialog → Yes → PIN dialog; No → refused | Request dialog with the device name → Yes → PIN dialog; No → refused |
+| Locked | Receiver stopped (not announced); a running mirror stays until it ends | Same |
+
+- **Request dialog variant** (4.4 layout, same 1 s guard, same queue as Comet Cast requests, first come first served): name line = AirPlay `request.airplayDevice` (UxPlay does not name the device; no quotes), Miracast the device name cleaned and quoted as 4.4; subtitle `request.subtitleAirplay` / `request.subtitleMiracast`; **no check-number box** and **no "No and block"** (the device cannot be identified reliably). Focus row [Yes, No]. Expiry: the device's own timeout (Miracast 30 s); then the request leaves the queue with `toast.expired`.
+- **PIN dialog** (link-card family of 4.5: 600 card, scrim, padding 28 × 34): section label `rx.pin.titleAirplay` / `rx.pin.titleMiracast`; body `rx.pin.body` (Miracast with a name: `rx.pin.bodyNamed`), 16 `--mut`; the PIN in 80 mono 700 `--fg`, letter-spacing .06em (4 digits; a longer Miracast PIN in groups of 4 with one space); button row [Cancel] (`common.cancel`, secondary, initial focus, after the 1 s guard). Cancel or Back refuses the pairing. The dialog closes by itself when the mirror starts, when the device gives up, or after 30 s. Only a PIN from the core's PIN event is ever shown (`docs/airplay.md`). It can appear over Idle and over a Miracast picture; never over setup; it closes Settings like a join request does (4.3).
+- While a Comet Cast presenter presents: pairings are refused, no dialog (N88).
+
+**While AirPlay mirrors.** UxPlay draws the picture in its own full-screen window on the display's monitor; Comet Cast draws nothing over it. The display counts as Presenting for wake lock and dimming (D5); the announcement and the code are unchanged. A Comet Cast join request brings the Comet Cast window to the front for the dialog and back after it; a Comet Cast presentation that starts ends the AirPlay session first (N88, toast `toast.rxEnded` with `{way}` = AirPlay). The host cannot press End over the UxPlay window; the mirror ends on the sending device, by switching AirPlay off in Settings, or by a Comet Cast presentation. This is a Beta limitation, stated in `docs/airplay.md`, not on screen.
+
+**While Miracast mirrors.** The picture is drawn by the app in the Presenting state of 4.5 (letterboxed on `#000000`). Name tag line 1 `present.byline` with the cleaned, quoted device name; line 2 `present.via` (`{way}` = Miracast) in the place of the security code. End ends the Miracast session and the Comet Cast session (new code, `toast.sessionEnded`), as for any presentation. When the device stops: Idle, toast `toast.left` with the device name.
+
+**Not included:** AirPlay or Miracast receiving on TVs, tablets, phones or the web display; Google Cast receiving; blocking a single AirPlay or Miracast device; a device list or history; audio-only AirPlay; controls over the UxPlay window; a separate "allow for 10 minutes" switch.
+
+### 15.5 Sending to TVs without Comet Cast (desktop presenter app)
+
+**Switch.** App settings (15.8): `appSettings.otherTvs` with the Beta chip, sub `appSettings.otherTvsSub`; default off. Off: nothing below exists and no Cast or AirPlay search runs.
+
+**In the nearby card (14).** Below the Comet Cast states and rows, when at least one TV was found: gap 14, label `tv.title` (13/700 `p-fg2`, as `nearby.title`), then one row per TV in the row look of 14.3 (min 50 on the laptop layout, `p-bg` fill in the card): icon `screen` 22 `p-primary`; title = the device name cleaned like `room_name` and quoted (`common.quoted`); subtitle `tv.cast` or `tv.airplay` + ` · ` + `beta`; **right slot empty** (there is no code). Accessible name `tv.aria`. No placeholder row, no "nothing found" text, no states of their own: the TV part is silent while searching and absent when nothing was found. The search runs exactly when the nearby search runs (14.5, desktops: while the page is visible). Order, the 500 ms tap guard, the 32-row cap (counted separately), "never merge by name" and leaving at once all as 14.3. Hidden: devices whose IP address is an address of a Comet Cast row (N84), AirPlay receivers that offer neither video playback nor photos, Cast devices without video (audio-only).
+
+**Tapping a TV row.** As 14.4 for a known server: search stops, spinner (20) in the right slot at its right edge with `nearby.connecting` as subtitle (N64), other rows disabled, Connect and the fields locked (N54). No relay confirmation (no server is involved). Then:
+
+- AirPlay receiver that asks for pairing (an Apple TV the first time): **pair page** in the relay-page layout (7.2, presenter variant): icon disc `screen` in `p-primary` on `p-primary-soft`; heading `pair.title`; body `pair.body`; field `pair.label` (4 digits, numeric keyboard, 22 mono, letter-spacing .12em, input rules of the code field: only digits kept, max 4); actions [**Pair** (`pair.go`, primary), **Back** (`common.back`)] (laptop row, primary first); Back and Escape → start page. A wrong code: inline `pair.wrong` (13/700 `p-error` under the field), the field is emptied. The pairing is remembered on this computer (no second time).
+- Then **"What to show", TV variant** (5.5 layout): header `what.connectedTo` with the TV's quoted name; only the rows the way can do: Google Cast: Screen (`what.screen`, sub `what.screenTv`). AirPlay: Screen (sub `what.screenAirplay`), Photo (`what.photo`, sub `what.photoSub`), Video link (`what.video`, sub `what.videoSub`). Disconnect = `what.disconnect` (back to the start page). Screen → the codec page (5.8) first where the encoder is missing, then the system picker (N55). Photo → the file page (5.5) with `file.bodyTv` and a picker for PNG, JPEG, WebP only. Video link → the link page (5.5) with `link.hintTv` instead of `link.hint`.
+- **Presenting** (5.6): `presenting.screen` / `presenting.file` / `presenting.link`, `presenting.where` with the TV name, **no security code** (there is none), `presenting.stop` → TV "What to show". Nothing of Comet Cast is drawn on the TV: no name tag, no End.
+- **Errors:** the TV refuses or the way fails to start → error page `error.tv` (6 layout, icon (i) in grey): heading `error.tv.title`, why `error.tv.whyCast` / `error.tv.whyAirplay`, now `error.tv.now`, button `common.back` → start page. The connection is lost later → the same page with why `error.tv.whyLost`. A link or photo the TV cannot take (core code `tv_unsupported_content`) → inline error `link.tvUnsupported` (13/700 `p-error`) under the field or on the file page; the person stays connected. Capture codes → `error.capture` as for Comet Cast.
+
+### 15.6 Office files: what the person sees
+
+- File page (5.5, apps): `file.bodyApp` exactly when the worker is found **and** the switch is on; otherwise `file.bodyWeb` and the picker offers images and PDF only. While converting: `file.converting` (as built).
+- **Presenting a converted file** (5.6; Android share page too): under the heading area, above the PDF page row, one line of small print `presenting.converted` (13 `p-fg2`), and below it the text link `presenting.ownPdf` (15 `p-primary`, underlined, 44-high tap area, as the `app.beDisplay` link). Tapping it stops presenting and opens the file picker for PDF only (the system dialog as the direct result of the tap); cancelling returns to "What to show" (connected). The line shows for the whole presentation of that file, not for PDFs or images.
+- Encrypted, legacy-inside-OOXML or damaged files keep the existing inline refusals (`sendReject.officeEncrypted`, `.officeFailed`). The switch off in the share page: `sendReject.officeOff` (15.3).
+- iOS/iPadOS: Office types are not in the picker and not in the share extension (N81). Web: unchanged (its picker offers images and PDF only); the mockup's web page "Office files do not work in the browser" is not built.
+
+### 15.7 The screen's address in the presenter apps
+
+Shown on the app start page (5.3) and the share page (15.3) whenever the **code field** is shown (not with a code chip, not on the web). Directly under the code field, one line of small print 13 `p-fg3`:
+
+- `start.via` (`{dom}` = the join address the app will use: the last used server, else the default, as `displayHost`; no-break space inside the key as N53) + ` · ` + text link `start.viaChange` (13/700 `p-primary`, underlined, tap area 44 high).
+- Policy locks the server (`forbid_user_override`): `start.via` + ` · ` + `start.viaPolicy`, no link.
+
+**Change** replaces the line in place by: label `start.addrLabel`, a text field (46 high, as 3.5; type url, autocorrect off, placeholder = the current `{dom}` in `p-fg3`), and a row [**Use** (`start.addrUse`, compact button of 14.2), **Cancel** (`common.cancel`, compact)] (laptop: on the field's right in one row if it fits, otherwise below). Use (or Enter): the input is cleaned (`server_for_address`: scheme, path other than `/app`, default port dropped; `cometcast.de` and `cometcast.de/app` mean the built-in relay), then checked (`probe_server`, at most 5 s; meanwhile the button reads `start.addrChecking` and is disabled). OK → the line returns with the new `{dom}`; the address is used for the next join and stored as last used after that join succeeded. Not a Comet Cast server, or not reachable → inline `start.addrError` (13/700 `p-error`) under the field, the field keeps the text. Cancel or Escape → the line as before. A typed address is the person's own choice: no relay confirmation (7.2 is for addresses that come from a link or an announcement). The nearby section is not affected by this choice.
+
+### 15.8 Presenter app settings
+
+**Entry:** on the app first-run page only, at the right end of the brand row (5.3 item 1): the compact button of 14.2 with the `gear` icon 18 and `appSettings.open`; the brand row becomes 44 high, the logo centred in it. Where the page would hold no switch (iOS/iPadOS), the button shows `info` + `about.open` and opens About directly. Not on any other page and not in the display role.
+
+**Page** (presenter kit; phone layout and laptop column as 7.3/7.4): heading `appSettings.title`, then:
+
+1. Switch row `appSettings.office`, sub `appSettings.officeSub` (only where the Office worker is found).
+2. Switch row `appSettings.otherTvs` + Beta chip, sub `appSettings.otherTvsSub` (desktops only).
+3. Option row (5.5 look) with icon `info`, title `about.title`, subtitle `about.version` → About page.
+4. Secondary `common.back` (phone: bottom action area; laptop: follows the content). System Back = Back.
+
+Switch row: option-row look (min 58, laptop 50, radius 12, 1 px `p-border`, `p-surface`, padding 8 14, gap 12); title 17/700 `p-fg`, sub 13 `p-fg3` (wraps); the presenter switch (15.10) at the right; the whole row toggles; focus outline of 6.3. Changes apply at once and are stored on the device.
+
+### 15.9 About
+
+**Presenter apps (page):** heading `about.title`; card (`p-surface`, radius 14, padding 14, gap 6): logo 28 + "Comet Cast" (17/700), `about.version` (15 `p-fg2`, the version in mono 500), `about.licence` (15 `p-fg2`), `about.publisher` (13 `p-fg3`). Below the card three text links in the `app.beDisplay` style, stacked 44-high tap areas: `about.source` (opens `https://github.com/wi-wissen/CometCast/tree/v{version}` in the system browser), `about.privacy`, `about.imprint` (N83). Then section label `about.licences` with small print `about.licencesSub`, the search field (46 high, `search` icon 18 `p-fg3` inside left, placeholder `about.search`), and the list: group label `about.featured`, its rows, group label `about.all`, its rows. Row: option-row look, min 48, padding 8 14; title 15/700 `p-fg` (at most 2 lines, then "…"), subtitle 13 `p-fg3` (the licence). The search filters both groups by name, case-insensitive, as you type; no match: `about.none` (15 `p-fg2`). A row opens the **licence text page**: heading = the entry name, the text in 13 mono 500 `p-fg2`, line height 1.4, selectable, wrapping; secondary `common.back`. The page scrolls as a whole (lazy list); the bottom of About has `common.back`.
+
+**Displays (Settings → About):** a dialog of the link-card family (600 card over the scrim, 4.5), opened from the header button, only over Idle: section label `about.title`; logo 40 + "Comet Cast" 21/700; lines 16 `--mut`: `about.version`, `about.licence`, `about.publisher`, `about.sourceTv` (`{url}` = `github.com/wi-wissen/CometCast` in 16 mono `--fg`), `about.webTv` (`{url}` = `cometcast.de`). Buttons [**Licences** (`about.licences`, secondary, initial focus), **Close** (`settings.close` / `settings.closeRemote`)]. Back = Close, back to Settings with focus on About. **Licences** opens the licence viewer: full canvas on `--bg`; top row (padding as the idle screen) section label `about.licences` left, Close right; below, two columns: the list (300 ref wide; rows 40 high, name 15/700 `--fg` one line with "…", licence 13 `--mut`; group labels `about.featured`, `about.all` in section-label style) and the text pane (rest of the width, `--panel` fill, 1 px `--line`, radius 14, padding 16, text 13 mono `--fg` line height 1.4). D-pad: Up/Down move in the list (the pane shows the focused entry); Right moves focus to the pane (focus ring on the pane), where Up/Down scroll by half a pane and Left returns to the list; Back closes the viewer. Tablets and computers: a search field (as the presenter field, display tokens, 46 ref) above the list; the wheel and touch scroll; TVs have no search. The Apple TV builds the same dialog and viewer in SwiftUI.
+
+**Web:** on the presenter start page (5.2), after the last item, one line of small print 13 `p-fg3`: `about.footer` + ` · ` + links `about.source`, `about.licences` (opens `third-party-licenses.txt` of the same build in a new tab), and, only per N83, `about.privacy`, `about.imprint`. Links in `p-primary`, underlined. The web display gets nothing.
+
+**Content sources** (native-apps.md 21.7): entries are built from the bundled `THIRD_PARTY_NOTICES.md` (featured: the sections "OpenH264 notice", "Atkinson Hyperlegible notice", "Open Screen Library notice" on desktop builds, "PDFium Foxit font notice", "Adobe CMap notice"; UxPlay from its shipped licence file where UxPlay is shipped) and `THIRD_PARTY_LICENSES.md` (featured: "Fonts bundled in the repository (cc-office)" as "Liberation, Carlito, Caladea" where the Office worker is shipped; all: every `####` heading under "Rust licence texts" and "Flutter licence texts", and every row of the npm table as name + SPDX, its text being the SPDX line), plus Flutter's `LicenseRegistry` as one entry `about.flutter`. Featured order: Cisco OpenH264, UxPlay, Atkinson Hyperlegible, Liberation/Carlito/Caladea, then the rest in file order. Licence (subtitle) of an `####` entry = the first non-empty line of its text, at most 60 characters.
+
+### 15.10 Components and tokens
+
+Only tokens of 3.2 and 3.3; no new colour.
+
+| Component | Display (ref px) | Presenter (logical px) |
+| --- | --- | --- |
+| Switch | track 44 × 24, radius 12, border 2: off `--line` border, `--panel2` fill (OLED `#000000`), knob 16 `--mut`; on `--acc` border and fill, knob `--bg`. Knob moves 120 ms ease (instant with reduced motion). Disabled 40 % | track 44 × 26, radius 13: off 1 px `p-border`, `p-surface` fill, knob 20 `p-fg3`; on `p-primary` fill, knob `p-surface`. 120 ms. Disabled: `p-disabled` track, knob `p-ondisabled` |
+| Beta chip | after the title, gap 8: text `beta` 13/700 `--mut`, uppercase, letter-spacing .06em, 1 px `--line` border, radius 999, padding 1 8 | text 12/700 `p-fg2`, uppercase, letter-spacing .06em, 1 px `p-border`, radius 999, padding 1 7 |
+| Settings switch row | 15.4 | 15.8 |
+| PIN | 80 mono 700 `--fg` (as the join code) | n/a |
+
+Accessibility: a switch row is one control: `Semantics(toggled: on, label: title + ", Beta" where chipped, hint: sub line)`; the Beta chip is not read separately. The PIN dialog is an `alertdialog` labelled by its title; the PIN is read digit by digit. Licence text panes are reachable by screen readers as text.
+
+### 15.11 Screenshots for acceptance
+
+DE du and EN, Light and Dark (display: Dark, Light, OLED black): share page (Android: connected, not connected, Office converting, refusal; iOS sheet: not connected, Presenting with `share.stopClose`); display Settings on Windows with both rows (off, on, `noHw`, `failed`, Locked) and on Linux with AirPlay only; idle line (three variants, and offline); request variants AirPlay and Miracast; PIN dialog both ways; Miracast presenting with name tag; desktop start page with TV rows (Cast, AirPlay, both with Comet Cast rows); pair page with and without `pair.wrong`; TV "What to show" for Cast and AirPlay; `error.tv` three variants; Presenting a converted file; address line (default, policy, field open, checking, error); app settings (desktop, Android); About page, search with no match, licence text page; display About dialog and licence viewer with the pane focused; web start page footer on cometcast.de and on a self-hosted server.
+
+### 15.12 Mockup deviations (this section wins)
+
+| Mockup | Built |
+| --- | --- |
+| Codes like `K7QM 2W4P` (8 characters) on the default server | 6 characters everywhere (glossary) |
+| "If a typed code does not fit the address, the address field opens by itself" | Not built: codes have one format on every server, so a code never tells the server (decision 1). The address line (15.7) is always there to change |
+| Presenter app settings with "Aussehen" (System/Light/Dark) | No appearance setting on presenter pages (N90, 3.3) |
+| Office off: Office files stay in the list and lead to a page "Bitte als PDF exportieren" | Off: the picker no longer offers Office files; no page (N81) |
+| Web: page "Office-Dateien gehen im Browser nicht" | Not built: the web picker offers images and PDF only (15.6) |
+| Web: a `?server=` link "has no effect" | The relay confirmation of 7.2 stays (N85) |
+| "Recent on this device" file grid in the Android share flow | The browser-variant file page of 5.5 (N16); the share page shows only the shared item |
+| AirPlay request names the device ("iPhone von Lena") | `request.airplayDevice`; only Miracast has a name (15.4) |
+| Request dialog with "No and block" for AirPlay/Miracast | [Yes, No] only (15.4) |
+| Miracast page on the Windows presenter | Retired after the display switch passes (N86) |
+| Share sheet with "Recent screens" / one-tap on iOS | iOS always joins on its own connection; one tap only on Android (N82) |
+| TVs "next to the code field" as a separate list | Rows under `tv.title` inside the nearby card (15.5, 14) |
+| About on the web "via a line below the start page" opening a page | One footer line with links (15.9); no web About page |
+| Toasts `Beendet`, `{n} hat beendet` | `toast.left`, `toast.rxEnded`, `toast.sessionEnded` (15.4) |
+
+### 15.13 Copy
+
+`{room}`, `{name}`, `{tv}` are inserted already quoted (`common.quoted`, cleaned) or `common.noName`. New placeholders: `{size}` (file size, one decimal, `MB` / `KB`; DE decimal comma: "1,8 MB"), `{kind}` (Word, PowerPoint, Excel; the same in all sets), `{way}` (AirPlay, Miracast; proper names, the same in all sets), `{version}` (`app_version()`), `{url}`. "same as du" as in 11.6.
+
+| Key | EN | DE du (shipped) | DE Sie |
+| --- | --- | --- | --- |
+| `beta` | Beta | Beta | same as du |
+| `share.title` | Show with Comet Cast | Mit Comet Cast zeigen | same as du |
+| `share.metaPdf` | PDF · {size} | PDF · {size} | same as du |
+| `share.metaImage` | Image · {size} | Bild · {size} | same as du |
+| `share.metaOffice` | {kind} · {size} · shown as a PDF | {kind} · {size} · wird als PDF gezeigt | same as du |
+| `share.metaLink` | Link | Link | same as du |
+| `share.showOn` | Show on {room} | Auf {room} zeigen | same as du |
+| `share.showHere` | Show on the connected screen | Auf dem verbundenen Bildschirm zeigen | same as du |
+| `share.otherScreen` | Another screen | Anderer Bildschirm | same as du |
+| `share.show` | Show | Zeigen | same as du |
+| `share.stopClose` | Stop and close | Beenden und schließen | same as du |
+| `share.noLink` | This text has no web address in it. | In diesem Text steht keine Webadresse. | same as du |
+| `sendReject.officeOff` | Converting Office files is turned off in the settings. Pick a PDF instead. | Das Umwandeln von Office-Dateien ist in den Einstellungen ausgeschaltet. Wähl stattdessen ein PDF. | Das Umwandeln von Office-Dateien ist in den Einstellungen ausgeschaltet. Wählen Sie stattdessen ein PDF. |
+| `idle.alsoVia.both` | Also via AirPlay and Miracast | Auch per AirPlay und Miracast | same as du |
+| `idle.alsoVia.airplay` | Also via AirPlay | Auch per AirPlay | same as du |
+| `idle.alsoVia.miracast` | Also via Miracast | Auch per Miracast | same as du |
+| `settings.receive.label` | Without the app | Ohne App | same as du |
+| `settings.receive.airplay` | AirPlay | AirPlay | same as du |
+| `settings.receive.airplaySub` | iPhone, iPad and Mac show their screen here. | iPhone, iPad und Mac zeigen hier ihren Bildschirm. | same as du |
+| `settings.receive.miracast` | Miracast | Miracast | same as du |
+| `settings.receive.miracastSub` | Windows and many Android devices show their screen here. | Windows und viele Android-Geräte zeigen hier ihren Bildschirm. | same as du |
+| `settings.receive.noHw` | This Wi-Fi adapter cannot receive Miracast. | Dieser WLAN-Adapter kann kein Miracast empfangen. | same as du |
+| `settings.receive.noFeature` | Windows needs the optional feature “Wireless Display” for this. | Windows braucht dafür die optionale Funktion „Drahtlose Anzeige“. | same as du |
+| `settings.receive.policy` | Switched off by the administrator of this device. | Vom Administrator dieses Geräts ausgeschaltet. | same as du |
+| `settings.receive.failed` | Could not start. Switch it off and on again, or restart the app. | Konnte nicht starten. Schalte es aus und wieder ein oder starte die App neu. | Konnte nicht starten. Schalten Sie es aus und wieder ein oder starten Sie die App neu. |
+| `settings.receive.locked` | Paused while Locked is on. | Pausiert, solange „Gesperrt“ gilt. | same as du |
+| `request.airplayDevice` | An AirPlay device | Ein AirPlay-Gerät | same as du |
+| `request.subtitleAirplay` | wants to mirror via AirPlay | möchte per AirPlay spiegeln | same as du |
+| `request.subtitleMiracast` | wants to mirror via Miracast | möchte per Miracast spiegeln | same as du |
+| `rx.pin.titleAirplay` | AirPlay code | AirPlay-Code | same as du |
+| `rx.pin.titleMiracast` | Miracast code | Miracast-Code | same as du |
+| `rx.pin.body` | Enter this code on the device that wants to mirror. | Gib diesen Code auf dem Gerät ein, das spiegeln möchte. | Geben Sie diesen Code auf dem Gerät ein, das spiegeln möchte. |
+| `rx.pin.bodyNamed` | Enter this code on {name}. | Gib diesen Code auf {name} ein. | Geben Sie diesen Code auf {name} ein. |
+| `present.via` | via {way} | über {way} | same as du |
+| `toast.rxEnded` | {way} ended | {way} beendet | same as du |
+| `tv.title` | Without Comet Cast | Ohne Comet Cast | same as du |
+| `tv.cast` | Google Cast | Google Cast | same as du |
+| `tv.airplay` | AirPlay | AirPlay | same as du |
+| `tv.aria` | {name}, {way}, Beta | {name}, {way}, Beta | same as du |
+| `what.screenTv` | Whole screen, live | Ganzer Bildschirm, live | same as du |
+| `what.screenAirplay` | Whole screen, a few seconds behind | Ganzer Bildschirm, einige Sekunden verzögert | same as du |
+| `what.photo` | Show a photo | Foto zeigen | same as du |
+| `what.photoSub` | The TV shows it until you stop | Der Fernseher zeigt es, bis du beendest | Der Fernseher zeigt es, bis Sie beenden |
+| `what.video` | Show a video link | Video-Link zeigen | same as du |
+| `what.videoSub` | The TV loads and plays the video itself | Der Fernseher lädt und spielt das Video selbst | same as du |
+| `file.bodyTv` | A photo from this device. It appears on the TV as soon as you pick it. | Ein Foto von diesem Gerät. Es erscheint auf dem Fernseher, sobald du es auswählst. | Ein Foto von diesem Gerät. Es erscheint auf dem Fernseher, sobald Sie es auswählen. |
+| `link.hintTv` | The TV loads the video itself. Only direct links to a video file or an HLS stream work. | Der Fernseher lädt das Video selbst. Es gehen nur direkte Links auf eine Videodatei oder einen HLS-Stream. | same as du |
+| `link.tvUnsupported` | The TV cannot play this. Use a direct link to a video file, or a JPEG, PNG or WebP photo. | Das kann der Fernseher nicht abspielen. Nimm einen direkten Link auf eine Videodatei oder ein Foto als JPEG, PNG oder WebP. | Das kann der Fernseher nicht abspielen. Nehmen Sie einen direkten Link auf eine Videodatei oder ein Foto als JPEG, PNG oder WebP. |
+| `pair.title` | Pair with {tv} | Mit {tv} koppeln | same as du |
+| `pair.body` | The TV now shows a four-digit code. Enter it here. This is needed only once. | Der Fernseher zeigt jetzt einen vierstelligen Code. Gib ihn hier ein. Das ist nur einmal nötig. | Der Fernseher zeigt jetzt einen vierstelligen Code. Geben Sie ihn hier ein. Das ist nur einmal nötig. |
+| `pair.label` | Code from the TV | Code vom Fernseher | same as du |
+| `pair.go` | Pair | Koppeln | same as du |
+| `pair.wrong` | That code was not right. The TV now shows a new one. | Der Code stimmte nicht. Der Fernseher zeigt jetzt einen neuen. | same as du |
+| `error.tv.title` | {tv} does not accept the connection | {tv} nimmt die Verbindung nicht an | same as du |
+| `error.tv.whyCast` | Google Cast is still Beta in Comet Cast and does not work with every TV. | Google Cast ist in Comet Cast noch Beta und geht nicht mit jedem Fernseher. | same as du |
+| `error.tv.whyAirplay` | AirPlay is still Beta in Comet Cast and does not work with every TV. | AirPlay ist in Comet Cast noch Beta und geht nicht mit jedem Fernseher. | same as du |
+| `error.tv.whyLost` | The connection to the TV was lost. | Die Verbindung zum Fernseher ist abgebrochen. | same as du |
+| `error.tv.now` | If you can, install Comet Cast on the TV. Then the code on the screen works. | Wenn möglich, Comet Cast auf dem Fernseher installieren. Dann geht es mit dem Code auf dem Bildschirm. | same as du |
+| `presenting.converted` | Converted to PDF. Fonts, headers and footers may differ; animations are missing. | Als PDF umgewandelt. Schriften, Kopf- und Fußzeilen können abweichen, Animationen fehlen. | same as du |
+| `presenting.ownPdf` | Pick my own PDF instead | Lieber eigenes PDF wählen | same as du |
+| `start.via` | via {dom} (no-break space, as N53) | über {dom} | same as du |
+| `start.viaChange` | Change | Ändern | same as du |
+| `start.viaPolicy` | set by your IT | von deiner IT festgelegt | von Ihrer IT festgelegt |
+| `start.addrLabel` | Address from the screen | Adresse vom Bildschirm | same as du |
+| `start.addrUse` | Use | Übernehmen | same as du |
+| `start.addrChecking` | Checking … | Wird geprüft … | same as du |
+| `start.addrError` | No Comet Cast answers at this address. Compare it with the screen. | Unter dieser Adresse antwortet kein Comet Cast. Vergleich sie mit dem Bildschirm. | Unter dieser Adresse antwortet kein Comet Cast. Vergleichen Sie sie mit dem Bildschirm. |
+| `appSettings.open` | Settings | Einstellungen | same as du |
+| `appSettings.title` | Settings | Einstellungen | same as du |
+| `appSettings.office` | Convert Office files to PDF | Office-Dateien in PDF umwandeln | same as du |
+| `appSettings.officeSub` | Word, PowerPoint and Excel (.docx, .pptx, .xlsx), on this device. Fonts and layout may differ. | Word, PowerPoint und Excel (.docx, .pptx, .xlsx), auf diesem Gerät. Schriften und Layout können abweichen. | same as du |
+| `appSettings.otherTvs` | TVs without Comet Cast | Fernseher ohne Comet Cast | same as du |
+| `appSettings.otherTvsSub` | Shows Google Cast and AirPlay TVs on the start page. Not tested with every TV. | Zeigt Google-Cast- und AirPlay-Fernseher auf der Startseite. Nicht mit jedem Fernseher getestet. | same as du |
+| `about.open` | About | Über | same as du |
+| `about.title` | About Comet Cast | Über Comet Cast | same as du |
+| `about.version` | Version {version} | Version {version} | same as du |
+| `about.licence` | Free software under the GPL-3.0 | Freie Software unter der GPL-3.0 | same as du |
+| `about.publisher` | Published by Schulverwalter GmbH | Herausgegeben von der Schulverwalter GmbH | same as du |
+| `about.source` | Source code | Quelltext | same as du |
+| `about.privacy` | Privacy | Datenschutz | same as du |
+| `about.imprint` | Imprint | Impressum | same as du |
+| `about.licences` | Licences | Lizenzen | same as du |
+| `about.licencesSub` | Parts from other projects | Bausteine aus anderen Projekten | same as du |
+| `about.search` | Search | Suchen | same as du |
+| `about.featured` | With their own notice | Mit eigenem Hinweis | same as du |
+| `about.all` | All parts | Alle Bausteine | same as du |
+| `about.none` | Nothing found. | Nichts gefunden. | same as du |
+| `about.flutter` | Flutter engine | Flutter-Engine | same as du |
+| `about.sourceTv` | Source code: {url} | Quelltext: {url} | same as du |
+| `about.webTv` | Privacy and imprint: {url} | Datenschutz und Impressum: {url} | same as du |
+| `about.footer` (web) | Free software (GPL-3.0) | Freie Software (GPL-3.0) | same as du |
+
+Reused without change: `common.cancel`, `common.back`, `common.quoted`, `common.noName`, `start.nameLabel`, `start.or`, `start.codeLabel`, `app.scanQr`, `nearby.*`, `file.converting`, `file.bodyApp`, `file.bodyWeb`, `link.label`, `link.go`, `presenting.*`, `what.connectedTo`, `what.screen`, `what.disconnect`, `request.yes`, `request.no`, `toast.expired`, `toast.left`, `toast.sessionEnded`, `present.byline`, `settings.close`, `settings.closeRemote`, `sendReject.*`. The Android share target label and the iOS extension's display name are "Comet Cast" (a name, not translated).
