@@ -489,6 +489,28 @@ void main() {
     });
   });
 
+  group('a page that cannot be drawn (4.5)', () {
+    testWidgets('its text is centred in a name-tag box over the black stage', (
+      t,
+    ) async {
+      final h = await pumpDisplay(t, core: _FailingPageCore());
+      h.core.receiverEvents
+        ..add(const ReceiverUiEvent.peerJoined(name: 'Lena'))
+        ..add(
+          const ReceiverUiEvent.contentDocumentOpened(name: 'a.pdf', pages: 3),
+        )
+        ..add(const ReceiverUiEvent.contentFrameReady());
+      for (var i = 0; i < 10; i++) {
+        await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 30)),
+        );
+        await t.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byKey(const Key('page-error')), findsOneWidget);
+      expect(find.text('This page could not be shown.'), findsOneWidget);
+    });
+  });
+
   group('A12 the codec dialog on the display', () {
     const info = UiCodecInfo(
       fileName: 'libopenh264-2.6.0-linux64.8.so',
@@ -653,4 +675,10 @@ void main() {
       expect(find.text('Herunterladen'), findsOneWidget);
     });
   });
+}
+
+/// A core whose pages cannot be taken.
+class _FailingPageCore extends FakeCoreApi {
+  @override
+  Future<ContentFrame?> takeContentFrame() async => throw StateError('no page');
 }

@@ -563,7 +563,9 @@ void main() {
       },
     );
 
-    testWidgets('German texts use the informal address (du is shipped)', (tester) async {
+    testWidgets('German texts use the informal address (du is shipped)', (
+      tester,
+    ) async {
       final core = FakeMiracastCore()
         ..probeResult = const MiracastProbe(
           issue: MiracastIssue.featureMissing,

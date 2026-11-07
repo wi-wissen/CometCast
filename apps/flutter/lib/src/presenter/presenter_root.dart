@@ -730,7 +730,8 @@ class PresenterRootState extends State<PresenterRoot> {
         return FilePage(
           onPick: _pickFile,
           onBack: () => _go(PresenterPage.what),
-          office: _desktop,
+          // Where Office files are converted (the conversion component was found).
+          office: widget.core.officeWorkerPath() != null,
           convertingName: converting ? (c.contentName ?? '') : null,
           progressName: busy ? (c.contentName ?? '') : null,
           progressPercent: busy ? c.progress : null,

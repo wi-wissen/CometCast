@@ -721,6 +721,11 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                         _c.endRoom();
                       },
                     ),
+                  // A page that cannot be drawn: its text centred in a name-tag box (spec 4.5).
+                  if (presenting &&
+                      shown is ReceivedDocument &&
+                      c.note == ContentNote.renderFailed)
+                    PageErrorBox(text: t.receiveDocumentPageErrorFailed),
                   if (transferPill != null) TransferPill(text: transferPill),
                   if (_settingsOpen && !presenting && head == null)
                     SettingsDialog(

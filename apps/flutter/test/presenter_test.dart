@@ -491,6 +491,25 @@ void main() {
       expect(find.text('photo.png · 50 %'), findsOneWidget);
     });
 
+    testWidgets('where Office files are converted the body names them', (
+      t,
+    ) async {
+      final h = await pumpPresenter(t, code: 'K7QM2W');
+      h.core.officeWorker = '/opt/cometcast/cc-office-worker';
+      await toWhat(t, h);
+      await t.tap(find.text('Show a photo or file'));
+      await settle(t);
+      expect(find.textContaining('Office file'), findsOneWidget);
+    });
+
+    testWidgets('without the component the browser text stays', (t) async {
+      final h = await pumpPresenter(t, code: 'K7QM2W');
+      await toWhat(t, h);
+      await t.tap(find.text('Show a photo or file'));
+      await settle(t);
+      expect(find.textContaining('Office file'), findsNothing);
+    });
+
     testWidgets('an Office file shows "Converting ..." and no bar', (t) async {
       final h = await toFile(t);
       h.core.presenterEvents.add(

@@ -125,6 +125,35 @@ class PPage extends StatelessWidget {
     return SafeArea(
       child: LayoutBuilder(
         builder: (context, box) {
+          if (laptop) {
+            // The action row follows the content, 24 below it (14 gap + 10): no spacer, so the
+            // page is as tall as its content and scrolls when that is more than the window.
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: box.maxHeight),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 744),
+                    child: Padding(
+                      padding: pad,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ...spaced,
+                          const SizedBox(height: 24),
+                          actionArea(),
+                          if (bottomReserve > 0)
+                            SizedBox(height: bottomReserve),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
           return SingleChildScrollView(
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: box.maxHeight),
@@ -138,15 +167,10 @@ class PPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           ...spaced,
-                          if (laptop)
-                            // The action row follows the content, 24 below it (14 gap + 10).
-                            const SizedBox(height: 24)
-                          else
-                            const Spacer(),
+                          const Spacer(),
                           actionArea(),
                           if (bottomReserve > 0)
                             SizedBox(height: bottomReserve),
-                          if (laptop) const Spacer(),
                         ],
                       ),
                     ),

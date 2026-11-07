@@ -21,6 +21,11 @@ import 'package:cometcast/src/presenter/presenter_root.dart';
 import 'android_capture_test.dart' show FakeAndroidCapture;
 import 'display_support.dart';
 import 'fake_core.dart';
+import 'fake_miracast.dart';
+
+import 'package:cometcast/main.dart';
+import 'package:cometcast/src/display/display_logic.dart';
+
 import 'ios_broadcast_test.dart' show FakeIosBroadcast;
 
 Future<void> settle(WidgetTester t) async {
@@ -461,6 +466,36 @@ void main() {
   });
 
   group('Windows', () {
+    testWidgets('the link opens the Miracast page and Back returns', (t) async {
+      await t.runAsync(loadAppFonts);
+      final core = FakeCoreApi();
+      t.view.physicalSize = const Size(1024, 900);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(
+        CometCastApp(
+          locale: const Locale('en'),
+          core: core,
+          settings: AppSettings.fromDefaults(core.serverDefaults()),
+          displayStore: MemoryDisplayStore(),
+          forceDisplayCapable: false,
+          miracast: FakeMiracastCore(),
+          pickFile: (_) async => null,
+          openUrl: (_) async => true,
+        ),
+      );
+      await settle(t);
+      // The old small "Miracast" button at the bottom right is gone.
+      expect(find.byKey(const Key('miracastLink')), findsNothing);
+      await t.tap(find.byKey(const Key('miracast-link')));
+      await settle(t);
+      expect(find.byKey(const Key('miracastStartButton')), findsOneWidget);
+      await t.tap(find.byKey(const Key('miracastBack')));
+      await settle(t);
+      expect(find.byKey(const Key('miracastStartButton')), findsNothing);
+      expect(find.byKey(const Key('miracast-link')), findsOneWidget);
+    });
+
     testWidgets('the Miracast text link is the last item on the first page', (
       t,
     ) async {

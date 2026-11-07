@@ -1122,6 +1122,26 @@
       }
     }
   },
+  "receiveDocumentPageErrorBadSize": "This page has an unusable size.",
+  "@receiveDocumentPageErrorBadSize": {
+    "description": "Spec key receive.document.pageError.bad_size"
+  },
+  "receiveDocumentPageErrorFailed": "This page could not be shown.",
+  "@receiveDocumentPageErrorFailed": {
+    "description": "Spec key receive.document.pageError.failed"
+  },
+  "receiveDocumentPageErrorMemory": "This page needs too much memory.",
+  "@receiveDocumentPageErrorMemory": {
+    "description": "Spec key receive.document.pageError.memory"
+  },
+  "receiveDocumentPageErrorPageOutOfRange": "This page does not exist.",
+  "@receiveDocumentPageErrorPageOutOfRange": {
+    "description": "Spec key receive.document.pageError.page_out_of_range"
+  },
+  "receiveDocumentPageErrorTimeout": "Showing this page took too long.",
+  "@receiveDocumentPageErrorTimeout": {
+    "description": "Spec key receive.document.pageError.timeout"
+  },
   "receiveLinkDismiss": "Dismiss",
   "@receiveLinkDismiss": {
     "description": "Spec key receive.link.dismiss"
