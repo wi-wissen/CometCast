@@ -2600,6 +2600,1045 @@ String toString() {
 
 
 /// @nodoc
+mixin _$PresenterUiEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'PresenterUiEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $PresenterUiEventCopyWith<$Res>  {
+$PresenterUiEventCopyWith(PresenterUiEvent _, $Res Function(PresenterUiEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [PresenterUiEvent].
+extension PresenterUiEventPatterns on PresenterUiEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult Function( PresenterUiEvent_Joined value)?  joined,TResult Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult Function( PresenterUiEvent_Page value)?  page,TResult Function( PresenterUiEvent_Converting value)?  converting,TResult Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult Function( PresenterUiEvent_Progress value)?  progress,TResult Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult Function( PresenterUiEvent_Presenting value)?  presenting,TResult Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult Function( PresenterUiEvent_Ended value)?  ended,TResult Function( PresenterUiEvent_Error value)?  error,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+return waitingForApproval(_that);case PresenterUiEvent_Joined() when joined != null:
+return joined(_that);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that);case PresenterUiEvent_Page() when page != null:
+return page(_that);case PresenterUiEvent_Converting() when converting != null:
+return converting(_that);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
+return contentPrepared(_that);case PresenterUiEvent_ContentRejected() when contentRejected != null:
+return contentRejected(_that);case PresenterUiEvent_Progress() when progress != null:
+return progress(_that);case PresenterUiEvent_ContentSent() when contentSent != null:
+return contentSent(_that);case PresenterUiEvent_Presenting() when presenting != null:
+return presenting(_that);case PresenterUiEvent_PresentingStopped() when presentingStopped != null:
+return presentingStopped(_that);case PresenterUiEvent_Ended() when ended != null:
+return ended(_that);case PresenterUiEvent_Error() when error != null:
+return error(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PresenterUiEvent_WaitingForApproval value)  waitingForApproval,required TResult Function( PresenterUiEvent_Joined value)  joined,required TResult Function( PresenterUiEvent_ConnectionCode value)  connectionCode,required TResult Function( PresenterUiEvent_Page value)  page,required TResult Function( PresenterUiEvent_Converting value)  converting,required TResult Function( PresenterUiEvent_ContentPrepared value)  contentPrepared,required TResult Function( PresenterUiEvent_ContentRejected value)  contentRejected,required TResult Function( PresenterUiEvent_Progress value)  progress,required TResult Function( PresenterUiEvent_ContentSent value)  contentSent,required TResult Function( PresenterUiEvent_Presenting value)  presenting,required TResult Function( PresenterUiEvent_PresentingStopped value)  presentingStopped,required TResult Function( PresenterUiEvent_Ended value)  ended,required TResult Function( PresenterUiEvent_Error value)  error,}){
+final _that = this;
+switch (_that) {
+case PresenterUiEvent_WaitingForApproval():
+return waitingForApproval(_that);case PresenterUiEvent_Joined():
+return joined(_that);case PresenterUiEvent_ConnectionCode():
+return connectionCode(_that);case PresenterUiEvent_Page():
+return page(_that);case PresenterUiEvent_Converting():
+return converting(_that);case PresenterUiEvent_ContentPrepared():
+return contentPrepared(_that);case PresenterUiEvent_ContentRejected():
+return contentRejected(_that);case PresenterUiEvent_Progress():
+return progress(_that);case PresenterUiEvent_ContentSent():
+return contentSent(_that);case PresenterUiEvent_Presenting():
+return presenting(_that);case PresenterUiEvent_PresentingStopped():
+return presentingStopped(_that);case PresenterUiEvent_Ended():
+return ended(_that);case PresenterUiEvent_Error():
+return error(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult? Function( PresenterUiEvent_Joined value)?  joined,TResult? Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( PresenterUiEvent_Page value)?  page,TResult? Function( PresenterUiEvent_Converting value)?  converting,TResult? Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult? Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult? Function( PresenterUiEvent_Progress value)?  progress,TResult? Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult? Function( PresenterUiEvent_Presenting value)?  presenting,TResult? Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult? Function( PresenterUiEvent_Ended value)?  ended,TResult? Function( PresenterUiEvent_Error value)?  error,}){
+final _that = this;
+switch (_that) {
+case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+return waitingForApproval(_that);case PresenterUiEvent_Joined() when joined != null:
+return joined(_that);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that);case PresenterUiEvent_Page() when page != null:
+return page(_that);case PresenterUiEvent_Converting() when converting != null:
+return converting(_that);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
+return contentPrepared(_that);case PresenterUiEvent_ContentRejected() when contentRejected != null:
+return contentRejected(_that);case PresenterUiEvent_Progress() when progress != null:
+return progress(_that);case PresenterUiEvent_ContentSent() when contentSent != null:
+return contentSent(_that);case PresenterUiEvent_Presenting() when presenting != null:
+return presenting(_that);case PresenterUiEvent_PresentingStopped() when presentingStopped != null:
+return presentingStopped(_that);case PresenterUiEvent_Ended() when ended != null:
+return ended(_that);case PresenterUiEvent_Error() when error != null:
+return error(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult Function( String? roomName)?  joined,TResult Function( String sas)?  connectionCode,TResult Function( int page,  int pages)?  page,TResult Function( String name)?  converting,TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult Function( UiSendRejection reason)?  contentRejected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  contentSent,TResult Function()?  presenting,TResult Function()?  presentingStopped,TResult Function( String code)?  ended,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined() when joined != null:
+return joined(_that.roomName);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that.sas);case PresenterUiEvent_Page() when page != null:
+return page(_that.page,_that.pages);case PresenterUiEvent_Converting() when converting != null:
+return converting(_that.name);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
+return contentPrepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case PresenterUiEvent_ContentRejected() when contentRejected != null:
+return contentRejected(_that.reason);case PresenterUiEvent_Progress() when progress != null:
+return progress(_that.sent,_that.total);case PresenterUiEvent_ContentSent() when contentSent != null:
+return contentSent();case PresenterUiEvent_Presenting() when presenting != null:
+return presenting();case PresenterUiEvent_PresentingStopped() when presentingStopped != null:
+return presentingStopped();case PresenterUiEvent_Ended() when ended != null:
+return ended(_that.code);case PresenterUiEvent_Error() when error != null:
+return error(_that.code,_that.message);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( int timeoutSecs,  int check,  String? roomName)  waitingForApproval,required TResult Function( String? roomName)  joined,required TResult Function( String sas)  connectionCode,required TResult Function( int page,  int pages)  page,required TResult Function( String name)  converting,required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  contentPrepared,required TResult Function( UiSendRejection reason)  contentRejected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  contentSent,required TResult Function()  presenting,required TResult Function()  presentingStopped,required TResult Function( String code)  ended,required TResult Function( String code,  String message)  error,}) {final _that = this;
+switch (_that) {
+case PresenterUiEvent_WaitingForApproval():
+return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined():
+return joined(_that.roomName);case PresenterUiEvent_ConnectionCode():
+return connectionCode(_that.sas);case PresenterUiEvent_Page():
+return page(_that.page,_that.pages);case PresenterUiEvent_Converting():
+return converting(_that.name);case PresenterUiEvent_ContentPrepared():
+return contentPrepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case PresenterUiEvent_ContentRejected():
+return contentRejected(_that.reason);case PresenterUiEvent_Progress():
+return progress(_that.sent,_that.total);case PresenterUiEvent_ContentSent():
+return contentSent();case PresenterUiEvent_Presenting():
+return presenting();case PresenterUiEvent_PresentingStopped():
+return presentingStopped();case PresenterUiEvent_Ended():
+return ended(_that.code);case PresenterUiEvent_Error():
+return error(_that.code,_that.message);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult? Function( String? roomName)?  joined,TResult? Function( String sas)?  connectionCode,TResult? Function( int page,  int pages)?  page,TResult? Function( String name)?  converting,TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult? Function( UiSendRejection reason)?  contentRejected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  contentSent,TResult? Function()?  presenting,TResult? Function()?  presentingStopped,TResult? Function( String code)?  ended,TResult? Function( String code,  String message)?  error,}) {final _that = this;
+switch (_that) {
+case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
+return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined() when joined != null:
+return joined(_that.roomName);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that.sas);case PresenterUiEvent_Page() when page != null:
+return page(_that.page,_that.pages);case PresenterUiEvent_Converting() when converting != null:
+return converting(_that.name);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
+return contentPrepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case PresenterUiEvent_ContentRejected() when contentRejected != null:
+return contentRejected(_that.reason);case PresenterUiEvent_Progress() when progress != null:
+return progress(_that.sent,_that.total);case PresenterUiEvent_ContentSent() when contentSent != null:
+return contentSent();case PresenterUiEvent_Presenting() when presenting != null:
+return presenting();case PresenterUiEvent_PresentingStopped() when presentingStopped != null:
+return presentingStopped();case PresenterUiEvent_Ended() when ended != null:
+return ended(_that.code);case PresenterUiEvent_Error() when error != null:
+return error(_that.code,_that.message);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_WaitingForApproval extends PresenterUiEvent {
+  const PresenterUiEvent_WaitingForApproval({required this.timeoutSecs, required this.check, this.roomName}): super._();
+  
+
+/// Seconds until the server gives up.
+ final  int timeoutSecs;
+/// Two-digit check number.
+ final  int check;
+/// The name the display gave its room, if any (decision 49: lenient).
+ final  String? roomName;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_WaitingForApprovalCopyWith<PresenterUiEvent_WaitingForApproval> get copyWith => _$PresenterUiEvent_WaitingForApprovalCopyWithImpl<PresenterUiEvent_WaitingForApproval>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_WaitingForApproval&&(identical(other.timeoutSecs, timeoutSecs) || other.timeoutSecs == timeoutSecs)&&(identical(other.check, check) || other.check == check)&&(identical(other.roomName, roomName) || other.roomName == roomName));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,timeoutSecs,check,roomName);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.waitingForApproval(timeoutSecs: $timeoutSecs, check: $check, roomName: $roomName)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_WaitingForApprovalCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_WaitingForApprovalCopyWith(PresenterUiEvent_WaitingForApproval value, $Res Function(PresenterUiEvent_WaitingForApproval) _then) = _$PresenterUiEvent_WaitingForApprovalCopyWithImpl;
+@useResult
+$Res call({
+ int timeoutSecs, int check, String? roomName
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_WaitingForApprovalCopyWithImpl<$Res>
+    implements $PresenterUiEvent_WaitingForApprovalCopyWith<$Res> {
+  _$PresenterUiEvent_WaitingForApprovalCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_WaitingForApproval _self;
+  final $Res Function(PresenterUiEvent_WaitingForApproval) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? timeoutSecs = null,Object? check = null,Object? roomName = freezed,}) {
+  return _then(PresenterUiEvent_WaitingForApproval(
+timeoutSecs: null == timeoutSecs ? _self.timeoutSecs : timeoutSecs // ignore: cast_nullable_to_non_nullable
+as int,check: null == check ? _self.check : check // ignore: cast_nullable_to_non_nullable
+as int,roomName: freezed == roomName ? _self.roomName : roomName // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_Joined extends PresenterUiEvent {
+  const PresenterUiEvent_Joined({this.roomName}): super._();
+  
+
+/// The name the display gave its room, if any.
+ final  String? roomName;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_JoinedCopyWith<PresenterUiEvent_Joined> get copyWith => _$PresenterUiEvent_JoinedCopyWithImpl<PresenterUiEvent_Joined>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Joined&&(identical(other.roomName, roomName) || other.roomName == roomName));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,roomName);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.joined(roomName: $roomName)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_JoinedCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_JoinedCopyWith(PresenterUiEvent_Joined value, $Res Function(PresenterUiEvent_Joined) _then) = _$PresenterUiEvent_JoinedCopyWithImpl;
+@useResult
+$Res call({
+ String? roomName
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_JoinedCopyWithImpl<$Res>
+    implements $PresenterUiEvent_JoinedCopyWith<$Res> {
+  _$PresenterUiEvent_JoinedCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_Joined _self;
+  final $Res Function(PresenterUiEvent_Joined) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? roomName = freezed,}) {
+  return _then(PresenterUiEvent_Joined(
+roomName: freezed == roomName ? _self.roomName : roomName // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_ConnectionCode extends PresenterUiEvent {
+  const PresenterUiEvent_ConnectionCode({required this.sas}): super._();
+  
+
+/// The six digits with a space in the middle.
+ final  String sas;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_ConnectionCodeCopyWith<PresenterUiEvent_ConnectionCode> get copyWith => _$PresenterUiEvent_ConnectionCodeCopyWithImpl<PresenterUiEvent_ConnectionCode>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_ConnectionCode&&(identical(other.sas, sas) || other.sas == sas));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,sas);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.connectionCode(sas: $sas)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_ConnectionCodeCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_ConnectionCodeCopyWith(PresenterUiEvent_ConnectionCode value, $Res Function(PresenterUiEvent_ConnectionCode) _then) = _$PresenterUiEvent_ConnectionCodeCopyWithImpl;
+@useResult
+$Res call({
+ String sas
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_ConnectionCodeCopyWithImpl<$Res>
+    implements $PresenterUiEvent_ConnectionCodeCopyWith<$Res> {
+  _$PresenterUiEvent_ConnectionCodeCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_ConnectionCode _self;
+  final $Res Function(PresenterUiEvent_ConnectionCode) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? sas = null,}) {
+  return _then(PresenterUiEvent_ConnectionCode(
+sas: null == sas ? _self.sas : sas // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_Page extends PresenterUiEvent {
+  const PresenterUiEvent_Page({required this.page, required this.pages}): super._();
+  
+
+/// The shown page, from 1.
+ final  int page;
+/// The page count, from 1.
+ final  int pages;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_PageCopyWith<PresenterUiEvent_Page> get copyWith => _$PresenterUiEvent_PageCopyWithImpl<PresenterUiEvent_Page>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Page&&(identical(other.page, page) || other.page == page)&&(identical(other.pages, pages) || other.pages == pages));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,page,pages);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.page(page: $page, pages: $pages)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_PageCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_PageCopyWith(PresenterUiEvent_Page value, $Res Function(PresenterUiEvent_Page) _then) = _$PresenterUiEvent_PageCopyWithImpl;
+@useResult
+$Res call({
+ int page, int pages
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_PageCopyWithImpl<$Res>
+    implements $PresenterUiEvent_PageCopyWith<$Res> {
+  _$PresenterUiEvent_PageCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_Page _self;
+  final $Res Function(PresenterUiEvent_Page) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? page = null,Object? pages = null,}) {
+  return _then(PresenterUiEvent_Page(
+page: null == page ? _self.page : page // ignore: cast_nullable_to_non_nullable
+as int,pages: null == pages ? _self.pages : pages // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_Converting extends PresenterUiEvent {
+  const PresenterUiEvent_Converting({required this.name}): super._();
+  
+
+/// The file name as picked.
+ final  String name;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_ConvertingCopyWith<PresenterUiEvent_Converting> get copyWith => _$PresenterUiEvent_ConvertingCopyWithImpl<PresenterUiEvent_Converting>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Converting&&(identical(other.name, name) || other.name == name));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,name);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.converting(name: $name)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_ConvertingCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_ConvertingCopyWith(PresenterUiEvent_Converting value, $Res Function(PresenterUiEvent_Converting) _then) = _$PresenterUiEvent_ConvertingCopyWithImpl;
+@useResult
+$Res call({
+ String name
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_ConvertingCopyWithImpl<$Res>
+    implements $PresenterUiEvent_ConvertingCopyWith<$Res> {
+  _$PresenterUiEvent_ConvertingCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_Converting _self;
+  final $Res Function(PresenterUiEvent_Converting) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? name = null,}) {
+  return _then(PresenterUiEvent_Converting(
+name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_ContentPrepared extends PresenterUiEvent {
+  const PresenterUiEvent_ContentPrepared({required this.name, required this.kind, required this.size, this.pages, this.host}): super._();
+  
+
+/// File name, or the host of a link.
+ final  String name;
+/// Image, PDF or link.
+ final  UiContentKind kind;
+/// Size in bytes.
+ final  BigInt size;
+/// Pages of a PDF, if known.
+ final  int? pages;
+/// Host of a link in its punycode form.
+ final  String? host;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_ContentPreparedCopyWith<PresenterUiEvent_ContentPrepared> get copyWith => _$PresenterUiEvent_ContentPreparedCopyWithImpl<PresenterUiEvent_ContentPrepared>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_ContentPrepared&&(identical(other.name, name) || other.name == name)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.size, size) || other.size == size)&&(identical(other.pages, pages) || other.pages == pages)&&(identical(other.host, host) || other.host == host));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,name,kind,size,pages,host);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.contentPrepared(name: $name, kind: $kind, size: $size, pages: $pages, host: $host)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_ContentPreparedCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_ContentPreparedCopyWith(PresenterUiEvent_ContentPrepared value, $Res Function(PresenterUiEvent_ContentPrepared) _then) = _$PresenterUiEvent_ContentPreparedCopyWithImpl;
+@useResult
+$Res call({
+ String name, UiContentKind kind, BigInt size, int? pages, String? host
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_ContentPreparedCopyWithImpl<$Res>
+    implements $PresenterUiEvent_ContentPreparedCopyWith<$Res> {
+  _$PresenterUiEvent_ContentPreparedCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_ContentPrepared _self;
+  final $Res Function(PresenterUiEvent_ContentPrepared) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? name = null,Object? kind = null,Object? size = null,Object? pages = freezed,Object? host = freezed,}) {
+  return _then(PresenterUiEvent_ContentPrepared(
+name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as UiContentKind,size: null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
+as BigInt,pages: freezed == pages ? _self.pages : pages // ignore: cast_nullable_to_non_nullable
+as int?,host: freezed == host ? _self.host : host // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_ContentRejected extends PresenterUiEvent {
+  const PresenterUiEvent_ContentRejected({required this.reason}): super._();
+  
+
+/// Why.
+ final  UiSendRejection reason;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_ContentRejectedCopyWith<PresenterUiEvent_ContentRejected> get copyWith => _$PresenterUiEvent_ContentRejectedCopyWithImpl<PresenterUiEvent_ContentRejected>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_ContentRejected&&(identical(other.reason, reason) || other.reason == reason));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,reason);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.contentRejected(reason: $reason)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_ContentRejectedCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_ContentRejectedCopyWith(PresenterUiEvent_ContentRejected value, $Res Function(PresenterUiEvent_ContentRejected) _then) = _$PresenterUiEvent_ContentRejectedCopyWithImpl;
+@useResult
+$Res call({
+ UiSendRejection reason
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_ContentRejectedCopyWithImpl<$Res>
+    implements $PresenterUiEvent_ContentRejectedCopyWith<$Res> {
+  _$PresenterUiEvent_ContentRejectedCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_ContentRejected _self;
+  final $Res Function(PresenterUiEvent_ContentRejected) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? reason = null,}) {
+  return _then(PresenterUiEvent_ContentRejected(
+reason: null == reason ? _self.reason : reason // ignore: cast_nullable_to_non_nullable
+as UiSendRejection,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_Progress extends PresenterUiEvent {
+  const PresenterUiEvent_Progress({required this.sent, required this.total}): super._();
+  
+
+/// Bytes so far.
+ final  BigInt sent;
+/// Bytes in total.
+ final  BigInt total;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_ProgressCopyWith<PresenterUiEvent_Progress> get copyWith => _$PresenterUiEvent_ProgressCopyWithImpl<PresenterUiEvent_Progress>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Progress&&(identical(other.sent, sent) || other.sent == sent)&&(identical(other.total, total) || other.total == total));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,sent,total);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.progress(sent: $sent, total: $total)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_ProgressCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_ProgressCopyWith(PresenterUiEvent_Progress value, $Res Function(PresenterUiEvent_Progress) _then) = _$PresenterUiEvent_ProgressCopyWithImpl;
+@useResult
+$Res call({
+ BigInt sent, BigInt total
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_ProgressCopyWithImpl<$Res>
+    implements $PresenterUiEvent_ProgressCopyWith<$Res> {
+  _$PresenterUiEvent_ProgressCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_Progress _self;
+  final $Res Function(PresenterUiEvent_Progress) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? sent = null,Object? total = null,}) {
+  return _then(PresenterUiEvent_Progress(
+sent: null == sent ? _self.sent : sent // ignore: cast_nullable_to_non_nullable
+as BigInt,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_ContentSent extends PresenterUiEvent {
+  const PresenterUiEvent_ContentSent(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_ContentSent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'PresenterUiEvent.contentSent()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class PresenterUiEvent_Presenting extends PresenterUiEvent {
+  const PresenterUiEvent_Presenting(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Presenting);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'PresenterUiEvent.presenting()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class PresenterUiEvent_PresentingStopped extends PresenterUiEvent {
+  const PresenterUiEvent_PresentingStopped(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_PresentingStopped);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'PresenterUiEvent.presentingStopped()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class PresenterUiEvent_Ended extends PresenterUiEvent {
+  const PresenterUiEvent_Ended({required this.code}): super._();
+  
+
+/// `removed_by_host` or `display_left`.
+ final  String code;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_EndedCopyWith<PresenterUiEvent_Ended> get copyWith => _$PresenterUiEvent_EndedCopyWithImpl<PresenterUiEvent_Ended>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Ended&&(identical(other.code, code) || other.code == code));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,code);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.ended(code: $code)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_EndedCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_EndedCopyWith(PresenterUiEvent_Ended value, $Res Function(PresenterUiEvent_Ended) _then) = _$PresenterUiEvent_EndedCopyWithImpl;
+@useResult
+$Res call({
+ String code
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_EndedCopyWithImpl<$Res>
+    implements $PresenterUiEvent_EndedCopyWith<$Res> {
+  _$PresenterUiEvent_EndedCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_Ended _self;
+  final $Res Function(PresenterUiEvent_Ended) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? code = null,}) {
+  return _then(PresenterUiEvent_Ended(
+code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_Error extends PresenterUiEvent {
+  const PresenterUiEvent_Error({required this.code, required this.message}): super._();
+  
+
+/// The code the app maps.
+ final  String code;
+/// Technical message in English (logs only).
+ final  String message;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_ErrorCopyWith<PresenterUiEvent_Error> get copyWith => _$PresenterUiEvent_ErrorCopyWithImpl<PresenterUiEvent_Error>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_Error&&(identical(other.code, code) || other.code == code)&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,code,message);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.error(code: $code, message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_ErrorCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_ErrorCopyWith(PresenterUiEvent_Error value, $Res Function(PresenterUiEvent_Error) _then) = _$PresenterUiEvent_ErrorCopyWithImpl;
+@useResult
+$Res call({
+ String code, String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_ErrorCopyWithImpl<$Res>
+    implements $PresenterUiEvent_ErrorCopyWith<$Res> {
+  _$PresenterUiEvent_ErrorCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_Error _self;
+  final $Res Function(PresenterUiEvent_Error) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? code = null,Object? message = null,}) {
+  return _then(PresenterUiEvent_Error(
+code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as String,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$ReceiverUiEvent {
 
 
@@ -2643,7 +3682,7 @@ extension ReceiverUiEventPatterns on ReceiverUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult Function( ReceiverUiEvent_Blocked value)?  blocked,TResult Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult Function( ReceiverUiEvent_ContentError value)?  contentError,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult Function( ReceiverUiEvent_Blocked value)?  blocked,TResult Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult Function( ReceiverUiEvent_ContentTransferProgress value)?  contentTransferProgress,TResult Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult Function( ReceiverUiEvent_ContentError value)?  contentError,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_PresentationStopped value)?  presentationStopped,TResult Function( ReceiverUiEvent_ConnectionCode value)?  connectionCode,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -2661,13 +3700,16 @@ return stats(_that);case ReceiverUiEvent_FrameReady() when frameReady != null:
 return frameReady(_that);case ReceiverUiEvent_EncodedReady() when encodedReady != null:
 return encodedReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
-return contentTransferStarted(_that);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
+return contentTransferStarted(_that);case ReceiverUiEvent_ContentTransferProgress() when contentTransferProgress != null:
+return contentTransferProgress(_that);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady(_that);case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
 return contentDocumentOpened(_that);case ReceiverUiEvent_ContentLink() when contentLink != null:
 return contentLink(_that);case ReceiverUiEvent_ContentStopped() when contentStopped != null:
 return contentStopped(_that);case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
-return peerLeft(_that);case ReceiverUiEvent_Error() when error != null:
+return peerLeft(_that);case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
+return presentationStopped(_that);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that);case ReceiverUiEvent_Error() when error != null:
 return error(_that);case _:
   return orElse();
 
@@ -2686,7 +3728,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_JoinRequest value)  joinRequest,required TResult Function( ReceiverUiEvent_JoinRequestCancelled value)  joinRequestCancelled,required TResult Function( ReceiverUiEvent_JoinModeChanged value)  joinModeChanged,required TResult Function( ReceiverUiEvent_Blocked value)  blocked,required TResult Function( ReceiverUiEvent_Unblocked value)  unblocked,required TResult Function( ReceiverUiEvent_RoomEnded value)  roomEnded,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_EncodedReady value)  encodedReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_ContentTransferStarted value)  contentTransferStarted,required TResult Function( ReceiverUiEvent_ContentFrameReady value)  contentFrameReady,required TResult Function( ReceiverUiEvent_ContentDocumentOpened value)  contentDocumentOpened,required TResult Function( ReceiverUiEvent_ContentLink value)  contentLink,required TResult Function( ReceiverUiEvent_ContentStopped value)  contentStopped,required TResult Function( ReceiverUiEvent_ContentError value)  contentError,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_JoinRequest value)  joinRequest,required TResult Function( ReceiverUiEvent_JoinRequestCancelled value)  joinRequestCancelled,required TResult Function( ReceiverUiEvent_JoinModeChanged value)  joinModeChanged,required TResult Function( ReceiverUiEvent_Blocked value)  blocked,required TResult Function( ReceiverUiEvent_Unblocked value)  unblocked,required TResult Function( ReceiverUiEvent_RoomEnded value)  roomEnded,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_EncodedReady value)  encodedReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_ContentTransferStarted value)  contentTransferStarted,required TResult Function( ReceiverUiEvent_ContentTransferProgress value)  contentTransferProgress,required TResult Function( ReceiverUiEvent_ContentFrameReady value)  contentFrameReady,required TResult Function( ReceiverUiEvent_ContentDocumentOpened value)  contentDocumentOpened,required TResult Function( ReceiverUiEvent_ContentLink value)  contentLink,required TResult Function( ReceiverUiEvent_ContentStopped value)  contentStopped,required TResult Function( ReceiverUiEvent_ContentError value)  contentError,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_PresentationStopped value)  presentationStopped,required TResult Function( ReceiverUiEvent_ConnectionCode value)  connectionCode,required TResult Function( ReceiverUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
@@ -2704,13 +3746,16 @@ return stats(_that);case ReceiverUiEvent_FrameReady():
 return frameReady(_that);case ReceiverUiEvent_EncodedReady():
 return encodedReady(_that);case ReceiverUiEvent_VideoStats():
 return videoStats(_that);case ReceiverUiEvent_ContentTransferStarted():
-return contentTransferStarted(_that);case ReceiverUiEvent_ContentFrameReady():
+return contentTransferStarted(_that);case ReceiverUiEvent_ContentTransferProgress():
+return contentTransferProgress(_that);case ReceiverUiEvent_ContentFrameReady():
 return contentFrameReady(_that);case ReceiverUiEvent_ContentDocumentOpened():
 return contentDocumentOpened(_that);case ReceiverUiEvent_ContentLink():
 return contentLink(_that);case ReceiverUiEvent_ContentStopped():
 return contentStopped(_that);case ReceiverUiEvent_ContentError():
 return contentError(_that);case ReceiverUiEvent_PeerLeft():
-return peerLeft(_that);case ReceiverUiEvent_Error():
+return peerLeft(_that);case ReceiverUiEvent_PresentationStopped():
+return presentationStopped(_that);case ReceiverUiEvent_ConnectionCode():
+return connectionCode(_that);case ReceiverUiEvent_Error():
 return error(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
@@ -2725,7 +3770,7 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult? Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult? Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult? Function( ReceiverUiEvent_Blocked value)?  blocked,TResult? Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult? Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult? Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult? Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult? Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult? Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult? Function( ReceiverUiEvent_ContentError value)?  contentError,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult? Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult? Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult? Function( ReceiverUiEvent_Blocked value)?  blocked,TResult? Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult? Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult? Function( ReceiverUiEvent_ContentTransferProgress value)?  contentTransferProgress,TResult? Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult? Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult? Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult? Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult? Function( ReceiverUiEvent_ContentError value)?  contentError,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_PresentationStopped value)?  presentationStopped,TResult? Function( ReceiverUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -2743,13 +3788,16 @@ return stats(_that);case ReceiverUiEvent_FrameReady() when frameReady != null:
 return frameReady(_that);case ReceiverUiEvent_EncodedReady() when encodedReady != null:
 return encodedReady(_that);case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
-return contentTransferStarted(_that);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
+return contentTransferStarted(_that);case ReceiverUiEvent_ContentTransferProgress() when contentTransferProgress != null:
+return contentTransferProgress(_that);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady(_that);case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
 return contentDocumentOpened(_that);case ReceiverUiEvent_ContentLink() when contentLink != null:
 return contentLink(_that);case ReceiverUiEvent_ContentStopped() when contentStopped != null:
 return contentStopped(_that);case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
-return peerLeft(_that);case ReceiverUiEvent_Error() when error != null:
+return peerLeft(_that);case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
+return presentationStopped(_that);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that);case ReceiverUiEvent_Error() when error != null:
 return error(_that);case _:
   return null;
 
@@ -2767,7 +3815,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code,  UiJoinMode joinMode)?  roomCode,TResult Function( String name)?  peerJoined,TResult Function( BigInt id,  String name,  int check)?  joinRequest,TResult Function( BigInt id,  String reason)?  joinRequestCancelled,TResult Function( UiJoinMode mode)?  joinModeChanged,TResult Function( BigInt id,  String name)?  blocked,TResult Function( BigInt id)?  unblocked,TResult Function()?  roomEnded,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function()?  encodedReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult Function()?  contentFrameReady,TResult Function( String name,  int pages)?  contentDocumentOpened,TResult Function( String url,  String host)?  contentLink,TResult Function()?  contentStopped,TResult Function( UiContentError error)?  contentError,TResult Function()?  peerLeft,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code,  UiJoinMode joinMode)?  roomCode,TResult Function( String name)?  peerJoined,TResult Function( BigInt id,  String name,  int check)?  joinRequest,TResult Function( BigInt id,  String reason)?  joinRequestCancelled,TResult Function( UiJoinMode mode)?  joinModeChanged,TResult Function( BigInt id,  String name)?  blocked,TResult Function( BigInt id)?  unblocked,TResult Function()?  roomEnded,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function()?  encodedReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult Function( BigInt received,  BigInt total)?  contentTransferProgress,TResult Function()?  contentFrameReady,TResult Function( String name,  int pages)?  contentDocumentOpened,TResult Function( String url,  String host)?  contentLink,TResult Function()?  contentStopped,TResult Function( UiContentError error)?  contentError,TResult Function()?  peerLeft,TResult Function()?  presentationStopped,TResult Function( String sas)?  connectionCode,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code,_that.joinMode);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
@@ -2784,14 +3832,17 @@ return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case Receiv
 return frameReady();case ReceiverUiEvent_EncodedReady() when encodedReady != null:
 return encodedReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
-return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
+return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentTransferProgress() when contentTransferProgress != null:
+return contentTransferProgress(_that.received,_that.total);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady();case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
 return contentDocumentOpened(_that.name,_that.pages);case ReceiverUiEvent_ContentLink() when contentLink != null:
 return contentLink(_that.url,_that.host);case ReceiverUiEvent_ContentStopped() when contentStopped != null:
 return contentStopped();case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that.error);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
-return peerLeft();case ReceiverUiEvent_Error() when error != null:
-return error(_that.message);case _:
+return peerLeft();case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
+return presentationStopped();case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that.sas);case ReceiverUiEvent_Error() when error != null:
+return error(_that.code,_that.message);case _:
   return orElse();
 
 }
@@ -2809,7 +3860,7 @@ return error(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code,  UiJoinMode joinMode)  roomCode,required TResult Function( String name)  peerJoined,required TResult Function( BigInt id,  String name,  int check)  joinRequest,required TResult Function( BigInt id,  String reason)  joinRequestCancelled,required TResult Function( UiJoinMode mode)  joinModeChanged,required TResult Function( BigInt id,  String name)  blocked,required TResult Function( BigInt id)  unblocked,required TResult Function()  roomEnded,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function()  encodedReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function( bool document,  String name,  BigInt size)  contentTransferStarted,required TResult Function()  contentFrameReady,required TResult Function( String name,  int pages)  contentDocumentOpened,required TResult Function( String url,  String host)  contentLink,required TResult Function()  contentStopped,required TResult Function( UiContentError error)  contentError,required TResult Function()  peerLeft,required TResult Function( String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code,  UiJoinMode joinMode)  roomCode,required TResult Function( String name)  peerJoined,required TResult Function( BigInt id,  String name,  int check)  joinRequest,required TResult Function( BigInt id,  String reason)  joinRequestCancelled,required TResult Function( UiJoinMode mode)  joinModeChanged,required TResult Function( BigInt id,  String name)  blocked,required TResult Function( BigInt id)  unblocked,required TResult Function()  roomEnded,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function()  encodedReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function( bool document,  String name,  BigInt size)  contentTransferStarted,required TResult Function( BigInt received,  BigInt total)  contentTransferProgress,required TResult Function()  contentFrameReady,required TResult Function( String name,  int pages)  contentDocumentOpened,required TResult Function( String url,  String host)  contentLink,required TResult Function()  contentStopped,required TResult Function( UiContentError error)  contentError,required TResult Function()  peerLeft,required TResult Function()  presentationStopped,required TResult Function( String sas)  connectionCode,required TResult Function( String code,  String message)  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
 return roomCode(_that.code,_that.joinMode);case ReceiverUiEvent_PeerJoined():
@@ -2826,14 +3877,17 @@ return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case Receiv
 return frameReady();case ReceiverUiEvent_EncodedReady():
 return encodedReady();case ReceiverUiEvent_VideoStats():
 return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_ContentTransferStarted():
-return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentFrameReady():
+return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentTransferProgress():
+return contentTransferProgress(_that.received,_that.total);case ReceiverUiEvent_ContentFrameReady():
 return contentFrameReady();case ReceiverUiEvent_ContentDocumentOpened():
 return contentDocumentOpened(_that.name,_that.pages);case ReceiverUiEvent_ContentLink():
 return contentLink(_that.url,_that.host);case ReceiverUiEvent_ContentStopped():
 return contentStopped();case ReceiverUiEvent_ContentError():
 return contentError(_that.error);case ReceiverUiEvent_PeerLeft():
-return peerLeft();case ReceiverUiEvent_Error():
-return error(_that.message);}
+return peerLeft();case ReceiverUiEvent_PresentationStopped():
+return presentationStopped();case ReceiverUiEvent_ConnectionCode():
+return connectionCode(_that.sas);case ReceiverUiEvent_Error():
+return error(_that.code,_that.message);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -2847,7 +3901,7 @@ return error(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code,  UiJoinMode joinMode)?  roomCode,TResult? Function( String name)?  peerJoined,TResult? Function( BigInt id,  String name,  int check)?  joinRequest,TResult? Function( BigInt id,  String reason)?  joinRequestCancelled,TResult? Function( UiJoinMode mode)?  joinModeChanged,TResult? Function( BigInt id,  String name)?  blocked,TResult? Function( BigInt id)?  unblocked,TResult? Function()?  roomEnded,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function()?  encodedReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult? Function()?  contentFrameReady,TResult? Function( String name,  int pages)?  contentDocumentOpened,TResult? Function( String url,  String host)?  contentLink,TResult? Function()?  contentStopped,TResult? Function( UiContentError error)?  contentError,TResult? Function()?  peerLeft,TResult? Function( String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code,  UiJoinMode joinMode)?  roomCode,TResult? Function( String name)?  peerJoined,TResult? Function( BigInt id,  String name,  int check)?  joinRequest,TResult? Function( BigInt id,  String reason)?  joinRequestCancelled,TResult? Function( UiJoinMode mode)?  joinModeChanged,TResult? Function( BigInt id,  String name)?  blocked,TResult? Function( BigInt id)?  unblocked,TResult? Function()?  roomEnded,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function()?  encodedReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult? Function( BigInt received,  BigInt total)?  contentTransferProgress,TResult? Function()?  contentFrameReady,TResult? Function( String name,  int pages)?  contentDocumentOpened,TResult? Function( String url,  String host)?  contentLink,TResult? Function()?  contentStopped,TResult? Function( UiContentError error)?  contentError,TResult? Function()?  peerLeft,TResult? Function()?  presentationStopped,TResult? Function( String sas)?  connectionCode,TResult? Function( String code,  String message)?  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code,_that.joinMode);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
@@ -2864,14 +3918,17 @@ return stats(_that.packets,_that.bytes,_that.frames,_that.keyframes);case Receiv
 return frameReady();case ReceiverUiEvent_EncodedReady() when encodedReady != null:
 return encodedReady();case ReceiverUiEvent_VideoStats() when videoStats != null:
 return videoStats(_that.decoded,_that.delivered,_that.dropped,_that.droppedPackets,_that.decodeErrors,_that.keyframeRequests,_that.width,_that.height,_that.avgDecodeUs,_that.error);case ReceiverUiEvent_ContentTransferStarted() when contentTransferStarted != null:
-return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
+return contentTransferStarted(_that.document,_that.name,_that.size);case ReceiverUiEvent_ContentTransferProgress() when contentTransferProgress != null:
+return contentTransferProgress(_that.received,_that.total);case ReceiverUiEvent_ContentFrameReady() when contentFrameReady != null:
 return contentFrameReady();case ReceiverUiEvent_ContentDocumentOpened() when contentDocumentOpened != null:
 return contentDocumentOpened(_that.name,_that.pages);case ReceiverUiEvent_ContentLink() when contentLink != null:
 return contentLink(_that.url,_that.host);case ReceiverUiEvent_ContentStopped() when contentStopped != null:
 return contentStopped();case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that.error);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
-return peerLeft();case ReceiverUiEvent_Error() when error != null:
-return error(_that.message);case _:
+return peerLeft();case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
+return presentationStopped();case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return connectionCode(_that.sas);case ReceiverUiEvent_Error() when error != null:
+return error(_that.code,_that.message);case _:
   return null;
 
 }
@@ -3866,6 +4923,78 @@ as BigInt,
 /// @nodoc
 
 
+class ReceiverUiEvent_ContentTransferProgress extends ReceiverUiEvent {
+  const ReceiverUiEvent_ContentTransferProgress({required this.received, required this.total}): super._();
+  
+
+/// Bytes received.
+ final  BigInt received;
+/// Announced size in bytes.
+ final  BigInt total;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ReceiverUiEvent_ContentTransferProgressCopyWith<ReceiverUiEvent_ContentTransferProgress> get copyWith => _$ReceiverUiEvent_ContentTransferProgressCopyWithImpl<ReceiverUiEvent_ContentTransferProgress>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_ContentTransferProgress&&(identical(other.received, received) || other.received == received)&&(identical(other.total, total) || other.total == total));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,received,total);
+}
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.contentTransferProgress(received: $received, total: $total)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ReceiverUiEvent_ContentTransferProgressCopyWith<$Res> implements $ReceiverUiEventCopyWith<$Res> {
+  factory $ReceiverUiEvent_ContentTransferProgressCopyWith(ReceiverUiEvent_ContentTransferProgress value, $Res Function(ReceiverUiEvent_ContentTransferProgress) _then) = _$ReceiverUiEvent_ContentTransferProgressCopyWithImpl;
+@useResult
+$Res call({
+ BigInt received, BigInt total
+});
+
+
+
+
+}
+/// @nodoc
+class _$ReceiverUiEvent_ContentTransferProgressCopyWithImpl<$Res>
+    implements $ReceiverUiEvent_ContentTransferProgressCopyWith<$Res> {
+  _$ReceiverUiEvent_ContentTransferProgressCopyWithImpl(this._self, this._then);
+
+  final ReceiverUiEvent_ContentTransferProgress _self;
+  final $Res Function(ReceiverUiEvent_ContentTransferProgress) _then;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? received = null,Object? total = null,}) {
+  return _then(ReceiverUiEvent_ContentTransferProgress(
+received: null == received ? _self.received : received // ignore: cast_nullable_to_non_nullable
+as BigInt,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
 class ReceiverUiEvent_ContentFrameReady extends ReceiverUiEvent {
   const ReceiverUiEvent_ContentFrameReady(): super._();
   
@@ -4175,11 +5304,115 @@ String toString() {
 /// @nodoc
 
 
-class ReceiverUiEvent_Error extends ReceiverUiEvent {
-  const ReceiverUiEvent_Error({required this.message}): super._();
+class ReceiverUiEvent_PresentationStopped extends ReceiverUiEvent {
+  const ReceiverUiEvent_PresentationStopped(): super._();
   
 
-/// Technical message in English (for logs and for showing next to a translated title).
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_PresentationStopped);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.presentationStopped()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ReceiverUiEvent_ConnectionCode extends ReceiverUiEvent {
+  const ReceiverUiEvent_ConnectionCode({required this.sas}): super._();
+  
+
+/// The six digits with a space in the middle.
+ final  String sas;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ReceiverUiEvent_ConnectionCodeCopyWith<ReceiverUiEvent_ConnectionCode> get copyWith => _$ReceiverUiEvent_ConnectionCodeCopyWithImpl<ReceiverUiEvent_ConnectionCode>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_ConnectionCode&&(identical(other.sas, sas) || other.sas == sas));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,sas);
+}
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.connectionCode(sas: $sas)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ReceiverUiEvent_ConnectionCodeCopyWith<$Res> implements $ReceiverUiEventCopyWith<$Res> {
+  factory $ReceiverUiEvent_ConnectionCodeCopyWith(ReceiverUiEvent_ConnectionCode value, $Res Function(ReceiverUiEvent_ConnectionCode) _then) = _$ReceiverUiEvent_ConnectionCodeCopyWithImpl;
+@useResult
+$Res call({
+ String sas
+});
+
+
+
+
+}
+/// @nodoc
+class _$ReceiverUiEvent_ConnectionCodeCopyWithImpl<$Res>
+    implements $ReceiverUiEvent_ConnectionCodeCopyWith<$Res> {
+  _$ReceiverUiEvent_ConnectionCodeCopyWithImpl(this._self, this._then);
+
+  final ReceiverUiEvent_ConnectionCode _self;
+  final $Res Function(ReceiverUiEvent_ConnectionCode) _then;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? sas = null,}) {
+  return _then(ReceiverUiEvent_ConnectionCode(
+sas: null == sas ? _self.sas : sas // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ReceiverUiEvent_Error extends ReceiverUiEvent {
+  const ReceiverUiEvent_Error({required this.code, required this.message}): super._();
+  
+
+/// The code the UI maps: a protocol code (`room_locked`, `server_full`, ...) or
+/// `connection_lost`, `peer_failed`, `unknown`.
+ final  String code;
+/// Technical message in English (for logs only).
  final  String message;
 
 /// Create a copy of ReceiverUiEvent
@@ -4192,18 +5425,18 @@ $ReceiverUiEvent_ErrorCopyWith<ReceiverUiEvent_Error> get copyWith => _$Receiver
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_Error&&(identical(other.message, message) || other.message == message));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_Error&&(identical(other.code, code) || other.code == code)&&(identical(other.message, message) || other.message == message));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,message);
+    return Object.hash(runtimeType,code,message);
 }
 
 @override
 String toString() {
-    return 'ReceiverUiEvent.error(message: $message)';
+    return 'ReceiverUiEvent.error(code: $code, message: $message)';
 }
 
 
@@ -4214,7 +5447,7 @@ abstract mixin class $ReceiverUiEvent_ErrorCopyWith<$Res> implements $ReceiverUi
   factory $ReceiverUiEvent_ErrorCopyWith(ReceiverUiEvent_Error value, $Res Function(ReceiverUiEvent_Error) _then) = _$ReceiverUiEvent_ErrorCopyWithImpl;
 @useResult
 $Res call({
- String message
+ String code, String message
 });
 
 
@@ -4231,9 +5464,10 @@ class _$ReceiverUiEvent_ErrorCopyWithImpl<$Res>
 
 /// Create a copy of ReceiverUiEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? code = null,Object? message = null,}) {
   return _then(ReceiverUiEvent_Error(
-message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as String,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }

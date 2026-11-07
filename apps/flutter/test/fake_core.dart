@@ -99,13 +99,18 @@ class FakeCoreApi implements CoreApi {
   /// Whether the last startReceiver asked for content.
   bool? receiverContent;
 
+  /// The room name of the last startReceiver.
+  String? receiverRoomName;
+
   @override
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
     bool content = true,
     UiJoinMode joinMode = UiJoinMode.open,
+    String? roomName,
   }) {
+    receiverRoomName = roomName;
     receiverServer = server;
     receiverContent = content;
     receiverJoinMode = joinMode;
@@ -250,6 +255,63 @@ class FakeCoreApi implements CoreApi {
   bool sendContentCmd(UiContentCmd cmd) {
     if (acceptCommands) contentCommands.add(cmd);
     return acceptCommands;
+  }
+
+  // --- presenter session (join once) ------------------------------------------------------
+
+  final presenterEvents = StreamController<PresenterUiEvent>.broadcast();
+  int startPresenterCalls = 0;
+  String? presenterCode;
+  String? presenterServer;
+  String? presenterName;
+  int stopPresenterCalls = 0;
+  int stopPresentingCalls = 0;
+  int presentEncodedCalls = 0;
+  final presentedScreens = <ScreenRequest?>[];
+  final presentedContent = <ContentSource>[];
+
+  /// What the present* and stopPresenting calls answer (false = "no session").
+  bool presenterAccepts = true;
+
+  @override
+  Stream<PresenterUiEvent> startPresenter({
+    required String code,
+    required String server,
+    String? name,
+    String? udpBind,
+  }) {
+    startPresenterCalls++;
+    presenterCode = code;
+    presenterServer = server;
+    presenterName = name;
+    return presenterEvents.stream;
+  }
+
+  @override
+  Future<void> stopPresenter() async => stopPresenterCalls++;
+
+  @override
+  bool presentScreen(ScreenRequest? screen) {
+    if (presenterAccepts) presentedScreens.add(screen);
+    return presenterAccepts;
+  }
+
+  @override
+  bool presentEncoded() {
+    if (presenterAccepts) presentEncodedCalls++;
+    return presenterAccepts;
+  }
+
+  @override
+  bool presentContent(ContentSource source) {
+    if (presenterAccepts) presentedContent.add(source);
+    return presenterAccepts;
+  }
+
+  @override
+  bool stopPresenting() {
+    if (presenterAccepts) stopPresentingCalls++;
+    return presenterAccepts;
   }
 
   @override

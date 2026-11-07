@@ -41,6 +41,7 @@ use crate::content_sender;
 use crate::encoded;
 use crate::frb_generated::StreamSink;
 use crate::office;
+use crate::presenter::{self, PCmd};
 use crate::video::{self, VIDEO};
 
 /// Called once when the library is loaded.
@@ -277,8 +278,8 @@ pub enum ReceiverUiEvent {
         /// Last decoder problem in English, or `None`.
         error: Option<String>,
     },
-    /// A transfer began (only with content enabled). For a "receiving ..." note; there is no
-    /// progress on the receiving side.
+    /// A transfer began (only with content enabled). For a "receiving ..." note; progress
+    /// follows as [`ReceiverUiEvent::ContentTransferProgress`].
     ContentTransferStarted {
         /// `true` for a PDF, `false` for an image.
         document: bool,
@@ -286,6 +287,15 @@ pub enum ReceiverUiEvent {
         name: String,
         /// Announced size in bytes.
         size: u64,
+    },
+    /// Bytes of the running transfer received so far, at most one per whole percent and four
+    /// per second, between `ContentTransferStarted` and the picture (the last one has
+    /// `received == total`).
+    ContentTransferProgress {
+        /// Bytes received.
+        received: u64,
+        /// Announced size in bytes.
+        total: u64,
     },
     /// An image or a PDF page waits: call [`take_content_frame`]. Sent again only after
     /// `take_content_frame` was called.
@@ -313,11 +323,24 @@ pub enum ReceiverUiEvent {
         /// What happened.
         error: UiContentError,
     },
-    /// The sender left. The stream ends after this.
+    /// The sender left or was removed. **The room stays**: the stream goes on, the code, the
+    /// join mode, the block list and the queue are the same, and the next sender can join.
     PeerLeft,
+    /// The sender stopped its presentation but stays in the room: show Idle without a leave
+    /// notice. The next presentation of the same sender needs no new approval.
+    PresentationStopped,
+    /// The connection check code of the sender's connection, `"123 456"`, once per
+    /// connection; the presenter shows the same digits (`cc_transport::sas`).
+    ConnectionCode {
+        /// The six digits with a space in the middle.
+        sas: String,
+    },
     /// Something failed. The stream ends after this.
     Error {
-        /// Technical message in English (for logs and for showing next to a translated title).
+        /// The code the UI maps: a protocol code (`room_locked`, `server_full`, ...) or
+        /// `connection_lost`, `peer_failed`, `unknown`.
+        code: String,
+        /// Technical message in English (for logs only).
         message: String,
     },
 }
@@ -422,7 +445,12 @@ fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
         },
         ReceiverEvent::Stats(s) => stats_event(s),
         ReceiverEvent::PeerLeft => ReceiverUiEvent::PeerLeft,
-        ReceiverEvent::Error(message) => ReceiverUiEvent::Error { message },
+        ReceiverEvent::PresentationStopped => ReceiverUiEvent::PresentationStopped,
+        ReceiverEvent::ConnectionCode(sas) => ReceiverUiEvent::ConnectionCode { sas },
+        ReceiverEvent::Error(message) => ReceiverUiEvent::Error {
+            code: cc_receiver::error_code(&message),
+            message,
+        },
     }
 }
 
@@ -526,6 +554,14 @@ fn spawn_guarded(
 /// `udp_bind` is for development only (for example `127.0.0.1:0` for same-machine tests);
 /// `None` uses the default (all interfaces).
 ///
+/// `room_name` is the name of the display as senders see it ("Meeting room Elbe"): it goes to the
+/// server with `create_room` (the server cleans it and cuts it at 32 characters); `None` or an
+/// empty name = no room name.
+///
+/// The room outlives a presenter: after [`ReceiverUiEvent::PeerLeft`] the stream stays open and
+/// the same code is valid for the next sender (it ends on [`end_room`], an error or
+/// [`stop_receiver`]).
+///
 /// With `content` the receiver also accepts images, PDFs, links and page commands on the
 /// `control` data channel (docs/web-m2.md) and reports them as the `Content...` events; without
 /// it the channel is refused. PDFs render in a resource-limited child process (docs/documents.md);
@@ -535,6 +571,7 @@ pub async fn start_receiver(
     udp_bind: Option<String>,
     content: bool,
     join_mode: UiJoinMode,
+    room_name: Option<String>,
     events: StreamSink<ReceiverUiEvent>,
 ) {
     let generation = RECEIVER.begin();
@@ -544,6 +581,7 @@ pub async fn start_receiver(
     let worker = content::worker();
     let mut options = ReceiverOptions::new(server);
     options.join_mode = join_mode.into();
+    options.room_name = room_name.filter(|n| !n.trim().is_empty());
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
     }
@@ -571,6 +609,7 @@ pub async fn start_receiver(
         Ok(core) => core,
         Err(e) => {
             let _ = events.add(ReceiverUiEvent::Error {
+                code: e.code(),
                 message: e.to_string(),
             });
             return;
@@ -700,6 +739,7 @@ pub async fn start_receiver(
         },
         move || {
             let _ = panic_sink.add(ReceiverUiEvent::Error {
+                code: "unknown".into(),
                 message: "internal error: the receiver task panicked".into(),
             });
         },
@@ -737,9 +777,8 @@ pub fn decide_join(id: Option<u64>, allow: bool) -> bool {
 }
 
 /// Remove the connected sender (end its presentation); with `block` also block its address
-/// bucket for the rest of this room session. UNCERTAIN: one sender per receiver in this version,
-/// so the receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
-/// Returns `false` if no receiver runs.
+/// bucket for the rest of this room session. The receiver reports `PeerLeft` and stays in the
+/// room with the same code. Returns `false` if no receiver runs.
 #[frb(sync)]
 pub fn remove_peer(block: bool) -> bool {
     send_receiver_cmd(ReceiverCmd::RemovePeer { block })
@@ -953,15 +992,18 @@ fn join_refusal(e: &TransportError) -> Option<String> {
     }
 }
 
-fn map_sender_event(e: SenderEvent) -> SenderUiEvent {
-    match e {
+/// The event for the old sender API; the connection check code only exists in the presenter
+/// session ([`start_presenter`]).
+fn map_sender_event(e: SenderEvent) -> Option<SenderUiEvent> {
+    Some(match e {
         SenderEvent::State(s) => SenderUiEvent::ConnectionState { state: s.into() },
+        SenderEvent::ConnectionCode(_) => return None,
         SenderEvent::Streaming { frames_sent } => SenderUiEvent::Streaming { frames_sent },
         SenderEvent::Finished { frames_sent } => SenderUiEvent::Finished { frames_sent },
         SenderEvent::PeerLeft => SenderUiEvent::PeerLeft,
         SenderEvent::RemovedByHost => SenderUiEvent::RemovedByHost,
         SenderEvent::Error(message) => SenderUiEvent::Error { message },
-    }
+    })
 }
 
 /// Start a sender: join the room `code` on `server` and send the built-in VP8 test stream,
@@ -1130,7 +1172,9 @@ async fn run_sender(
                     ev = core.next_event() => {
                         let Some(ev) = ev else { break };
                         let is_streaming = matches!(ev, SenderEvent::Streaming { .. });
-                        if events.add(map_sender_event(ev)).is_err() {
+                        if let Some(ui) = map_sender_event(ev)
+                            && events.add(ui).is_err()
+                        {
                             core.stop().await;
                             break;
                         }
@@ -1181,6 +1225,7 @@ pub fn stop_sender() {
     SENDER.stop();
     encoded::replace(None);
     content_sender::clear_cmd_channel();
+    presenter::clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -2166,13 +2211,222 @@ pub async fn start_content_sender(
     );
 }
 
-/// Queue a presenter command for the running content sender. Returns `false` if no content
-/// sender runs (or it has not sent its content yet), the command queue (64) is full, or the
-/// page is 0. Commands are not applied locally: the page that is shown is the receiver's
-/// business, the sender has no renderer.
+/// Queue a presenter command for the running content sender, or for the running presenter
+/// session ([`start_presenter`]; there `Stop` ends the presentation and keeps the join).
+/// Returns `false` if nothing runs (or the content has not been sent yet), the command queue
+/// (64) is full, or the page is 0. Commands are not applied locally: the page that is shown
+/// is the receiver's business, the sender has no renderer.
 #[frb(sync)]
 pub fn send_content_cmd(cmd: UiContentCmd) -> bool {
+    if presenter::running() {
+        return presenter::cmd_from_ui(cmd).is_some_and(presenter::send);
+    }
     content_sender::send_cmd(cmd)
+}
+
+// ---------------------------------------------------------------------------
+// Presenter session: join once, present several times (native-apps.md 20.1)
+// ---------------------------------------------------------------------------
+
+/// What the presenter session tells the UI.
+///
+/// Order: `WaitingForApproval` (only where the room asks), `Joined`, then per presentation
+/// `Presenting`, `ConnectionCode`, (`Page`, `Progress`...), `PresentingStopped`. The stream ends
+/// after `Ended` and after every `Error` except the ones of a presentation that could not
+/// start (`capture_denied`, `capture_unavailable`: the session stays joined, the person is back
+/// at "What to show"). `Error.code` is a protocol code (`room_not_found`, `join_denied`,
+/// `room_locked`, `room_locked_waiting`, `approval_timeout`, `removed_by_host`, `room_full`,
+/// `rate_limited`, `banned`, `server_full`, `proto_mismatch`, `bad_hello`, `bad_message`,
+/// `forbidden`, `altcha_*`, `wrong_role`, `not_in_room`) or a local one: `connection_lost`
+/// (could not reach or lost the server, timeouts included), `peer_failed` (WebRTC failed),
+/// `ice_refused` / `ice_failed`, `capture_denied`, `capture_unavailable`, `unknown`.
+/// The apps map the code, never the English `message`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PresenterUiEvent {
+    /// The room needs the host's approval: show the waiting page with the check number (the
+    /// display shows the same number). Nothing is presented until `Joined`.
+    WaitingForApproval {
+        /// Seconds until the server gives up.
+        timeout_secs: u32,
+        /// Two-digit check number.
+        check: u8,
+        /// The name the display gave its room, if any (decision 49: lenient).
+        room_name: Option<String>,
+    },
+    /// The room was joined (the host approved once, or the room is open).
+    Joined {
+        /// The name the display gave its room, if any.
+        room_name: Option<String>,
+    },
+    /// The connection check code of the running presentation, `"123 456"`, once per connection;
+    /// the display shows the same digits.
+    ConnectionCode {
+        /// The six digits with a space in the middle.
+        sas: String,
+    },
+    /// The display shows this PDF page of that many.
+    Page {
+        /// The shown page, from 1.
+        page: u32,
+        /// The page count, from 1.
+        pages: u32,
+    },
+    /// An Office file is being converted to a PDF (takes seconds; child process). Comes before
+    /// `ContentPrepared`; a failure is `ContentRejected`.
+    Converting {
+        /// The file name as picked.
+        name: String,
+    },
+    /// The file or link was read and checked.
+    ContentPrepared {
+        /// File name, or the host of a link.
+        name: String,
+        /// Image, PDF or link.
+        kind: UiContentKind,
+        /// Size in bytes.
+        size: u64,
+        /// Pages of a PDF, if known.
+        pages: Option<u32>,
+        /// Host of a link in its punycode form.
+        host: Option<String>,
+    },
+    /// The content was refused before anything was sent. The session stays joined.
+    ContentRejected {
+        /// Why.
+        reason: UiSendRejection,
+    },
+    /// Bytes handed to the data channel, at most one report per percent.
+    Progress {
+        /// Bytes so far.
+        sent: u64,
+        /// Bytes in total.
+        total: u64,
+    },
+    /// The content was delivered (the transport confirmed it). Page commands can follow.
+    ContentSent,
+    /// The presentation is connected: media flows, or the channel is open.
+    Presenting,
+    /// The presentation ended and the session is still joined (on request, or because the system
+    /// ended the capture). The display is Idle with the same code.
+    PresentingStopped,
+    /// The session is over: `removed_by_host` (the host removed this sender) or `display_left`
+    /// (the room is gone). The stream ends after this.
+    Ended {
+        /// `removed_by_host` or `display_left`.
+        code: String,
+    },
+    /// Something failed; see the type's documentation for the codes and for which ones end the
+    /// stream.
+    Error {
+        /// The code the app maps.
+        code: String,
+        /// Technical message in English (logs only).
+        message: String,
+    },
+}
+
+/// Join the room `code` on `server` **once** (on "Connect"): the host approves once where the
+/// room asks for it (event `WaitingForApproval`, then `Joined`). Then call [`present_screen`],
+/// [`present_encoded`] or [`present_content`]; [`stop_presenting`] ends only the presentation,
+/// [`stop_presenter`] leaves. Replaces a running sender or presenter session.
+///
+/// Errors are events, not return values (see [`start_receiver`]); a code that is not a room
+/// code is reported as `room_not_found`. `udp_bind` is for development only.
+pub async fn start_presenter(
+    code: String,
+    server: String,
+    name: Option<String>,
+    udp_bind: Option<String>,
+    events: StreamSink<PresenterUiEvent>,
+) {
+    let generation = SENDER.begin();
+    encoded::replace(None);
+    content_sender::clear_cmd_channel();
+    presenter::clear();
+    let code = match RoomCode::parse(&code) {
+        Ok(code) => code,
+        Err(e) => {
+            let _ = events.add(PresenterUiEvent::Error {
+                code: "room_not_found".into(),
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
+    SENDER.store(stop_tx);
+    let join = presenter::Join {
+        code,
+        server,
+        name,
+        udp_bind,
+    };
+    let Some(session) = presenter::join(join, &events, &mut stop_rx).await else {
+        return;
+    };
+    if !SENDER.is_current(generation)
+        || events
+            .add(PresenterUiEvent::Joined {
+                room_name: session.room_name().map(str::to_owned),
+            })
+            .is_err()
+    {
+        session.leave().await;
+        return;
+    }
+    let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+    presenter::install(cmd_tx);
+    let panic_sink = events.clone();
+    spawn_guarded(
+        presenter::drive(session, events, stop_rx, cmd_rx),
+        move || {
+            let _ = panic_sink.add(PresenterUiEvent::Error {
+                code: "unknown".into(),
+                message: "internal error: the presenter task panicked".into(),
+            });
+        },
+    );
+}
+
+/// Leave the room (Disconnect; withdraw while waiting; the app ends). Does nothing if no
+/// presenter session runs. The Dart stream then ends.
+pub fn stop_presenter() {
+    SENDER.stop();
+    presenter::clear();
+    encoded::replace(None);
+}
+
+/// Share the screen in the joined presenter session. `Some(request)`: the X11 screen with these
+/// settings. `None`: the system picker of the desktop (native-apps.md 20.3); this core has no
+/// picker yet and reports `capture_unavailable`. A cancelled or refused capture is
+/// `capture_denied`; neither ends the session. Returns `false` if no presenter session runs.
+#[frb(sync)]
+pub fn present_screen(screen: Option<ScreenRequest>) -> bool {
+    presenter::send(PCmd::Screen(screen))
+}
+
+/// Share H.264 that the host pushes with [`push_encoded_frame`] (Android `MediaCodec`, iOS
+/// broadcast) in the joined presenter session. Returns `false` if no presenter session runs.
+#[frb(sync)]
+pub fn present_encoded() -> bool {
+    presenter::send(PCmd::Encoded)
+}
+
+/// Show a file or a link in the joined presenter session: check it (events `Converting`,
+/// `ContentPrepared` or `ContentRejected`), open a fresh connection inside the session, send it
+/// with `Progress`, then `ContentSent`; [`send_content_cmd`] turns pages. Returns `false` if no
+/// presenter session runs.
+#[frb(sync)]
+pub fn present_content(source: ContentSource) -> bool {
+    presenter::send(PCmd::Content(source))
+}
+
+/// End the running presentation only: the display goes Idle with the same code and the
+/// session stays joined (`PresentingStopped`); the next presentation needs no new approval.
+/// Returns `false` if no presenter session runs.
+#[frb(sync)]
+pub fn stop_presenting() -> bool {
+    presenter::send(PCmd::StopPresenting)
 }
 
 // ---------------------------------------------------------------------------
@@ -2735,16 +2989,47 @@ mod tests {
     }
 
     #[test]
+    fn the_new_receiver_events_are_mapped() {
+        assert_eq!(
+            map_receiver_event(ReceiverEvent::ConnectionCode("123 456".into())),
+            ReceiverUiEvent::ConnectionCode {
+                sas: "123 456".into()
+            }
+        );
+        assert_eq!(
+            map_receiver_event(ReceiverEvent::PresentationStopped),
+            ReceiverUiEvent::PresentationStopped
+        );
+        assert_eq!(
+            map_receiver_event(ReceiverEvent::Error(
+                "server error room_full: the room is full".into()
+            )),
+            ReceiverUiEvent::Error {
+                code: "room_full".into(),
+                message: "server error room_full: the room is full".into()
+            }
+        );
+        assert!(matches!(
+            map_receiver_event(ReceiverEvent::Error("signalling connection closed".into())),
+            ReceiverUiEvent::Error { code, .. } if code == "connection_lost"
+        ));
+    }
+
+    #[test]
     fn sender_events_are_mapped() {
         assert_eq!(
             map_sender_event(SenderEvent::Finished { frames_sent: 9 }),
-            SenderUiEvent::Finished { frames_sent: 9 }
+            Some(SenderUiEvent::Finished { frames_sent: 9 })
         );
         assert_eq!(
             map_sender_event(SenderEvent::Error("x".into())),
-            SenderUiEvent::Error {
+            Some(SenderUiEvent::Error {
                 message: "x".into()
-            }
+            })
+        );
+        assert_eq!(
+            map_sender_event(SenderEvent::ConnectionCode("123 456".into())),
+            None
         );
     }
 }

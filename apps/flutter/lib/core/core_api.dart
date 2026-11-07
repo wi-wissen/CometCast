@@ -18,6 +18,7 @@ import 'package:cometcast/src/rust/api.dart'
         LinkCheck,
         NearbyReceiverEvent,
         PushResult,
+        PresenterUiEvent,
         ReceiverUiEvent,
         RoomCodeCheck,
         ScreenRequest,
@@ -64,6 +65,12 @@ export 'package:cometcast/src/rust/api.dart'
         officeWorkerPath,
         startContentSender,
         sendContentCmd,
+        startPresenter,
+        stopPresenter,
+        presentScreen,
+        presentEncoded,
+        presentContent,
+        stopPresenting,
         captureInfo,
         serverDefaults,
         discoverServers,
@@ -84,11 +91,16 @@ abstract class CoreApi {
   /// and reports them as the `content...` events (see `take_content_frame` in api.rs).
   ///
   /// [joinMode] says who may join the room from the start (see [setJoinMode]).
+  ///
+  /// [roomName] is the name of the display as senders see it; the server cleans it and cuts it
+  /// at 32 characters. The room outlives a presenter: after `peerLeft` the stream stays open and
+  /// the same code is valid for the next sender.
   Stream<ReceiverUiEvent> startReceiver({
     required String server,
     String? udpBind,
     bool content = true,
     UiJoinMode joinMode = UiJoinMode.open,
+    String? roomName,
   });
 
   Future<void> stopReceiver();
@@ -102,7 +114,7 @@ abstract class CoreApi {
   bool decideJoin({BigInt? id, required bool allow});
 
   /// Remove the connected sender (end its presentation); with [block] also block its address for
-  /// the rest of this room session. The receiver then ends with `peerLeft`.
+  /// the rest of this room session. The receiver reports `peerLeft` and stays in the room.
   bool removePeer({bool block = false});
 
   /// Deny the waiting request [id] and block the sender's address for the rest of this room
@@ -156,6 +168,32 @@ abstract class CoreApi {
   /// Queue a presenter command (next/previous/go to page/stop) for the running content sender.
   /// False if it was not accepted (no sender, queue full, page 0).
   bool sendContentCmd(UiContentCmd cmd);
+
+  /// Join the room once (on Connect): the host approves once. Events: see `PresenterUiEvent`
+  /// (the Rust documentation lists the codes and which errors end the stream). Replaces a
+  /// running sender or presenter session.
+  Stream<PresenterUiEvent> startPresenter({
+    required String code,
+    required String server,
+    String? name,
+    String? udpBind,
+  });
+
+  /// Leave the room (Disconnect, withdraw while waiting, the app ends).
+  Future<void> stopPresenter();
+
+  /// Share the screen in the joined session: [screen] set = X11 capture, null = the system
+  /// picker of the desktop (not in the core yet: `capture_unavailable`). False if no session.
+  bool presentScreen(ScreenRequest? screen);
+
+  /// Share the H.264 the host pushes with [pushEncodedFrame]. False if no session.
+  bool presentEncoded();
+
+  /// Show a file or a link in the joined session. False if no session.
+  bool presentContent(ContentSource source);
+
+  /// End the presentation only; the session stays joined. False if no session.
+  bool stopPresenting();
 
   /// The newest decoded picture (RGBA) that was not fetched yet, or null. Call it after a
   /// `frameReady` event; fetching re-arms that event.
@@ -274,11 +312,13 @@ class RustCoreApi implements CoreApi {
     String? udpBind,
     bool content = true,
     UiJoinMode joinMode = UiJoinMode.open,
+    String? roomName,
   }) => rust.startReceiver(
     server: server,
     udpBind: udpBind,
     content: content,
     joinMode: joinMode,
+    roomName: roomName,
   );
 
   @override
@@ -342,6 +382,36 @@ class RustCoreApi implements CoreApi {
 
   @override
   bool sendContentCmd(UiContentCmd cmd) => rust.sendContentCmd(cmd: cmd);
+
+  @override
+  Stream<PresenterUiEvent> startPresenter({
+    required String code,
+    required String server,
+    String? name,
+    String? udpBind,
+  }) => rust.startPresenter(
+    code: code,
+    server: server,
+    name: name,
+    udpBind: udpBind,
+  );
+
+  @override
+  Future<void> stopPresenter() => rust.stopPresenter();
+
+  @override
+  bool presentScreen(ScreenRequest? screen) =>
+      rust.presentScreen(screen: screen);
+
+  @override
+  bool presentEncoded() => rust.presentEncoded();
+
+  @override
+  bool presentContent(ContentSource source) =>
+      rust.presentContent(source: source);
+
+  @override
+  bool stopPresenting() => rust.stopPresenting();
 
   @override
   Future<VideoFrame?> takeFrame() => rust.takeFrame();

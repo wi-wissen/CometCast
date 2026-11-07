@@ -357,7 +357,9 @@ async fn run(
                         emit(State::Failed, ErrorCode::ConnectionLost, &format!("{s:?}"), &input);
                         break;
                     }
-                    SenderEvent::State(_) | SenderEvent::Streaming { .. } => {}
+                    SenderEvent::State(_)
+                    | SenderEvent::ConnectionCode(_)
+                    | SenderEvent::Streaming { .. } => {}
                     SenderEvent::Finished { .. } => {
                         input.close();
                         emit(State::Ended, ErrorCode::None, "finished", &input);

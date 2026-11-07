@@ -25,14 +25,14 @@ use cc_transport::{
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-use crate::SenderEvent;
+use crate::{RunEnd, SenderEvent, StartFailed};
 
 /// How long [`ControlSender::wait_ready`] callers typically wait for the channel to open.
 /// UNCERTAIN: placeholder, not measured.
 pub const READY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long closing the channel may wait for the peer. UNCERTAIN: placeholder.
-const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) const CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// How long [`ControlSender::finish`] waits for the data to leave. UNCERTAIN: placeholder.
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -114,6 +114,28 @@ impl ControlSender {
         Ok(())
     }
 
+    /// The next `page` message of the display (the shown PDF page and the page count; decision
+    /// 13.31), validated like the web client does. Other messages are skipped. `None` when the
+    /// channel closed. Only one task should read the channel.
+    pub async fn recv_page(&self) -> Option<(u32, u32)> {
+        loop {
+            match self.channel.recv().await? {
+                cc_transport::ControlData::Text(t) => {
+                    if let Ok(cc_files::Message::Page { page, pages }) =
+                        cc_files::wire::parse_message(
+                            &t,
+                            cc_files::MAX_IMAGE_BYTES,
+                            cc_files::MAX_DOCUMENT_BYTES,
+                        )
+                    {
+                        return Some((page, pages));
+                    }
+                }
+                cc_transport::ControlData::Binary(_) => {}
+            }
+        }
+    }
+
     /// Wait until everything sent has left (acknowledged by the peer's transport), at most
     /// `timeout`. `false` on timeout or when the channel closed.
     pub async fn flush(&self, timeout: Duration) -> bool {
@@ -142,6 +164,9 @@ pub struct ContentSenderOptions {
     pub name: Option<String>,
     /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
     pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
+    /// Do not ask the server for its STUN/TURN list even if `session.ice_servers` is empty (the
+    /// caller asked already and keeps the outcome). Default `false`.
+    pub skip_ice_fetch: bool,
 }
 
 impl ContentSenderOptions {
@@ -154,6 +179,7 @@ impl ContentSenderOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+            skip_ice_fetch: false,
         }
     }
 }
@@ -164,14 +190,13 @@ pub struct ContentSender {
     control: ControlSender,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
-    task: JoinHandle<()>,
+    task: JoinHandle<(SignalingClient, RunEnd)>,
 }
 
 impl ContentSender {
     /// Join the room and send the offer. Returns after the offer was sent; a wrong code fails
     /// here with `room_not_found`. Then call [`ControlSender::wait_ready`] before sending.
-    pub async fn start(mut options: ContentSenderOptions) -> Result<Self, TransportError> {
-        let addr = ServerAddr::parse(&options.server)?;
+    pub async fn start(options: ContentSenderOptions) -> Result<Self, TransportError> {
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
         let room_name = join_room(
@@ -181,17 +206,37 @@ impl ContentSender {
             options.join_progress.as_ref(),
         )
         .await?;
+        Self::start_joined(sig, room_name, options)
+            .await
+            .map_err(|f| f.error)
+    }
 
-        // No video codecs at all: the offer has only the application section.
-        options.session.video_codecs = Some(Vec::new());
-        if options.session.ice_servers.is_empty() {
-            options.session.ice_servers =
-                ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
+    /// Start on a signalling connection that is in the room already (see
+    /// `SenderCore::start_joined`).
+    pub(crate) async fn start_joined(
+        sig: SignalingClient,
+        room_name: Option<String>,
+        mut options: ContentSenderOptions,
+    ) -> Result<Self, StartFailed> {
+        let built = async {
+            let addr = ServerAddr::parse(&options.server)?;
+            // No video codecs at all: the offer has only the application section.
+            options.session.video_codecs = Some(Vec::new());
+            if options.session.ice_servers.is_empty() && !options.skip_ice_fetch {
+                options.session.ice_servers =
+                    ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
+            }
+            let (session, session_events) = Session::new(options.session.clone()).await?;
+            let channel = session.create_control_channel().await?;
+            let offer = session.create_offer().await?;
+            sig.send(ClientMsg::Offer { sdp: offer }).await?;
+            Ok::<_, TransportError>((session, session_events, channel))
         }
-        let (session, session_events) = Session::new(options.session).await?;
-        let channel = session.create_control_channel().await?;
-        let offer = session.create_offer().await?;
-        sig.send(ClientMsg::Offer { sdp: offer }).await?;
+        .await;
+        let (session, session_events, channel) = match built {
+            Ok(b) => b,
+            Err(error) => return Err(StartFailed { sig, error }),
+        };
 
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
@@ -235,6 +280,21 @@ impl ContentSender {
         }
         let _ = (&mut self.task).await;
     }
+
+    /// Ask the background task to finish; the events end when it has.
+    pub(crate) fn request_stop(&mut self) {
+        if let Some(tx) = self.stop.take() {
+            let _ = tx.send(());
+        }
+    }
+
+    /// Wait for the task and take the signalling connection back, with the way it ended.
+    pub(crate) async fn join(mut self) -> (Option<SignalingClient>, RunEnd) {
+        match (&mut self.task).await {
+            Ok((sig, end)) => (Some(sig), end),
+            Err(_) => (None, RunEnd::peer_failed("the sender task panicked")),
+        }
+    }
 }
 
 impl Drop for ContentSender {
@@ -252,21 +312,25 @@ async fn run(
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<SenderEvent>,
     mut stop: oneshot::Receiver<()>,
-) {
+) -> (SignalingClient, RunEnd) {
+    let mut end = RunEnd::Stopped { by_system: false };
     let emit = |e: SenderEvent| {
         let _ = out.send(e);
     };
+    let mut code_sent = false;
     loop {
         tokio::select! {
             _ = &mut stop => break,
             msg = sig.recv() => match msg {
                 None => {
                     emit(SenderEvent::Error("signalling connection closed".into()));
+                    end = RunEnd::lost();
                     break;
                 }
                 Some(ServerMsg::Answer { sdp }) => {
                     if let Err(e) = session.accept_answer(sdp).await {
                         emit(SenderEvent::Error(format!("cannot use answer: {e}")));
+                        end = RunEnd::peer_failed(format!("cannot use answer: {e}"));
                         break;
                     }
                 }
@@ -275,14 +339,17 @@ async fn run(
                 }
                 Some(ServerMsg::PeerLeft) => {
                     emit(SenderEvent::PeerLeft);
+                    end = RunEnd::PeerLeft;
                     break;
                 }
                 Some(ServerMsg::Error { code, .. }) if code == "removed_by_host" => {
                     emit(SenderEvent::RemovedByHost);
+                    end = RunEnd::RemovedByHost;
                     break;
                 }
                 Some(ServerMsg::Error { code, message }) => {
                     emit(SenderEvent::Error(format!("server error {code}: {message}")));
+                    end = RunEnd::server(code, message);
                     break;
                 }
                 Some(_) => {}
@@ -294,8 +361,15 @@ async fn run(
                 }
                 Some(SessionEvent::State(s)) => {
                     emit(SenderEvent::State(s));
+                    if s == ConnectionState::Connected && !code_sent {
+                        code_sent = true;
+                        if let Some(code) = session.connection_code() {
+                            emit(SenderEvent::ConnectionCode(code));
+                        }
+                    }
                     if s == ConnectionState::Failed {
                         emit(SenderEvent::Error("WebRTC connection failed".into()));
+                        end = RunEnd::peer_failed("WebRTC connection failed");
                         break;
                     }
                 }
@@ -307,4 +381,5 @@ async fn run(
     // goes away.
     channel.close_graceful(CLOSE_TIMEOUT).await;
     let _ = session.close().await;
+    (sig, end)
 }

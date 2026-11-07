@@ -182,6 +182,14 @@ pub struct Session {
     ice: Mutex<IceQueue>,
     /// The incoming video track and its SSRC, once it exists (for key frame requests).
     remote_video: RemoteVideo,
+    /// The final local and remote SDP, kept for the connection check code ([`crate::sas`]).
+    sdps: std::sync::Mutex<Sdps>,
+}
+
+#[derive(Default)]
+struct Sdps {
+    local: Option<String>,
+    remote: Option<String>,
 }
 
 /// The incoming video track and its SSRC, once it exists.
@@ -252,6 +260,7 @@ impl Session {
                 stats,
                 ice: Mutex::new(IceQueue::default()),
                 remote_video,
+                sdps: std::sync::Mutex::new(Sdps::default()),
             },
             events_rx,
         ))
@@ -315,11 +324,13 @@ impl Session {
             .local_description()
             .await
             .ok_or_else(|| TransportError::WebRtc("no local description".into()))?;
+        self.set_sdp(Some(local.sdp.clone()), None);
         Ok(local.sdp)
     }
 
     /// Take the peer's offer and return our answer SDP.
     pub async fn accept_offer(&self, sdp: String) -> Result<String, TransportError> {
+        self.set_sdp(None, Some(sdp.clone()));
         let offer = RTCSessionDescription::offer(sdp)?;
         self.pc.set_remote_description(offer).await?;
         self.flush_pending_candidates().await;
@@ -330,15 +341,35 @@ impl Session {
             .local_description()
             .await
             .ok_or_else(|| TransportError::WebRtc("no local description".into()))?;
+        self.set_sdp(Some(local.sdp.clone()), None);
         Ok(local.sdp)
     }
 
     /// Take the peer's answer to our offer.
     pub async fn accept_answer(&self, sdp: String) -> Result<(), TransportError> {
+        self.set_sdp(None, Some(sdp.clone()));
         let answer = RTCSessionDescription::answer(sdp)?;
         self.pc.set_remote_description(answer).await?;
         self.flush_pending_candidates().await;
         Ok(())
+    }
+
+    fn set_sdp(&self, local: Option<String>, remote: Option<String>) {
+        let mut g = self.sdps.lock().unwrap_or_else(|p| p.into_inner());
+        if local.is_some() {
+            g.local = local;
+        }
+        if remote.is_some() {
+            g.remote = remote;
+        }
+    }
+
+    /// The connection check code (`"123 456"`): both sides show the same digits when nobody
+    /// swapped the DTLS certificates on the way (see [`crate::sas`]). `None` until both
+    /// descriptions are known, or when one has no SHA-256 fingerprint.
+    pub fn connection_code(&self) -> Option<String> {
+        let g = self.sdps.lock().unwrap_or_else(|p| p.into_inner());
+        crate::sas::connection_code(g.local.as_deref()?, g.remote.as_deref()?)
     }
 
     /// Add a remote ICE candidate given as the JSON text of an `RTCIceCandidateInit`.

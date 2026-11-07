@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Which error page of the presenter belongs to a failure (spec 6). The Rust core reports
-// failures as English technical messages (`server error <code>: ...`, `signalling connection
-// failed: ...`, see cc-transport/src/error.rs); the server code is read from the message.
+// Which error page of the presenter belongs to a failure (spec 6). The presenter session of the
+// core reports a structured `code` (native-apps.md 20.1, decision N9): `errorKindForCode` maps
+// it. The old sender controllers still report English messages; `errorKindFor` reads the code
+// out of them until the pages use the session controller.
 
 import 'dart:ui' show VoidCallback;
 
@@ -16,15 +17,16 @@ String? serverCodeOf(String message) {
   return RegExp(r'^[a-z_]+$').hasMatch(message) ? message : null;
 }
 
-/// The page for [message]. [wasWaiting]: the code had been accepted before. [recentBusy]: a
-/// `rate_limited`, `banned` or `server_full` refusal within the last 60 s (decision 13.44).
-/// Returns null when no page is shown (`capture_denied`, spec 6).
-(ErrorKind, String?)? errorKindFor(
-  String message, {
+/// The page for [code], the structured code of the core (native-apps.md 20.1, spec 6).
+/// [wasWaiting]: the code had been accepted before. [recentBusy]: a `rate_limited`, `banned` or
+/// `server_full` refusal within the last 60 s (decision 13.44). Returns null when no page is
+/// shown (`capture_denied`). The second value is the code for the "why" text of
+/// [ErrorKind.other] (`errors.<code>`).
+(ErrorKind, String?)? errorKindForCode(
+  String code, {
   bool wasWaiting = false,
   bool recentBusy = false,
 }) {
-  final code = serverCodeOf(message);
   switch (code) {
     case 'room_not_found':
       return (wasWaiting ? ErrorKind.expired : ErrorKind.code, null);
@@ -34,7 +36,7 @@ String? serverCodeOf(String message) {
       return (ErrorKind.locked, null);
     case 'approval_timeout':
       return (ErrorKind.timeout, null);
-    case 'removed_by_host' || 'peer_left':
+    case 'removed_by_host' || 'display_left' || 'peer_left':
       return (ErrorKind.ended, null);
     case 'room_full':
       return (ErrorKind.occupied, null);
@@ -48,8 +50,41 @@ String? serverCodeOf(String message) {
       return (recentBusy ? ErrorKind.busy : ErrorKind.noInternet, null);
     case 'peer_failed':
       return (ErrorKind.displayOff, null);
-    case final c?:
-      return (ErrorKind.other, c);
+    // The list of STUN/TURN servers was refused: the presenter is told to try again later.
+    case 'ice_refused':
+      return (ErrorKind.busy, null);
+    // The list failed otherwise: the display does not answer, with the relay as the "why".
+    case 'ice_failed':
+      return (ErrorKind.displayOff, null);
+    // `error.noScreen` is web-only: an app that cannot capture shows `error.other`.
+    case 'capture_unavailable':
+      return (ErrorKind.other, 'capture_unavailable');
+    case 'unknown':
+      return (ErrorKind.other, 'unknown');
+    default:
+      return (ErrorKind.other, code);
+  }
+}
+
+/// Whether the "why" of [ErrorKind.displayOff] names the relay (`error.displayOff.whyRelay`):
+/// the list of STUN/TURN servers failed for this connection (`ice_failed`).
+bool displayOffWhyRelay(String code) => code == 'ice_failed';
+
+/// The page for [message], an English core message of the **old** sender controllers
+/// (`server error <code>: ...`). The presenter session reports codes: use [errorKindForCode].
+/// Kept until the pages read the session controller; then it goes (decision N9).
+(ErrorKind, String?)? errorKindFor(
+  String message, {
+  bool wasWaiting = false,
+  bool recentBusy = false,
+}) {
+  final code = serverCodeOf(message);
+  if (code != null) {
+    return errorKindForCode(
+      code,
+      wasWaiting: wasWaiting,
+      recentBusy: recentBusy,
+    );
   }
   if (message.startsWith('signalling connection') ||
       message.startsWith('timeout')) {

@@ -40,6 +40,19 @@ abstract class SettingsStore {
 
   /// Remember it. Failures are ignored.
   Future<void> saveDisplayName(String name) async {}
+
+  /// The servers the person confirmed on this device (the relay confirmation page, spec 7.2),
+  /// as canonical addresses.
+  Future<List<String>> loadConfirmedServers() async => const [];
+
+  /// Remember them. Failures are ignored: the page asks again.
+  Future<void> saveConfirmedServers(List<String> servers) async {}
+
+  /// Whether the install referrer was read already (it exists on the first launch only).
+  Future<bool> loadReferrerRead() async => false;
+
+  /// Remember that it was read.
+  Future<void> saveReferrerRead() async {}
 }
 
 /// Keeps the value in memory only (tests).
@@ -76,6 +89,22 @@ class MemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> saveDisplayName(String name) async => displayName = name;
+
+  List<String> confirmedServers = const [];
+  bool referrerRead = false;
+
+  @override
+  Future<List<String>> loadConfirmedServers() async => confirmedServers;
+
+  @override
+  Future<void> saveConfirmedServers(List<String> servers) async =>
+      confirmedServers = servers;
+
+  @override
+  Future<bool> loadReferrerRead() async => referrerRead;
+
+  @override
+  Future<void> saveReferrerRead() async => referrerRead = true;
 }
 
 /// Saves the value with the `shared_preferences` package.
@@ -147,6 +176,49 @@ class PrefsSettingsStore implements SettingsStore {
   @override
   Future<void> saveDisplayName(String name) =>
       _setString(_displayNameKey, name);
+
+  static const _confirmedKey = 'confirmedServers';
+  static const _referrerReadKey = 'installReferrerRead';
+
+  @override
+  Future<List<String>> loadConfirmedServers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList(_confirmedKey) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> saveConfirmedServers(List<String> servers) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_confirmedKey, servers);
+    } catch (_) {
+      // Not saved; the page asks again.
+    }
+  }
+
+  @override
+  Future<bool> loadReferrerRead() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_referrerReadKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> saveReferrerRead() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_referrerReadKey, true);
+    } catch (_) {
+      // Read again next time: harmless, the referrer is the same.
+    }
+  }
 
   Future<String?> _getString(String key) async {
     try {
@@ -253,7 +325,7 @@ class AppSettings extends ChangeNotifier {
     final savedMode = await store.loadJoinMode();
     final savedName = await store.loadDisplayName();
     final defaults = core.serverDefaults();
-    return AppSettings.fromDefaults(
+    final settings = AppSettings.fromDefaults(
       defaults,
       // The development override and the saved server beat the list, but not a policy server.
       serverAddress: envServer ?? (_hasPolicyServer(defaults) ? null : saved),
@@ -268,6 +340,8 @@ class AppSettings extends ChangeNotifier {
       ),
       displayName: cleanDisplayName(savedName ?? ''),
     );
+    await settings.loadConfirmedServers();
+    return settings;
   }
 
   static bool _hasPolicyServer(ServerDefaults d) => d.servers.any(
@@ -326,6 +400,25 @@ class AppSettings extends ChangeNotifier {
   }
 
   final SettingsStore? store;
+
+  Set<String> _confirmed = {};
+
+  /// Servers the person confirmed on this device (canonical addresses): used at once from now on.
+  Set<String> get confirmedServers => _confirmed;
+
+  /// Read the confirmed servers from the store.
+  Future<void> loadConfirmedServers() async {
+    final saved = await store?.loadConfirmedServers() ?? const <String>[];
+    _confirmed = {..._confirmed, ...saved};
+  }
+
+  /// The person pressed "Use this relay": remember [server] (canonical address) as confirmed.
+  Future<void> confirmServer(String server) async {
+    if (_confirmed.contains(server)) return;
+    _confirmed = {..._confirmed, server};
+    await store?.saveConfirmedServers(_confirmed.toList()..sort());
+    notifyListeners();
+  }
 
   late UiJoinMode _joinMode;
   late String _displayName;

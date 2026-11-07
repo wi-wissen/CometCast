@@ -896,3 +896,52 @@ fn page_commands_that_arrive_while_a_document_opens_apply_to_it() {
     assert!(ev.is_empty(), "{ev:?}");
     assert_eq!(r.document_state(), None);
 }
+
+#[test]
+fn progress_is_throttled_and_ends_with_the_whole_transfer() {
+    let data = vec![7u8; CHUNK_SIZE * 40];
+    let mut r = ContentReceiver::new(ContentOptions {
+        isolation: Isolation::InProcess,
+        progress: true,
+        ..ContentOptions::default()
+    });
+    let ev = feed(
+        &mut r,
+        image_transfer("a.png", ImageMime::Png, &data).unwrap(),
+    );
+    let progress: Vec<(u64, u64)> = ev
+        .iter()
+        .filter_map(|e| match e {
+            ContentEvent::TransferProgress { received, total } => Some((*received, *total)),
+            _ => None,
+        })
+        .collect();
+    // All chunks arrive within a few microseconds: the first one, and the complete one.
+    assert_eq!(progress.len(), 2, "{progress:?}");
+    assert_eq!(progress[0].1, data.len() as u64);
+    assert_eq!(progress[1], (data.len() as u64, data.len() as u64));
+    let started = ev
+        .iter()
+        .position(|e| matches!(e, ContentEvent::TransferStarted { .. }))
+        .unwrap();
+    let done = ev
+        .iter()
+        .position(|e| matches!(e, ContentEvent::ImageReceived { .. }))
+        .unwrap();
+    assert!(started < done);
+    assert!(
+        ev[started..done]
+            .iter()
+            .filter(|e| matches!(e, ContentEvent::TransferProgress { .. }))
+            .count()
+            == 2
+    );
+}
+
+#[test]
+fn a_page_message_is_ignored_without_a_violation() {
+    let mut r = rx();
+    let ev = r.handle_text(&crate::outgoing::page_message(1, 3));
+    assert!(ev.is_empty(), "{ev:?}");
+    assert_eq!(r.violations(), 0);
+}

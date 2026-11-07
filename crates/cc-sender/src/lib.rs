@@ -20,11 +20,13 @@
 
 pub mod content;
 pub mod external;
+pub mod presenter;
 mod screen;
 
 pub use cc_transport::JoinProgress;
 pub use content::{ContentSendError, ContentSender, ContentSenderOptions, ControlSender};
 pub use external::{ExternalInput, ExternalOptions, ExternalStats, PushOutcome};
+pub use presenter::{EndReason, Presentation, PresenterEvent, PresenterOptions, PresenterSession};
 pub use screen::{ScreenOptions, ScreenStats};
 
 use std::sync::Arc;
@@ -122,6 +124,9 @@ pub struct SenderOptions {
     pub name: Option<String>,
     /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
     pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
+    /// Do not ask the server for its STUN/TURN list even if `session.ice_servers` is empty (the
+    /// caller asked already and keeps the outcome). Default `false`.
+    pub skip_ice_fetch: bool,
 }
 
 impl SenderOptions {
@@ -138,6 +143,7 @@ impl SenderOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+            skip_ice_fetch: false,
         }
     }
 }
@@ -152,6 +158,9 @@ pub enum SenderEvent {
         /// Frames written to the track.
         frames_sent: u64,
     },
+    /// The connection check code (`"123 456"`), once per connection, as soon as it is connected;
+    /// the display shows the same digits (`cc_transport::sas`).
+    ConnectionCode(String),
     /// The configured duration is over. The core stops after this event.
     Finished {
         /// Frames written to the track.
@@ -165,6 +174,49 @@ pub enum SenderEvent {
     Error(String),
 }
 
+/// A presentation that could not start: the error, and the signalling connection (still in the
+/// room) so that the presenter session stays joined.
+pub(crate) struct StartFailed {
+    pub(crate) sig: SignalingClient,
+    pub(crate) error: TransportError,
+}
+
+/// How a presentation (one `run`) ended; the presenter session needs more than the events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RunEnd {
+    /// Stopped on request, the duration was over, or the capture ended. `by_system`: the
+    /// capture source went away (the system ended it).
+    Stopped { by_system: bool },
+    /// The display left the room.
+    PeerLeft,
+    /// The host removed this sender.
+    RemovedByHost,
+    /// A local or protocol error: `code` is a protocol code (`room_locked`, ...) or one of the
+    /// local ones (`connection_lost`, `peer_failed`, `capture_unavailable`).
+    Failed { code: String, message: String },
+}
+
+impl RunEnd {
+    /// The end for an error message of the server.
+    pub(crate) fn server(code: String, message: String) -> Self {
+        Self::Failed { code, message }
+    }
+
+    pub(crate) fn lost() -> Self {
+        Self::Failed {
+            code: "connection_lost".into(),
+            message: "signalling connection closed".into(),
+        }
+    }
+
+    pub(crate) fn peer_failed(message: impl Into<String>) -> Self {
+        Self::Failed {
+            code: "peer_failed".into(),
+            message: message.into(),
+        }
+    }
+}
+
 /// A running sender.
 pub struct SenderCore {
     room_name: Option<String>,
@@ -174,14 +226,13 @@ pub struct SenderCore {
     control: Option<ControlSender>,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
-    task: JoinHandle<()>,
+    task: JoinHandle<(SignalingClient, RunEnd)>,
 }
 
 impl SenderCore {
     /// Join the room, send the offer and start streaming once connected.
     /// Returns after the offer was sent; a wrong code fails here with `room_not_found`.
-    pub async fn start(mut options: SenderOptions) -> Result<Self, TransportError> {
-        let addr = ServerAddr::parse(&options.server)?;
+    pub async fn start(options: SenderOptions) -> Result<Self, TransportError> {
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
         let room_name = join_room(
@@ -191,43 +242,73 @@ impl SenderCore {
             options.join_progress.as_ref(),
         )
         .await?;
+        Self::start_joined(sig, room_name, options)
+            .await
+            .map_err(|f| f.error)
+    }
 
-        if options.screen.is_some() && options.external.is_some() {
-            return Err(TransportError::Invalid(
-                "screen and external input cannot be used together".into(),
-            ));
+    /// Start a presentation on a signalling connection that is in the room already (the
+    /// presenter session joins once and presents several times). On an error the connection is
+    /// dropped, which leaves the room.
+    pub(crate) async fn start_joined(
+        sig: SignalingClient,
+        room_name: Option<String>,
+        mut options: SenderOptions,
+    ) -> Result<Self, StartFailed> {
+        let built = async {
+            let addr = ServerAddr::parse(&options.server)?;
+            if options.screen.is_some() && options.external.is_some() {
+                return Err(TransportError::Invalid(
+                    "screen and external input cannot be used together".into(),
+                ));
+            }
+            let counters = Arc::new(screen::Counters::default());
+            // Open the screen and the encoder before anything is negotiated, so a missing
+            // display or encoder is an error of `start`.
+            let prepared = match options.screen.take() {
+                Some(screen_options) => Some(
+                    screen::prepare(screen_options, Arc::clone(&counters))
+                        .map_err(TransportError::Invalid)?,
+                ),
+                None => None,
+            };
+            let codec = if prepared.is_some() || options.external.is_some() {
+                VideoCodec::H264
+            } else {
+                VideoCodec::Vp8
+            };
+            options.session.video_codecs = Some(vec![codec]);
+            if options.session.ice_servers.is_empty() && !options.skip_ice_fetch {
+                // Best effort: no list (404, or a failed request) means no STUN/TURN.
+                options.session.ice_servers =
+                    ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
+            }
+            let ice_servers = options.session.ice_servers.clone();
+            let (session, session_events) = Session::new(options.session.clone()).await?;
+            let control = match options.control {
+                true => Some(ControlSender::new(session.create_control_channel().await?)),
+                false => None,
+            };
+            let video = Arc::new(session.add_video_track(codec).await?);
+            let offer = session.create_offer().await?;
+            // The offer goes out first; candidates found meanwhile follow from the event channel.
+            sig.send(ClientMsg::Offer { sdp: offer }).await?;
+            Ok((
+                counters,
+                prepared,
+                session,
+                session_events,
+                control,
+                video,
+                ice_servers,
+            ))
         }
-        let counters = Arc::new(screen::Counters::default());
-        // Open the screen and the encoder before anything is negotiated, so a missing
-        // display or encoder is an error of `start`.
-        let prepared = match options.screen.take() {
-            Some(screen_options) => Some(
-                screen::prepare(screen_options, Arc::clone(&counters))
-                    .map_err(TransportError::Invalid)?,
-            ),
-            None => None,
+        .await;
+        let (counters, prepared, session, session_events, control, video, ice_servers) = match built
+        {
+            Ok(b) => b,
+            Err(error) => return Err(StartFailed { sig, error }),
         };
-        let codec = if prepared.is_some() || options.external.is_some() {
-            VideoCodec::H264
-        } else {
-            VideoCodec::Vp8
-        };
-        options.session.video_codecs = Some(vec![codec]);
-        if options.session.ice_servers.is_empty() {
-            // Best effort: no list (404, or a failed request) means no STUN/TURN.
-            options.session.ice_servers =
-                ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
-        }
-        let ice_servers = options.session.ice_servers.clone();
-        let (session, session_events) = Session::new(options.session).await?;
-        let control = match options.control {
-            true => Some(ControlSender::new(session.create_control_channel().await?)),
-            false => None,
-        };
-        let video = Arc::new(session.add_video_track(codec).await?);
-        let offer = session.create_offer().await?;
-        // The offer goes out first; candidates found meanwhile follow from the event channel.
-        sig.send(ClientMsg::Offer { sdp: offer }).await?;
 
         let external = options.external.take();
         let (events_tx, events_rx) = mpsc::unbounded_channel();
@@ -238,6 +319,7 @@ impl SenderCore {
             video,
             prepared,
             external.clone(),
+            control.clone(),
             session_events,
             events_tx,
             stop_rx,
@@ -298,6 +380,21 @@ impl SenderCore {
         }
         let _ = (&mut self.task).await;
     }
+
+    /// Ask the background task to finish; the events end when it has.
+    pub(crate) fn request_stop(&mut self) {
+        if let Some(tx) = self.stop.take() {
+            let _ = tx.send(());
+        }
+    }
+
+    /// Wait for the task and take the signalling connection back, with the way it ended.
+    pub(crate) async fn join(mut self) -> (Option<SignalingClient>, RunEnd) {
+        match (&mut self.task).await {
+            Ok((sig, end)) => (Some(sig), end),
+            Err(_) => (None, RunEnd::peer_failed("the sender task panicked")),
+        }
+    }
 }
 
 impl Drop for SenderCore {
@@ -332,11 +429,13 @@ async fn run(
     video: Arc<VideoSender>,
     mut prepared: Option<screen::Prepared>,
     external: Option<ExternalInput>,
+    control: Option<ControlSender>,
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<SenderEvent>,
     mut stop: oneshot::Receiver<()>,
     duration: Option<Duration>,
-) {
+) -> (SignalingClient, RunEnd) {
+    let mut end = RunEnd::Stopped { by_system: false };
     let emit = |e: SenderEvent| {
         let _ = out.send(e);
     };
@@ -369,11 +468,13 @@ async fn run(
             msg = sig.recv() => match msg {
                 None => {
                     emit(SenderEvent::Error("signalling connection closed".into()));
+                    end = RunEnd::lost();
                     break;
                 }
                 Some(ServerMsg::Answer { sdp }) => {
                     if let Err(e) = session.accept_answer(sdp).await {
                         emit(SenderEvent::Error(format!("cannot use answer: {e}")));
+                        end = RunEnd::peer_failed(format!("cannot use answer: {e}"));
                         break;
                     }
                 }
@@ -383,14 +484,17 @@ async fn run(
                 }
                 Some(ServerMsg::PeerLeft) => {
                     emit(SenderEvent::PeerLeft);
+                    end = RunEnd::PeerLeft;
                     break;
                 }
                 Some(ServerMsg::Error { code, .. }) if code == "removed_by_host" => {
                     emit(SenderEvent::RemovedByHost);
+                    end = RunEnd::RemovedByHost;
                     break;
                 }
                 Some(ServerMsg::Error { code, message }) => {
                     emit(SenderEvent::Error(format!("server error {code}: {message}")));
+                    end = RunEnd::server(code, message);
                     break;
                 }
                 Some(_) => {}
@@ -403,6 +507,9 @@ async fn run(
                 Some(SessionEvent::State(s)) => {
                     if s == ConnectionState::Connected && streaming_since.is_none() {
                         streaming_since = Some(Instant::now());
+                        if let Some(code) = session.connection_code() {
+                            emit(SenderEvent::ConnectionCode(code));
+                        }
                         // External mode: units are accepted from now on and the host is asked
                         // for a key frame; later ones come from the peer's PLI requests.
                         if let Some(ext) = external.clone() {
@@ -442,6 +549,7 @@ async fn run(
                     if s == ConnectionState::Failed {
                         emit(SenderEvent::State(s));
                         emit(SenderEvent::Error("WebRTC connection failed".into()));
+                        end = RunEnd::peer_failed("WebRTC connection failed");
                         break;
                     }
                     emit(SenderEvent::State(s));
@@ -457,6 +565,7 @@ async fn run(
                 let frame = test.frames[(frames_sent as usize) % test.frames.len()].clone();
                 if let Err(e) = video.send_frame(frame, frame_time).await {
                     emit(SenderEvent::Error(format!("cannot send frame: {e}")));
+                    end = RunEnd::peer_failed(format!("cannot send frame: {e}"));
                     break;
                 }
                 frames_sent += 1;
@@ -474,6 +583,7 @@ async fn run(
                 let (len, key) = (unit.data.len(), unit.key);
                 if let Err(e) = video.send_frame(Bytes::from(unit.data), step).await {
                     emit(SenderEvent::Error(format!("cannot send frame: {e}")));
+                    end = RunEnd::peer_failed(format!("cannot send frame: {e}"));
                     break;
                 }
                 ext.count_sent(len, key);
@@ -490,6 +600,7 @@ async fn run(
                 let step = step.max(Duration::from_millis(1));
                 if let Err(e) = video.send_frame(Bytes::from(unit.data), step).await {
                     emit(SenderEvent::Error(format!("cannot send frame: {e}")));
+                    end = RunEnd::peer_failed(format!("cannot send frame: {e}"));
                     break;
                 }
                 frames_sent += 1;
@@ -500,9 +611,14 @@ async fn run(
                 match ended {
                     Some(screen::Ended::Failed(e)) => {
                         emit(SenderEvent::Error(format!("screen capture failed: {e}")));
+                        end = RunEnd::Failed {
+                            code: "capture_unavailable".into(),
+                            message: format!("screen capture failed: {e}"),
+                        };
                     }
                     Some(screen::Ended::SourceGone) => {
                         emit(SenderEvent::Error("screen capture ended".into()));
+                        end = RunEnd::Stopped { by_system: true };
                     }
                     Some(screen::Ended::Stopped) | None => {}
                 }
@@ -531,7 +647,13 @@ async fn run(
         // Joining waits for a capture call that may be sleeping up to one frame time.
         let _ = tokio::task::spawn_blocking(move || r.pipeline.stop()).await;
     }
+    // Closing the channel first lets the display deliver what is still on its way and see that
+    // the presentation ended while this sender stays in the room.
+    if let Some(c) = &control {
+        c.channel().close_graceful(content::CLOSE_TIMEOUT).await;
+    }
     let _ = session.close().await;
+    (sig, end)
 }
 
 #[cfg(test)]

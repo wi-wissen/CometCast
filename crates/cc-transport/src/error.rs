@@ -35,8 +35,49 @@ pub enum TransportError {
     Invalid(String),
 }
 
+impl TransportError {
+    /// The code the apps map to an error page: the protocol code of a server error
+    /// (`room_not_found`, `join_denied`, `altcha_required`, ...), `connection_lost` when the
+    /// server could not be reached or the connection ended or timed out, `peer_failed` for
+    /// WebRTC errors, `unknown` for the rest. The text is for logs only.
+    pub fn code(&self) -> String {
+        match self {
+            Self::Server { code, .. } => code.clone(),
+            Self::Connect(_) | Self::Protocol(_) | Self::Closed | Self::Timeout(_) => {
+                "connection_lost".into()
+            }
+            Self::WebRtc(_) => "peer_failed".into(),
+            Self::Unsupported(_) | Self::Invalid(_) => "unknown".into(),
+        }
+    }
+}
+
 impl From<webrtc::error::Error> for TransportError {
     fn from(e: webrtc::error::Error) -> Self {
         TransportError::WebRtc(e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codes_follow_the_error_kind() {
+        let server = TransportError::Server {
+            code: "room_locked".into(),
+            message: "x".into(),
+        };
+        assert_eq!(server.code(), "room_locked");
+        for e in [
+            TransportError::Connect("x".into()),
+            TransportError::Protocol("x".into()),
+            TransportError::Closed,
+            TransportError::Timeout("x"),
+        ] {
+            assert_eq!(e.code(), "connection_lost", "{e}");
+        }
+        assert_eq!(TransportError::WebRtc("x".into()).code(), "peer_failed");
+        assert_eq!(TransportError::Invalid("x".into()).code(), "unknown");
     }
 }

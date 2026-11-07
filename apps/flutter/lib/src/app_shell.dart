@@ -12,6 +12,8 @@ import '../core/android_capture.dart';
 import '../core/android_platform.dart';
 import '../core/core_api.dart';
 import '../core/ios_broadcast.dart';
+import '../core/launch_intake.dart';
+import '../core/link_target.dart';
 import '../core/miracast.dart';
 import '../miracast_page.dart';
 import '../receiver_controller.dart' show UrlOpener;
@@ -39,6 +41,8 @@ class AppShell extends StatefulWidget {
     this.forceDisplayCapable,
     this.initialCode,
     this.scanQr,
+    this.launch,
+    this.links,
   });
 
   final CoreApi core;
@@ -55,6 +59,11 @@ class AppShell extends StatefulWidget {
   final bool? forceDisplayCapable;
   final String? initialCode;
   final ScanQr? scanQr;
+
+  /// What started the app: a link, or the install referrer (native-apps.md 20.4). A usable one
+  /// gives the first-run page its code chip; an unknown server first shows the relay page.
+  final LinkOutcome? launch;
+  final LinkHandler? links;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -118,7 +127,15 @@ class _AppShellState extends State<AppShell> {
           androidCapture: widget.androidCapture,
           iosBroadcast: widget.iosBroadcast,
           scanQr: widget.scanQr,
-          initialCode: widget.initialCode,
+          links: widget.links,
+          initialCode: switch (widget.launch) {
+            LinkUse(:final target) || LinkConfirm(:final target) => target.code,
+            _ => widget.initialCode,
+          },
+          relayToConfirm: switch (widget.launch) {
+            LinkConfirm(:final target) => target.server,
+            _ => null,
+          },
           onBeDisplay: _capable(context)
               ? () => setState(() => _role = AppRole.display)
               : null,

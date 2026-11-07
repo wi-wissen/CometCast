@@ -150,6 +150,15 @@ pub enum ContentEvent {
         /// Announced size in bytes.
         size: u64,
     },
+    /// Bytes of the running transfer received so far. At most one event per whole percent
+    /// and four per second, plus one when the transfer is complete; between
+    /// [`ContentEvent::TransferStarted`] and the image or document that follows.
+    TransferProgress {
+        /// Bytes received.
+        received: u64,
+        /// Announced size in bytes.
+        total: u64,
+    },
     /// A complete image arrived. It replaces what was shown before.
     ImageReceived {
         /// Display name.
@@ -226,6 +235,9 @@ pub struct ContentOptions {
     pub open_burst: u32,
     /// Time to refill one document open (default 3 s, zero = no limit on opens).
     pub open_refill: Duration,
+    /// Report [`ContentEvent::TransferProgress`] (default `false`: only the apps that show a
+    /// progress want the extra events).
+    pub progress: bool,
 }
 
 impl Default for ContentOptions {
@@ -243,6 +255,7 @@ impl Default for ContentOptions {
             violation_decay: Duration::from_secs(2),
             open_burst: 5,
             open_refill: Duration::from_secs(3),
+            progress: false,
         }
     }
 }
@@ -262,6 +275,9 @@ enum Kind {
     Document,
 }
 
+/// Progress events leave at most this often (four per second).
+const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
 struct Active {
     kind: Kind,
     name: String,
@@ -270,6 +286,8 @@ struct Active {
     chunks: u64,
     max_chunks: u64,
     last_activity: Instant,
+    /// When and at which whole percent the last progress event went out.
+    last_progress: Option<(Instant, u64)>,
 }
 
 /// The data of a refused transfer, which is dropped without further violations.
@@ -641,6 +659,8 @@ impl ContentReceiver {
                 self.end(&mut out, document, now);
             }
             Message::Link { url } => out.push(ContentEvent::LinkRequested { url }),
+            // Display to presenter only: ignored here, and not a violation.
+            Message::Page { .. } => self.skipping = skipping,
             Message::Cmd(cmd) => self.command(&mut out, &cmd),
         }
         out
@@ -694,6 +714,20 @@ impl ContentReceiver {
                 a.buf.extend_from_slice(chunk);
                 a.chunks += 1;
                 a.last_activity = now;
+                let (got, total) = (a.buf.len() as u64, a.size as u64);
+                let pct = (got * 100).checked_div(total).unwrap_or(100);
+                let due = a.last_progress.is_none_or(|(t, p)| {
+                    pct > p && now.saturating_duration_since(t) >= PROGRESS_INTERVAL
+                });
+                if self.opts.progress
+                    && (due || (got == total && a.last_progress.is_none_or(|(_, p)| p < 100)))
+                {
+                    a.last_progress = Some((now, pct));
+                    out.push(ContentEvent::TransferProgress {
+                        received: got,
+                        total,
+                    });
+                }
             }
         }
         out
@@ -753,6 +787,7 @@ impl ContentReceiver {
             chunks: 0,
             max_chunks: size.div_ceil(CHUNK_SIZE as u64),
             last_activity: now,
+            last_progress: None,
         });
     }
 
