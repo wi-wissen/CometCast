@@ -231,7 +231,7 @@ try {
     const seen = await phases(de)
     const checking = seen.find((x) => x.phase === 'checking')
     assert.ok(checking, 'checking phase shown')
-    assert.match(checking.text, /Ihr Browser wird geprüft/)
+    assert.match(checking.text, /Dein Browser wird geprüft/)
     await de.context().close()
   }
 

@@ -14,6 +14,7 @@ node --test tools/check-i18n.test.mjs                   # self-test with tempora
 Checks:
 
 - `apps/web/src/locales/en.json` vs `de.json` (nested keys flattened with dots)
+- `apps/web/src/locales/de-sie.json` vs `de.json` (same keys and placeholders; `de.json` must have no formal forms)
 - `apps/flutter/lib/l10n/app_en.arb` vs `app_de.arb` (keys starting with `@` ignored)
 - `apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings` (each key needs `en` and `de`; the Swift tests also check that every key the core can produce exists, and that placeholders agree)
 

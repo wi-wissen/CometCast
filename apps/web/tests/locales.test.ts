@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import en from '../src/locales/en.json'
 import de from '../src/locales/de.json'
-import deDu from '../src/locales/de-du.json'
+import deSie from '../src/locales/de-sie.json'
 import spec from '../../../docs/design/first-run-and-display.md?raw'
 
 function keys(obj: Record<string, unknown>, prefix = ''): string[] {
@@ -18,7 +18,7 @@ describe('locale files', () => {
     expect(keys(de).sort()).toEqual(keys(en).sort())
   })
   it('has no empty strings', () => {
-    for (const [name, file] of [['en', en], ['de', de], ['de-du', deDu]] as const) {
+    for (const [name, file] of [['en', en], ['de', de], ['de-sie', deSie]] as const) {
       for (const k of keys(file)) expect(get(file, k), `${name}:${k}`).not.toBe('')
     }
   })
@@ -30,21 +30,19 @@ describe('locale files', () => {
 })
 
 describe('the two German sets (spec 11.1)', () => {
-  it('"du" is not loaded by default: the app ships "Sie"', () => {
-    expect(get(de, 'start.nameLabel')).toBe('Ihr Name')
-    expect(get(deDu, 'start.nameLabel')).toBe('Dein Name')
-  })
-  it('de-du.json has exactly the keys of the spec and none that de.json lacks', () => {
-    const du = keys(deDu).sort()
-    const all = new Set(keys(de))
-    for (const k of du) expect(all.has(k), k).toBe(true)
-    // Every string of the spec exists in both forms: the spec keys are those of de-du.
-    expect(du.length).toBeGreaterThan(150)
+  it('"du" is the loaded set; "Sie" is kept in de-sie.json but not loaded', () => {
+    expect(get(de, 'start.nameLabel')).toBe('Dein Name')
+    expect(get(deSie, 'start.nameLabel')).toBe('Ihr Name')
   })
   it('both sets have identical keys and identical placeholders for every key', () => {
-    for (const k of keys(deDu)) {
-      expect(placeholders(get(deDu, k)), k).toEqual(placeholders(get(de, k)))
+    expect(keys(deSie).sort()).toEqual(keys(de).sort())
+    for (const k of keys(de)) {
+      expect(placeholders(get(deSie, k)), k).toEqual(placeholders(get(de, k)))
     }
+  })
+  it('the loaded de set has no formal forms (Sie, Ihr..., Ihnen) except where the spec itself has them', () => {
+    const formal = /\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b/
+    for (const k of keys(de)) if (formal.test(get(de, k))) expect(k).toBe('receive.media.hint') // "Sie" = the media file
   })
 })
 
@@ -56,7 +54,7 @@ describe('the copy tables of the spec', () => {
   for (const line of body.split('\n')) {
     if (!line.startsWith('| `')) continue
     const c = line.trim().replace(/^\||\|$/g, '').split(' | ').map((x: string) => x.trim())
-    const key = c[0].replace(/`/g, '')
+    const key = c[0].replace(/`/g, '').replace(/ \(valid: [^)]*\)$/, '')
     if (c[2] === '' || c[2] === '|') continue // `error.other.why` has no text of its own: it shows the existing `errors.<code>` text
     const sie = c[3] === 'same as du' ? c[2] : c[3]
     if (key.startsWith('setup.name.s1')) {
@@ -69,11 +67,11 @@ describe('the copy tables of the spec', () => {
     rows.push({ key: key === 'settings.join' ? 'settings.join.label' : key, en: c[1].replace(/ \((not used, decision 13\.2|apps only)\)$/, ''), du: c[2], sie })
   }
   it('has read all rows', () => expect(rows.length).toBe(210))
-  it('every row is in en.json, de.json (Sie) and de-du.json (du), word for word', () => {
+  it('every row is in en.json, de.json (du) and de-sie.json (Sie), word for word', () => {
     for (const r of rows) {
       expect(get(en, r.key), `en:${r.key}`).toBe(r.en)
-      expect(get(de, r.key), `de:${r.key}`).toBe(r.sie)
-      expect(get(deDu, r.key), `de-du:${r.key}`).toBe(r.du)
+      expect(get(de, r.key), `de:${r.key}`).toBe(r.du)
+      expect(get(deSie, r.key), `de-sie:${r.key}`).toBe(r.sie)
     }
   })
   // 11.7 (items the mockup did not draw, EN / du / Sie) and 11.8 (the du values of Sie texts that address the reader).
@@ -92,18 +90,12 @@ describe('the copy tables of the spec', () => {
     for (const r of more) {
       if (get(en, r.key) === undefined) continue // native-only keys (app.beDisplay is there; others are Flutter's)
       if (r.en !== undefined) expect(get(en, r.key), `en:${r.key}`).toBe(r.en)
-      if (r.sie !== undefined) expect(get(de, r.key), `de:${r.key}`).toBe(r.sie)
-      // The du file lists only the texts that differ from Sie; a key it lacks shows the Sie text.
-      expect(get(deDu, r.key) ?? get(de, r.key), `de-du:${r.key}`).toBe(r.du)
+      if (r.sie !== undefined) expect(get(deSie, r.key), `de-sie:${r.key}`).toBe(r.sie)
+      expect(get(de, r.key), `de:${r.key}`).toBe(r.du)
     }
   })
-  it('the du set has every key whose Sie text addresses the reader (spec 11.8)', () => {
-    const addresses = /\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b/
-    const du = new Set(keys(deDu))
-    for (const k of keys(de)) if (addresses.test(get(de, k)) && k !== 'receive.media.hint') expect(du.has(k), k).toBe(true)
-  })
-  it('de-du.json has no key that is not in the spec', () => {
+  it('every key where du and Sie differ is in the spec', () => {
     const known = new Set([...rows.map((r) => r.key), ...more.map((r) => r.key), 'relay.confirm.body', 'relay.confirm.risk', 'receive.link.hint', 'send.status.idle', 'sendContent.status.idle'])
-    for (const k of keys(deDu)) expect(known.has(k), k).toBe(true)
+    for (const k of keys(de)) if (get(de, k) !== get(deSie, k)) expect(known.has(k), k).toBe(true)
   })
 })

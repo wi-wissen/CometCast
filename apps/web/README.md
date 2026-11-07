@@ -199,7 +199,7 @@ of the spec: the default mode is Open; in Approval on a request appears over the
 on the presenter's waiting page, the name is plain text, Yes has the focus and presses inside the first second answer
 nothing; Yes, No, No and block and keyboard-only answers (arrows, Enter); Locked and Open again; a blocked address is refused at
 once and not shown; a request nobody answers times out (presenter: "No answer", display: toast); withdrawing tells the host;
-German texts (Sie) on both pages; the default mode is kept on the display. Not covered any more because the spec removed
+German texts (du) on both pages; the default mode is kept on the display. Not covered any more because the spec removed
 the controls: "End presentation" and the block list with Unblock, "Later", the join menu and its notice. Their logic
 (`ReceiverSession.removePeer`, `unblock`, `denyAll`) stays and is covered by `tests/joinApproval.test.ts`.
 
@@ -246,11 +246,11 @@ flags as `npm run e2e`. See [../../docs/transport.md](../../docs/transport.md).
 ## Translations
 
 UI strings live in `src/locales/en.json` and `src/locales/de.json`. Both files must have identical keys
-(checked by a test). The German file is the formal **"Sie"** set (shipped). The spec's wording with **"du"** is kept ready in
-`src/locales/de-du.json`: it has only the spec's keys and is **not loaded** by the app. To ship it, merge it over `de.json`
-in `src/i18n/index.ts` (one import and one object spread; no other code changes). `tests/locales.test.ts` reads the copy
-tables of the spec and checks every row word for word in all three files, plus identical keys and `{placeholders}`;
-`node tools/check-i18n.mjs` checks `de-du.json` against `de.json`. The key `settings.join` of the spec is stored as
+(checked by a test). `de.json` is the informal **"du"** set (shipped, loaded by the app). The formal **"Sie"** set is kept complete in
+`src/locales/de-sie.json` (identical keys, not loaded). To ship it, import it instead of `de.json` in `src/i18n/index.ts`
+(one import; no other code changes). `tests/locales.test.ts` reads the copy tables of the spec and checks every row word
+for word (EN, DE du in `de.json`, DE Sie in `de-sie.json`), plus identical keys and `{placeholders}`;
+`node tools/check-i18n.mjs` checks that `de-sie.json` has the keys and placeholders of `de.json` and that `de.json` has no formal forms (Sie, Ihr..., Ihnen). The key `settings.join` of the spec is stored as
 `settings.join.label` because nested JSON cannot hold a text and a group under the same name. The language follows the
 browser (`navigator.language`, German or English); there is no language switch in the spec. Screen sharing needs a desktop browser and HTTPS (or localhost).
 
