@@ -32,8 +32,8 @@ ignored). The file is optional; every key is optional.
   equals the built-in defaults).
 - Environment: `COMETCAST__SECTION__KEY=value` sets `section.key` (double underscore = dot),
   for example `COMETCAST__LIMITS__MAX_ROOMS=500`. Short forms: `COMETCAST_LISTEN`,
-  `COMETCAST_MODE`, `COMETCAST_WEB_DIR`.
-- Command line: `--mode`, `--listen`, `--web-dir`, `--tls-cert`, `--tls-key`,
+  `COMETCAST_MODE`, `COMETCAST_WEB_DIR`, `COMETCAST_ALLOWED_ORIGINS` (comma-separated).
+- Command line: `--mode`, `--listen`, `--web-dir`, `--allowed-origins a,b`, `--tls-cert`, `--tls-key`,
   `--tls-self-signed`, `--healthcheck` (see below) and `--set section.key=value` for anything else.
   `--healthcheck` reads the same settings (config file and `COMETCAST_*` environment, plus any
   flags given to the `--healthcheck` call itself), asks the server on this machine (loopback, same
@@ -76,6 +76,7 @@ UNCERTAIN: every number is a placeholder.
 | `mode` | | `internal` | `open` or `internal` (see below). |
 | `listen` | | `127.0.0.1:8443` | Address and port. UNCERTAIN: default port not decided. |
 | `web_dir` | | none | Serve the web app from the same address. |
+| `allowed_origins` | | `[]` | Web origins (`https://host[:port]`, exact) whose pages may use this relay from another site: CORS for `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`. Empty = same-origin only for HTTP, any browser origin on `/ws`. `*` = any origin, internal mode only. See [Web app on another origin](#web-app-on-another-origin). Env `COMETCAST_ALLOWED_ORIGINS`, CLI `--allowed-origins`. |
 | `idle_room_secs` | 1800 | 1800 | Room without sender expires. |
 | `hello_secs` / `no_room_secs` | 5 / 60 | 5 / 60 | Handshake and "must be in a room" deadlines. |
 | `max_message_bytes` | 65536 | 65536 | Largest WebSocket message. |
@@ -138,7 +139,7 @@ Both modes: rooms live in memory only; nothing is written to disk.
 
 | Path | Meaning |
 | --- | --- |
-| `GET /ws` | WebSocket signalling ([protocol.md](protocol.md)). |
+| `GET /ws` | WebSocket signalling ([protocol.md](protocol.md)). With `allowed_origins` set, a browser `Origin` that is not listed gets `403`. |
 | `GET /healthz` | `200 ok`. Always allowed for a request that comes from the same computer (loopback) and is not forwarded for somebody else, even if `allow` would refuse it, so health checks keep working. A request that a trusted proxy forwards with `X-Forwarded-For` is checked like any other request against its forwarded client address (a denied client gets `403` on `/healthz` too). |
 | `GET /altcha/challenge` | A new puzzle (JSON), `Cache-Control: no-store`. |
 | `GET /ice-servers` | TURN credentials (JSON); `404` when TURN is not configured. |
@@ -147,9 +148,45 @@ Both modes: rooms live in memory only; nothing is written to disk.
 Refusals: `403` (not allowed or banned; banned answers carry `Retry-After`), `429`
 (rate limit, `Retry-After`), `503` (server full).
 
-UNCERTAIN: no CORS headers are sent. The endpoints work for a web app served from the same
-address. A web app on another origin (for example a page that talks to a public server)
-would be blocked by the browser; whether and how to allow that is not decided.
+By default no CORS headers are sent: the endpoints work for a web app served from the same address.
+A web app on another origin needs `allowed_origins`, next section.
+
+### Web app on another origin
+
+The web app is plain static files. It can be served from any static host (GitHub Pages at
+`https://cometcast.de/app/`, nginx, a school web server) while the relay runs elsewhere (for example
+`relay.cometcast.de`, or your own Docker container). The Docker image still bundles the web app for a
+one-container setup; there the page and the relay share one origin and nothing below is needed.
+How the web app picks its relay: [apps/web/README.md](../apps/web/README.md#static-hosting-and-relay-selection).
+
+`allowed_origins` (config file, `COMETCAST_ALLOWED_ORIGINS=https://cometcast.de,http://localhost:5173`,
+or `--allowed-origins`) lists the web origins that may use the relay:
+
+| Topic | Behaviour |
+| --- | --- |
+| Entries | `scheme://host[:port]`, `http` or `https`, **exact match** (scheme, host, port; case-insensitive; a default port such as `:443` is the same origin as none). No path, no trailing slash, no `*.` wildcard. A bad entry stops the server at start (exit 2). |
+| Default (empty list) | No CORS headers at all (same-origin use only, as before); `/ws` accepts any `Origin`. |
+| Which endpoints | CORS only on `/ice-servers`, `/altcha/challenge` and `/healthz` (the calls a browser makes cross-origin). Never on static files. `/ws` is not subject to CORS in browsers, so it gets the `Origin` check below instead. |
+| Allowed origin | `Access-Control-Allow-Origin: <that origin>` (the origin is echoed, never `*`) and `Vary: Origin`; also on refusals (`429`, `403`, `404`) so the page can read the status and show the right message. |
+| Other origin | No `Access-Control-Allow-Origin`, so the browser blocks reading the answer. The `GET` itself is still processed (the server cannot tell such a page from `curl`); `Vary: Origin` is set. |
+| Preflight | `OPTIONS` with `Origin` and `Access-Control-Request-Method` on those paths: allowed origin -> `204` with `Allow-Methods: GET, HEAD, OPTIONS`, the requested plain header names echoed back, `Max-Age: 600`; other origin -> `403` without CORS headers. The web app's own requests are simple `GET`s and need no preflight. |
+| Credentials | Never: `Access-Control-Allow-Credentials` is not sent, and the web app sends no cookies. |
+| `/ws` | With a non-empty list, an upgrade whose `Origin` header is not listed (also `null`) gets `403` before the handshake. **No `Origin` header (native clients, curl, the CLI) is always accepted.** |
+| `*` | Means any origin (`Access-Control-Allow-Origin: *`, `/ws` accepts everything). Accepted in **internal** mode only (a LAN relay); **refused in open mode** with a start error, because a public relay should name the web apps it serves. |
+| The relay's own origin | If the relay also serves the web app (`web_dir`) **and** a list is set, put the relay's own origin in the list too, otherwise its own page is refused on `/ws`. Same-origin is deliberately not detected from the `Host` header: an attacker can point their own domain at your relay and make `Host` equal `Origin`. |
+
+Trade-off for the default (empty list). It keeps today's behaviour and a LAN relay needs no setup, but any web
+site can then make a visitor's browser open a WebSocket to your relay and use up that visitor's address quotas
+(rate limits, room limits, bans are per client address), or try room codes from it. **Recommendation: on a
+public (open) relay always set `allowed_origins`** (for example `["https://cometcast.de"]`). `Origin` is a browser
+header: it protects visitors' browsers from being used by other sites; it is **not authentication** (any
+non-browser client can send any `Origin`), and ALTCHA plus the rate limits remain the protection against abuse.
+
+Checked: unit and integration tests in `crates/cc-server` (headers, preflight, refused origin, `/ws` accept and
+reject, wildcard rules, config sources) and a browser test with the web app on a second static origin
+(`apps/web/e2e/static-origin.spec.mjs`, Chrome). UNCERTAIN: a real GitHub Pages site, a real
+`relay.cometcast.de`, behaviour behind a CDN or a reverse proxy that rewrites `Origin` or adds its own CORS
+headers (do not add CORS headers in the proxy as well).
 
 ## TLS (HTTPS and WSS)
 
@@ -478,7 +515,7 @@ is not passed (UNCERTAIN: `build.secrets` in the compose file was not tried), so
 `docker build` first and run `docker compose up -d` without `--build`.
 
 The image does **not** contain the WASM PDF renderer, so the web app served from it cannot show PDFs
-([web README](../apps/web/README.md)).
+([web README](../apps/web/README.md)). The bundled web app uses its own relay (same origin). If you set `allowed_origins` in the image's config, include the origin your users open (the relay's own address), see [Web app on another origin](#web-app-on-another-origin).
 
 ### Where these files may live later
 
@@ -619,7 +656,7 @@ health command were run; the server image was not rebuilt).
   load, and what source address the server sees for remote clients behind Docker port publishing.
 - ACME (`instant-acme`) is out of scope; certificate reload without restart is not built.
 - A metrics endpoint (for example the number of untracked failures); sharing bans between several server instances;
-- ALTCHA for joining; CORS for other origins (the web app works on the server's own origin only).
+- ALTCHA for joining.
 - Image and file storage on internal servers, the SFU, authentication, a ban list that survives
   restarts or is editable at run time (the plan mentions run-time block lists), bandwidth limits.
 - Limits per IPv6 /64 and per IPv4 use the same quota; the plan's separate global limiter per

@@ -70,6 +70,7 @@ cometcast-server [options]
   --mode <open|internal> operating mode (default internal)
   --listen <addr:port>   address to listen on (default 127.0.0.1:8443)
   --web-dir <path>       serve this directory (the web app) from the same address
+  --allowed-origins <a,b> web origins that may use this relay from another site (CORS + /ws check)
   --tls-cert <file>      certificate chain (PEM); use with --tls-key to serve HTTPS
   --tls-key <file>       private key (PEM)
   --tls-self-signed      DEVELOPMENT ONLY: make a throw-away self-signed certificate
@@ -94,6 +95,7 @@ options. Unknown keys in the file are errors. The file and every key in it are o
 | `COMETCAST_LISTEN` | Same as `listen` |
 | `COMETCAST_MODE` | Same as `mode` |
 | `COMETCAST_WEB_DIR` | Same as `web_dir` |
+| `COMETCAST_ALLOWED_ORIGINS` | Same as `allowed_origins` (comma-separated) |
 | `COMETCAST__SECTION__KEY` | Any setting; double underscore is a dot, e.g. `COMETCAST__LIMITS__MAX_ROOMS=500` sets `limits.max_rooms` |
 
 Values given outside the file are read as TOML where possible (numbers, `true`, arrays such as
@@ -118,6 +120,7 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `mode` | `internal` | | `open` or `internal` |
 | `listen` | `127.0.0.1:8443` | | Address and port |
 | `web_dir` | not set | | Serve the web app from this directory |
+| `allowed_origins` | `[]` | | Exact web origins (`https://host[:port]`) that may use this relay from another site: CORS on `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`; empty = same-origin only and any `/ws` origin; `*` internal mode only. [Details](../../docs/server.md#web-app-on-another-origin) |
 | `idle_room_secs` | 1800 | | A room without a sender is removed after this |
 | `hello_secs` | 5 | | A connection must say hello within this |
 | `no_room_secs` | 60 | | A connection must be in a room within this |
@@ -194,7 +197,8 @@ Whether the public relay needs a different arrangement is not decided (see
 
 Refusals: `403` (not allowed or banned, with `Retry-After` when banned), `429` (rate limit),
 `503` (server full), `400` (broken `X-Forwarded-For` from a trusted proxy). No CORS headers are
-sent (UNCERTAIN: a web app on another origin would be blocked by the browser; this may change).
+sent unless `allowed_origins` is set (then only for the listed origins, see
+[docs/server.md](../../docs/server.md#web-app-on-another-origin)).
 
 ## ALTCHA
 
@@ -266,8 +270,8 @@ renewal (no reload yet).
 
 Two real devices relaying through coturn (also in one private network), NAT, TURN over TLS (5349),
 IPv6 peers, other coturn versions than 4.18.0, arm64, a real certificate and renewal, load, what
-source address the server sees for remote clients behind Docker port publishing, CORS for other
-origins, `docker stop` with live clients timed, and all limit values. The relay host
+source address the server sees for remote clients behind Docker port publishing, CORS behind a CDN or
+rewriting proxy and with a real GitHub Pages origin, `docker stop` with live clients timed, and all limit values. The relay host
 `relay.cometcast.de` does not exist yet.
 
 ## Licence

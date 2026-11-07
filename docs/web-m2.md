@@ -227,6 +227,7 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
   only, a server that never answers gives the network notice after the 20 s timeout, the local-address warning,
   HLS and plain links. Needs `ffmpeg` for the `.webm`; Chrome (Google Chrome
   on Linux) only.
+- Static hosting: `tests/relay.test.ts`, `tests/relayField.test.ts` (relay validation, `config.json`, precedence `?server=` > config > build default > same origin, the relay field) and `npm run e2e:static` (app built with `VITE_BASE=/app/` on a second static origin, relays on other ports; `?server=`, `config.json`, ALTCHA across origins, a non-allowed origin rejected). Details: [apps/web/README.md](../apps/web/README.md#static-hosting-and-relay-selection), server side: [server.md](server.md#web-app-on-another-origin).
 - End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): image arrives
   (`naturalWidth > 0`), link card appears and nothing opens until the click, pen changes canvas pixels,
   freeze keeps the frame while the video's `currentTime` keeps advancing.

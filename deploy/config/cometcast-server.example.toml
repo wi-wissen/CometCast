@@ -6,6 +6,12 @@
 # UNCERTAIN: all numbers are untested placeholders. Host names are examples.
 
 mode = "internal"
+# Web origins whose pages may use this relay from another site (the web app hosted as static
+# files, e.g. GitHub Pages). Exact match, no path, no wildcard. Empty/unset = same-origin only
+# for the HTTP endpoints and any browser origin on /ws. When set, /ws refuses other browser
+# origins: list the origin your users open, including this relay's own address if it serves the
+# web app too. Public (open) relays should always set this. "*" = any origin, internal mode only.
+# allowed_origins = ["https://cometcast.de"]
 # In a container the listen address comes from COMETCAST_LISTEN (see the Dockerfile).
 
 [tls]

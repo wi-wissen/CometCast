@@ -52,8 +52,14 @@ from [architecture.md](architecture.md); update both together.
   it means adding the built files into the uploaded artifact (and the link checker's `ALLOWED_MISSING` entry for `/app/` can then go).
 - **The relay server** (`cometcast-server`, Docker image, self-hosted or run by the project at `relay.cometcast.de`) is the only thing that
   needs a running process: it does signalling. A web app on `cometcast.de` talks to it **cross-origin over `wss://`**. Cross-origin means the
-  server's `/altcha/challenge` and `/ice-servers` calls need CORS, which the server does not send today (see
-  [server.md](server.md#http-endpoints)). A configurable CORS allow-list and a default relay for the web app are separate work and not part of this change.
+  server's `/altcha/challenge` and `/ice-servers` calls need CORS: the relay has a configurable `allowed_origins` list
+  (set `["https://cometcast.de"]`; also an `Origin` check on `/ws`, see [server.md](server.md#web-app-on-another-origin)).
+  The web app picks its relay by `?server=`, then an optional `config.json` next to `index.html`, then the build-time
+  `VITE_DEFAULT_RELAY`, then its own origin ([apps/web/README.md](../apps/web/README.md#static-hosting-and-relay-selection)).
+  For `https://cometcast.de/app/` build with `VITE_BASE=/app/ VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws` (or ship a
+  `config.json`, example: [deploy/config/web-app-config.example.json](../deploy/config/web-app-config.example.json)).
+  Checked locally with the app on a second static origin (`npm run e2e:static`); **UNCERTAIN: real GitHub Pages
+  (project path `/app/`, 404 handling for the optional `config.json`) and real DNS were not tried.**
 - The **Docker image still bundles the web app**, so a self-hoster can run one container (same origin, no internet needed) and does not use Pages.
 
 Relay host operations: [deploy/README.md](../deploy/README.md) and the separate repository

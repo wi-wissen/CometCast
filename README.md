@@ -48,7 +48,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | `bins/` | Binaries: `cometcast-server`, `cometcast-cli` | yes |
 | `apps/flutter` | Flutter app for desktop, mobile and Android TV / Google TV | yes |
 | `apps/apple-tv` | Native SwiftUI receiver for Apple TV | yes |
-| `apps/web` | Web app (Vue 3, TypeScript, Vite). PDF pages are rendered by `crates/cc-docs-wasm` (hayro as WASM, built separately with `npm run build:wasm`); the rest of the Rust core is not used in the browser yet | yes |
+| `apps/web` | Web app (Vue 3, TypeScript, Vite), plain static files that can be hosted anywhere (GitHub Pages, any web server) and talk to a relay chosen by `?server=`, `config.json`, a build-time default or the page's own origin ([apps/web/README.md](apps/web/README.md#static-hosting-and-relay-selection)); the relay server's Docker image still bundles it. PDF pages are rendered by `crates/cc-docs-wasm` (hayro as WASM, built separately with `npm run build:wasm`); the rest of the Rust core is not used in the browser yet | yes |
 | `assets/` | Logo and other assets | yes |
 | `docs/` | Documentation, see [docs/README.md](docs/README.md) | yes |
 | `deploy/` | Docker, Compose and coturn files for the server, see [deploy/README.md](deploy/README.md) | yes |

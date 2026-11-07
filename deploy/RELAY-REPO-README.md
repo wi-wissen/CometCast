@@ -28,8 +28,8 @@ The server has two modes. In **open** mode ALTCHA is always on and the server **
 `open` and also lists coturn ports; those two do not fit together as the server is built today. Choose:
 (a) public relay in `open` mode without TURN (direct connections and the own-Wi-Fi fallback only), or (b) a different arrangement for
 TURN on the public host (not designed). Also note the main repository's example config uses `8443`; the SETUP text says `443`
-(use a reverse proxy on 443 or change `listen`). Also, the web app on `cometcast.de` calls the relay cross-origin, which needs the
-server's CORS allow-list (separate work, not done).
+(use a reverse proxy on 443 or change `listen`). Also, the web app on `cometcast.de` calls the relay cross-origin: set `allowed_origins = ["https://cometcast.de"]`
+(CORS for `/ice-servers` and `/altcha/challenge`, and an `Origin` check on `/ws`; see `docs/server.md`, "Web app on another origin").
 
 ## Status
 

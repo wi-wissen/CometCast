@@ -5,7 +5,7 @@
 | [measurement-points.md](measurement-points.md) | The 17 beta assumptions, the ten measurement points and the measurement spikes. Most important page: it says what is unverified |
 | [architecture.md](architecture.md) | Layers, Rust core crates, platform apps, server, route ladder, decisions, milestones |
 | [protocol.md](protocol.md) | The signalling protocol between sender, receiver and server |
-| [server.md](server.md) | Operating `cometcast-server`: configuration, open and internal mode, TLS, limits, ALTCHA, TURN, deployment |
+| [server.md](server.md) | Operating `cometcast-server`: configuration, open and internal mode, TLS, limits, ALTCHA, TURN, deployment, `allowed_origins` for a web app on another origin |
 | [../bins/cometcast-server/README.md](../bins/cometcast-server/README.md) | Server README: quick start, settings table, modes, hardening checklist, troubleshooting |
 | [../deploy/README.md](../deploy/README.md) | Deployment guide: Docker Compose, reverse proxy (Caddy, nginx), TLS, coturn, firewall, upgrade |
 | [website.md](website.md) | The static website (cometcast.de): layout, GitHub Pages setup the owner does once, DNS, web app and relay hosting |
