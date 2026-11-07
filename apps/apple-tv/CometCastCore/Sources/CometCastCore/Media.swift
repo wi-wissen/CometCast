@@ -30,7 +30,7 @@ public func isPlayableOnTvOS(_ url: String) -> Bool {
     return ["mp4", "m4a", "mp3", "wav", "m3u8"].contains(String(last[last.index(after: dot)...]).lowercased())
 }
 
-public enum MediaErrorCode: String, Equatable, Sendable { case aborted, network, decode, unsupported, blocked }
+public enum MediaErrorCode: String, Equatable, Sendable, CaseIterable { case aborted, network, decode, unsupported, blocked }
 
 public enum PlayerState: Equatable, Sendable {
     case card, loading, playing

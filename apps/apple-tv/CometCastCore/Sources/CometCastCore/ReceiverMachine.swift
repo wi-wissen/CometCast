@@ -10,7 +10,7 @@
 
 import Foundation
 
-public enum ReceiverPhase: String, Equatable, Sendable {
+public enum ReceiverPhase: String, Equatable, Sendable, CaseIterable {
     case idle, connecting, checking
     case waitingSender = "waiting_sender"
     case negotiating, receiving

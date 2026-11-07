@@ -75,6 +75,8 @@ public let knownErrorCodes: [String] = [
     "bad_hello", "proto_mismatch", "wrong_role", "room_not_found", "room_full", "not_in_room", "bad_message",
     "altcha_required", "altcha_invalid", "rate_limited", "banned", "forbidden", "server_full", "altcha_failed",
     "altcha_too_hard", "altcha_expired", "connection_lost", "peer_failed",
+    // Apple TV only
+    "no_server", "local_network_denied",
 ]
 
 /// Translation key of the message for an error code (`errors.<code>`, else `errors.unknown`).

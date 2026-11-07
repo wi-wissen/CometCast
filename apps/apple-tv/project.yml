@@ -1,22 +1,80 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # XcodeGen spec: `xcodegen generate` creates CometCastTV.xcodeproj from this file.
-# UNCERTAIN: written without XcodeGen/Xcode; key names follow the XcodeGen docs
-# from memory. A Package.swift is not used because an executable tvOS app
-# needs an Xcode app target.
+# UNCERTAIN: written without XcodeGen or Xcode; key names follow the XcodeGen documentation from memory and the
+# generated project was never opened. The workflow .github/workflows/release.yml (job tvos) builds the scheme
+# `CometCastTV` of the project `CometCastTV.xcodeproj` and reads the first PRODUCT_BUNDLE_IDENTIFIER below.
+# tools/set-version.mjs rewrites the first MARKETING_VERSION and CURRENT_PROJECT_VERSION lines (keep them once,
+# in the top level `settings`).
 name: CometCastTV
 options:
   bundleIdPrefix: de.cometcast
   deploymentTarget:
     tvOS: "17.0"
+
+packages:
+  # The platform independent logic, tested on Linux (CometCastCore/Package.swift).
+  CometCastCore:
+    path: CometCastCore
+  # WebRTC for tvOS: LiveKit's xcframework build of Google's WebRTC (M150), the only prebuilt Swift package found
+  # with tvOS slices (tvos-arm64, tvos-arm64-simulator; stasel/WebRTC has none). Pinned by commit: the commit's
+  # Package.swift names the zip and its SHA-256 (b24d7df29733079038931698102fbb39cbc11b014e4352beb0d4f55a01c3c37e,
+  # also computed independently on 2026-11-07). The commit is the tag 150.7871.05. Licence: see docs/appletv.md.
+  LiveKitWebRTC:
+    url: https://github.com/livekit/webrtc-xcframework.git
+    revision: 7d963f6fae5921cc8e594a5fef42db2bd2ea8563
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "3"
+
 targets:
   CometCastTV:
     type: application
     platform: tvOS
     sources:
-      - Sources/CometCastTV
+      - path: Sources/CometCastTV
+      - path: Assets.xcassets
+    dependencies:
+      - package: CometCastCore
+      - package: LiveKitWebRTC
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.cometcast.tv
-        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
+        # The relay used when nothing else is configured (empty: the built-in list). Same role as VITE_DEFAULT_RELAY.
+        CC_DEFAULT_RELAY: ""
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+
+  # XCTest bundle with the tests of CometCastCore (the same sources `swift test` runs in CometCastCore/Tests).
+  # They read tests/fixtures through #filePath: this works in the simulator, not on a device (UNCERTAIN).
+  CometCastTVTests:
+    type: bundle.unit-test
+    platform: tvOS
+    sources:
+      - path: CometCastCore/Tests/CometCastCoreTests
+    dependencies:
+      - package: CometCastCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.cometcast.tv.tests
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+
+schemes:
+  CometCastTV:
+    build:
+      targets:
+        CometCastTV: all
+        CometCastTVTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CometCastTVTests
+    archive:
+      config: Release

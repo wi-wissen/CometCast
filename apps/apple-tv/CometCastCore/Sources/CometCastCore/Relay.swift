@@ -6,7 +6,7 @@
 
 import Foundation
 
-public enum RelaySource: String, Equatable, Sendable {
+public enum RelaySource: String, Equatable, Sendable, CaseIterable {
     /// Set by an administrator (managed app configuration / MDM).
     case mdm
     /// DNS-SRV `_cometcast._tcp`.
@@ -35,7 +35,7 @@ public struct Relay: Equatable, Sendable {
     }
 }
 
-public enum RelayErrorCode: String, Equatable, Sendable { case empty, invalid, insecure, credentials, path }
+public enum RelayErrorCode: String, Equatable, Sendable, CaseIterable { case empty, invalid, insecure, credentials, path }
 
 public enum ParsedRelay: Equatable, Sendable {
     case ok(wsUrl: String, httpBase: String, host: String, insecure: Bool)

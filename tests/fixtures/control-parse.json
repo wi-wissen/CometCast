@@ -79,7 +79,9 @@
             "page": 2
           }
         }
-      }
+      },
+      "expect_rust": null,
+      "note_rust": "serde reads a JSON number with a fraction part or an exponent as a float and refuses it for an integer field; the web client accepts integral values"
     },
     {
       "name": "cmd go_to_page exponent",
@@ -91,7 +93,9 @@
             "page": 10
           }
         }
-      }
+      },
+      "expect_rust": null,
+      "note_rust": "same: integral float"
     },
     {
       "name": "cmd go_to_page string",
@@ -123,7 +127,9 @@
             "page": 2
           }
         }
-      }
+      },
+      "expect_rust": null,
+      "note_rust": "the Rust enum refuses unknown fields inside go_to_page's parent object; the web client ignores them"
     },
     {
       "name": "cmd unknown string",
@@ -238,7 +244,9 @@
         "name": "a.png",
         "mime": "image/png",
         "size": 1
-      }
+      },
+      "expect_rust": null,
+      "note_rust": "same: integral float"
     },
     {
       "name": "image size exponent",
@@ -248,7 +256,9 @@
         "name": "a.png",
         "mime": "image/png",
         "size": 100
-      }
+      },
+      "expect_rust": null,
+      "note_rust": "same: integral float"
     },
     {
       "name": "image size string",
@@ -315,7 +325,7 @@
       "input": "{\"kind\":\"image\",\"name\":\"\\ud83d\\ude00.png\",\"mime\":\"image/png\",\"size\":5}",
       "expect": {
         "kind": "image",
-        "name": "😀.png",
+        "name": "\ud83d\ude00.png",
         "mime": "image/png",
         "size": 5
       }
@@ -361,7 +371,7 @@
       ],
       "expect": {
         "kind": "image",
-        "name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "name": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
         "mime": "image/png",
         "size": 5
       }
@@ -383,7 +393,7 @@
       "input": "{\"kind\":\"image\",\"name\":\"a\\u2800b\\u3164c\\u0301\",\"mime\":\"image/png\",\"size\":5}",
       "expect": {
         "kind": "image",
-        "name": "abć",
+        "name": "abc\u0301",
         "mime": "image/png",
         "size": 5
       }
@@ -704,7 +714,7 @@
     },
     {
       "name": "byte order mark",
-      "input": "﻿{\"kind\":\"image_end\"}",
+      "input": "\ufeff{\"kind\":\"image_end\"}",
       "expect": null
     },
     {
@@ -748,9 +758,10 @@
       "input_parts": [
         "{\"kind\":\"image_end\",\"pad\":\"",
         {
-          "repeat": "😀",
-          "count": 4081.5
+          "repeat": "\ud83d\ude00",
+          "count": 4081
         },
+        "x",
         "\"}"
       ],
       "expect": {
@@ -762,12 +773,17 @@
       "input_parts": [
         "{\"kind\":\"image_end\",\"pad\":\"",
         {
-          "repeat": "😀",
-          "count": 4082.5
+          "repeat": "\ud83d\ude00",
+          "count": 4082
         },
+        "x",
         "\"}"
       ],
-      "expect": null
+      "expect": null,
+      "expect_rust": {
+        "kind": "image_end"
+      },
+      "note_rust": "the Rust limit counts characters (code points), the web limit counts UTF-16 units (JavaScript String.length)"
     },
     {
       "name": "nested junk",

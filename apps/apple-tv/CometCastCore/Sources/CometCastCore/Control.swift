@@ -59,7 +59,7 @@ public enum ControlMessage: Equatable, Sendable {
     }
 }
 
-public enum TransferErrorCode: String, Equatable, Sendable {
+public enum TransferErrorCode: String, Equatable, Sendable, CaseIterable {
     case unexpectedChunk = "unexpected_chunk"
     case tooLarge = "too_large"
     case sizeMismatch = "size_mismatch"

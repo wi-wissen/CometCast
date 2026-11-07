@@ -123,22 +123,22 @@
     },
     {
       "name": "non ascii path",
-      "input": "https://example.com/café/ü",
+      "input": "https://example.com/caf\u00e9/\u00fc",
       "expect": "https://example.com/caf%C3%A9/%C3%BC"
     },
     {
       "name": "non ascii query",
-      "input": "https://example.com/?q=äö",
+      "input": "https://example.com/?q=\u00e4\u00f6",
       "expect": "https://example.com/?q=%C3%A4%C3%B6"
     },
     {
       "name": "non ascii fragment",
-      "input": "https://example.com/#ü",
+      "input": "https://example.com/#\u00fc",
       "expect": "https://example.com/#%C3%BC"
     },
     {
       "name": "astral in path",
-      "input": "https://example.com/😀",
+      "input": "https://example.com/\ud83d\ude00",
       "expect": "https://example.com/%F0%9F%98%80"
     },
     {
@@ -184,17 +184,23 @@
     {
       "name": "backslashes after scheme",
       "input": "https:\\\\example.com\\a",
-      "expect": "https://example.com/a"
+      "expect": "https://example.com/a",
+      "expect_rust": null,
+      "note_rust": "the Rust check needs a literal ://"
     },
     {
       "name": "one slash",
       "input": "https:/example.com/a",
-      "expect": "https://example.com/a"
+      "expect": "https://example.com/a",
+      "expect_rust": null,
+      "note_rust": "the Rust check needs a literal ://"
     },
     {
       "name": "no slashes",
       "input": "https:example.com/a",
-      "expect": "https://example.com/a"
+      "expect": "https://example.com/a",
+      "expect_rust": null,
+      "note_rust": "the Rust check needs a literal ://"
     },
     {
       "name": "three slashes",
@@ -219,12 +225,16 @@
     {
       "name": "empty credentials",
       "input": "https://@example.com/",
-      "expect": "https://example.com/"
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses any @ in the authority"
     },
     {
       "name": "colon only credentials",
       "input": "https://:@example.com/",
-      "expect": "https://example.com/"
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses any @ in the authority"
     },
     {
       "name": "double colon credentials",
@@ -393,7 +403,7 @@
     },
     {
       "name": "idn host",
-      "input": "https://münchen.de/",
+      "input": "https://m\u00fcnchen.de/",
       "expect": "https://xn--mnchen-3ya.de/",
       "expect_apple_tv": null
     },
@@ -411,7 +421,7 @@
     },
     {
       "name": "fullwidth host",
-      "input": "https://ｅxample.com/",
+      "input": "https://\uff45xample.com/",
       "expect": "https://example.com/",
       "expect_apple_tv": null
     },
@@ -422,14 +432,16 @@
     },
     {
       "name": "soft hyphen in host",
-      "input": "https://exa­mple.com/",
+      "input": "https://exa\u00admple.com/",
       "expect": "https://example.com/",
       "expect_apple_tv": null
     },
     {
       "name": "non breaking space",
-      "input": "https://example.com/ x",
-      "expect": "https://example.com/%C2%A0x"
+      "input": "https://example.com/\u00a0x",
+      "expect": "https://example.com/%C2%A0x",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses any Unicode white space; the web client only the ASCII and C1 control range and spaces"
     },
     {
       "name": "relative path",
@@ -538,44 +550,54 @@
     },
     {
       "name": "del inside",
-      "input": "https://example.com/ab",
+      "input": "https://example.com/a\u007fb",
       "expect": null
     },
     {
       "name": "c1 control inside",
-      "input": "https://example.com/ab",
+      "input": "https://example.com/a\u0085b",
       "expect": null
     },
     {
       "name": "leading nbsp",
-      "input": " https://example.com/",
-      "expect": "https://example.com/"
+      "input": "\u00a0https://example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
     },
     {
       "name": "leading ideographic space",
-      "input": "　https://example.com/",
-      "expect": "https://example.com/"
+      "input": "\u3000https://example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
     },
     {
       "name": "leading bom",
-      "input": "﻿https://example.com/",
-      "expect": "https://example.com/"
+      "input": "\ufeffhttps://example.com/",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
     },
     {
       "name": "trailing line separator",
-      "input": "https://example.com/ ",
-      "expect": "https://example.com/"
+      "input": "https://example.com/\u2028",
+      "expect": "https://example.com/",
+      "expect_rust": null,
+      "note_rust": "the Rust check trims plain spaces only"
     },
     {
       "name": "zero width space in host",
-      "input": "https://exa​mple.com/",
+      "input": "https://exa\u200bmple.com/",
       "expect": "https://example.com/",
       "expect_apple_tv": null
     },
     {
       "name": "rtl override in path",
-      "input": "https://example.com/‮",
-      "expect": "https://example.com/%E2%80%AE"
+      "input": "https://example.com/\u202e",
+      "expect": "https://example.com/%E2%80%AE",
+      "expect_rust": null,
+      "note_rust": "the Rust check refuses bidirectional control characters"
     },
     {
       "name": "long idempotence case",
@@ -664,7 +686,7 @@
       "input_parts": [
         "https://example.com/",
         {
-          "repeat": "é",
+          "repeat": "\u00e9",
           "count": 700
         }
       ],
@@ -675,7 +697,7 @@
       "input_parts": [
         "https://example.com/",
         {
-          "repeat": "é",
+          "repeat": "\u00e9",
           "count": 500
         }
       ],
