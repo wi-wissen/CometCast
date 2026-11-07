@@ -14,10 +14,10 @@ import { isArmed } from '../core/joinGuard'
 import DocumentView from './DocumentView.vue'
 import Icon from './Icon.vue'
 import MediaPlayer from './MediaPlayer.vue'
-import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, isMixedContent, playerReduce, shortHost, urlHostIsLocalOrIp, type MediaErrorCode, type PlayerEvent } from '../core/media'
+import { canPlayHlsNatively, classifyMediaUrl, initialPlayer, isMixedContent, playerReduce, urlHostIsLocalOrIp, type MediaErrorCode, type PlayerEvent } from '../core/media'
 
 const props = defineProps<{ content: ReceivedContent | null; renderPage: (page: number, width: number) => Promise<PageBitmap> }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; ready: [id: number] }>()
 const { t } = useI18n()
 const openBtn = ref<HTMLAnchorElement | null>(null)
 const card = ref<HTMLElement | null>(null)
@@ -126,7 +126,7 @@ function trapTab(e: KeyboardEvent) {
 <template>
   <!-- Image and PDF page sit below the annotation layer (z-10 < layer z-20); the link card is a reference-px dialog above it. -->
   <template v-if="content">
-    <DocumentView v-if="content.kind === 'document'" :content="content" :render="renderPage" />
+    <DocumentView v-if="content.kind === 'document'" :content="content" :render="renderPage" @ready="emit('ready', $event)" />
     <div v-else-if="content.kind === 'image'" class="absolute inset-0 z-10 bg-black">
       <img
         :src="content.url"
@@ -135,7 +135,7 @@ function trapTab(e: KeyboardEvent) {
         class="h-full w-full object-contain"
       />
     </div>
-    <div v-else-if="content.kind === 'link'" class="cd-hud" style="z-index: 26">
+    <div v-else-if="content.kind === 'link'" class="cd-hud" style="z-index: 28">
       <div class="cd-modal" data-testid="link-modal" @keydown="onKey">
         <div
           ref="card"
@@ -181,7 +181,7 @@ function trapTab(e: KeyboardEvent) {
                 :title="content.host"
                 @click="guarded(() => dispatch({ type: 'play' }))()"
               >
-                {{ mediaError ? t('receive.media.retry') : t('receive.media.play', { host: shortHost(content.host) }) }}
+                {{ mediaError ? t('receive.media.retry') : t('receive.media.play') }}
               </button>
               <a
                 ref="openBtn"

@@ -237,10 +237,12 @@ try {
   const badge = await receiver.getByTestId('frozen-badge').boundingBox()
   assert.ok(Math.abs(badge.x - (vpW - 960 * scale) / 2 - 12 * scale) < 2 && Math.abs(badge.y - canvasTop - 12 * scale) < 2, 'frozen badge top left of the canvas')
   await reveal()
+  // While the toolbar is visible the badge steps aside (decision 13.65)
+  await waitFor(async () => (await receiver.getByTestId('frozen-badge').evaluate((e) => getComputedStyle(e).opacity)) === '0', 'frozen badge hidden while the toolbar is shown', 3000)
   await receiver.getByTestId('tb-freeze').click()
   assert.equal(await stage.getAttribute('data-frozen'), 'false')
 
-  // Black screen: the hint is 15 reference px --mut on black, drawn at rest too
+  // Black screen: the hint is 15 reference px --onblack (#A1A9BA, every theme) on black, drawn at rest too
   await reveal()
   await receiver.getByTestId('tb-black').click()
   await receiver.getByTestId('black-screen').waitFor()
@@ -251,7 +253,7 @@ try {
     return [s.fontSize, s.color]
   })
   assert.equal(parseFloat(hint[0]), 15 * scale)
-  assert.equal(hint[1], 'rgb(185, 194, 216)')
+  assert.equal(hint[1], 'rgb(161, 169, 186)')
   await reveal()
   await receiver.getByTestId('tb-black').click()
   await receiver.getByTestId('black-screen').waitFor({ state: 'detached' })

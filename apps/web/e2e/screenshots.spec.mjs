@@ -3,7 +3,7 @@
 // Writes a PNG of every state of the display and of the presenter pages, for Dark / Light / OLED black
 // (display) and light / dark (presenter), at 1280 x 720 and at a phone viewport (390 x 844). It checks
 // (almost) nothing; it exists so that a designer can compare the pages with the spec. Every display shot is taken
-// after one arrow key press, so that the focus ring shows where a control has focus (a click hides it by design);
+// after one Shift key press (an arrow only where a moved focus is the point), so that the focus ring shows where a control has focus (a click hides it by design);
 // the exceptions are the states that exist only while nothing was touched (presenting at rest, dimmed idle).
 // Needs the PDF renderer: npm run build:wasm && npm run build
 // Run: E2E_CHROME=/usr/bin/google-chrome E2E_SHOTS=/tmp/shots3 npm run e2e:shots
@@ -35,9 +35,10 @@ const server = async (opts) => {
   return s
 }
 const shot = (page, name) => page.screenshot({ path: join(out, `${name}.png`) })
-// A display shot: after one arrow key press (the first key press shows the focus ring again).
-const dshot = async (page, name) => {
-  await page.keyboard.press('ArrowRight')
+// A display shot: after one key press (the first key press, a modifier alone included, shows the focus ring again).
+// Shift shows the ring and moves nothing; an arrow only where a moved focus is the point.
+const dshot = async (page, name, key = 'Shift') => {
+  await page.keyboard.press(key)
   await page.waitForTimeout(250)
   await shot(page, name)
 }
@@ -64,12 +65,21 @@ const DISPLAY_SEAMS = () => {
   const W = window.Worker
   window.Worker = class extends W {
     postMessage(m, t) {
+      if (window.__holdRender && m && m.type === 'render') {
+        ;(window.__held ||= []).push([this, m, t])
+        return
+      }
       if (window.__failRender && m && m.type === 'render') {
         queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: { type: 'error', id: m.id, code: 'bad_size' } })))
         return
       }
       super.postMessage(m, t)
     }
+  }
+  window.__releaseRender = () => {
+    window.__holdRender = false
+    for (const [w, m, t] of window.__held || []) W.prototype.postMessage.call(w, m, t)
+    window.__held = []
   }
   const PC = window.RTCPeerConnection
   window.RTCPeerConnection = class extends PC {
@@ -120,7 +130,7 @@ try {
         await shot(d, `${tag}-focus-setup-name-field`)
         await d.getByTestId('wz-room').fill('X')
         await d.getByTestId('wz-room').fill('')
-        await dshot(d, `${tag}-setup-1-name-emptied`)
+        await dshot(d, `${tag}-setup-1-name-emptied`, 'ArrowRight')
         await d.getByTestId('wz-next').click()
         await dshot(d, `${tag}-setup-2-mode`)
         await d.getByTestId('wz-next').click()
@@ -199,9 +209,13 @@ try {
       await d.keyboard.press('ArrowRight')
       await d.waitForTimeout(250)
       await shot(d, `${tag}-toast-with-toolbar`)
-      // freeze and black screen
+      // freeze and black screen (the toast of the failed transfer belongs to the shot above: it has to be gone first)
+      await d.getByTestId('toast').waitFor({ state: 'detached', timeout: 6000 })
       await d.getByTestId('tb-freeze').click()
-      await dshot(d, `${tag}-frozen`)
+      await dshot(d, `${tag}-frozen`) // controls shown: no badge, a selected Freeze button
+      await d.waitForTimeout(6500)
+      await shot(d, `${tag}-frozen-rest`) // no input for 6 s: the badge alone, top left
+      await d.keyboard.press('Shift') // the controls are hidden again after 6 s
       await d.getByTestId('tb-freeze').click()
       await d.getByTestId('tb-black').click()
       await dshot(d, `${tag}-black`)
@@ -209,7 +223,12 @@ try {
       // a PDF: pages on black, a page that cannot be drawn
       await p2.getByTestId('presenting-stop').click()
       await p2.getByTestId('what-file').click()
+      // the opening line is the transfer pill until the first page is drawn (the worker is held for the shot)
+      await d.evaluate(() => (window.__holdRender = true))
       await p2.getByTestId('file-input').setInputFiles({ name: 'slides.pdf', mimeType: 'application/pdf', buffer: makePdf() })
+      await d.locator('[data-testid=transfer]', { hasText: 'slides.pdf' }).waitFor({ timeout: 20000 })
+      await dshot(d, `${tag}-pdf-opening`)
+      await d.evaluate(() => window.__releaseRender())
       await d.getByTestId('document-canvas').waitFor({ timeout: 20000 })
       await d.waitForFunction(() => document.querySelector('[data-testid=document-canvas]')?.dataset.busy === 'false')
       await dshot(d, `${tag}-presenting-pdf`)
@@ -229,6 +248,9 @@ try {
       }
       await sendLink('https://example.org/a/path?with=query')
       await dshot(d, `${tag}-linkcard`)
+      // the dialog covers the controls: name tag and End are dimmed and a click on End does nothing
+      await d.getByTestId('end').click({ force: true, trial: false, timeout: 1500 }).catch(() => undefined)
+      assert.ok(await d.getByTestId('link-card').isVisible(), 'a click on End while the link card is open must do nothing')
       const addrColors = await d.getByTestId('link-url').evaluate((e) => [getComputedStyle(e).color, getComputedStyle(e.closest('.cd')).getPropertyValue('--mut').trim()])
       console.log(`${tag}: link address colour ${addrColors[0]}, --mut ${addrColors[1]}`)
       await d.getByTestId('link-dismiss').click()
@@ -250,6 +272,32 @@ try {
         await dr.waitForTimeout(200)
         await dshot(dr, `${tag}-relay-confirm`)
         await c4.close()
+      }
+      // a long file name and the longest sender name: pill, name tag and End side by side without touching
+      {
+        const c6 = await mkctx()
+        const d6 = await c6.newPage()
+        await d6.goto(`${s.base}/display`)
+        await runWizard(d6, { mode: 'open' })
+        await d6.getByTestId('room-code').waitFor()
+        const code6 = (await d6.getByTestId('room-code').innerText()).replace(/\s+/g, '')
+        const pc6 = await newContext(browser, { colorScheme: 'light' })
+        const p6 = await pc6.newPage()
+        await presenterStart(p6, s.base, code6, { name: 'Maximilian-Alexander' })
+        await p6.getByTestId('what-page').waitFor({ timeout: 20000 })
+        await p6.getByTestId('what-screen').click()
+        await p6.getByTestId('presenting-page').waitFor({ timeout: 20000 })
+        await d6.waitForFunction(() => document.querySelector('[data-testid=remote-video]')?.videoWidth > 0)
+        await d6.keyboard.press('Shift') // reveals the controls
+        await d6.waitForTimeout(500)
+        await d6.evaluate(() => {
+          window.__ch.onmessage({ data: JSON.stringify({ kind: 'image', name: 'a-very-long-file-name-from-the-holiday-in-2026-final-version.png', mime: 'image/png', size: 4000000 }) })
+          window.__ch.onmessage({ data: new ArrayBuffer(16384) })
+        })
+        await d6.getByTestId('transfer').waitFor()
+        await d6.waitForTimeout(300)
+        await dshot(d6, `${tag}-transfer-long`)
+        await closeAll(c6, pc6)
       }
       // dimmed (no key: a key press only restores the brightness)
       {

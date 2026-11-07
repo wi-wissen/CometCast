@@ -339,8 +339,8 @@ describe('the style rules of fix list 2 (read from the CSS)', () => {
     expect(ring).toContain('box-shadow: 0 0 0 9px')
     expect(ring).not.toContain('scale')
   })
-  it('the wizard card top is fixed at 64 from step 1 on', () => {
-    expect(rule(display, '.cd-setup.top')).toMatch(/padding-top: 64px/)
+  it('the wizard card top is fixed at 40 from step 1 on (decision 13.64)', () => {
+    expect(rule(display, '.cd-setup.top')).toMatch(/padding-top: 40px/)
   })
   it('laptop presenter pages: top padding max(40px, 10vh), bottom 40; the relay page has no card or scrim', () => {
     expect(presenter).toMatch(/padding: max\(40px, 10vh\) 40px 40px/)

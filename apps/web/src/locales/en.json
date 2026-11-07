@@ -71,8 +71,8 @@
       "hintTv": "This screen cannot open web pages. Open the address on your own device if you need it."
     },
     "media": {
-      "hint": "This link points to a media file. It is loaded from {host} only if you click \"Play\".",
-      "play": "Play from {host}",
+      "hint": "This link points to a media file. It is loaded from {host} only if you click “Play”.",
+      "play": "Play",
       "retry": "Try again",
       "stop": "Stop",
       "label": "Media player, {host}",
