@@ -138,6 +138,7 @@ class _AppShellState extends State<AppShell> {
           store: widget.store,
           wakeLock: widget.wakeLock,
           canOpenLinks: widget.canOpenLinks,
+          miracast: widget.miracast,
           setFullscreenOnSetupDone: !(Platform.isAndroid || Platform.isIOS),
         );
       case AppRole.presenter:

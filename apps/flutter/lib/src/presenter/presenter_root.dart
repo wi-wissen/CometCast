@@ -8,7 +8,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:url_launcher/url_launcher.dart';
@@ -245,7 +244,6 @@ class PresenterRootState extends State<PresenterRoot>
   LicenceSet? _licences;
   Future<LicenceSet>? _licenceLoad;
   LicenceEntry? _licenceEntry;
-  LicenceEntry? _flutterEntry;
   String? _licenceText;
   bool _aboutFromSettings = false;
 
@@ -1285,13 +1283,7 @@ class PresenterRootState extends State<PresenterRoot>
         );
     final flutterName = AppLocalizations.of(context).aboutFlutter;
     _licenceLoad = loader().then((v) {
-      final flutter = _flutterEntry = LicenceEntry(
-        name: flutterName,
-        licence: '',
-        text: '',
-        featured: false,
-      );
-      final set = LicenceSet(featured: v.featured, all: [...v.all, flutter]);
+      final set = withFlutterEntry(v, flutterName);
       if (mounted) setState(() => _licences = set);
       return set;
     });
@@ -1299,23 +1291,13 @@ class PresenterRootState extends State<PresenterRoot>
 
   Future<void> _openLicence(LicenceEntry e) async {
     _licenceEntry = e;
-    _licenceText = identical(e, _flutterEntry) ? null : e.text;
+    final lazy = e.lazyText;
+    _licenceText = lazy == null ? e.text : null;
     _go(PresenterPage.licenceText);
-    if (identical(e, _flutterEntry)) {
-      final b = StringBuffer();
-      try {
-        await for (final l in LicenseRegistry.licenses) {
-          b.writeln(l.packages.join(', '));
-          for (final p in l.paragraphs) {
-            b.writeln(p.text);
-          }
-          b.writeln();
-        }
-      } catch (_) {
-        // Whatever was read is shown.
-      }
+    if (lazy != null) {
+      final text = await lazy();
       if (mounted && identical(_licenceEntry, e)) {
-        setState(() => _licenceText = b.toString());
+        setState(() => _licenceText = text);
       }
     }
   }

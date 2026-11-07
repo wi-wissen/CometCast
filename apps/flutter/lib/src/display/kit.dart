@@ -478,7 +478,8 @@ class DGhostButton extends StatelessWidget {
   }
 }
 
-/// Close button of Settings: x icon 16 + text 14 `--mut`, no border, min height 34.
+/// Close button of Settings: x icon 16 + text 14 `--mut`, no border, min height 34. The About
+/// button next to it has the same style with the `info` icon at 20 (spec 15.4).
 class DCloseButton extends StatelessWidget {
   const DCloseButton({
     super.key,
@@ -486,11 +487,21 @@ class DCloseButton extends StatelessWidget {
     required this.onPressed,
     required this.row,
     required this.col,
+    this.icon = CcIconName.close,
+    this.iconSize = 16,
+    this.autofocus = false,
+    this.focusNode,
+    this.suppressRing = false,
   });
   final String label;
   final VoidCallback onPressed;
   final int row;
   final int col;
+  final CcIconName icon;
+  final double iconSize;
+  final bool autofocus;
+  final FocusNode? focusNode;
+  final bool suppressRing;
 
   @override
   Widget build(BuildContext context) {
@@ -499,6 +510,9 @@ class DCloseButton extends StatelessWidget {
       row: row,
       col: col,
       radius: 8,
+      autofocus: autofocus,
+      focusNode: focusNode,
+      suppressRing: suppressRing,
       onPressed: onPressed,
       child: Container(
         constraints: const BoxConstraints(minHeight: 34),
@@ -506,7 +520,7 @@ class DCloseButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CcIcon(CcIconName.close, color: s.tokens.mut, size: 16),
+            CcIcon(icon, color: s.tokens.mut, size: iconSize),
             const SizedBox(width: 6),
             Text(label, style: s.type.close),
           ],

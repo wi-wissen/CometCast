@@ -46,6 +46,7 @@ class IdleScreen extends StatelessWidget {
     required this.dimmed,
     required this.onSettings,
     this.altAddress,
+    this.alsoVia,
     this.appLineStores = false,
     this.settingsFocus,
     this.settingsAutofocus = true,
@@ -67,6 +68,10 @@ class IdleScreen extends StatelessWidget {
 
   /// The IP address of an in-house box (`idle.altAddress`), or null.
   final String? altAddress;
+
+  /// The first footer line when AirPlay and/or Miracast run (`idle.alsoVia.*`), already
+  /// translated; null when no receiver runs or the mode is Locked (spec 15.4).
+  final String? alsoVia;
 
   /// A store or download link exists: the footer names them (`idle.appLine`); else
   /// `idle.appLineWeb`.
@@ -162,10 +167,29 @@ class IdleScreen extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      appLineStores ? t.idleAppLine(host) : t.idleAppLineWeb,
-                      key: const Key('idle-foot'),
-                      style: s.type.footer,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (alsoVia != null && !locked) ...[
+                          Text(
+                            alsoVia!,
+                            key: const Key('idle-also-via'),
+                            style: s.type.footer.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: tok.fg,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                        ],
+                        Text(
+                          appLineStores
+                              ? t.idleAppLine(_appHost(host))
+                              : t.idleAppLineWeb,
+                          key: const Key('idle-foot'),
+                          style: s.type.footer,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -219,6 +243,11 @@ class IdleScreen extends StatelessWidget {
     );
   }
 }
+
+/// `idle.appLine` writes `{dom}/app`; where `{dom}` already ends in `/app` (the join address of
+/// the built-in relay) the text is `{dom}` (N85).
+String _appHost(String host) =>
+    host.endsWith('/app') ? host.substring(0, host.length - 4) : host;
 
 class _Pill extends StatelessWidget {
   const _Pill({required this.mode});
@@ -481,6 +510,28 @@ class _QrBox extends StatelessWidget {
 
 // --- settings ---------------------------------------------------------------------------
 
+/// One switch row of "Without the app" (spec 15.4), texts already chosen by the caller.
+class SettingsWayRow {
+  const SettingsWayRow({
+    required this.id,
+    required this.title,
+    required this.sub,
+    required this.on,
+    required this.disabled,
+    required this.beta,
+    required this.isState,
+    required this.onToggle,
+  });
+  final String id;
+  final String title;
+  final String sub;
+  final bool on;
+  final bool disabled;
+  final bool beta;
+  final bool isState;
+  final VoidCallback onToggle;
+}
+
 class SettingsDialog extends StatelessWidget {
   const SettingsDialog({
     super.key,
@@ -490,7 +541,21 @@ class SettingsDialog extends StatelessWidget {
     required this.onMode,
     required this.onAppearance,
     required this.onClose,
+    this.onAbout,
+    this.receive = const [],
+    this.aboutFocus,
+    this.ringSuppressed = false,
   });
+
+  /// The About button in the header (spec 15.4); null hides it.
+  final VoidCallback? onAbout;
+
+  /// The rows of "Without the app", AirPlay first; empty: the section is not shown.
+  final List<SettingsWayRow> receive;
+
+  /// Focus returns to About after its dialog closed.
+  final FocusNode? aboutFocus;
+  final bool ringSuppressed;
 
   final DisplayJoinMode mode;
   final Appearance appearance;
@@ -530,12 +595,32 @@ class SettingsDialog extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 DSectionLabel(t.settingsTitle),
-                DCloseButton(
-                  key: const Key('settings-close'),
-                  label: remote ? t.settingsCloseRemote : t.settingsClose,
-                  row: 0,
-                  col: 0,
-                  onPressed: onClose,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onAbout != null) ...[
+                      DCloseButton(
+                        key: const Key('settings-about'),
+                        label: t.aboutOpen,
+                        icon: CcIconName.info,
+                        iconSize: 20,
+                        row: 0,
+                        col: 0,
+                        focusNode: aboutFocus,
+                        suppressRing: ringSuppressed,
+                        onPressed: onAbout!,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    DCloseButton(
+                      key: const Key('settings-close'),
+                      label: remote ? t.settingsCloseRemote : t.settingsClose,
+                      row: 0,
+                      col: onAbout != null ? 1 : 0,
+                      suppressRing: ringSuppressed,
+                      onPressed: onClose,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -599,6 +684,31 @@ class SettingsDialog extends StatelessWidget {
                 ),
               ],
             ),
+            if (receive.isNotEmpty)
+              Column(
+                key: const Key('settings-receive'),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DSectionLabel(t.settingsReceiveLabel),
+                  const SizedBox(height: 14),
+                  for (var i = 0; i < receive.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 8),
+                    KeyedSubtree(
+                      key: Key('settings-way-${receive[i].id}'),
+                      child: DSwitchRow(
+                        row: 3 + i,
+                        title: receive[i].title,
+                        sub: receive[i].sub,
+                        on: receive[i].on,
+                        beta: receive[i].beta,
+                        disabled: receive[i].disabled,
+                        subIsState: receive[i].isState,
+                        onToggle: receive[i].onToggle,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
           ],
         ),
       ),
@@ -739,7 +849,19 @@ class RequestDialog extends StatefulWidget {
     required this.onDeny,
     required this.onBlock,
     this.guard = requestGuard,
+    this.plainName,
+    this.subtitle,
+    this.showCheck = true,
+    this.showBlock = true,
   });
+
+  /// AirPlay and Miracast (spec 15.4): the name line as it is (AirPlay: `request.airplayDevice`,
+  /// no quotes; Miracast: the cleaned, quoted device name), the subtitle of that way, no
+  /// check-number box and no "No and block".
+  final String? plainName;
+  final String? subtitle;
+  final bool showCheck;
+  final bool showBlock;
 
   final Object id;
   final String name;
@@ -777,12 +899,12 @@ class _RequestDialogState extends State<RequestDialog> {
     final s = DisplayScope.of(context);
     final t = AppLocalizations.of(context);
     final full = stripName(widget.name);
-    final shown = full.isEmpty
-        ? t.commonNoName
-        : t.commonQuoted(shortName(full));
-    final aria = t.requestAria(
-      full.isEmpty ? t.commonNoName : t.commonQuoted(full),
-    );
+    final shown =
+        widget.plainName ??
+        (full.isEmpty ? t.commonNoName : t.commonQuoted(shortName(full)));
+    final aria = widget.plainName != null
+        ? '${widget.plainName} ${widget.subtitle ?? ''}'.trim()
+        : t.requestAria(full.isEmpty ? t.commonNoName : t.commonQuoted(full));
     return InputGuard(
       identity: widget.id,
       guard: widget.guard,
@@ -827,7 +949,7 @@ class _RequestDialogState extends State<RequestDialog> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            t.requestSubtitle,
+                            widget.subtitle ?? t.requestSubtitle,
                             key: const Key('request-sub'),
                             style: s.type.body.copyWith(
                               fontSize: 18,
@@ -837,36 +959,37 @@ class _RequestDialogState extends State<RequestDialog> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 20),
-                    Container(
-                      constraints: const BoxConstraints(minWidth: 58),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
+                    if (widget.showCheck) const SizedBox(width: 20),
+                    if (widget.showCheck)
+                      Container(
+                        constraints: const BoxConstraints(minWidth: 58),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: s.tokens.bg,
+                          borderRadius: BorderRadius.circular(10),
+                          // OLED black: a 1 px line border (spec 3.2).
+                          border: s.tokens.oled
+                              ? Border.all(width: 1, color: s.tokens.line)
+                              : null,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              t.requestCheck.toUpperCase(),
+                              style: s.type.smallCaps,
+                            ),
+                            Text(
+                              '${widget.check}',
+                              key: const Key('request-check'),
+                              style: s.type.checkNumber,
+                            ),
+                          ],
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: s.tokens.bg,
-                        borderRadius: BorderRadius.circular(10),
-                        // OLED black: a 1 px line border (spec 3.2).
-                        border: s.tokens.oled
-                            ? Border.all(width: 1, color: s.tokens.line)
-                            : null,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            t.requestCheck.toUpperCase(),
-                            style: s.type.smallCaps,
-                          ),
-                          Text(
-                            '${widget.check}',
-                            key: const Key('request-check'),
-                            style: s.type.checkNumber,
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
                 Row(
@@ -890,13 +1013,14 @@ class _RequestDialogState extends State<RequestDialog> {
                       onPressed: () => guarded(widget.onDeny),
                     ),
                     const Spacer(),
-                    DGhostButton(
-                      key: const Key('request-block'),
-                      label: t.requestNoBlock,
-                      row: 0,
-                      col: 2,
-                      onPressed: () => guarded(widget.onBlock),
-                    ),
+                    if (widget.showBlock)
+                      DGhostButton(
+                        key: const Key('request-block'),
+                        label: t.requestNoBlock,
+                        row: 0,
+                        col: 2,
+                        onPressed: () => guarded(widget.onBlock),
+                      ),
                   ],
                 ),
               ],
@@ -1006,9 +1130,13 @@ class PresentingControls extends StatelessWidget {
     required this.shown,
     required this.onEnd,
     this.sas,
+    this.via,
     this.endFocus,
     this.inert = false,
   });
+
+  /// Miracast: line 2 `present.via` in the place of the security code (spec 15.4).
+  final String? via;
 
   /// The presenter's cleaned name (already shortened as the name tag shows it).
   final String name;
@@ -1058,7 +1186,13 @@ class PresentingControls extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(t.presentByline(label), style: s.type.nameTag),
-                    if (sas != null)
+                    if (via != null)
+                      Text(
+                        via!,
+                        key: const Key('via-line'),
+                        style: s.type.nameTagSub,
+                      )
+                    else if (sas != null)
                       Text.rich(
                         TextSpan(
                           children: valueSpans(
@@ -1294,4 +1428,91 @@ class PageErrorBox extends StatelessWidget {
       ),
     );
   }
+}
+
+// --- PIN dialog (spec 15.4) -----------------------------------------------------------------
+
+/// The PIN a device must enter to mirror (AirPlay, Miracast), in the link-card family: section
+/// label, body, the PIN in 80 mono 700 `--fg`, [Cancel] with the initial focus after the 1 s
+/// guard. Cancel or Back refuses the pairing. An `alertdialog` labelled by its title; the PIN
+/// is read digit by digit.
+class PinDialog extends StatelessWidget {
+  const PinDialog({
+    super.key,
+    required this.pin,
+    required this.title,
+    required this.body,
+    required this.onCancel,
+    this.guard = requestGuard,
+  });
+
+  final String pin;
+  final String title;
+  final String body;
+  final VoidCallback onCancel;
+  final Duration guard;
+
+  /// A longer Miracast PIN in groups of 4 with one space.
+  static String grouped(String pin) {
+    final p = pin.replaceAll(RegExp(r'\s+'), '');
+    if (p.length <= 4) return p;
+    return [
+      for (var i = 0; i < p.length; i += 4)
+        p.substring(i, i + 4 > p.length ? p.length : i + 4),
+    ].join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = DisplayScope.of(context);
+    final t = AppLocalizations.of(context);
+    return InputGuard(
+      identity: pin,
+      guard: guard,
+      builder: (context, armed) => DScrim(
+        child: Semantics(
+          scopesRoute: true,
+          namesRoute: true,
+          explicitChildNodes: true,
+          label: title,
+          child: DCard(
+            width: 600,
+            shadow: true,
+            children: [
+              DSectionLabel(title),
+              Text(body, key: const Key('pin-body'), style: s.type.cardText),
+              Semantics(
+                label: pin.replaceAll(RegExp(r'\s+'), '').split('').join(' '),
+                excludeSemantics: true,
+                child: Text(
+                  grouped(pin),
+                  key: const Key('pin-value'),
+                  textAlign: TextAlign.center,
+                  style: s.type.code,
+                ),
+              ),
+              Row(
+                children: [
+                  DButton(
+                    key: const Key('pin-cancel'),
+                    label: t.commonCancel,
+                    row: 0,
+                    col: 0,
+                    autofocus: true,
+                    onPressed: () {
+                      if (armed) onCancel();
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The PIN as groups for a test or screen reader.
+  @visibleForTesting
+  String get shown => grouped(pin);
 }

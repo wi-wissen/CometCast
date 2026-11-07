@@ -14,7 +14,11 @@ class LicenceEntry {
     required this.licence,
     required this.text,
     required this.featured,
+    this.lazyText,
   });
+
+  /// Reads the text when the entry is opened (Flutter's own licences: `LicenseRegistry`).
+  final Future<String> Function()? lazyText;
 
   final String name;
 
@@ -253,3 +257,36 @@ List<LicenceEntry> filterLicences(List<LicenceEntry> list, String query) {
       if (e.name.toLowerCase().contains(q)) e,
   ];
 }
+
+/// Flutter's own licences as the text of the one entry `about.flutter`.
+Future<String> flutterLicenceText() async {
+  final b = StringBuffer();
+  try {
+    await for (final l in LicenseRegistry.licenses) {
+      b.writeln(l.packages.join(', '));
+      for (final p in l.paragraphs) {
+        b.writeln(p.text);
+      }
+      b.writeln();
+    }
+  } catch (_) {
+    // Whatever was read is shown.
+  }
+  return b.toString();
+}
+
+/// The list with the entry for Flutter's licences ([name] = `about.flutter`) added at the end
+/// of "All parts".
+LicenceSet withFlutterEntry(LicenceSet set, String name) => LicenceSet(
+  featured: set.featured,
+  all: [
+    ...set.all,
+    LicenceEntry(
+      name: name,
+      licence: '',
+      text: '',
+      featured: false,
+      lazyText: flutterLicenceText,
+    ),
+  ],
+);

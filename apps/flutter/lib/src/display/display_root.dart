@@ -17,11 +17,17 @@ import 'package:cometcast/l10n/app_localizations.dart';
 import '../../codec_controller.dart';
 import '../../core/android_platform.dart';
 import '../../core/core_api.dart';
+import '../../core/miracast.dart' show MiracastCore;
+import '../../licences.dart';
+import '../../miracast_page.dart' show MiracastVideoView;
+import '../../receive_ways.dart';
 import '../../core/nearby_platform.dart' show setAnnounceLock;
 import '../../discovery.dart';
 import '../../receiver_controller.dart';
 import '../../settings.dart';
+import '../beta.dart';
 import '../design/tokens.dart';
+import 'about.dart';
 import 'codec_dialog.dart';
 import 'display_logic.dart';
 import 'kit.dart';
@@ -74,7 +80,24 @@ class DisplayRoot extends StatefulWidget {
     this.onFullscreen,
     this.deviceName,
     this.announceLock = setAnnounceLock,
+    this.miracast,
+    this.receive,
+    this.offerWays,
+    this.licenceLoader,
   });
+
+  /// The Windows Miracast receiver (a fake in tests); null elsewhere: no Miracast row.
+  final MiracastCore? miracast;
+
+  /// Tests: a ready [ReceiveWays] instead of one built from [core] and [miracast].
+  final ReceiveWays? receive;
+
+  /// Desktop display apps ("mini-PC") offer AirPlay and Miracast (spec 15.2); tablets and TVs
+  /// do not. Null: by platform.
+  final bool? offerWays;
+
+  /// Reads and parses the licence list (tests: a fake without `compute`).
+  final Future<LicenceSet> Function()? licenceLoader;
 
   final CoreApi core;
   final AppSettings settings;
@@ -131,6 +154,13 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   Appearance _appearance = Appearance.dark;
   SetupController? _wizard;
   bool _settingsOpen = false;
+  bool _aboutOpen = false;
+  bool _licencesOpen = false;
+  LicenceSet? _licences;
+  Future<LicenceSet>? _licenceLoad;
+  final FocusNode _aboutNode = RowNode(row: 0, col: 0, debugLabel: 'about');
+  ReceiveWays? _rx;
+  bool _wayDialog = false;
   bool _controlsShown = false;
   bool _dimmed = false;
   bool _canOpen = true;
@@ -184,7 +214,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   /// "Not now" was chosen for this presentation (spec 4.7: at most once per presentation).
   bool _codecLater = false;
 
-  bool get _presenting {
+  /// A Comet Cast presenter presents (N88: precedence over AirPlay and Miracast).
+  bool get _ccPresenting {
     final shown = _c.shown;
     return _c.hasLiveVideo ||
         shown is ReceivedImage ||
@@ -193,6 +224,13 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
         // The presenter left for the iOS hand-over: black stage until it is back (20.5).
         _c.handoverHold;
   }
+
+  /// Something fills the stage: a Comet Cast presentation or a Miracast picture drawn here.
+  bool get _presenting => _ccPresenting || (_rx?.miracastConnected ?? false);
+
+  /// The display counts as Presenting for wake lock and dimming while AirPlay mirrors in
+  /// UxPlay's own window (spec 15.4 D5).
+  bool get _awake => _presenting || (_rx?.airplayMirroring ?? false);
 
   bool get _codecDialog => _codecWaiting && !_codecLater;
 
@@ -216,6 +254,18 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
           ReceiverController.hardwareBrokenReason != null,
     );
     _codec!.addListener(_onController);
+    final ways = widget.offerWays ?? !(Platform.isAndroid || Platform.isIOS);
+    _rx =
+        widget.receive ??
+        (ways && !profile.tv
+            ? ReceiveWays(
+                core: widget.core,
+                settings: widget.settings,
+                miracastCore: widget.miracast,
+                onNotice: _onRxNotice,
+              )
+            : null);
+    _rx?.addListener(_onController);
     widget.settings.discover(widget.core);
     widget.settings.addListener(_onSettings);
     _tick = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -247,10 +297,18 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _refocusRoot();
     if (setup != null) {
       _startRoom(setup);
+      unawaited(
+        _rx?.start(
+          roomName: setup.room,
+          mode: fromCoreMode(_defaultToCore(setup.mode)),
+        ),
+      );
     }
     _syncDim();
     _syncAnnounce();
   }
+
+  UiJoinMode _defaultToCore(DefaultMode m) => _defaultCoreMode(m);
 
   @override
   void dispose() {
@@ -267,6 +325,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _c.dispose();
     _codec?.removeListener(_onController);
     _codec?.dispose();
+    _rx?.removeListener(_onController);
+    if (widget.receive == null) _rx?.dispose();
+    _aboutNode.dispose();
     _wizard?.dispose();
     _ring.dispose();
     _rootNode.dispose();
@@ -331,13 +392,27 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     }
     // Activity: a request, a joiner or a mode change counts as activity (spec 8.6).
     _dim.activity();
+    // Comet Cast first, the join mode follows the room (spec 15.4, N88).
+    _rx?.setMode(fromCoreMode(c.joinMode));
+    _rx?.setCometCastPresenting(_ccPresenting);
+    final rx = _rx;
+    if (rx?.request == null) {
+      _wayDialog = false;
+    } else if (c.requests.isEmpty) {
+      _wayDialog = true; // first come, first served
+    }
     // A join request closes Settings: one dialog at a time (spec 4.3).
-    if (c.requests.isNotEmpty && _settingsOpen) _settingsOpen = false;
+    if ((c.requests.isNotEmpty || rx?.request != null || rx?.pin != null) &&
+        (_settingsOpen || _aboutOpen || _licencesOpen)) {
+      _settingsOpen = false;
+      _aboutOpen = false;
+      _licencesOpen = false;
+    }
     if (!_presenting && _controlsShown) {
       _reveal.hideNow();
     }
     _syncDim();
-    unawaited(_wake.set(_presenting && _life == AppLifecycleState.resumed));
+    unawaited(_wake.set(_awake && _life == AppLifecycleState.resumed));
     _syncAnnounce();
     setState(() {});
     _refocusRoot();
@@ -442,7 +517,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   }
 
   void _syncDim() {
-    _dim.setEnabled(_ready && _setup != null && !_presenting);
+    _dim.setEnabled(_ready && _setup != null && !_awake);
   }
 
   // --- notices and toasts ----------------------------------------------------------------
@@ -468,6 +543,19 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     if (n is NoticeSessionEnded) _silentEnd = false;
     if (text != null) _showToast(text);
   }
+
+  void _onRxNotice(RxNotice n) {
+    if (!mounted) return;
+    final t = AppLocalizations.of(context);
+    final text = switch (n) {
+      RxEnded(:final way) => t.toastRxEnded(_wayName(way)),
+      RxLeft(:final name) => t.toastLeft(_quoted(t, name)),
+      RxExpired(:final name) => t.toastExpired(_quoted(t, name)),
+    };
+    _showToast(text);
+  }
+
+  String _wayName(RxWay w) => w == RxWay.airplay ? 'AirPlay' : 'Miracast';
 
   void _showToast(String text) {
     _toastTimer?.cancel();
@@ -533,9 +621,17 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       }
       return KeyEventResult.ignored;
     }
-    if (c.requests.isNotEmpty) {
+    if (c.requests.isNotEmpty || _rx?.request != null) {
       // A decision is required: Back and Menu do nothing.
       return (back || menu) ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
+    if (_rx?.pin != null) {
+      // The PIN dialog: Back is Cancel (native-apps.md 21.1).
+      if (back) {
+        _rx!.cancelPin();
+        return KeyEventResult.handled;
+      }
+      return menu ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (_codecDialog && c.shown is! ReceivedLink) {
       // The consent dialog: Back and Menu mean Not now; the other keys are the dialog's.
@@ -575,9 +671,96 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   }
 
   void _toggleSettings() {
-    if (_c.requests.isNotEmpty || _presenting) return;
+    if (_c.requests.isNotEmpty ||
+        _presenting ||
+        _rx?.request != null ||
+        _rx?.pin != null ||
+        _aboutOpen ||
+        _licencesOpen) {
+      return;
+    }
     setState(() => _settingsOpen = !_settingsOpen);
     if (!_settingsOpen) _focusSettingsButton();
+  }
+
+  void _openAbout() {
+    _ensureLicences();
+    setState(() => _aboutOpen = true);
+  }
+
+  /// Back to Settings with the focus on About (spec 15.9).
+  void _closeAbout() {
+    setState(() {
+      _aboutOpen = false;
+      _licencesOpen = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _aboutNode.requestFocus();
+    });
+  }
+
+  void _ensureLicences() {
+    if (_licenceLoad != null) return;
+    final flutterName = AppLocalizations.of(context).aboutFlutter;
+    final loader =
+        widget.licenceLoader ??
+        () => loadLicences(
+          desktop: !(Platform.isAndroid || Platform.isIOS),
+          officeFonts: widget.core.officeWorkerPath() != null,
+        );
+    _licenceLoad = loader().then((v) {
+      final set = withFlutterEntry(v, flutterName);
+      if (mounted) setState(() => _licences = set);
+      return set;
+    });
+  }
+
+  /// The switch rows of "Without the app", AirPlay first (spec 15.4).
+  List<SettingsWayRow> _wayRows(AppLocalizations t) {
+    final rx = _rx;
+    if (rx == null || !rx.anyListed) return const [];
+    SettingsWayRow row(RxWay way) {
+      final r = rx.row(way);
+      final air = way == RxWay.airplay;
+      final line = switch (r.line) {
+        RxLine.normal =>
+          air ? t.settingsReceiveAirplaySub : t.settingsReceiveMiracastSub,
+        RxLine.noHw => t.settingsReceiveNoHw,
+        RxLine.noFeature => t.settingsReceiveNoFeature,
+        RxLine.policy => t.settingsReceivePolicy,
+        RxLine.failed => t.settingsReceiveFailed,
+        RxLine.locked => t.settingsReceiveLocked,
+      };
+      return SettingsWayRow(
+        id: way.name,
+        title: air ? t.settingsReceiveAirplay : t.settingsReceiveMiracast,
+        sub: line,
+        on: r.on,
+        disabled: r.disabled,
+        beta: isBeta(
+          air ? BetaFeature.airplayReceive : BetaFeature.miracastReceive,
+        ),
+        isState: r.line != RxLine.normal,
+        onToggle: () => rx.setOn(way, !r.on),
+      );
+    }
+
+    return [
+      if (rx.airplayListed) row(RxWay.airplay),
+      if (rx.miracastListed) row(RxWay.miracast),
+    ];
+  }
+
+  /// The first footer line of the idle screen while receivers run (spec 15.4).
+  String? _alsoVia(AppLocalizations t) {
+    final rx = _rx;
+    if (rx == null) return null;
+    final a = rx.airplayAnnouncing;
+    final m = rx.miracastAnnouncing;
+    if (a && m) return t.idleAlsoViaBoth;
+    if (a) return t.idleAlsoViaAirplay;
+    if (m) return t.idleAlsoViaMiracast;
+    return null;
   }
 
   void _focusSettingsButton() {
@@ -598,7 +781,11 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       return _doubleBack();
     }
     final c = _c;
-    if (c.requests.isNotEmpty) return true;
+    if (c.requests.isNotEmpty || _rx?.request != null) return true;
+    if (_rx?.pin != null) {
+      _rx!.cancelPin();
+      return true;
+    }
     if (_codecDialog && c.shown is! ReceivedLink) {
       setState(() => _codecLater = true); // Back = Not now (spec 4.7)
       return true;
@@ -606,6 +793,14 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     final shown = c.shown;
     if (shown is ReceivedLink) {
       c.closeContent();
+      return true;
+    }
+    if (_licencesOpen) {
+      setState(() => _licencesOpen = false); // back to the About dialog
+      return true;
+    }
+    if (_aboutOpen) {
+      _closeAbout();
       return true;
     }
     if (_settingsOpen) {
@@ -645,7 +840,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _silentEnd = true;
       if (!_c.endRoom()) _silentEnd = false;
     }
-    unawaited(_wake.set(_presenting && state == AppLifecycleState.resumed));
+    unawaited(_wake.set(_awake && state == AppLifecycleState.resumed));
     _syncAnnounce();
   }
 
@@ -674,6 +869,12 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _wizard = null;
     });
     _startRoom(s);
+    unawaited(
+      _rx?.start(
+        roomName: s.room,
+        mode: fromCoreMode(_defaultCoreMode(s.mode)),
+      ),
+    );
     _syncDim();
     _focusSettingsButton();
   }
@@ -731,7 +932,16 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
             if (!_ready) return ColoredBox(color: tokens.bg);
             final presenting = _presenting && _setup != null;
             final c = _c;
-            final head = c.requests.isEmpty ? null : c.requests.first;
+            final rx = _rx;
+            final wayReq = rx?.request;
+            final showWay =
+                wayReq != null && (c.requests.isEmpty || _wayDialog);
+            final head = c.requests.isEmpty || showWay
+                ? null
+                : c.requests.first;
+            final dialogOver = head != null || showWay;
+            final miracastPicture =
+                rx != null && rx.miracastConnected && !_ccPresenting;
             final shown = c.shown;
             final link = shown is ReceivedLink ? shown : null;
             final hidePointer = presenting && !_controlsShown;
@@ -758,16 +968,23 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       room: _setup!.room,
                       mode: fromCoreMode(c.joinMode),
                       code: c.roomCode,
-                      dom: _server,
+                      dom: widget.core.joinAddress(_server),
                       altAddress: _boxIp,
+                      alsoVia: _alsoVia(t),
                       view: _view,
                       cause: _cause,
                       dimmed: _dimmed,
                       settingsFocus: _settingsNode,
                       ringSuppressed:
-                          _settingsOpen || head != null || link != null,
+                          _settingsOpen ||
+                          dialogOver ||
+                          link != null ||
+                          rx?.pin != null,
                       settingsAutofocus:
-                          !_settingsOpen && head == null && link == null,
+                          !_settingsOpen &&
+                          !dialogOver &&
+                          link == null &&
+                          rx?.pin == null,
                       onSettings: () => setState(() => _settingsOpen = true),
                     ),
                   // After "Not now" (also while the download goes on): the state line on the black
@@ -784,14 +1001,19 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                     ),
                   if (presenting)
                     PresentingControls(
-                      name: c.peerName ?? '',
-                      sas: c.connectionCode,
+                      name: miracastPicture
+                          ? (rx.miracastName ?? '')
+                          : (c.peerName ?? ''),
+                      sas: miracastPicture ? null : c.connectionCode,
+                      via: miracastPicture ? t.presentVia('Miracast') : null,
                       inert: _codecDialog,
                       // The dialog's appearance does not reveal the controls (N31): they stay
                       // under the scrim and fade on their normal timer.
                       shown: _controlsShown,
                       endFocus: _endNode,
                       onEnd: () {
+                        // End ends the Miracast session and the Comet Cast session (new code).
+                        if (miracastPicture) unawaited(rx.endMiracast());
                         _c.endRoom();
                       },
                     ),
@@ -806,19 +1028,43 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       percent: '${receiving.percent}',
                       format: t.receiveTransfer,
                     ),
-                  if (_settingsOpen && !presenting && head == null)
+                  if (_settingsOpen &&
+                      !presenting &&
+                      !dialogOver &&
+                      !_aboutOpen &&
+                      !_licencesOpen)
                     SettingsDialog(
                       mode: fromCoreMode(c.joinMode),
                       appearance: _appearance,
                       remote: _tv,
                       onMode: _chooseMode,
                       onAppearance: _chooseAppearance,
+                      onAbout: _openAbout,
+                      aboutFocus: _aboutNode,
+                      receive: _wayRows(t),
                       onClose: () {
                         setState(() => _settingsOpen = false);
                         _focusSettingsButton();
                       },
                     ),
-                  if (link != null && head == null)
+                  if (_aboutOpen &&
+                      !_licencesOpen &&
+                      !presenting &&
+                      !dialogOver)
+                    AboutDialogView(
+                      version: widget.core.appVersion(),
+                      remote: _tv,
+                      onLicences: () => setState(() => _licencesOpen = true),
+                      onClose: _closeAbout,
+                    ),
+                  if (_licencesOpen && !presenting && !dialogOver)
+                    LicenceViewer(
+                      licences: _licences,
+                      search: !_tv,
+                      remote: _tv,
+                      onClose: () => setState(() => _licencesOpen = false),
+                    ),
+                  if (link != null && !dialogOver)
                     LinkCard(
                       host: link.host,
                       url: link.url,
@@ -838,7 +1084,38 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       onDeny: () => _decide(head, allow: false),
                       onBlock: () => _decide(head, allow: false, block: true),
                     ),
-                  if (_codecDialog && head == null && link == null)
+                  if (showWay)
+                    RequestDialog(
+                      id: wayReq.id ?? wayReq.way,
+                      name: wayReq.name ?? '',
+                      check: 0,
+                      more: 0,
+                      guard: widget.guard,
+                      showCheck: false,
+                      showBlock: false,
+                      plainName: wayReq.way == RxWay.airplay
+                          ? t.requestAirplayDevice
+                          : _quoted(t, wayReq.name ?? ''),
+                      subtitle: wayReq.way == RxWay.airplay
+                          ? t.requestSubtitleAirplay
+                          : t.requestSubtitleMiracast,
+                      onAllow: () => rx!.answerRequest(true),
+                      onDeny: () => rx!.answerRequest(false),
+                      onBlock: () {},
+                    ),
+                  if (rx?.pin != null && !dialogOver)
+                    PinDialog(
+                      pin: rx!.pin!.pin,
+                      title: rx.pin!.way == RxWay.airplay
+                          ? t.rxPinTitleAirplay
+                          : t.rxPinTitleMiracast,
+                      body: rx.pin!.name != null && rx.pin!.name!.isNotEmpty
+                          ? t.rxPinBodyNamed(_quoted(t, rx.pin!.name!))
+                          : t.rxPinBody,
+                      guard: widget.guard,
+                      onCancel: rx.cancelPin,
+                    ),
+                  if (_codecDialog && !dialogOver && link == null)
                     CodecDialog(
                       controller: _codec!,
                       guard: widget.guard,
@@ -865,7 +1142,17 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       fit: StackFit.expand,
                       children: [
                         ColoredBox(color: tokens.bg),
-                        if (presenting) PictureStage(controller: c),
+                        if (miracastPicture)
+                          ColoredBox(
+                            color: DisplayTokens.stage,
+                            child: Center(
+                              child: MiracastVideoView(
+                                controller: rx.miracast!,
+                              ),
+                            ),
+                          )
+                        else if (presenting)
+                          PictureStage(controller: c),
                         canvas,
                       ],
                     ),
