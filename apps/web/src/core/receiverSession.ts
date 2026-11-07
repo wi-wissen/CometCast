@@ -144,6 +144,17 @@ export function documentErrorCode(code: string): TransferErrorCode {
 /** After these the renderer is gone (worker ended), so the document is closed. */
 const FATAL_RENDER_CODES = new Set(['timeout', 'failed', 'memory', 'closed', 'unavailable'])
 
+/**
+ * Which peer connection an offer comes from: the session id of its `o=` line and its first ICE
+ * username fragment. Both stay the same across renegotiations of one connection and are new for a
+ * new connection. `null` when the text has neither (then the offer is taken as a renegotiation).
+ */
+export function sdpIdentity(sdp: string): string | null {
+  const sess = /^o=\S+ (\d+) /m.exec(sdp)?.[1]
+  const ufrag = /^a=ice-ufrag:(\S+)/m.exec(sdp)?.[1]
+  return sess === undefined && ufrag === undefined ? null : `${sess ?? ''}|${ufrag ?? ''}`
+}
+
 const EMPTY: ReceiverState = {
   phase: 'idle',
   code: null,
@@ -187,6 +198,8 @@ export class ReceiverSession {
   /** The control channel (for the `page` messages to the presenter). */
   private channel: ControlChannel | null = null
   private lastPageSent = ''
+  /** Identity of the peer connection the last offer came from (see {@link sdpIdentity}). */
+  private offerId: string | null = null
   private iceServers: RTCIceServer[] = []
   private iceReady = true
   private held: ServerMessage[] = [] // messages that arrived before the ICE server list
@@ -448,6 +461,7 @@ export class ReceiverSession {
   private newPeer(): Peer {
     this.peer?.close()
     this.channel = null
+    this.offerId = null
     const peer = this.peerFactory(
       {
         onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
@@ -565,7 +579,21 @@ export class ReceiverSession {
         this.set({ phase: 'negotiating', stream: null, sas: undefined, peerName: m.name })
         break
       case 'offer': {
+        // A sender that is still in the room makes a new peer connection for its next presentation
+        // ("Stop", then show something else): that offer begins a fresh session, as on a native
+        // display (spec 5.6, native-apps.md 21.10 item 8). An offer of the same connection (the web
+        // sender adds or removes its screen) is a renegotiation and keeps the session.
+        const id = sdpIdentity(m.sdp)
+        if (this.peer && this.offerId !== null && id !== null && id !== this.offerId) {
+          this.peer.close()
+          this.peer = null
+          this.channel = null
+          this.clearContent()
+          this.control.reset()
+          this.set({ phase: 'negotiating', stream: null, sas: undefined })
+        }
         const peer = this.peer ?? this.newPeer()
+        this.offerId = id
         if (this.state.phase !== 'receiving') this.set({ phase: 'negotiating' })
         peer
           .acceptOffer(m.sdp)

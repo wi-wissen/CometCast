@@ -86,11 +86,18 @@ describe('W3 operator pages and footer (N83, 15.9)', () => {
     expect(licencesUrl('/app/')).toBe('/app/third-party-licenses.txt')
     expect(licencesUrl('/')).toBe('/third-party-licenses.txt')
   })
+  it('every separator is a no-break space before the dot and a normal space after it (N107)', () => {
+    const w = mk({ privacy: 'https://m.example/p', imprint: 'https://m.example/i' })
+    const f = w.get('[data-testid=start-footer]').text()
+    expect(f.split('·').length - 1).toBe(4)
+    for (const part of f.split('·').slice(0, -1)) expect(part.endsWith('\u00a0')).toBe(true)
+    for (const part of f.split('·').slice(1)) expect(part.startsWith(' ')).toBe(true)
+  })
   const mk = (legal = {}, lang: 'en' | 'de' = 'en') => mount(StartPage, { global: { plugins: [createAppI18n(lang)] }, props: { qrCode: null, dom: 'cast.musterfirma.de', busy: false, legal } })
   it('self-hosted without config: licence, source and licence list; no privacy or imprint', () => {
     const w = mk()
     const f = w.get('[data-testid=start-footer]')
-    expect(f.text()).toBe('Free software (GPL-3.0) · Source code · Licences')
+    expect(f.text()).toBe('Free software (GPL-3.0)\u00a0· Source code\u00a0· Licences')
     expect(w.get('[data-testid=foot-licences]').attributes('target')).toBe('_blank')
     expect(w.get('[data-testid=foot-licences]').attributes('href')).toMatch(/third-party-licenses\.txt$/)
     expect(w.get('[data-testid=foot-source]').attributes('href')).toMatch(/^https:\/\/github\.com\/wi-wissen\/CometCast\/tree\/v\d/)
@@ -99,7 +106,7 @@ describe('W3 operator pages and footer (N83, 15.9)', () => {
   })
   it('with the operator\'s config: privacy and imprint appear; links are p-primary (cp-link)', () => {
     const w = mk({ privacy: 'https://m.example/p', imprint: 'https://m.example/i' }, 'de')
-    expect(w.get('[data-testid=start-footer]').text()).toBe('Freie Software (GPL-3.0) · Quelltext · Lizenzen · Datenschutz · Impressum')
+    expect(w.get('[data-testid=start-footer]').text()).toBe('Freie Software (GPL-3.0)\u00a0· Quelltext\u00a0· Lizenzen\u00a0· Datenschutz\u00a0· Impressum')
     expect(w.get('[data-testid=foot-privacy]').attributes('href')).toBe('https://m.example/p')
     expect(w.get('[data-testid=foot-privacy]').classes()).toContain('cp-link')
     expect(w.get('[data-testid=start-footer]').classes()).toContain('cp-small')

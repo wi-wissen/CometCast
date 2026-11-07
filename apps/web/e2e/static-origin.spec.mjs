@@ -376,7 +376,7 @@ try {
     assert.equal((await p.getByTestId('start-code-chip').innerText()).trim(), 'K7Q M2W')
     assert.equal(new URL(p.url()).pathname, '/app/K7QM2W', 'the address stays')
     // footer: no privacy / imprint when the build has the default branding and there is no config.json
-    assert.match(await p.getByTestId('start-footer').innerText(), /^Free software \(GPL-3\.0\) · Source code · Licences$/)
+    assert.match(await p.getByTestId('start-footer').innerText(), /^Free software \(GPL-3\.0\)\u00a0· Source code\u00a0· Licences$/)
     assert.equal(await p.getByTestId('foot-privacy').count(), 0)
     assert.equal(await p.getByTestId('foot-licences').getAttribute('target'), '_blank')
     assert.equal(await p.getByTestId('foot-licences').getAttribute('href'), '/app/third-party-licenses.txt')
@@ -391,7 +391,7 @@ try {
     await p.getByTestId('start-footer').waitFor()
     assert.equal(await p.getByTestId('foot-privacy').getAttribute('href'), 'https://ops.example/privacy')
     assert.equal(await p.getByTestId('foot-imprint').getAttribute('href'), 'https://ops.example/imprint')
-    assert.match(await p.getByTestId('start-footer').innerText(), /Licences · Privacy · Imprint$/)
+    assert.match(await p.getByTestId('start-footer').innerText(), /Licences\u00a0· Privacy\u00a0· Imprint$/)
     rmSync(join(distDir, 'config.json'), { force: true })
     await p.context().close()
     console.log('   ok')

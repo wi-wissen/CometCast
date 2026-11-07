@@ -83,6 +83,8 @@ const beDisplayParts = computed(() => splitSlot((m) => t('start.beDisplay', { do
 const displayHref = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/display`
 // Footer line (spec 15.9, web part): licence, source, the licence list of this build, and privacy / imprint only where
 // there is a page to name (the build's branding file, or the operator's config.json).
+/** Separator of the footer: no-break space, a middle dot, a normal space (N107). */
+const footSep = '\u00a0· '
 const footSource = sourceUrl(__APP_VERSION__)
 const footLicences = licencesUrl(import.meta.env.BASE_URL)
 const footLegal = computed(() => legalLinks(locale.value === 'de' ? 'de' : 'en', props.legal ?? {}))
@@ -151,15 +153,10 @@ onMounted(() => {
       </div>
     </form>
     <p class="cp-small cp-foot" data-testid="start-footer">
-      {{ t('about.footer') }}
-      · <a class="cp-link" :href="footSource" target="_blank" rel="noopener noreferrer" data-testid="foot-source">{{ t('about.source') }}</a>
-      · <a class="cp-link" :href="footLicences" target="_blank" rel="noopener noreferrer" data-testid="foot-licences">{{ t('about.licences') }}</a>
-      <template v-if="footLegal.privacy">
-        · <a class="cp-link" :href="footLegal.privacy" target="_blank" rel="noopener noreferrer" data-testid="foot-privacy">{{ t('about.privacy') }}</a>
-      </template>
-      <template v-if="footLegal.imprint">
-        · <a class="cp-link" :href="footLegal.imprint" target="_blank" rel="noopener noreferrer" data-testid="foot-imprint">{{ t('about.imprint') }}</a>
-      </template>
+      {{ t('about.footer') }}{{ footSep }}<a class="cp-link" :href="footSource" target="_blank" rel="noopener noreferrer" data-testid="foot-source">{{ t('about.source') }}</a>{{ footSep }}<a
+        class="cp-link" :href="footLicences" target="_blank" rel="noopener noreferrer" data-testid="foot-licences">{{ t('about.licences') }}</a>
+      <template v-if="footLegal.privacy">{{ footSep }}<a class="cp-link" :href="footLegal.privacy" target="_blank" rel="noopener noreferrer" data-testid="foot-privacy">{{ t('about.privacy') }}</a></template>
+      <template v-if="footLegal.imprint">{{ footSep }}<a class="cp-link" :href="footLegal.imprint" target="_blank" rel="noopener noreferrer" data-testid="foot-imprint">{{ t('about.imprint') }}</a></template>
     </p>
   </main>
 </template>

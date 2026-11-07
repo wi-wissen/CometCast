@@ -65,6 +65,37 @@ describe('ReceiverSession', () => {
     expect(s.snapshot.phase).toBe('negotiating')
     expect(peers).toHaveLength(2)
   })
+  it('a second offer of a sender that is still in the room starts a fresh session (P7)', async () => {
+    const { s, sock, peers } = setupReceiver()
+    const offer = (sess: number, ufrag: string, ver = 2) =>
+      `v=0\r\no=- ${sess} ${ver} IN IP4 127.0.0.1\r\ns=-\r\na=ice-ufrag:${ufrag}\r\n`
+    s.start()
+    sock.open()
+    sock.recv({ type: 'hello', proto_version: 2 })
+    sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    sock.recv({ type: 'peer_joined', name: 'Guest 1' })
+    sock.recv({ type: 'offer', sdp: offer(111, 'aaaa') })
+    await tick()
+    peers[0].h.onState('connected')
+    peers[0].h.onTrack({ id: 's1' } as unknown as MediaStream)
+    expect(s.snapshot).toMatchObject({ phase: 'receiving' })
+    expect(s.snapshot.stream).not.toBeNull()
+    // The same connection renegotiates (the web sender adds its screen): the session stays.
+    sock.recv({ type: 'offer', sdp: offer(111, 'aaaa', 3) })
+    await tick()
+    expect(peers).toHaveLength(1)
+    expect(peers[0].closed).toBe(false)
+    expect(s.snapshot.stream).not.toBeNull()
+    // The sender stopped and shows something else: a new connection, a new offer.
+    sock.recv({ type: 'offer', sdp: offer(222, 'bbbb') })
+    await tick()
+    expect(peers).toHaveLength(2)
+    expect(peers[0].closed).toBe(true)
+    expect(s.snapshot).toMatchObject({ phase: 'negotiating', stream: null, code: 'ABC234', peerName: 'Guest 1' })
+    expect(sock.sent.at(-1)).toEqual({ type: 'answer', sdp: 'ANSWER' })
+    peers[1].h.onState('connected')
+    expect(s.snapshot.phase).toBe('receiving')
+  })
   it('maps server errors and connection loss to error states', () => {
     const a = setupReceiver()
     a.s.start()
