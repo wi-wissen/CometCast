@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/main.dart';
+import 'package:cometcast/receiver_controller.dart' show UrlOpener;
 import 'package:cometcast/settings.dart';
 import 'package:cometcast/src/design/tokens.dart';
 import 'package:cometcast/src/display/display_logic.dart';
@@ -55,6 +56,9 @@ Future<DisplayHarness> pumpDisplay(
   DefaultMode mode = DefaultMode.open,
   FakeCoreApi? core,
   bool start = true,
+  UrlOpener? openUrl,
+  bool canOpen = false,
+  AppSettings? settingsOverride,
 }) async {
   await tester.runAsync(loadAppFonts);
   final c = core ?? FakeCoreApi();
@@ -69,7 +73,8 @@ Future<DisplayHarness> pumpDisplay(
     appearance: appearance,
   );
   final wake = FakeWakeLock();
-  final settings = AppSettings.fromDefaults(c.serverDefaults());
+  final settings =
+      settingsOverride ?? AppSettings.fromDefaults(c.serverDefaults());
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -82,7 +87,8 @@ Future<DisplayHarness> pumpDisplay(
       displayStore: store,
       wakeLock: wake,
       forceDisplayCapable: true,
-      openUrl: (_) async => true,
+      openUrl: openUrl ?? (_) async => true,
+      canOpenLinks: () async => canOpen,
     ),
   );
   for (var i = 0; i < 40; i++) {

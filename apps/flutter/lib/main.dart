@@ -29,6 +29,7 @@ import 'src/display/wake_lock.dart';
 import 'src/presenter/file_picker.dart';
 import 'src/presenter/presenter_root.dart' show ScanQr;
 import 'miracast_page.dart' show miracastSupportedHere;
+import 'src/display/display_root.dart' show CanOpenLinks;
 import 'src/display/launch.dart' show launchInBrowser;
 import 'receiver_controller.dart' show UrlOpener;
 import 'settings.dart';
@@ -172,6 +173,7 @@ class CometCastApp extends StatelessWidget {
     this.firstLaunch = false,
     this.links,
     this.scanQr,
+    this.canOpenLinks,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   /// What the display remembers (a memory store in tests).
@@ -196,6 +198,9 @@ class CometCastApp extends StatelessWidget {
 
   /// The system QR scanner; null where none exists (computers): no scan button.
   final ScanQr? scanQr;
+
+  /// Can the system open web links? Null = ask the system (tests answer directly).
+  final CanOpenLinks? canOpenLinks;
 
   final Locale? locale;
 
@@ -290,6 +295,7 @@ class CometCastApp extends StatelessWidget {
         firstLaunch: firstLaunch,
         links: links,
         scanQr: scanQr,
+        canOpenLinks: canOpenLinks,
       ),
     );
   }

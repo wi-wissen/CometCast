@@ -3,102 +3,15 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
-import 'package:cometcast/main.dart';
 import 'package:cometcast/receiver_controller.dart';
 
 import 'content_support.dart';
 import 'fake_core.dart';
 
-class Harness {
-  Harness(this.core, this.opened, this.openResult);
-
-  final FakeCoreApi core;
-
-  /// Links the app asked the system to open.
-  final List<Uri> opened;
-  final List<bool> openResult;
-}
-
-Future<Harness> startReceiving(
-  WidgetTester tester, {
-  String locale = 'en',
-  Size size = const Size(900, 1200),
-  double dpr = 1,
-}) async {
-  final core = FakeCoreApi();
-  final opened = <Uri>[];
-  final result = <bool>[true];
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = dpr;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(
-    CometCastApp(
-      locale: Locale(locale),
-      core: core,
-      openUrl: (u) async {
-        opened.add(u);
-        return result.last;
-      },
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.text(
-      locale == 'en' ? 'Receive on this device' : 'Auf diesem Gerät empfangen',
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const Key('startButton')));
-  await flush(tester);
-  core.receiverEvents.add(
-    const ReceiverUiEvent.roomCode(code: 'K7M2QX', joinMode: UiJoinMode.open),
-  );
-  core.receiverEvents.add(const ReceiverUiEvent.peerJoined(name: 'Guest 1'));
-  core.receiverEvents.add(
-    const ReceiverUiEvent.connectionState(state: UiConnectionState.connected),
-  );
-  await flush(tester);
-  return Harness(core, opened, result);
-}
-
-Future<void> showPage(
-  WidgetTester tester,
-  FakeCoreApi core,
-  int page,
-  List<int> rgb, {
-  int w = 8,
-  int h = 6,
-}) async {
-  core.contentFrames.add(
-    ContentFrame.page(
-      page: page,
-      width: w,
-      height: h,
-      rgba: solidRgba(w, h, rgb),
-    ),
-  );
-  core.receiverEvents.add(const ReceiverUiEvent.contentFrameReady());
-  await pumpUntilFound(tester, find.text('Page $page of 3'));
-}
-
-/// Two frames: an event added to a stream reaches the controller in a microtask, and the
-/// screen needs its frame after that.
-Future<void> flush(WidgetTester tester) async {
-  await tester.pump();
-  await tester.pump();
-}
-
 void main() {
-  group('toolbar over content', () {
-  });
-
-  group('links', () {
-  });
-
   group('controller', () {
     testWidgets('an image with too many pixels is not decoded', (tester) async {
       final core = FakeCoreApi();

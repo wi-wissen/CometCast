@@ -45,6 +45,7 @@ class AppShell extends StatefulWidget {
     this.links,
     this.linkStream,
     this.firstLaunch = false,
+    this.canOpenLinks,
   });
 
   final CoreApi core;
@@ -72,6 +73,7 @@ class AppShell extends StatefulWidget {
 
   /// First launch after the install, and it brought no code (`app.scanAgainBody`).
   final bool firstLaunch;
+  final CanOpenLinks? canOpenLinks;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -124,6 +126,7 @@ class _AppShellState extends State<AppShell> {
           openUrl: widget.openUrl,
           store: widget.store,
           wakeLock: widget.wakeLock,
+          canOpenLinks: widget.canOpenLinks,
           setFullscreenOnSetupDone: !(Platform.isAndroid || Platform.isIOS),
         );
       case AppRole.presenter:
