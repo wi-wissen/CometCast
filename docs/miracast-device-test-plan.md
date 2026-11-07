@@ -178,3 +178,22 @@ Run C2, E1 and F1 once per sender and fill one table:
 | Side effects (I1, I2) | Documented | Consider not using `DisconnectAllAndApplySettings` |
 
 After the run: edit [miracast.md](miracast.md) (replace each **Uncertain** that you resolved with what you saw, with the Windows build), the M5 row in [architecture.md](architecture.md), and the rows A4 and point 5 in [measurement-points.md](measurement-points.md). Report every finding as an issue with the result file attached.
+
+
+## I. Receiving as a display feature (round 5, native-apps.md 21.9 item 3)
+
+Added for the display's "Without the app" section (spec 15.4, decisions N86 to N88). **Not run:** no
+Windows 11 machine with a Miracast-capable adapter was available in the round that wrote the code. F9
+(retiring the presenter page and `app.miracast`) waits for these cases to pass.
+
+| # | Do | Expect | Record |
+| --- | --- | --- | --- |
+| I1 | Display app, Settings, switch Miracast on (Beta) in Open | The PC is offered with the room name within 10 s; the state line says it waits | Time until the sender lists it |
+| I2 | A sender connects (Win + K or a phone) | The PIN dialog shows a PIN on the screen **without a question** (Open); the sender asks for the PIN; after it the picture appears in the Presenting stage with the name tag of spec 15.4 | `pairing` was `pin_required` (the start JSON of `cc-miracast-ffi`); that a sender cannot connect without the PIN |
+| I3 | Join mode Approval on, a sender connects | The request dialog (Yes, No) first; Yes shows the PIN, No refuses and the sender shows its failure; no answer: the request ends at the server's expiry | Which `MiracastEvent`s arrive for each answer |
+| I4 | Join mode Locked while the receiver is listening | The PC is no longer offered within 10 s; a running mirror stays until it ends | The time, and whether the offer disappears for senders that already listed it |
+| I5 | End (host) while a mirror runs | The mirror stops, the display is Idle, the receiver is offered again in Open | Whether the sender is told |
+| I6 | A Comet Cast presenter starts presenting while a Miracast mirror shows | The mirror ends with `toast.rxEnded`, then the Comet Cast picture | How the sender reacts |
+| I7 | While a Comet Cast presenter presents, a Miracast sender tries to connect | Refused without any dialog on the screen | |
+| I8 | Start with the optional feature missing, with an adapter without support, with a policy that disables receiving | The state line says `noFeature`, `noHw`, `policy` (any other failure: `failed`) | The `Issue` that `diagnose_start_error` gave for each |
+| I9 | Switch the row off | The receiver stops, a running mirror ends, the PC disappears from the lists | |

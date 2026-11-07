@@ -612,4 +612,36 @@ void main() {
       expect(miracastSupportedHere(), Platform.isWindows);
     });
   });
+
+  group('the display role (native-apps.md 21.4)', () {
+    test('a PIN is always required', () {
+      expect(displayMiracastPairing, MiracastPairing.pinRequired);
+      expect(displayMiracastPairing.wire, 'pin_required');
+    });
+
+    test('the diagnosis maps to the four state lines', () {
+      expect(
+        miracastStateLine(MiracastIssue.adapterUnsupported),
+        MiracastStateLine.noHw,
+      );
+      expect(
+        miracastStateLine(MiracastIssue.featureMissing),
+        MiracastStateLine.noFeature,
+      );
+      expect(
+        miracastStateLine(MiracastIssue.disabledByPolicy),
+        MiracastStateLine.policy,
+      );
+      // Every other issue is a plain failure.
+      for (final i in MiracastIssue.values.where(
+        (i) => !{
+          MiracastIssue.adapterUnsupported,
+          MiracastIssue.featureMissing,
+          MiracastIssue.disabledByPolicy,
+        }.contains(i),
+      )) {
+        expect(miracastStateLine(i), MiracastStateLine.failed, reason: '$i');
+      }
+    });
+  });
 }

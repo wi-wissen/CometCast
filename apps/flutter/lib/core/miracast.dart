@@ -60,6 +60,49 @@ enum MiracastPairing {
   final String wire;
 }
 
+/// The pairing of the display's Miracast receiver (native-apps.md 21.4, decision N87): a PIN is
+/// **always** required, so only someone who sees the screen can connect (Miracast reaches beyond
+/// the network). The display role never uses the other two modes.
+const displayMiracastPairing = MiracastPairing.pinRequired;
+
+/// The state lines of the display's Settings row for Miracast (spec 15.4), chosen from the
+/// diagnosis (native-apps.md 21.4): the long `miracast.*` hint texts stay for the log and the
+/// retired presenter page.
+enum MiracastStateLine {
+  /// The adapter or driver cannot receive Miracast.
+  noHw,
+
+  /// The optional Windows feature is missing.
+  noFeature,
+
+  /// A policy switched receiving off.
+  policy,
+
+  /// Every other failure.
+  failed,
+}
+
+/// Adapter unsupported -> [MiracastStateLine.noHw], feature missing -> `noFeature`, disabled by
+/// policy -> `policy`, every other issue -> `failed`.
+MiracastStateLine miracastStateLine(MiracastIssue issue) {
+  switch (issue) {
+    case MiracastIssue.adapterUnsupported:
+      return MiracastStateLine.noHw;
+    case MiracastIssue.featureMissing:
+      return MiracastStateLine.noFeature;
+    case MiracastIssue.disabledByPolicy:
+      return MiracastStateLine.policy;
+    case MiracastIssue.notWindows:
+    case MiracastIssue.adapterNotOptimized:
+    case MiracastIssue.temporarilyUnavailable:
+    case MiracastIssue.accessDenied:
+    case MiracastIssue.invalidSettings:
+    case MiracastIssue.libraryMissing:
+    case MiracastIssue.other:
+      return MiracastStateLine.failed;
+  }
+}
+
 MiracastStatus parseMiracastStatus(Object? raw) {
   switch (raw) {
     case 'off':
