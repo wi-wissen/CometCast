@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "cc-docs-wasm"
+description = "PDF page rendering for the web client (cc-docs and hayro compiled to WebAssembly)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+# `cdylib` for wasm-bindgen, `rlib` so that the plain-Rust part can be unit tested natively.
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+cc-docs.workspace = true
+wasm-bindgen = "0.2"

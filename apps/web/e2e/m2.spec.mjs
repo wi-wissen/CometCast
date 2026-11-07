@@ -112,6 +112,7 @@ let browser
 try {
   await waitHealthy()
   browser = await chromium.launch({
+    executablePath: process.env.E2E_CHROME || undefined,
     args: [
       '--use-fake-ui-for-media-stream',
       '--auto-select-desktop-capture-source=Entire screen',
@@ -287,8 +288,9 @@ try {
   await cs.getByRole('button', { name: 'Connect' }).click()
   await cs.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 15000 })
   await receiver.locator('[data-testid=status][data-phase=receiving]').waitFor({ timeout: 15000 })
-  // "Coming later" notice is present
-  assert.match(await cs.locator('body').innerText(), /PDF documents/)
+  // The PDF section exists (sent and shown in e2e:pdf); Office documents are still listed as "coming later"
+  assert.match(await cs.locator('body').innerText(), /PDF document/)
+  assert.match(await cs.locator('body').innerText(), /Office documents/)
 
   // Image
   const png = makePng(64, 32)

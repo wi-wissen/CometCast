@@ -3,9 +3,9 @@
 // Sender -> receiver control channel (WebRTC DataChannel "control", ordered, reliable).
 // Message format: docs/web-m2.md.
 // UNCERTAIN: this message set is local to the web client for milestone M2 plus the `document` kinds
-// that the native clients send (PDF). It should move to cc-proto once it has been exercised. The native
-// implementation is crates/cc-files. This client cannot show documents yet: it skips the data of a
-// document and tells the person (error code `document_unsupported`).
+// (PDF) that the native clients define. It should move to cc-proto once it has been exercised. The native
+// implementation is crates/cc-files. This client receives PDFs (the receiver renders them with the WASM
+// build of cc-docs, see pdfRenderer.ts) and sends them (ControlSender.sendDocument).
 
 export const CONTROL_CHANNEL_LABEL = 'control'
 export const CHUNK_SIZE = 16 * 1024
@@ -21,7 +21,7 @@ export const MAX_TEXT_CHARS = 8192
  * (`MAX_NAME_LENGTH` in crates/cc-files). `String.length` counts UTF-16 units and would differ for emoji.
  */
 export const MAX_NAME_LENGTH = 255
-/** Largest document a native sender sends (64 MiB). Only used to bound the data that is skipped. */
+/** Largest PDF a sender sends and a receiver accepts (64 MiB, the same value as in crates/cc-files). */
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
 /** Stop writing when this much is queued in the channel; resume at the low-water mark. */
 const HIGH_WATER = 1024 * 1024
@@ -196,15 +196,23 @@ export type TransferErrorCode =
   | 'no_transfer'
   | 'bad_chunk'
   | 'document_unsupported'
+  | 'document_invalid'
+  | 'document_encrypted'
+  | 'document_too_large'
+  | 'document_too_many_pages'
+  | 'document_rejected'
+  | 'document_memory'
+  | 'document_timeout'
+  | 'document_failed'
 
 /**
- * Reassembles one image from its metadata message and binary chunks.
+ * Reassembles one image or PDF from its metadata message and binary chunks.
  * Memory is bounded: one buffer of the announced size is allocated up front and chunks are copied in.
  * Every chunk must be exactly CHUNK_SIZE long unless it completes the image, so the number of
  * messages is bounded by size / CHUNK_SIZE (a flood of tiny messages is rejected).
  */
 export class ImageAssembler {
-  private cur: { name: string; mime: ImageMime; size: number; buf: Uint8Array; received: number } | null = null
+  private cur: { name: string; mime: string; size: number; buf: Uint8Array; received: number } | null = null
 
   get active(): boolean {
     return this.cur !== null
@@ -215,7 +223,7 @@ export class ImageAssembler {
   }
 
   /** Begins a transfer; a transfer in progress is dropped. The size limit is enforced by parseControlMessage. */
-  start(meta: { name: string; mime: ImageMime; size: number }): void {
+  start(meta: { name: string; mime: string; size: number }): void {
     this.cur = { ...meta, buf: new Uint8Array(meta.size), received: 0 }
   }
 
@@ -238,11 +246,18 @@ export class ImageAssembler {
   }
 
   finish(): { blob: Blob; name: string } | TransferErrorCode {
+    const r = this.finishBytes()
+    if (typeof r === 'string') return r
+    return { blob: new Blob([r.bytes as BlobPart], { type: r.mime }), name: r.name }
+  }
+
+  /** Like `finish`, but hands out the received bytes (no copy) instead of a Blob. */
+  finishBytes(): { bytes: Uint8Array; mime: string; name: string } | TransferErrorCode {
     const c = this.cur
     this.cur = null
     if (!c) return 'no_transfer'
     if (c.received !== c.size) return 'size_mismatch'
-    return { blob: new Blob([c.buf as BlobPart], { type: c.mime }), name: c.name }
+    return { bytes: c.buf, mime: c.mime, name: c.name }
   }
 
   reset(): void {
@@ -254,6 +269,8 @@ export interface ControlReceiverHandlers {
   onCmd(cmd: ControlCmd): void
   onProgress(p: { name: string; received: number; size: number } | null): void
   onImage(blob: Blob, name: string): void
+  /** A complete PDF (the announced number of bytes arrived). Nothing has looked at the bytes yet. */
+  onDocument(bytes: Uint8Array, name: string): void
   onLink(url: string): void
   onError(code: TransferErrorCode | 'bad_message'): void
 }
@@ -261,8 +278,8 @@ export interface ControlReceiverHandlers {
 /** Receiver side: feed it every message of the channel. */
 export class ControlReceiver {
   private readonly asm = new ImageAssembler()
-  /** A document (PDF) from a native sender is being skipped: only the byte count is kept, never the data. */
-  private skipping: { size: number; received: number } | null = null
+  /** The transfer in progress is a PDF (otherwise an image). */
+  private isDocument = false
   private lastProgress = 0
   /** `now` is injectable for tests; progress callbacks are throttled to one per PROGRESS_INTERVAL_MS. */
   constructor(
@@ -279,20 +296,10 @@ export class ControlReceiver {
 
   reset(): void {
     this.asm.reset()
-    this.skipping = null
+    this.isDocument = false
   }
 
   private handleBinary(chunk: Uint8Array): void {
-    const skip = this.skipping
-    if (skip) {
-      // Same chunk rule as for images, without keeping anything.
-      skip.received += chunk.byteLength
-      if (skip.received > skip.size || (chunk.byteLength !== CHUNK_SIZE && skip.received !== skip.size)) {
-        this.skipping = null
-        this.h.onError(skip.received > skip.size ? 'too_large' : 'bad_chunk')
-      }
-      return
-    }
     const err = this.asm.push(chunk)
     if (err) {
       this.h.onProgress(null)
@@ -315,25 +322,36 @@ export class ControlReceiver {
         this.h.onCmd(m.cmd)
         break
       case 'document':
-        // PDF rendering is not available in the web client yet: skip the data, report at the end.
-        this.asm.reset()
-        this.h.onProgress(null)
-        this.skipping = { size: m.size, received: 0 }
+        // Same chunk rule and memory bound as for images (one buffer of the announced size, at most 64 MiB).
+        this.isDocument = true
+        this.asm.start(m)
+        this.lastProgress = this.now()
+        this.h.onProgress(this.asm.progress)
         break
       case 'document_end': {
-        const skip = this.skipping
-        this.skipping = null
-        if (!skip) this.h.onError('no_transfer')
-        else this.h.onError(skip.received === skip.size ? 'document_unsupported' : 'size_mismatch')
+        const r = this.isDocument ? this.asm.finishBytes() : 'no_transfer'
+        if (!this.isDocument) this.asm.reset()
+        this.isDocument = false
+        this.h.onProgress(null)
+        if (typeof r === 'string') this.h.onError(r)
+        else this.h.onDocument(r.bytes, r.name)
         break
       }
       case 'image':
-        this.skipping = null
+        this.isDocument = false
         this.asm.start(m)
         this.lastProgress = this.now()
         this.h.onProgress(this.asm.progress)
         break
       case 'image_end': {
+        if (this.isDocument) {
+          // `image_end` for a PDF transfer: drop it.
+          this.asm.reset()
+          this.isDocument = false
+          this.h.onProgress(null)
+          this.h.onError('no_transfer')
+          break
+        }
         const r = this.asm.finish()
         this.h.onProgress(null)
         if (typeof r === 'string') this.h.onError(r)
@@ -355,7 +373,7 @@ export interface ImageSource {
   slice(start: number, end: number): { arrayBuffer(): Promise<ArrayBuffer> }
 }
 
-export type SendErrorCode = 'not_open' | 'bad_type' | 'too_large' | 'empty' | 'channel_closed'
+export type SendErrorCode = 'not_open' | 'bad_type' | 'too_large' | 'empty' | 'channel_closed' | 'not_pdf'
 export class SendError extends Error {
   constructor(readonly code: SendErrorCode) {
     super(code)
@@ -423,6 +441,30 @@ export class ControlSender {
     // Clip by characters (not UTF-16 units, which could cut an emoji in half) and clean like the receiver does.
     const name = sanitizeName(Array.from(file.name).slice(0, MAX_NAME_LENGTH).join('')) || 'image'
     this.sendJson({ kind: 'image', name, mime: file.type, size: file.size })
+    await this.sendChunks(file, onProgress)
+    this.sendJson({ kind: 'image_end' })
+  }
+
+  /**
+   * Sends a PDF with the same protocol the native ContentReceiver (crates/cc-files) accepts: a `document`
+   * message, 16 KiB binary chunks (all full except the last), `document_end`. The file must start with the
+   * `%PDF-` marker within its first 1024 bytes (like the renderer requires); nothing else is checked here,
+   * the receiver treats the file as hostile whatever the sender says.
+   */
+  async sendDocument(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    // Some systems give no MIME type for a PDF; the marker check below is what counts.
+    if (file.type !== 'application/pdf' && file.type !== '') throw new SendError('bad_type')
+    if (file.size <= 0) throw new SendError('empty')
+    if (file.size > MAX_DOCUMENT_BYTES) throw new SendError('too_large')
+    const head = new Uint8Array(await file.slice(0, Math.min(1024, file.size)).arrayBuffer())
+    if (!hasPdfMarker(head)) throw new SendError('not_pdf')
+    const name = sanitizeName(Array.from(file.name).slice(0, MAX_NAME_LENGTH).join('')) || 'document.pdf'
+    this.sendJson({ kind: 'document', name, mime: 'application/pdf', size: file.size })
+    await this.sendChunks(file, onProgress)
+    this.sendJson({ kind: 'document_end' })
+  }
+
+  private async sendChunks(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
     for (let o = 0; o < file.size; o += CHUNK_SIZE) {
       if (this.ch.bufferedAmount > HIGH_WATER) await this.waitDrain()
       if (!this.isOpen) throw new SendError('channel_closed')
@@ -431,6 +473,13 @@ export class ControlSender {
       this.ch.send(buf)
       onProgress?.(Math.min(o + CHUNK_SIZE, file.size), file.size)
     }
-    this.sendJson({ kind: 'image_end' })
   }
+}
+
+/** `true` if `%PDF-` occurs in the first 1024 bytes. */
+export function hasPdfMarker(head: Uint8Array): boolean {
+  const m = [0x25, 0x50, 0x44, 0x46, 0x2d]
+  const end = Math.min(head.length, 1024) - m.length
+  for (let i = 0; i <= end; i++) if (m.every((b, j) => head[i + j] === b)) return true
+  return false
 }

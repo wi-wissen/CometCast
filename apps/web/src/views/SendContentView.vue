@@ -5,14 +5,14 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSender } from '../composables/useSender'
-import { IMAGE_MIME_TYPES, MAX_IMAGE_BYTES, SendError, validateLinkUrl } from '../core/control'
+import { IMAGE_MIME_TYPES, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, SendError, validateLinkUrl } from '../core/control'
 import { isValidRoomCode, normalizeRoomCode, ROOM_CODE_LENGTH } from '../core/roomCode'
 
 const { t, te } = useI18n()
 const code = ref('')
 const touched = ref(false)
 const valid = computed(() => isValidRoomCode(code.value))
-const { state, start, stop, sendImage, sendLink, sendCmd } = useSender({ contentOnly: true })
+const { state, start, stop, sendImage, sendDocument, sendLink, sendCmd } = useSender({ contentOnly: true })
 
 const active = computed(() => ['connecting', 'joining', 'negotiating', 'sharing'].includes(state.value.phase))
 const ready = computed(() => state.value.channelOpen)
@@ -69,6 +69,50 @@ function onDrop(e: DragEvent) {
   if (f && ready.value && !progress.value) void sendFile(f)
 }
 const percent = computed(() => (progress.value ? Math.floor((progress.value.sent / progress.value.total) * 100) : 0))
+
+// --- PDF document ---------------------------------------------------------------------------------
+const docNotice = ref<Notice>(null)
+const docProgress = ref<{ name: string; sent: number; total: number } | null>(null)
+const docDragging = ref(false)
+const docInput = ref<HTMLInputElement | null>(null)
+const docMaxLabel = `${MAX_DOCUMENT_BYTES / (1024 * 1024)} MiB`
+
+async function sendPdf(file: File) {
+  docNotice.value = null
+  docProgress.value = { name: file.name, sent: 0, total: file.size }
+  try {
+    await sendDocument(file, (sent, total) => (docProgress.value = { name: file.name, sent, total }))
+    docNotice.value = { kind: 'ok', text: t('sendContent.document.sent', { name: file.name }) }
+  } catch (e) {
+    const code = e instanceof SendError ? e.code : 'failed'
+    const key = `sendContent.document.error.${code}`
+    docNotice.value = {
+      kind: 'err',
+      text: te(key) ? t(key, { max: docMaxLabel }) : t('sendContent.document.error.failed'),
+    }
+  } finally {
+    docProgress.value = null
+  }
+}
+function onPickPdf(e: Event) {
+  const el = e.target as HTMLInputElement
+  const f = el.files?.[0]
+  el.value = '' // allows picking the same file again
+  if (f && ready.value && !docProgress.value) void sendPdf(f)
+}
+function onDropPdf(e: DragEvent) {
+  docDragging.value = false
+  const f = e.dataTransfer?.files?.[0]
+  if (f && ready.value && !docProgress.value) void sendPdf(f)
+}
+const docPercent = computed(() => (docProgress.value ? Math.floor((docProgress.value.sent / docProgress.value.total) * 100) : 0))
+function turnPage(cmd: 'next_page' | 'prev_page') {
+  try {
+    sendCmd(cmd)
+  } catch {
+    /* channel closed; the status line already says so */
+  }
+}
 
 // --- link ----------------------------------------------------------------------------------------
 const link = ref('')
@@ -190,6 +234,64 @@ function stopShowing() {
       </p>
     </fieldset>
 
+    <fieldset class="flex flex-col gap-3 rounded-cc border border-line bg-surface p-4" :disabled="!ready">
+      <legend class="px-1 font-semibold">{{ t('sendContent.document.title') }}</legend>
+      <p class="text-sm text-muted">{{ t('sendContent.document.help', { max: docMaxLabel }) }}</p>
+      <div
+        data-testid="doc-drop-zone"
+        class="flex flex-col items-center gap-2 rounded-cc border-2 border-dashed px-4 py-6 text-center"
+        :class="docDragging ? 'border-accent bg-accent-soft' : 'border-line2'"
+        @dragover.prevent="docDragging = true"
+        @dragleave="docDragging = false"
+        @drop.prevent="onDropPdf"
+      >
+        <span class="text-sm text-muted">{{ t('sendContent.document.drop') }}</span>
+        <input ref="docInput" type="file" accept="application/pdf,.pdf" class="sr-only" data-testid="pdf-input" tabindex="-1" @change="onPickPdf" />
+        <button
+          type="button"
+          :disabled="!ready || docProgress !== null"
+          class="rounded-cc border border-line2 bg-surface px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-50"
+          @click="docInput?.click()"
+        >
+          {{ t('sendContent.document.choose') }}
+        </button>
+      </div>
+      <div v-if="docProgress" data-testid="pdf-progress">
+        <label for="send-pdf-progress" class="text-sm">{{ t('sendContent.document.progress', { name: docProgress.name, percent: docPercent }) }}</label>
+        <progress id="send-pdf-progress" class="mt-1 block w-full" :value="docProgress.sent" :max="docProgress.total" />
+      </div>
+      <p
+        v-if="docNotice"
+        data-testid="pdf-notice"
+        role="status"
+        class="text-sm"
+        :class="docNotice.kind === 'ok' ? 'text-ok' : 'text-err'"
+      >
+        {{ docNotice.text }}
+      </p>
+      <div role="group" :aria-label="t('sendContent.document.pagesHelp')" class="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          data-testid="send-prev-page"
+          class="rounded-cc border border-line2 bg-surface px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="!ready"
+          @click="turnPage('prev_page')"
+        >
+          {{ t('sendContent.document.prev') }}
+        </button>
+        <button
+          type="button"
+          data-testid="send-next-page"
+          class="rounded-cc border border-line2 bg-surface px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="!ready"
+          @click="turnPage('next_page')"
+        >
+          {{ t('sendContent.document.next') }}
+        </button>
+        <span class="text-sm text-muted">{{ t('sendContent.document.pagesHelp') }}</span>
+      </div>
+    </fieldset>
+
     <fieldset class="flex flex-col gap-2 rounded-cc border border-line bg-surface p-4" :disabled="!ready">
       <legend class="px-1 font-semibold">{{ t('sendContent.link.title') }}</legend>
       <form class="flex flex-col gap-2" @submit.prevent="onSendLink">
@@ -243,7 +345,6 @@ function stopShowing() {
     <div class="rounded-cc border border-line bg-sunk p-4">
       <h2 class="mb-1 font-semibold">{{ t('sendContent.later.title') }}</h2>
       <ul class="list-disc pl-5 text-sm text-muted">
-        <li>{{ t('sendContent.later.pdf') }}</li>
         <li>{{ t('sendContent.later.office') }}</li>
         <li>{{ t('sendContent.later.video') }}</li>
       </ul>

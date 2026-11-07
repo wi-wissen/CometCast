@@ -24,5 +24,13 @@ export function useReceiver() {
     iceServers: () => fetchIceServers(base),
   })
   onBeforeUnmount(() => session.stop())
-  return { state, start: () => session.start(), stop: () => session.stop(), clearContent: () => session.clearContent() }
+  return {
+    state,
+    start: () => session.start(),
+    stop: () => session.stop(),
+    clearContent: () => session.clearContent(),
+    nextPage: () => session.nextPage(),
+    prevPage: () => session.prevPage(),
+    renderPage: (page: number, width: number) => session.renderPage(page, width),
+  }
 }

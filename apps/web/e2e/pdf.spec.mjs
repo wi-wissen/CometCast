@@ -1,0 +1,245 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// End-to-end test for PDF documents in the web client: a web sender (content-only mode) sends a small
+// generated PDF over the WebRTC DataChannel `control` to a web receiver, which renders pages with the WASM
+// build of cc-docs/hayro in a Web Worker.
+// Checks: the page canvas is not blank and shows what the PDF draws (a black and a red box at known places),
+// the page label, next/prev with the sender's buttons (cmd messages), clamping at both ends, that a link
+// annotation in the PDF is NOT followed (no new tab, no navigation), that a damaged PDF gives the translated
+// notice, the German texts, and stop.
+// Starts the real cometcast-server and a real Chromium (or Chrome: set E2E_CHROME=/path/to/chrome).
+// Run: npm run build:wasm && npm run build && npm run e2e:pdf
+//   (needs the wasm target and a wasm-bindgen CLI matching Cargo.lock, see scripts/build-wasm.sh)
+import { createRequire } from 'node:module'
+import { spawn, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { createServer } from 'node:net'
+import assert from 'node:assert/strict'
+
+const require = createRequire(import.meta.url)
+const { chromium } = require('playwright')
+
+const here = dirname(fileURLToPath(import.meta.url))
+const repo = resolve(here, '../../..')
+const webDir = resolve(here, '../dist')
+assert.ok(
+  existsSync(resolve(webDir, 'pdf/cc_docs_wasm_bg.wasm')),
+  'dist/pdf/cc_docs_wasm_bg.wasm is missing: run `npm run build:wasm && npm run build` first',
+)
+const freePort = () =>
+  new Promise((res, rej) => {
+    const srv = createServer()
+    srv.once('error', rej)
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address()
+      srv.close(() => res(port))
+    })
+  })
+const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await freePort()
+const base = `http://127.0.0.1:${port}`
+
+const build = spawnSync('cargo', ['build', '-p', 'cometcast-server'], { cwd: repo, stdio: 'inherit' })
+assert.equal(build.status, 0, 'cargo build failed')
+const targetDir = process.env.CARGO_TARGET_DIR ?? resolve(repo, 'target')
+const server = spawn(resolve(targetDir, 'debug/cometcast-server'), ['--listen', `127.0.0.1:${port}`, '--web-dir', webDir], {
+  stdio: 'inherit',
+})
+
+async function waitHealthy() {
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(`${base}/healthz`)).ok) return
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error('server did not become healthy')
+}
+
+async function waitFor(fn, what, ms = 20000) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    try {
+      const v = await fn()
+      if (v) return v
+    } catch {
+      /* retry */
+    }
+    await new Promise((r) => setTimeout(r, 150))
+  }
+  throw new Error(`timeout waiting for: ${what}`)
+}
+
+/**
+ * A small PDF with a correct cross-reference table. Page 1: a black box (top left) on a 300 x 200 pt page;
+ * page 2: a red box (bottom right) on a 200 x 300 pt page; page 3: empty (white). Page 1 also carries a link
+ * annotation (URI action) over the black box, which a viewer must not follow without a click, and which this
+ * viewer does not expose at all.
+ */
+function makePdf() {
+  const streams = [
+    '0 0 0 rg 20 100 80 80 re f',
+    '1 0 0 rg 100 20 80 80 re f',
+    '1 1 1 rg 0 0 1 1 re f',
+  ]
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 6 0 R /Annots [9 0 R] >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Contents 7 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 8 0 R >>',
+    ...streams.map((s) => `<< /Length ${s.length} >>\nstream\n${s}\nendstream`),
+    '<< /Type /Annot /Subtype /Link /Rect [20 100 100 180] /Border [0 0 0] /A << /S /URI /URI (https://example.org/from-pdf) >> >>',
+  ]
+  let out = '%PDF-1.4\n'
+  const offsets = []
+  objs.forEach((o, i) => {
+    offsets.push(out.length)
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const xref = out.length
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+  for (const o of offsets) out += `${String(o).padStart(10, '0')} 00000 n \n`
+  out += `trailer\n<< /Root 1 0 R /Size ${objs.length + 1} >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(out, 'latin1')
+}
+
+/** Reads the page canvas: size, number of non-white pixels, and the colour at two relative points. */
+const readCanvas = (page) =>
+  page.getByTestId('document-canvas').evaluate((c) => {
+    const ctx = c.getContext('2d')
+    const { width, height } = c
+    const d = ctx.getImageData(0, 0, width, height).data
+    let nonWhite = 0
+    for (let i = 0; i < d.length; i += 4) if (d[i] < 250 || d[i + 1] < 250 || d[i + 2] < 250) nonWhite++
+    const at = (fx, fy) => {
+      const i = (Math.floor(fy * height) * width + Math.floor(fx * width)) * 4
+      return [d[i], d[i + 1], d[i + 2]]
+    }
+    return { width, height, nonWhite, topLeftBox: at(60 / 300, 1 - 140 / 200), bottomRight: at(140 / 200, 1 - 60 / 300) }
+  })
+
+let browser
+try {
+  await waitHealthy()
+  browser = await chromium.launch({
+    executablePath: process.env.E2E_CHROME || undefined,
+    args: ['--disable-features=WebRtcHideLocalIpsWithMdns'],
+  })
+  const errors = []
+  const newPage = async (locale = 'en-US') => {
+    const ctx = await browser.newContext({ locale, viewport: { width: 1280, height: 800 } })
+    const p = await ctx.newPage()
+    p.on('pageerror', (e) => errors.push(e.message))
+    return { ctx, page: p }
+  }
+
+  // ---------- English: receiver and sender ----------
+  const { ctx: rctx, page: receiver } = await newPage()
+  await receiver.goto(base)
+  await receiver.getByRole('button', { name: /Receive on this device/ }).click()
+  await receiver.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 15000 })
+  const code = (await receiver.getByTestId('room-code').innerText()).trim()
+
+  const { ctx: sctx, page: sender } = await newPage()
+  await sender.goto(base)
+  await sender.getByRole('button', { name: /Send file or link/ }).click()
+  await sender.locator('#room-code').fill(code)
+  await sender.getByRole('button', { name: 'Connect' }).click()
+  await sender.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 20000 })
+
+  // Anything the PDF's link would do must not happen: watch for new tabs and navigations.
+  const opened = []
+  rctx.on('page', (p) => opened.push(p.url()))
+  const receiverUrl = receiver.url()
+
+  const pdf = makePdf()
+  await sender.getByTestId('pdf-input').setInputFiles({ name: 'lesson.pdf', mimeType: 'application/pdf', buffer: pdf })
+  await sender.getByTestId('pdf-notice').waitFor({ timeout: 20000 })
+  assert.match(await sender.getByTestId('pdf-notice').innerText(), /Sent lesson\.pdf/)
+
+  await receiver.getByTestId('document-canvas').waitFor({ state: 'visible', timeout: 30000 })
+  await waitFor(() => receiver.getByTestId('document-canvas').getAttribute('data-busy').then((b) => b === 'false'), 'first page drawn', 30000)
+  assert.equal((await receiver.getByTestId('document-page').innerText()).trim(), 'Page 1 of 3')
+  const p1 = await waitFor(async () => {
+    const r = await readCanvas(receiver)
+    return r.nonWhite > 0 ? r : null
+  }, 'page 1 canvas is not blank')
+  console.log('page 1 canvas:', JSON.stringify(p1))
+  assert.ok(p1.width > p1.height, 'page 1 is landscape')
+  assert.ok(p1.nonWhite > p1.width * p1.height * 0.05, 'the black box covers at least 5 % of the page')
+  assert.deepEqual(p1.topLeftBox.map((v) => v < 30), [true, true, true], `black box expected, got ${p1.topLeftBox}`)
+
+  // Next page (sender button, a `cmd` message): red box, portrait page.
+  await sender.getByTestId('send-next-page').click()
+  await receiver.getByText('Page 2 of 3').waitFor({ timeout: 10000 })
+  const p2 = await waitFor(async () => {
+    const r = await readCanvas(receiver)
+    return r.height > r.width && r.nonWhite > 0 ? r : null
+  }, 'page 2 canvas drawn')
+  assert.ok(p2.bottomRight[0] > 200 && p2.bottomRight[1] < 60 && p2.bottomRight[2] < 60, `red box expected, got ${p2.bottomRight}`)
+
+  await sender.getByTestId('send-next-page').click()
+  await receiver.getByText('Page 3 of 3').waitFor({ timeout: 10000 })
+  await sender.getByTestId('send-next-page').click() // clamped at the last page
+  await receiver.getByTestId('doc-prev').click() // local control on the receiver as well
+  await receiver.getByText('Page 2 of 3').waitFor({ timeout: 10000 })
+  await sender.getByTestId('send-prev-page').click()
+  await receiver.getByText('Page 1 of 3').waitFor({ timeout: 10000 })
+  await sender.getByTestId('send-prev-page').click() // clamped at the first page
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal((await receiver.getByTestId('document-page').innerText()).trim(), 'Page 1 of 3')
+
+  // The link annotation of page 1 was not followed and is not clickable in the viewer.
+  assert.deepEqual(opened, [], 'no new tab opened')
+  assert.equal(receiver.url(), receiverUrl, 'receiver did not navigate')
+  assert.equal(await receiver.getByTestId('stage').locator('a[href]').count(), 0, 'the document view contains no links')
+
+  // A damaged PDF (valid marker, garbage after it) gives the translated notice and no document.
+  await sender.getByTestId('send-next-page').click()
+  const garbage = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(40000, 0x41)])
+  await sender.getByTestId('pdf-input').setInputFiles({ name: 'broken.pdf', mimeType: 'application/pdf', buffer: garbage })
+  await receiver.getByTestId('content-error').waitFor({ timeout: 30000 })
+  assert.match(await receiver.getByTestId('content-error').innerText(), /damaged or not supported/)
+  assert.equal(await receiver.getByTestId('document-canvas').count(), 0)
+
+  // The sender refuses a file that is no PDF before sending anything.
+  await sender.getByTestId('pdf-input').setInputFiles({ name: 'text.pdf', mimeType: 'application/pdf', buffer: Buffer.from('hello world') })
+  await sender.getByTestId('pdf-notice').filter({ hasText: /does not look like a PDF/ }).waitFor({ timeout: 10000 })
+
+  // A good PDF again, then stop from the sender closes it.
+  await sender.getByTestId('pdf-input').setInputFiles({ name: 'lesson.pdf', mimeType: 'application/pdf', buffer: pdf })
+  await receiver.getByText('Page 1 of 3').waitFor({ timeout: 30000 })
+  await sender.getByTestId('stop-showing').click()
+  await receiver.getByTestId('document-canvas').waitFor({ state: 'detached', timeout: 10000 })
+  await sctx.close()
+  await rctx.close()
+
+  // ---------- German texts ----------
+  const { ctx: dr, page: de } = await newPage('de-DE')
+  await de.goto(base)
+  await de.getByRole('button', { name: /Auf diesem Gerät empfangen/ }).click()
+  await de.locator('[data-testid=status][data-phase=waiting_sender]').waitFor({ timeout: 15000 })
+  const code2 = (await de.getByTestId('room-code').innerText()).trim()
+  const { ctx: ds, page: deSender } = await newPage('de-DE')
+  await deSender.goto(base)
+  await deSender.getByRole('button', { name: /Datei oder Link senden/ }).click()
+  await deSender.locator('#room-code').fill(code2)
+  await deSender.getByRole('button', { name: 'Verbinden' }).click()
+  await deSender.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 20000 })
+  await deSender.getByTestId('pdf-input').setInputFiles({ name: 'unterricht.pdf', mimeType: 'application/pdf', buffer: pdf })
+  await de.getByText('Seite 1 von 3').waitFor({ timeout: 30000 })
+  await deSender.getByRole('button', { name: 'Nächste Seite' }).click()
+  await de.getByText('Seite 2 von 3').waitFor({ timeout: 10000 })
+  await ds.close()
+  await dr.close()
+
+  assert.deepEqual(errors, [], `page errors: ${errors.join('; ')}`)
+  console.log('E2E PDF OK')
+} finally {
+  await browser?.close()
+  server.kill('SIGTERM')
+}

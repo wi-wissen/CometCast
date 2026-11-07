@@ -4,6 +4,8 @@
 # Node / web
 node_modules/
 apps/web/dist/
+# PDF renderer built by apps/web/scripts/build-wasm.sh
+apps/web/public/pdf/
 # Flutter / Dart
 .dart_tool/
 .flutter-plugins*

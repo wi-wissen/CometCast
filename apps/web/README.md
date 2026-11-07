@@ -5,8 +5,13 @@ receiver and a browser sender work end to end (screen video over WebRTC, signall
 `/ws`, protocol in `docs/protocol.md`). Without a STUN/TURN list from the server it works over the local
 network only and may not work across networks. Servers in open mode require a small proof-of-work
 (ALTCHA) before a room is created; the page solves it by itself (see "Open servers and TURN" below). The receiver has a local annotation toolbar, and images and links can be sent over a WebRTC DataChannel
-(milestone M2, see `docs/web-m2.md`; PDF/Office are not implemented). The
-Rust-WASM core will be added later (see `src/core/index.ts`).
+(milestone M2, see `docs/web-m2.md`). A PDF can be sent and is shown page by page on the receiver; it is
+rendered by `crates/cc-docs-wasm` (hayro compiled to WebAssembly, in a Web Worker). Build it with
+`npm run build:wasm` (needs the Rust target `wasm32-unknown-unknown` and a `wasm-bindgen` CLI of exactly the
+version in `Cargo.lock`) **before** `npm run build`; it is written to `public/pdf/` (git-ignored). Without it
+the app works as before and a received PDF only gives the notice that documents cannot be shown. Office
+documents are not implemented. The rest of the Rust core is not used in the browser yet (see `src/core/index.ts`).
+End-to-end test: `npm run build:wasm && npm run build && npm run e2e:pdf`.
 
 Stack: Vue 3, TypeScript, Vite, Tailwind CSS 4, vue-i18n (English and German).
 

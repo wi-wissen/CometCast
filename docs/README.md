@@ -8,7 +8,7 @@
 | [server.md](server.md) | Operating `cometcast-server`: configuration, open and internal mode, TLS, limits, ALTCHA, TURN, deployment |
 | [capture.md](capture.md) | Real screen content from the native sender (X11) as H.264: capture, change detection, encoder, key frames, numbers seen, limits, licensing questions |
 | [transport.md](transport.md) | The native WebRTC path (`cc-transport`, receiver and sender cores, CLI): what works and what does not |
-| [web-m2.md](web-m2.md) | Web app toolbar, image and link transfer over the control DataChannel (message format, limits) |
+| [web-m2.md](web-m2.md) | Web app toolbar, image, link and PDF transfer over the control DataChannel (message format, limits, PDF rendering in the browser) |
 | [android.md](android.md) | Android and Android TV build (cargo-ndk), TV readiness, capture skeleton, what is untested |
 | [flutter-bridge.md](flutter-bridge.md) | How the Flutter app talks to the Rust core (flutter_rust_bridge), codegen, build integration |
 | [airplay.md](airplay.md) | AirPlay receiving through the separate UxPlay process (`cc-airplay`): supervisor, policy, licence boundary, what is unverified |

@@ -22,6 +22,7 @@ export function useSender(opts: { contentOnly?: boolean } = {}) {
     state,
     start: (code: string) => session.start(code), stop: () => session.stop(),
     sendImage: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendImage(f, onProgress),
+    sendDocument: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendDocument(f, onProgress),
     sendLink: (url: string) => session.sendLink(url),
     sendCmd: (cmd: ControlCmd) => session.sendCmd(cmd),
   }
