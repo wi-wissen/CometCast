@@ -1821,8 +1821,12 @@ mod tests {
         assert!(!slot.is_current(g2) && slot.is_current(g3));
     }
 
+    /// Tests that touch the process-wide encoded-input slot run one at a time.
+    static SLOT_TESTS: Mutex<()> = Mutex::new(());
+
     #[test]
     fn invalid_code_installs_no_encoded_input_and_clears_the_old_one() {
+        let _g = SLOT_TESTS.lock().unwrap_or_else(|p| p.into_inner());
         let old = ExternalInput::default();
         encoded::replace(Some(old.clone()));
         let new = ExternalInput::default();
@@ -2145,9 +2149,6 @@ mod tests {
         // The Dart side (lib/core/android_capture.dart) compares with this literal.
         assert_eq!(ANDROID_PROJECTION_ID, "android-projection");
     }
-
-    /// The tests below share the process-wide slot: one test at a time.
-    static SLOT_TESTS: Mutex<()> = Mutex::new(());
 
     #[test]
     fn push_without_a_sender_is_refused() {
