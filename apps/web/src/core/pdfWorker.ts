@@ -9,6 +9,8 @@
 // and no link of the document is run or exposed.
 // Protocol: see PdfRequest / PdfReply below.
 
+import { codeOf } from './pdfCodes'
+
 export type PdfRequest =
   | { type: 'open'; bytes: ArrayBuffer }
   | { type: 'render'; id: number; index: number; width: number }
@@ -44,12 +46,6 @@ function load(): Promise<WasmModule> {
 let doc: WasmDocument | null = null
 const post = (m: PdfReply, transfer: Transferable[] = []) =>
   (self as unknown as { postMessage(m: PdfReply, t: Transferable[]): void }).postMessage(m, transfer)
-
-/** The wasm side throws an Error whose message is a short code; anything else is a generic failure. */
-function codeOf(e: unknown): string {
-  const m = e instanceof Error ? e.message : ''
-  return /^[a-z_]{3,20}$/.test(m) ? m : 'failed'
-}
 
 self.onmessage = async (ev: MessageEvent<PdfRequest>) => {
   const req = ev.data

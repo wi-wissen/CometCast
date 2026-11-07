@@ -26,7 +26,7 @@ export interface WorkerLike {
 }
 
 export class PdfError extends Error {
-  /** A code of the wasm side (`invalid`, `encrypted`, ...), or `unavailable`, `timeout`, `failed`, `closed`. */
+  /** A code of the wasm side (`invalid`, `encrypted`, ...), or `unavailable`, `timeout`, `failed`, `closed`, `superseded` (a queued render replaced by a newer one). */
   constructor(readonly code: string) {
     super(code)
   }
@@ -35,7 +35,7 @@ export class PdfError extends Error {
 export interface PdfRenderer {
   /** Resolves with the page count. Takes over the buffer (it is transferred to the worker). */
   open(bytes: Uint8Array): Promise<number>
-  /** Renders page `index` (0-based), about `width` pixels wide. Requests run one after the other. */
+  /** Renders page `index` (0-based), about `width` pixels wide. One runs at a time; a request that is still waiting when a newer one arrives is dropped (`superseded`). */
   render(index: number, width: number): Promise<PageBitmap>
   /** Ends the worker; pending calls reject with `closed`. */
   dispose(): void
@@ -58,8 +58,29 @@ export function createWorkerRenderer(
     number,
     { resolve(b: PageBitmap): void; reject(e: PdfError): void; timer: ReturnType<typeof setTimeout> }
   >()
-  // Renders run in order; each waits for the one before it.
-  let tail: Promise<unknown> = Promise.resolve()
+  // The render that waits for the one in flight (see render()).
+  let queued: { index: number; width: number; resolve(b: PageBitmap): void; reject(e: PdfError): void } | null = null
+
+  function pump(): void {
+    if (!queued || pendingRender.size > 0 || dead || !worker) return
+    const q = queued
+    queued = null
+    const id = nextId++
+    const w = worker
+    const timer = setTimeout(() => kill(new PdfError('timeout')), renderMs)
+    pendingRender.set(id, {
+      resolve: (b) => {
+        q.resolve(b)
+        pump()
+      },
+      reject: (e) => {
+        q.reject(e)
+        pump()
+      },
+      timer,
+    })
+    w.postMessage({ type: 'render', id, index: q.index, width: q.width })
+  }
 
   function kill(err: PdfError): void {
     if (dead) return
@@ -76,6 +97,8 @@ export function createWorkerRenderer(
       p.reject(err)
     }
     pendingRender.clear()
+    queued?.reject(err)
+    queued = null
   }
 
   function onReply(r: PdfReply): void {
@@ -99,12 +122,13 @@ export function createWorkerRenderer(
       }
       const p = pendingRender.get(r.id)
       if (!p) return
+      // A page that fails to render does not end the document (an invalid page index or size is local),
+      // except after a memory or generic failure, where the wasm instance may be unusable: then the
+      // worker is ended first (this also rejects the page and anything queued with the same code).
+      if (r.code === 'memory' || r.code === 'failed') return kill(new PdfError(r.code))
       pendingRender.delete(r.id)
       clearTimeout(p.timer)
       p.reject(new PdfError(r.code))
-      // A page that fails to render does not end the document (an invalid page index or size is local),
-      // except after a memory or generic failure, where the wasm instance may be unusable.
-      if (r.code === 'memory' || r.code === 'failed') kill(new PdfError(r.code))
     }
   }
 
@@ -132,20 +156,15 @@ export function createWorkerRenderer(
       })
     },
     render(index, width) {
-      const run = (): Promise<PageBitmap> => {
-        if (dead) return Promise.reject(dead)
-        const w = worker
-        if (!w) return Promise.reject(new PdfError('closed'))
-        const id = nextId++
-        return new Promise<PageBitmap>((resolve, reject) => {
-          const timer = setTimeout(() => kill(new PdfError('timeout')), renderMs)
-          pendingRender.set(id, { resolve, reject, timer })
-          w.postMessage({ type: 'render', id, index, width })
-        })
-      }
-      const p = tail.then(run, run)
-      tail = p.catch(() => undefined)
-      return p
+      if (dead) return Promise.reject(dead)
+      if (!worker) return Promise.reject(new PdfError('closed'))
+      return new Promise<PageBitmap>((resolve, reject) => {
+        // At most one render in flight and one waiting: a newer request replaces the waiting one, whose
+        // caller gets `superseded` (it is no longer wanted).
+        queued?.reject(new PdfError('superseded'))
+        queued = { index, width, resolve, reject }
+        pump()
+      })
     },
     dispose() {
       kill(new PdfError('closed'))

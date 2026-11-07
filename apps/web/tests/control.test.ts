@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CHUNK_SIZE,
   ControlReceiver,
@@ -9,6 +9,7 @@ import {
   MAX_LINK_LENGTH,
   MAX_NAME_LENGTH,
   SendError,
+  STALL_TIMEOUT_MS,
   chunkBytes,
   nameLength,
   parseControlMessage,
@@ -170,6 +171,31 @@ describe('ImageAssembler', () => {
     expect(asm.push(bytes(5))).toBeNull()
     expect(asm.finish()).toMatchObject({ name: 'a.png' })
   })
+  it('drops a stalled transfer after the timeout and notifies; chunks keep it alive', () => {
+    vi.useFakeTimers()
+    try {
+      let stalled = 0
+      const asm = new ImageAssembler(() => stalled++, 1000)
+      asm.start({ name: 'a.png', mime: 'image/png', size: CHUNK_SIZE * 2 })
+      vi.advanceTimersByTime(900)
+      expect(asm.push(bytes(CHUNK_SIZE))).toBeNull()
+      vi.advanceTimersByTime(900)
+      expect(stalled).toBe(0)
+      expect(asm.active).toBe(true)
+      vi.advanceTimersByTime(200)
+      expect(stalled).toBe(1)
+      expect(asm.active).toBe(false)
+      expect(asm.push(bytes(CHUNK_SIZE))).toBe('unexpected_chunk')
+      // A finished transfer leaves no timer behind.
+      asm.start({ name: 'b.png', mime: 'image/png', size: 5 })
+      asm.push(bytes(5))
+      asm.finish()
+      vi.advanceTimersByTime(5000)
+      expect(stalled).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('reports missing data and chunks without a transfer', () => {
     const asm = new ImageAssembler()
     expect(asm.push(bytes(1))).toBe('unexpected_chunk')
@@ -201,6 +227,20 @@ function collect() {
 }
 
 describe('ControlReceiver', () => {
+  it('tells the person when a transfer stalls (no chunk for 30 s) and ignores the late end message', () => {
+    vi.useFakeTimers()
+    try {
+      const { log, handlers } = collect()
+      const r = new ControlReceiver(handlers)
+      r.handle(JSON.stringify({ kind: 'document', name: 'p.pdf', mime: 'application/pdf', size: CHUNK_SIZE * 2 }))
+      vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1)
+      expect(log.slice(-2)).toEqual(['progress:null', 'error:stalled'])
+      r.handle('{"kind":"document_end"}')
+      expect(log.at(-1)).toBe('error:no_transfer')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('handles a full image transfer and a stop command', async () => {
     const { log, handlers } = collect()
     let clock = 0

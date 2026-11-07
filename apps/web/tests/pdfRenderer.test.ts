@@ -52,6 +52,45 @@ describe('createWorkerRenderer', () => {
     expect(w.terminated).toBe(false)
   })
 
+  it('coalesces a flood of renders: one in flight, only the latest request waits', async () => {
+    const w = new FakeWorker()
+    const r = createWorkerRenderer(() => w)
+    const opened = r.open(bytes())
+    w.reply({ type: 'opened', pages: 50 })
+    await opened
+    const results = Array.from({ length: 20 }, (_, i) => r.render(i, 100).then((b) => b, (e: PdfError) => e.code))
+    const renders = () => w.requests.filter((q) => q.type === 'render') as Extract<PdfRequest, { type: 'render' }>[]
+    expect(renders().length).toBe(1) // only the first is posted
+    expect(renders()[0].index).toBe(0)
+    w.reply({ type: 'rendered', id: renders()[0].id, width: 1, height: 1, rgba: new Uint8Array(4).buffer })
+    await Promise.resolve()
+    await Promise.resolve()
+    // The 18 in between were dropped; the last one runs next.
+    expect(renders().length).toBe(2)
+    expect(renders()[1].index).toBe(19)
+    w.reply({ type: 'rendered', id: renders()[1].id, width: 1, height: 1, rgba: new Uint8Array(4).buffer })
+    const out = await Promise.all(results)
+    expect(out[0]).toMatchObject({ width: 1 })
+    expect(out.slice(1, 19).every((c) => c === 'superseded')).toBe(true)
+    expect(out[19]).toMatchObject({ width: 1 })
+    expect(w.terminated).toBe(false)
+  })
+
+  it('a fatal render error rejects the queued render too and sends nothing more', async () => {
+    const w = new FakeWorker()
+    const r = createWorkerRenderer(() => w)
+    const opened = r.open(bytes())
+    w.reply({ type: 'opened', pages: 3 })
+    await opened
+    const a = r.render(0, 100).catch((e: PdfError) => e.code)
+    const b = r.render(1, 100).catch((e: PdfError) => e.code)
+    w.reply({ type: 'error', id: (w.requests[1] as { id: number }).id, code: 'memory' })
+    await expect(a).resolves.toBe('memory')
+    await expect(b).resolves.toBe('memory')
+    expect(w.terminated).toBe(true)
+    expect(w.requests.filter((q) => q.type === 'render').length).toBe(1)
+  })
+
   it('rejects an open that fails with the code of the wasm side and ends the worker', async () => {
     const w = new FakeWorker()
     const r = createWorkerRenderer(() => w)

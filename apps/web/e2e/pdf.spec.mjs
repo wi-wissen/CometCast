@@ -4,8 +4,9 @@
 // generated PDF over the WebRTC DataChannel `control` to a web receiver, which renders pages with the WASM
 // build of cc-docs/hayro in a Web Worker.
 // Checks: the page canvas is not blank and shows what the PDF draws (a black and a red box at known places),
-// the page label, next/prev with the sender's buttons (cmd messages), clamping at both ends, that a link
-// annotation in the PDF is NOT followed (no new tab, no navigation), that a damaged PDF gives the translated
+// the page label, next/prev with the sender's buttons (cmd messages), clamping at both ends (checked by
+// ordered command pairs, no sleeps), page 3 content (blank), that a real click on the link annotation's area
+// does NOT follow it (no new tab, no navigation), that a damaged PDF gives the translated
 // notice, the German texts, and stop.
 // Starts the real cometcast-server and a real Chromium (or Chrome: set E2E_CHROME=/path/to/chrome).
 // Run: npm run build:wasm && npm run build && npm run e2e:pdf
@@ -122,6 +123,30 @@ const readCanvas = (page) =>
     return { width, height, nonWhite, topLeftBox: at(60 / 300, 1 - 140 / 200), bottomRight: at(140 / 200, 1 - 60 / 300) }
   })
 
+/** Waits until the receiver shows exactly "Page n of 3" (exact text, not a substring). */
+const pageIs = (page, n, lang = 'en') =>
+  waitFor(
+    async () => (await page.getByTestId('document-page').innerText()).trim() === `${lang === 'en' ? 'Page' : 'Seite'} ${n} ${lang === 'en' ? 'of' : 'von'} 3`,
+    `receiver shows page ${n}`,
+    10000,
+  )
+
+/**
+ * Screen point of a spot of the PDF page drawn in the (object-contain) canvas: `fx`, `fy` are fractions of
+ * the page, from its top left corner.
+ */
+const pagePoint = (page, fx, fy) =>
+  page.getByTestId('document-canvas').evaluate(
+    (c, [x, y]) => {
+      const r = c.getBoundingClientRect()
+      const scale = Math.min(r.width / c.width, r.height / c.height)
+      const w = c.width * scale
+      const h = c.height * scale
+      return { x: r.left + (r.width - w) / 2 + x * w, y: r.top + (r.height - h) / 2 + y * h }
+    },
+    [fx, fy],
+  )
+
 let browser
 try {
   await waitHealthy()
@@ -154,6 +179,9 @@ try {
   // Anything the PDF's link would do must not happen: watch for new tabs and navigations.
   const opened = []
   rctx.on('page', (p) => opened.push(p.url()))
+  receiver.on('popup', (p) => opened.push(`popup:${p.url()}`))
+  let navigations = 0
+  receiver.on('framenavigated', () => navigations++)
   const receiverUrl = receiver.url()
 
   const pdf = makePdf()
@@ -173,6 +201,18 @@ try {
   assert.ok(p1.nonWhite > p1.width * p1.height * 0.05, 'the black box covers at least 5 % of the page')
   assert.deepEqual(p1.topLeftBox.map((v) => v < 30), [true, true, true], `black box expected, got ${p1.topLeftBox}`)
 
+  // Really click where the link annotation sits (the black box, /Rect [20 100 100 180] on a 300 x 200 page):
+  // a viewer that followed links would open a tab or navigate now.
+  const linkSpot = await pagePoint(receiver, 60 / 300, 1 - 140 / 200)
+  const navBefore = navigations
+  await receiver.mouse.click(linkSpot.x, linkSpot.y)
+  await receiver.mouse.dblclick(linkSpot.x, linkSpot.y)
+  await new Promise((r) => setTimeout(r, 500)) // absence cannot be awaited: give a navigation time to start
+  assert.deepEqual(opened, [], 'clicking the link area opened no tab')
+  assert.equal(receiver.url(), receiverUrl, 'clicking the link area did not navigate')
+  assert.equal(navigations, navBefore, 'no navigation event after the click')
+  await pageIs(receiver, 1)
+
   // Next page (sender button, a `cmd` message): red box, portrait page.
   await sender.getByTestId('send-next-page').click()
   await receiver.getByText('Page 2 of 3').waitFor({ timeout: 10000 })
@@ -183,17 +223,30 @@ try {
   assert.ok(p2.bottomRight[0] > 200 && p2.bottomRight[1] < 60 && p2.bottomRight[2] < 60, `red box expected, got ${p2.bottomRight}`)
 
   await sender.getByTestId('send-next-page').click()
-  await receiver.getByText('Page 3 of 3').waitFor({ timeout: 10000 })
-  await sender.getByTestId('send-next-page').click() // clamped at the last page
-  await receiver.getByTestId('doc-prev').click() // local control on the receiver as well
-  await receiver.getByText('Page 2 of 3').waitFor({ timeout: 10000 })
-  await sender.getByTestId('send-prev-page').click()
-  await receiver.getByText('Page 1 of 3').waitFor({ timeout: 10000 })
-  await sender.getByTestId('send-prev-page').click() // clamped at the first page
-  await new Promise((r) => setTimeout(r, 300))
-  assert.equal((await receiver.getByTestId('document-page').innerText()).trim(), 'Page 1 of 3')
+  await pageIs(receiver, 3)
+  // Page 3 is empty (white) and landscape; a stale picture of page 2 (portrait) would not satisfy this.
+  await waitFor(() => receiver.getByTestId('document-canvas').getAttribute('data-busy').then((b) => b === 'false'), 'page 3 drawn', 30000)
+  const p3 = await waitFor(async () => {
+    const r = await readCanvas(receiver)
+    return r.width > r.height && r.nonWhite === 0 ? r : null
+  }, 'page 3 canvas is blank and landscape')
+  console.log('page 3 canvas:', JSON.stringify(p3))
 
-  // The link annotation of page 1 was not followed and is not clickable in the viewer.
+  // Clamping without sleeps: commands on the sender's channel arrive in order, so "next" (clamped at 3)
+  // followed by "prev" must end on exactly page 2; without the clamp it would be page 3 (4 - 1).
+  await sender.getByTestId('send-next-page').click()
+  await sender.getByTestId('send-prev-page').click()
+  await pageIs(receiver, 2)
+  await receiver.getByTestId('doc-prev').click() // local control on the receiver as well
+  await pageIs(receiver, 1)
+  // The same at the first page: "prev" (clamped at 1) then "next" must end on exactly page 2.
+  await sender.getByTestId('send-prev-page').click()
+  await sender.getByTestId('send-next-page').click()
+  await pageIs(receiver, 2)
+  await sender.getByTestId('send-prev-page').click()
+  await pageIs(receiver, 1)
+
+  // Still nothing opened after all the page turns, and the viewer has no link at all.
   assert.deepEqual(opened, [], 'no new tab opened')
   assert.equal(receiver.url(), receiverUrl, 'receiver did not navigate')
   assert.equal(await receiver.getByTestId('stage').locator('a[href]').count(), 0, 'the document view contains no links')

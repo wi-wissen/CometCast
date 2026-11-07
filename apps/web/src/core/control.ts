@@ -27,6 +27,8 @@ export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
 const HIGH_WATER = 1024 * 1024
 const LOW_WATER = 256 * 1024
 const PROGRESS_INTERVAL_MS = 100
+/** UNCERTAIN: 30 s without a chunk drops a transfer in progress (a guess, not measured on slow links). */
+export const STALL_TIMEOUT_MS = 30_000
 
 /** Mirrors `ControlCmd` in cc-proto (serde default enum form). */
 export type ControlCmd = 'next_page' | 'prev_page' | 'stop' | { go_to_page: { page: number } }
@@ -195,6 +197,7 @@ export type TransferErrorCode =
   | 'size_mismatch'
   | 'no_transfer'
   | 'bad_chunk'
+  | 'stalled'
   | 'document_unsupported'
   | 'document_invalid'
   | 'document_encrypted'
@@ -213,6 +216,24 @@ export type TransferErrorCode =
  */
 export class ImageAssembler {
   private cur: { name: string; mime: string; size: number; buf: Uint8Array; received: number } | null = null
+  private stallTimer: ReturnType<typeof setTimeout> | undefined
+
+  /** `onStall` is called after `stallMs` without a chunk (or a start) while a transfer is in progress; the buffer is dropped first. */
+  constructor(
+    private readonly onStall?: () => void,
+    private readonly stallMs: number = STALL_TIMEOUT_MS,
+  ) {}
+
+  private arm(): void {
+    clearTimeout(this.stallTimer)
+    this.stallTimer = undefined
+    if (!this.cur || !this.onStall) return
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = undefined
+      this.cur = null
+      this.onStall?.()
+    }, this.stallMs)
+  }
 
   get active(): boolean {
     return this.cur !== null
@@ -225,6 +246,7 @@ export class ImageAssembler {
   /** Begins a transfer; a transfer in progress is dropped. The size limit is enforced by parseControlMessage. */
   start(meta: { name: string; mime: string; size: number }): void {
     this.cur = { ...meta, buf: new Uint8Array(meta.size), received: 0 }
+    this.arm()
   }
 
   /** Returns an error code (and drops the transfer) if the chunk is not acceptable. */
@@ -233,15 +255,16 @@ export class ImageAssembler {
     if (!c) return 'unexpected_chunk'
     const end = c.received + chunk.byteLength
     if (end > c.size) {
-      this.cur = null
+      this.reset()
       return 'too_large'
     }
     if (chunk.byteLength !== CHUNK_SIZE && end !== c.size) {
-      this.cur = null
+      this.reset()
       return 'bad_chunk'
     }
     c.buf.set(chunk, c.received)
     c.received = end
+    this.arm()
     return null
   }
 
@@ -254,7 +277,7 @@ export class ImageAssembler {
   /** Like `finish`, but hands out the received bytes (no copy) instead of a Blob. */
   finishBytes(): { bytes: Uint8Array; mime: string; name: string } | TransferErrorCode {
     const c = this.cur
-    this.cur = null
+    this.reset()
     if (!c) return 'no_transfer'
     if (c.received !== c.size) return 'size_mismatch'
     return { bytes: c.buf, mime: c.mime, name: c.name }
@@ -262,6 +285,8 @@ export class ImageAssembler {
 
   reset(): void {
     this.cur = null
+    clearTimeout(this.stallTimer)
+    this.stallTimer = undefined
   }
 }
 
@@ -277,7 +302,12 @@ export interface ControlReceiverHandlers {
 
 /** Receiver side: feed it every message of the channel. */
 export class ControlReceiver {
-  private readonly asm = new ImageAssembler()
+  private readonly asm = new ImageAssembler(() => {
+    // No chunk for STALL_TIMEOUT_MS: the buffer is already dropped, tell the person.
+    this.isDocument = false
+    this.h.onProgress(null)
+    this.h.onError('stalled')
+  })
   /** The transfer in progress is a PDF (otherwise an image). */
   private isDocument = false
   private lastProgress = 0

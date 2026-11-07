@@ -5,10 +5,16 @@ on:
   push:
     paths:
       - 'apps/web/**'
+      - 'crates/cc-docs-wasm/**'
+      - 'crates/cc-docs/**'
+      - 'Cargo.lock'
       - '.github/workflows/web.yml'
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'crates/cc-docs-wasm/**'
+      - 'crates/cc-docs/**'
+      - 'Cargo.lock'
       - '.github/workflows/web.yml'
 
 permissions:
@@ -49,9 +55,13 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       # PDF renderer (cc-docs-wasm). UNCERTAIN: these steps were not run on GitHub. The wasm-bindgen CLI
-      # must be exactly the version of the wasm-bindgen crate in Cargo.lock (0.2.130 when this was written).
+      # must be exactly the version of the wasm-bindgen crate in Cargo.lock, so it is read from there.
       - run: rustup target add wasm32-unknown-unknown
-      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - name: Install the wasm-bindgen CLI of the version in Cargo.lock
+        run: |
+          ver="$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+          test -n "$ver" || { echo "wasm-bindgen not found in Cargo.lock"; exit 1; }
+          cargo install wasm-bindgen-cli --version "$ver" --locked
       - run: npm run build:wasm
         working-directory: apps/web
       - run: npm run build

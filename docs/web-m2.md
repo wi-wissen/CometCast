@@ -113,10 +113,10 @@ measurements behind them. 16 KiB is the size commonly considered interoperable a
   password protected, too large, too many pages, refused by the safety check, memory, timeout, failed); when the
   renderer files are not installed it is `document_unsupported`. Annotations are cleared on every page turn.
   Native receivers render PDFs through `cc-docs` in a child process (see [documents.md](documents.md)).
-- UNCERTAIN: a document that fails while a page is rendered (timeout, crash, memory) is closed and not
+- UNCERTAIN: a document that fails while a page is rendered (timeout, crash, memory trap) is closed and not
   reopened by itself; the sender has to send it again. Opening a 64 MiB PDF allocates a 64 MiB buffer up front
-  and then roughly the same again inside the module; not measured. There is no stalled-transfer timeout in the
-  web receiver (the native one has 60 s).
+  and then roughly the same again inside the module; not measured. A transfer that gets no chunk for 30 s (UNCERTAIN value)
+  is dropped with a notice (`receive.transferError.stalled`; the native one has 60 s).
 - Native receivers apply the same rules as the web client (MIME allow list, link validation, chunk rule, size
   limits) and a few more: a hard size cap while receiving, a message-count cap, a stalled-transfer timeout
   (60 s), merging of page commands, and blocking a peer after 64 protocol violations (which decay, one per 2 s).

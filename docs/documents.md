@@ -286,7 +286,7 @@ dies in between; the hard limit is the kernel's.
   platform. Options: render PDFs on the sender or a server and send pictures to these devices,
   or lower `Limits` (file size, image area).
 - **Web (wasm)**: render the hostile PDF in a **dedicated Web Worker** whose `WebAssembly.Memory`
-  has a `maximum` (an allocation over it fails inside the worker) and that the page ends with
+  has a `maximum` (an allocation over it traps inside the worker; the poisoned instance is never reused) and that the page ends with
   `worker.terminate()` on a timeout. The crate itself has no time limit on wasm. Built and used
   this way by the web client, see [In the web client](#in-the-web-client).
 - **Server** (`cc-server`) only validates WebP headers; it does not render PDFs.
@@ -408,20 +408,20 @@ The web receiver (`apps/web`) shows PDFs that arrive over the `control` DataChan
 Limits in the browser (`web_limits()` in the crate; all UNCERTAIN guesses, none measured on real devices):
 file 64 MiB (the protocol limit), 1000 pages, output side 4096 px and area 4096 x 2304 px (a requested width is
 clamped, not refused), image area 16 Mpx, one inflated stream 128 MiB, all streams 512 MiB, plus the usual
-pre-checks and the inflate pre-scan of this crate. Memory is capped by `--max-memory` (512 MiB). The PDF is
+pre-checks and the inflate pre-scan of this crate. Memory is capped by `--max-memory` (512 MiB; `build-wasm.sh` parses the memory section of the built file and fails if the cap is missing). An allocation over the cap **traps** in the module; the worker maps anything that is not a known error code (a trap, `unreachable`, an out-of-bounds access) to the fatal code `memory` or `failed`, ends the worker and closes the document. The PDF is
 parsed and drawn only: hayro runs no JavaScript and this API exposes no link, so nothing in the file is
 executed or opened. The page width asked for is the stage width times the device pixel ratio, at most 3000 px.
 
 What this does **not** give, compared with the native worker process: no operating system sandbox and no
 CPU or time limit inside the module (the page ends the Web Worker instead, so a runaway render blocks only
 that worker, not the page), and on wasm every render re-parses the file (the inline engine parses per
-render; speed is not measured). A trap in the module, which `catch_unwind` cannot prevent on wasm, ends the
+render; speed is not measured). Renders are coalesced: one runs, at most one waits, a newer request replaces the waiting one. A trap in the module, which `catch_unwind` cannot prevent on wasm, ends the
 worker and the document; the file is not opened again automatically.
 
-Checked (one Chromium/Chrome build on Linux): the `.wasm` file is 5.3 MB raw and about 1.8 MB with
+Measured locally on one machine only (one Chromium/Chrome build on Linux, not in CI, not repeated elsewhere): the `.wasm` file is 5.3 MB raw and about 1.8 MB with
 `gzip -9` (the server does not compress, so unless a proxy does, the raw size is transferred; the file is
 loaded only when a PDF arrives). A generated three-page PDF and the classroom PDF render into a non-blank
-canvas at the expected places and colours; a damaged PDF gives the notice; a link annotation inside a test PDF
+canvas at the expected places and colours (rendered in Chromium by `npm run e2e:pdf`); a damaged PDF gives the notice; a link annotation inside a test PDF
 is not followed. Not checked: Firefox, Safari, mobile browsers, large or hostile files in the browser (the
 hostile-file tests run on the native target only), the fidelity of real classroom PDFs (point 7), and
 accessibility of the page content (the canvas is labelled with the page number only, there is no text

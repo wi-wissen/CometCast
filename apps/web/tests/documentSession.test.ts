@@ -76,12 +76,26 @@ function sendPdf(a: FakeChannel, size = 20) {
 }
 
 describe('PDF documents in the receiver session', () => {
+  it('gives a resend of the same name a new document id; page turns keep the id', async () => {
+    const { r, a } = setup({ pages: 3 })
+    const id = () => (r.snapshot.content as { id: number }).id
+    sendPdf(a)
+    await tick()
+    const first = id()
+    a.send('{"kind":"cmd","cmd":"next_page"}')
+    await tick()
+    expect(id()).toBe(first)
+    sendPdf(a)
+    await tick()
+    expect(id()).not.toBe(first)
+  })
+
   it('opens the received bytes, then turns pages with the cmd messages (clamped, from 1)', async () => {
     const { r, a, renderers } = setup({ pages: 3 })
     sendPdf(a)
     await tick()
     expect(renderers[0]!.opened?.byteLength).toBe(20)
-    expect(r.snapshot.content).toEqual({ kind: 'document', name: 'plan.pdf', pages: 3, page: 1 })
+    expect(r.snapshot.content).toEqual({ kind: 'document', id: expect.any(Number), name: 'plan.pdf', pages: 3, page: 1 })
     const page = () => (r.snapshot.content as { page: number }).page
     a.send('{"kind":"cmd","cmd":"next_page"}')
     await tick()

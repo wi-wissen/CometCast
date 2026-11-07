@@ -6,7 +6,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PageBitmap } from '../core/pdfRenderer'
 
-type DocContent = { kind: 'document'; name: string; pages: number; page: number }
+type DocContent = { kind: 'document'; id: number; name: string; pages: number; page: number }
 const props = defineProps<{ content: DocContent; render: (page: number, width: number) => Promise<PageBitmap> }>()
 const emit = defineEmits<{ close: []; prev: []; next: [] }>()
 const { t, te } = useI18n()

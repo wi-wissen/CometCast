@@ -11,7 +11,7 @@ rendered by `crates/cc-docs-wasm` (hayro compiled to WebAssembly, in a Web Worke
 version in `Cargo.lock`) **before** `npm run build`; it is written to `public/pdf/` (git-ignored). Without it
 the app works as before and a received PDF only gives the notice that documents cannot be shown. Office
 documents are not implemented. The rest of the Rust core is not used in the browser yet (see `src/core/index.ts`).
-End-to-end test: `npm run build:wasm && npm run build && npm run e2e:pdf`.
+End-to-end test: `npm run build:wasm && npm run build && npm run e2e:pdf`. The Docker image (`deploy/Dockerfile`) does **not** contain the renderer (`public/pdf` is excluded from its build context and the image has no Rust target), so a PDF received by a web app served from that image only gives the "cannot show documents" notice.
 
 Stack: Vue 3, TypeScript, Vite, Tailwind CSS 4, vue-i18n (English and German).
 

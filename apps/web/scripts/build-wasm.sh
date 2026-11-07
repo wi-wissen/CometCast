@@ -13,11 +13,16 @@ repo="$(cd "$here/../../.." && pwd)"
 out="$here/../public/pdf"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 
-# The linear memory of the module is capped (512 MiB): an allocation over it fails inside the
-# module instead of growing the tab. UNCERTAIN: the value is a guess, not measured.
-export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=--max-memory=536870912"
-(cd "$repo" && cargo build -p cc-docs-wasm --release --target wasm32-unknown-unknown)
+# The linear memory of the module is capped (512 MiB = 8192 pages of 64 KiB): an allocation over it traps
+# inside the module instead of growing the tab (the worker then ends the document). UNCERTAIN: the value
+# is a guess, not measured. The flag goes to the final crate only (`cargo rustc ... --`), so RUSTFLAGS,
+# CARGO_ENCODED_RUSTFLAGS and build.rustflags of the person who runs this stay exactly as they are.
+max_bytes=536870912
+(cd "$repo" && cargo rustc -p cc-docs-wasm --lib --crate-type cdylib --release --target wasm32-unknown-unknown \
+  -- -C "link-arg=--max-memory=$max_bytes")
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out" --out-name cc_docs_wasm \
   "$target/wasm32-unknown-unknown/release/cc_docs_wasm.wasm"
+# Prove that the cap is in the file that ships (parses its memory section); fail otherwise.
+node "$here/check-wasm-memory.mjs" "$out/cc_docs_wasm_bg.wasm" $((max_bytes / 65536))
 ls -l "$out"

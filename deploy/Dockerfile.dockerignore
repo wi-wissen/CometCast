@@ -3,6 +3,9 @@
 target
 **/node_modules
 apps/web/dist
+# Generated WASM renderer: the Docker image does not build it (no Rust target, no wasm-bindgen CLI in the
+# web stage), so a local copy must not leak into the image either. Documented in apps/web/README.md.
+apps/web/public/pdf
 deploy/secrets
 deploy/certs
 deploy/.env

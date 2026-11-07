@@ -95,8 +95,8 @@ const announce = ref('')
 watch(
   () => state.value.content,
   (c, old) => {
-    if (c?.kind === 'document' && old?.kind === 'document' && c.name === old.name) {
-      // Same document: a page turn (annotations belong to a page, so they go) or the page count arriving.
+    if (c?.kind === 'document' && old?.kind === 'document' && c.id === old.id) {
+      // Same transfer (a resend with the same name has a new id and is announced like a new document): a page turn (annotations belong to a page, so they go) or the page count arriving.
       // The page label inside the document view is itself a live region, so nothing is announced here.
       if (c.page !== old.page) model.reset()
     } else if (c) {

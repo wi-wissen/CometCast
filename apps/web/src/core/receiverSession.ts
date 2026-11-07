@@ -21,7 +21,7 @@ export type ReceivedContent =
   | { kind: 'image'; url: string; name: string }
   | { kind: 'link'; url: string; host: string }
   /** A PDF. `pages` is 0 while it is being opened; `page` is the shown page, counted from 1. */
-  | { kind: 'document'; name: string; pages: number; page: number }
+  | { kind: 'document'; id: number; name: string; pages: number; page: number } // `id`: one per received transfer (also for the same name)
 
 export interface ReceiverState {
   phase: ReceiverPhase
@@ -159,7 +159,7 @@ export class ReceiverSession {
     const run = ++this.docRun
     const renderer = factory()
     this.renderer = renderer
-    this.set({ content: { kind: 'document', name, pages: 0, page: 1 }, contentError: null })
+    this.set({ content: { kind: 'document', id: run, name, pages: 0, page: 1 }, contentError: null })
     renderer.open(bytes).then(
       (pages) => {
         const c = this.state.content
