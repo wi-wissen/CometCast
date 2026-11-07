@@ -17,7 +17,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown,x86_64-pc-windows-gnu
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -26,6 +26,10 @@ jobs:
       - run: cargo test -p cc-codec --features download
       - run: cargo clippy -p cc-codec --features download --all-targets -- -D warnings
       - run: cargo check -p cc-ffi --no-default-features --features h264-libloading
+      # The Windows Miracast receiver (cc-miracast, cc-miracast-ffi) only compiles its Windows
+      # code on Windows targets. Clippy for the gnu target needs no C compiler for these two
+      # crates (docs/miracast.md, "What was verified"). Nothing is linked or run.
+      - run: cargo clippy -p cc-miracast -p cc-miracast-ffi --target x86_64-pc-windows-gnu --all-targets -- -D warnings
       # cc-proto must stay usable in the browser (WebAssembly).
       - run: cargo check -p cc-proto --target wasm32-unknown-unknown
   # The release variant of the CLI must not contain an OpenH264 source build (docs/capture.md,
