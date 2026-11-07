@@ -181,7 +181,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       udpBind: widget.settings.udpBind,
       hardwareDecoder: DeviceProfile.peek(context).videoDecoder,
       onNotice: _onNotice,
-      restartOnPeerLeft: true,
+      keepRoomOnPeerLeft: true,
     )..addListener(_onController);
     final profile = DeviceProfile.peek(context);
     _codec = CodecController(
@@ -255,7 +255,11 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _attempts = 0;
     _failed = false;
     _hadCode = false;
-    _c.start(_server, joinMode: _defaultCoreMode(setup.mode));
+    _c.start(
+      _server,
+      joinMode: _defaultCoreMode(setup.mode),
+      roomName: setup.room,
+    );
     if (widget.setFullscreenOnSetupDone) {
       unawaited((widget.onFullscreen ?? setWindowFullscreen)(true));
     }
@@ -314,7 +318,11 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _retryTimer = Timer(delay, () {
       if (!mounted || _setup == null) return;
       _attempts++;
-      _c.start(_server, joinMode: _defaultCoreMode(_setup!.mode));
+      _c.start(
+        _server,
+        joinMode: _defaultCoreMode(_setup!.mode),
+        roomName: _setup!.room,
+      );
     });
   }
 
@@ -632,7 +640,10 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
             final link = shown is ReceivedLink ? shown : null;
             final hidePointer = presenting && !_controlsShown;
             final transferPill = presenting && c.receiving != null
-                ? t.receiveTransfer(c.receiving!.name, '0')
+                ? t.receiveTransfer(
+                    c.receiving!.name,
+                    '${c.receiving!.percent}',
+                  )
                 : null;
             final errorToast = c.noteError == null
                 ? null

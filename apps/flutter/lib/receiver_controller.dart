@@ -139,10 +139,30 @@ const defaultMaxImagePixels = 64 * 1000 * 1000;
 
 /// What is being received right now (a transfer in progress).
 class ReceivingInfo {
-  const ReceivingInfo({required this.name, required this.document});
+  const ReceivingInfo({
+    required this.name,
+    required this.document,
+    this.received = 0,
+    this.total = 0,
+  });
 
   final String name;
   final bool document;
+
+  /// Bytes received so far and announced (0 until the first progress event).
+  final int received;
+  final int total;
+
+  /// Whole percent, 0 to 100 (0 while the size is unknown).
+  int get percent =>
+      total <= 0 ? 0 : (received * 100 ~/ total).clamp(0, 100).toInt();
+
+  ReceivingInfo withProgress(int received, int total) => ReceivingInfo(
+    name: name,
+    document: document,
+    received: received,
+    total: total,
+  );
 }
 
 /// A sender that waits for the host's decision (join mode `confirm`). The name is untrusted text
@@ -234,7 +254,7 @@ class ReceiverController extends ChangeNotifier {
     this.hardwareDecoder,
     this.onNotice,
     this.restartMode,
-    this.restartOnPeerLeft = false,
+    this.keepRoomOnPeerLeft = false,
   }) : _setFullscreen = setFullscreen ?? setWindowFullscreen;
 
   /// Called for what the display tells the host in a toast. Null in the old screens.
@@ -244,9 +264,10 @@ class ReceiverController extends ChangeNotifier {
   /// spec 4.3). Null: the current mode is kept.
   UiJoinMode? restartMode;
 
-  /// The sender leaving does not end the receiver: a new room (a new code) starts at once and
-  /// the display is idle again (spec 4.5). The old receive page ends instead.
-  final bool restartOnPeerLeft;
+  /// The sender leaving does not end the receiver: the room stays with the **same code** and the
+  /// display is idle again (spec 4.5, N8); the core keeps its room after a presenter left. The
+  /// old receive page ends instead (and stops the core).
+  final bool keepRoomOnPeerLeft;
 
   final CoreApi core;
   final String? udpBind;
@@ -274,6 +295,17 @@ class ReceiverController extends ChangeNotifier {
   String? roomCode;
   bool senderJoined = false;
   bool senderLeft = false;
+
+  /// The connection check code of the connected presenter (`123 456`), or null until it
+  /// connected. The presenter shows the same digits.
+  String? connectionCode;
+
+  /// The name of the display as senders see it (sent with `create_room`), or null.
+  String? roomName;
+
+  /// The code of the error that ended the receiver (`room_locked`, `connection_lost`, ...), or
+  /// null. [error] has the English text for logs.
+  String? errorCode;
 
   // --- join approval ---------------------------------------------------------------------
 
@@ -401,9 +433,16 @@ class ReceiverController extends ChangeNotifier {
       codec != null && codec != 'h264' && !hasLiveVideo && isActive;
 
   /// Create a room on [server] and start listening. [joinMode] is who may join from the start.
-  void start(String server, {UiJoinMode joinMode = UiJoinMode.open}) {
+  ///
+  /// [roomName] is the display's name for senders ("Meeting room Elbe"); the server cleans it.
+  void start(
+    String server, {
+    UiJoinMode joinMode = UiJoinMode.open,
+    String? roomName,
+  }) {
     _startMode = joinMode;
     _startServer = server;
+    this.roomName = roomName;
     _openRetried = false;
     _begin(server, joinMode);
   }
@@ -418,6 +457,8 @@ class ReceiverController extends ChangeNotifier {
     roomCode = null;
     senderJoined = false;
     senderLeft = false;
+    connectionCode = null;
+    errorCode = null;
     this.joinMode = joinMode;
     requests = const [];
     peerName = null;
@@ -445,6 +486,7 @@ class ReceiverController extends ChangeNotifier {
           udpBind: udpBind,
           content: content,
           joinMode: joinMode,
+          roomName: roomName,
         )
         .listen(
           _onEvent,
@@ -528,6 +570,13 @@ class ReceiverController extends ChangeNotifier {
         onNotice?.call(NoticeJoined(name));
       case ReceiverUiEvent_ConnectionState(:final state):
         connectionState = state;
+      case ReceiverUiEvent_ConnectionCode(:final sas):
+        connectionCode = sas;
+      case ReceiverUiEvent_PresentationStopped():
+        // The presenter stopped but stays in the room: Idle with the same code, no notice.
+        _resetPresenter();
+        notifyListeners();
+        return;
       case ReceiverUiEvent_VideoTrack(:final codec):
         this.codec = codec;
       case ReceiverUiEvent_Stats():
@@ -556,6 +605,13 @@ class ReceiverController extends ChangeNotifier {
         );
       case ReceiverUiEvent_ContentTransferStarted(:final document, :final name):
         receiving = ReceivingInfo(name: name, document: document);
+      case ReceiverUiEvent_ContentTransferProgress(
+        :final received,
+        :final total,
+      ):
+        final r = receiving;
+        if (r == null) return;
+        receiving = r.withProgress(received.toInt(), total.toInt());
       case ReceiverUiEvent_ContentFrameReady():
         _onContentFrameReady();
         return;
@@ -584,15 +640,21 @@ class ReceiverController extends ChangeNotifier {
         final left = peerName;
         peerName = null;
         if (left != null) onNotice?.call(NoticeLeft(left));
-        if (restartOnPeerLeft) {
-          _begin(_startServer, joinMode);
+        if (keepRoomOnPeerLeft) {
+          // The room outlives the presenter: same code, same mode, block list and queue.
+          senderJoined = false;
+          senderLeft = false;
+          _resetPresenter();
+          notifyListeners();
           return;
         }
+        // The core keeps the room open for the next sender; this page is done with it.
+        unawaited(core.stopReceiver());
         _end();
         return;
-      case ReceiverUiEvent_Error(:final message):
+      case ReceiverUiEvent_Error(:final code, :final message):
         // The server forbids open rooms: ask for one that needs approval instead of failing.
-        if (message.contains('open_rooms_disabled') &&
+        if (code == 'open_rooms_disabled' &&
             !_openRetried &&
             _startMode == UiJoinMode.open) {
           _openRetried = true;
@@ -602,10 +664,32 @@ class ReceiverController extends ChangeNotifier {
           return;
         }
         error = message;
+        errorCode = code;
         _end();
         return;
     }
     notifyListeners();
+  }
+
+  /// Forget what belonged to the connected presenter: picture, content, counters and the
+  /// connection code. The room itself (code, mode, queue, blocks) is untouched. The hardware
+  /// decoder starts over for the next presenter, as for a new room.
+  void _resetPresenter() {
+    _newSession();
+    _clearImage();
+    _stopHardware();
+    _startHardware();
+    connectionState = null;
+    connectionCode = null;
+    codec = null;
+    packets = bytes = frames = keyframes = 0;
+    imagesShown = 0;
+    displayFps = 0;
+    _shownAtLastStats = 0;
+    videoStats = const VideoStatsView();
+    avgFetchUs = avgImageUs = _fetchUsTotal = _imageUsTotal = _fetched = 0;
+    _clearContent();
+    _lastStatsMs = 0;
   }
 
   void _measureDisplayRate() {

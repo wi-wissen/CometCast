@@ -118,7 +118,10 @@ void main() {
     testWidgets('a lost connection shows the box only after 3 s', (t) async {
       final h = await pumpDisplay(t);
       h.core.receiverEvents.add(
-        const ReceiverUiEvent.error(message: 'signalling connection closed'),
+        const ReceiverUiEvent.error(
+          code: 'connection_lost',
+          message: 'signalling connection closed',
+        ),
       );
       await t.pump();
       await t.pump(const Duration(seconds: 1));

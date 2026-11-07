@@ -197,6 +197,9 @@ pub(crate) fn map_content_event(
             name,
             size,
         },
+        ContentEvent::TransferProgress { received, total } => {
+            ReceiverUiEvent::ContentTransferProgress { received, total }
+        }
         ContentEvent::ImageReceived { name, mime, bytes } => {
             let stored = Stored::Image {
                 name,

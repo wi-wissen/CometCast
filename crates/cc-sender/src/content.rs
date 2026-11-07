@@ -164,6 +164,9 @@ pub struct ContentSenderOptions {
     pub name: Option<String>,
     /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
     pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
+    /// Do not ask the server for its STUN/TURN list even if `session.ice_servers` is empty (the
+    /// caller asked already and keeps the outcome). Default `false`.
+    pub skip_ice_fetch: bool,
 }
 
 impl ContentSenderOptions {
@@ -176,6 +179,7 @@ impl ContentSenderOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+            skip_ice_fetch: false,
         }
     }
 }
@@ -218,7 +222,7 @@ impl ContentSender {
             let addr = ServerAddr::parse(&options.server)?;
             // No video codecs at all: the offer has only the application section.
             options.session.video_codecs = Some(Vec::new());
-            if options.session.ice_servers.is_empty() {
+            if options.session.ice_servers.is_empty() && !options.skip_ice_fetch {
                 options.session.ice_servers =
                     ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
             }

@@ -715,7 +715,7 @@ impl ContentReceiver {
                 a.chunks += 1;
                 a.last_activity = now;
                 let (got, total) = (a.buf.len() as u64, a.size as u64);
-                let pct = if total == 0 { 100 } else { got * 100 / total };
+                let pct = (got * 100).checked_div(total).unwrap_or(100);
                 let due = a.last_progress.is_none_or(|(t, p)| {
                     pct > p && now.saturating_duration_since(t) >= PROGRESS_INTERVAL
                 });

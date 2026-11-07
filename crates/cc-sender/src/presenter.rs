@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use cc_proto::{ControlCmd, Role, RoomCode, ServerMsg};
 use cc_transport::{
-    ConnectionState, JoinProgress, SessionConfig, SignalingClient, TlsTrust, TransportError,
-    join_room,
+    ConnectionState, JoinProgress, ServerAddr, SessionConfig, SignalingClient, TlsTrust,
+    TransportError, ice, join_room,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -65,6 +65,41 @@ impl PresenterOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+        }
+    }
+}
+
+/// How the server's STUN/TURN list (`/ice-servers`) turned out for this session (spec 6,
+/// decision 13.45): only when a connection then fails the apps use it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IceState {
+    /// A list, none (404) or the caller's own: nothing to say.
+    Fine,
+    /// The server refused the list (`rate_limited`, `banned`, `forbidden`).
+    Refused,
+    /// The request failed otherwise (unexpected status, no answer, a bad answer).
+    Failed,
+}
+
+impl IceState {
+    fn of(e: &TransportError) -> Self {
+        match e {
+            TransportError::Server { code, .. }
+                if matches!(code.as_str(), "rate_limited" | "banned" | "forbidden") =>
+            {
+                Self::Refused
+            }
+            _ => Self::Failed,
+        }
+    }
+
+    /// The code of a failed WebRTC connection: `ice_refused` or `ice_failed` when the list
+    /// was the problem, else the code as it is.
+    fn refine(self, code: String) -> String {
+        match (code.as_str(), self) {
+            ("peer_failed", Self::Refused) => "ice_refused".into(),
+            ("peer_failed", Self::Failed) => "ice_failed".into(),
+            _ => code,
         }
     }
 }
@@ -173,9 +208,25 @@ impl PresenterSession {
             options.join_progress.as_ref(),
         )
         .await?;
+        // Ask for the STUN/TURN list once per session; every presentation uses the outcome.
+        let mut options = options;
+        let mut ice_state = IceState::Fine;
+        if options.session.ice_servers.is_empty() {
+            let addr = ServerAddr::parse(&options.server)?;
+            match ice::fetch_ice_servers(&addr, &options.trust).await {
+                Ok(list) => options.session.ice_servers = list,
+                Err(e) => {
+                    eprintln!(
+                        "cometcast: GET /ice-servers {}; connecting without STUN/TURN servers",
+                        ice::describe_ice_failure(&e)
+                    );
+                    ice_state = IceState::of(&e);
+                }
+            }
+        }
         let (cmds_tx, cmds_rx) = mpsc::unbounded_channel();
         let (events_tx, events_rx) = mpsc::unbounded_channel();
-        let task = tokio::spawn(run(sig, options, cmds_rx, events_tx));
+        let task = tokio::spawn(run(sig, options, ice_state, cmds_rx, events_tx));
         Ok(Self {
             room_name: room_name.clone(),
             cmds: cmds_tx,
@@ -271,6 +322,7 @@ async fn start(
             let mut o = ContentSenderOptions::new(options.server.clone(), options.code.clone());
             o.session = options.session.clone();
             o.trust = options.trust.clone();
+            o.skip_ice_fetch = true;
             let core = ContentSender::start_joined(sig, None, o).await?;
             let control = core.control();
             Ok(Running::new(Core::Content(core), control))
@@ -283,6 +335,7 @@ async fn start(
             let mut o = SenderOptions::new(options.server.clone(), options.code.clone());
             o.session = options.session.clone();
             o.trust = options.trust.clone();
+            o.skip_ice_fetch = true;
             o.screen = screen;
             o.external = external;
             o.duration = duration;
@@ -315,6 +368,7 @@ enum Next {
 async fn run(
     sig: SignalingClient,
     options: PresenterOptions,
+    ice_state: IceState,
     mut cmds: mpsc::UnboundedReceiver<Cmd>,
     out: mpsc::UnboundedSender<PresenterEvent>,
 ) {
@@ -435,7 +489,10 @@ async fn run(
                         break;
                     }
                     RunEnd::Failed { code, message } => {
-                        emit(PresenterEvent::Error { code, message });
+                        emit(PresenterEvent::Error {
+                            code: ice_state.refine(code),
+                            message,
+                        });
                         break;
                     }
                 }
@@ -478,5 +535,34 @@ fn error_event(code: &str, message: &str) -> PresenterEvent {
     PresenterEvent::Error {
         code: code.into(),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_connection_after_a_bad_ice_list_gets_the_ice_code() {
+        let refused = IceState::of(&TransportError::Server {
+            code: "rate_limited".into(),
+            message: String::new(),
+        });
+        assert_eq!(refused, IceState::Refused);
+        assert_eq!(refused.refine("peer_failed".into()), "ice_refused");
+        let failed = IceState::of(&TransportError::Protocol(
+            "unexpected HTTP status 500".into(),
+        ));
+        assert_eq!(failed, IceState::Failed);
+        assert_eq!(failed.refine("peer_failed".into()), "ice_failed");
+        // Other failures are not about the list; a good list changes nothing.
+        assert_eq!(failed.refine("connection_lost".into()), "connection_lost");
+        assert_eq!(IceState::Fine.refine("peer_failed".into()), "peer_failed");
+        // A full server is an unexpected status for the list, not a refusal (as in the web client).
+        let full = IceState::of(&TransportError::Server {
+            code: "server_full".into(),
+            message: String::new(),
+        });
+        assert_eq!(full, IceState::Failed);
     }
 }

@@ -35,6 +35,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_nearby_receiver_event_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<PresenterUiEvent> dco_decode_StreamSink_presenter_ui_event_Sse(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<ReceiverUiEvent> dco_decode_StreamSink_receiver_ui_event_Sse(
     dynamic raw,
   );
@@ -159,6 +164,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   VideoFrame? dco_decode_opt_box_autoadd_video_frame(dynamic raw);
 
   @protected
+  PresenterUiEvent dco_decode_presenter_ui_event(dynamic raw);
+
+  @protected
   PushResult dco_decode_push_result(dynamic raw);
 
   @protected
@@ -233,6 +241,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<NearbyReceiverEvent>
   sse_decode_StreamSink_nearby_receiver_event_Sse(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<PresenterUiEvent> sse_decode_StreamSink_presenter_ui_event_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RustStreamSink<ReceiverUiEvent> sse_decode_StreamSink_receiver_ui_event_Sse(
@@ -389,6 +402,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  PresenterUiEvent sse_decode_presenter_ui_event(SseDeserializer deserializer);
+
+  @protected
   PushResult sse_decode_push_result(SseDeserializer deserializer);
 
   @protected
@@ -468,6 +484,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_nearby_receiver_event_Sse(
     RustStreamSink<NearbyReceiverEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_presenter_ui_event_Sse(
+    RustStreamSink<PresenterUiEvent> self,
     SseSerializer serializer,
   );
 
@@ -660,6 +682,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_video_frame(
     VideoFrame? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_presenter_ui_event(
+    PresenterUiEvent self,
     SseSerializer serializer,
   );
 

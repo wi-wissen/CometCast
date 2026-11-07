@@ -11,7 +11,7 @@ part 'api.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -32,6 +32,14 @@ int roomCodeLength() => RustLib.instance.api.crateApiRoomCodeLength();
 /// `udp_bind` is for development only (for example `127.0.0.1:0` for same-machine tests);
 /// `None` uses the default (all interfaces).
 ///
+/// `room_name` is the name of the display as senders see it ("Meeting room Elbe"): it goes to the
+/// server with `create_room` (the server cleans it and cuts it at 32 characters); `None` or an
+/// empty name = no room name.
+///
+/// The room outlives a presenter: after [`ReceiverUiEvent::PeerLeft`] the stream stays open and
+/// the same code is valid for the next sender (it ends on [`end_room`], an error or
+/// [`stop_receiver`]).
+///
 /// With `content` the receiver also accepts images, PDFs, links and page commands on the
 /// `control` data channel (docs/web-m2.md) and reports them as the `Content...` events; without
 /// it the channel is refused. PDFs render in a resource-limited child process (docs/documents.md);
@@ -41,11 +49,13 @@ Stream<ReceiverUiEvent> startReceiver({
   String? udpBind,
   required bool content,
   required UiJoinMode joinMode,
+  String? roomName,
 }) => RustLib.instance.api.crateApiStartReceiver(
   server: server,
   udpBind: udpBind,
   content: content,
   joinMode: joinMode,
+  roomName: roomName,
 );
 
 /// Stop the running receiver (does nothing if none runs). The Dart stream then ends.
@@ -64,9 +74,8 @@ bool decideJoin({BigInt? id, required bool allow}) =>
     RustLib.instance.api.crateApiDecideJoin(id: id, allow: allow);
 
 /// Remove the connected sender (end its presentation); with `block` also block its address
-/// bucket for the rest of this room session. UNCERTAIN: one sender per receiver in this version,
-/// so the receiver ends with `PeerLeft` afterwards and a new room (new code) has to be started.
-/// Returns `false` if no receiver runs.
+/// bucket for the rest of this room session. The receiver reports `PeerLeft` and stays in the
+/// room with the same code. Returns `false` if no receiver runs.
 bool removePeer({required bool block}) =>
     RustLib.instance.api.crateApiRemovePeer(block: block);
 
@@ -314,12 +323,59 @@ Stream<ContentSenderUiEvent> startContentSender({
   name: name,
 );
 
-/// Queue a presenter command for the running content sender. Returns `false` if no content
-/// sender runs (or it has not sent its content yet), the command queue (64) is full, or the
-/// page is 0. Commands are not applied locally: the page that is shown is the receiver's
-/// business, the sender has no renderer.
+/// Queue a presenter command for the running content sender, or for the running presenter
+/// session ([`start_presenter`]; there `Stop` ends the presentation and keeps the join).
+/// Returns `false` if nothing runs (or the content has not been sent yet), the command queue
+/// (64) is full, or the page is 0. Commands are not applied locally: the page that is shown
+/// is the receiver's business, the sender has no renderer.
 bool sendContentCmd({required UiContentCmd cmd}) =>
     RustLib.instance.api.crateApiSendContentCmd(cmd: cmd);
+
+/// Join the room `code` on `server` **once** (on "Connect"): the host approves once where the
+/// room asks for it (event `WaitingForApproval`, then `Joined`). Then call [`present_screen`],
+/// [`present_encoded`] or [`present_content`]; [`stop_presenting`] ends only the presentation,
+/// [`stop_presenter`] leaves. Replaces a running sender or presenter session.
+///
+/// Errors are events, not return values (see [`start_receiver`]); a code that is not a room
+/// code is reported as `room_not_found`. `udp_bind` is for development only.
+Stream<PresenterUiEvent> startPresenter({
+  required String code,
+  required String server,
+  String? name,
+  String? udpBind,
+}) => RustLib.instance.api.crateApiStartPresenter(
+  code: code,
+  server: server,
+  name: name,
+  udpBind: udpBind,
+);
+
+/// Leave the room (Disconnect; withdraw while waiting; the app ends). Does nothing if no
+/// presenter session runs. The Dart stream then ends.
+Future<void> stopPresenter() => RustLib.instance.api.crateApiStopPresenter();
+
+/// Share the screen in the joined presenter session. `Some(request)`: the X11 screen with these
+/// settings. `None`: the system picker of the desktop (native-apps.md 20.3); this core has no
+/// picker yet and reports `capture_unavailable`. A cancelled or refused capture is
+/// `capture_denied`; neither ends the session. Returns `false` if no presenter session runs.
+bool presentScreen({ScreenRequest? screen}) =>
+    RustLib.instance.api.crateApiPresentScreen(screen: screen);
+
+/// Share H.264 that the host pushes with [`push_encoded_frame`] (Android `MediaCodec`, iOS
+/// broadcast) in the joined presenter session. Returns `false` if no presenter session runs.
+bool presentEncoded() => RustLib.instance.api.crateApiPresentEncoded();
+
+/// Show a file or a link in the joined presenter session: check it (events `Converting`,
+/// `ContentPrepared` or `ContentRejected`), open a fresh connection inside the session, send it
+/// with `Progress`, then `ContentSent`; [`send_content_cmd`] turns pages. Returns `false` if no
+/// presenter session runs.
+bool presentContent({required ContentSource source}) =>
+    RustLib.instance.api.crateApiPresentContent(source: source);
+
+/// End the running presentation only: the display goes Idle with the same code and the
+/// session stays joined (`PresentingStopped`); the next presentation needs no new approval.
+/// Returns `false` if no presenter session runs.
+bool stopPresenting() => RustLib.instance.api.crateApiStopPresenting();
 
 /// Current state of the H.264 codec. Cheap; the UI polls it while a download runs.
 UiCodecState codecState() => RustLib.instance.api.crateApiCodecState();
@@ -716,6 +772,114 @@ sealed class NearbyReceiverEvent with _$NearbyReceiverEvent {
       NearbyReceiverEvent_Unavailable;
 }
 
+@freezed
+sealed class PresenterUiEvent with _$PresenterUiEvent {
+  const PresenterUiEvent._();
+
+  /// The room needs the host's approval: show the waiting page with the check number (the
+  /// display shows the same number). Nothing is presented until `Joined`.
+  const factory PresenterUiEvent.waitingForApproval({
+    /// Seconds until the server gives up.
+    required int timeoutSecs,
+
+    /// Two-digit check number.
+    required int check,
+
+    /// The name the display gave its room, if any (decision 49: lenient).
+    String? roomName,
+  }) = PresenterUiEvent_WaitingForApproval;
+
+  /// The room was joined (the host approved once, or the room is open).
+  const factory PresenterUiEvent.joined({
+    /// The name the display gave its room, if any.
+    String? roomName,
+  }) = PresenterUiEvent_Joined;
+
+  /// The connection check code of the running presentation, `"123 456"`, once per connection;
+  /// the display shows the same digits.
+  const factory PresenterUiEvent.connectionCode({
+    /// The six digits with a space in the middle.
+    required String sas,
+  }) = PresenterUiEvent_ConnectionCode;
+
+  /// The display shows this PDF page of that many.
+  const factory PresenterUiEvent.page({
+    /// The shown page, from 1.
+    required int page,
+
+    /// The page count, from 1.
+    required int pages,
+  }) = PresenterUiEvent_Page;
+
+  /// An Office file is being converted to a PDF (takes seconds; child process). Comes before
+  /// `ContentPrepared`; a failure is `ContentRejected`.
+  const factory PresenterUiEvent.converting({
+    /// The file name as picked.
+    required String name,
+  }) = PresenterUiEvent_Converting;
+
+  /// The file or link was read and checked.
+  const factory PresenterUiEvent.contentPrepared({
+    /// File name, or the host of a link.
+    required String name,
+
+    /// Image, PDF or link.
+    required UiContentKind kind,
+
+    /// Size in bytes.
+    required BigInt size,
+
+    /// Pages of a PDF, if known.
+    int? pages,
+
+    /// Host of a link in its punycode form.
+    String? host,
+  }) = PresenterUiEvent_ContentPrepared;
+
+  /// The content was refused before anything was sent. The session stays joined.
+  const factory PresenterUiEvent.contentRejected({
+    /// Why.
+    required UiSendRejection reason,
+  }) = PresenterUiEvent_ContentRejected;
+
+  /// Bytes handed to the data channel, at most one report per percent.
+  const factory PresenterUiEvent.progress({
+    /// Bytes so far.
+    required BigInt sent,
+
+    /// Bytes in total.
+    required BigInt total,
+  }) = PresenterUiEvent_Progress;
+
+  /// The content was delivered (the transport confirmed it). Page commands can follow.
+  const factory PresenterUiEvent.contentSent() = PresenterUiEvent_ContentSent;
+
+  /// The presentation is connected: media flows, or the channel is open.
+  const factory PresenterUiEvent.presenting() = PresenterUiEvent_Presenting;
+
+  /// The presentation ended and the session is still joined (on request, or because the system
+  /// ended the capture). The display is Idle with the same code.
+  const factory PresenterUiEvent.presentingStopped() =
+      PresenterUiEvent_PresentingStopped;
+
+  /// The session is over: `removed_by_host` (the host removed this sender) or `display_left`
+  /// (the room is gone). The stream ends after this.
+  const factory PresenterUiEvent.ended({
+    /// `removed_by_host` or `display_left`.
+    required String code,
+  }) = PresenterUiEvent_Ended;
+
+  /// Something failed; see the type's documentation for the codes and for which ones end the
+  /// stream.
+  const factory PresenterUiEvent.error({
+    /// The code the app maps.
+    required String code,
+
+    /// Technical message in English (logs only).
+    required String message,
+  }) = PresenterUiEvent_Error;
+}
+
 /// What happened to an access unit given to [`push_encoded_frame`].
 enum PushResult {
   /// Queued for sending.
@@ -878,8 +1042,8 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     String? error,
   }) = ReceiverUiEvent_VideoStats;
 
-  /// A transfer began (only with content enabled). For a "receiving ..." note; there is no
-  /// progress on the receiving side.
+  /// A transfer began (only with content enabled). For a "receiving ..." note; progress
+  /// follows as [`ReceiverUiEvent::ContentTransferProgress`].
   const factory ReceiverUiEvent.contentTransferStarted({
     /// `true` for a PDF, `false` for an image.
     required bool document,
@@ -890,6 +1054,17 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// Announced size in bytes.
     required BigInt size,
   }) = ReceiverUiEvent_ContentTransferStarted;
+
+  /// Bytes of the running transfer received so far, at most one per whole percent and four
+  /// per second, between `ContentTransferStarted` and the picture (the last one has
+  /// `received == total`).
+  const factory ReceiverUiEvent.contentTransferProgress({
+    /// Bytes received.
+    required BigInt received,
+
+    /// Announced size in bytes.
+    required BigInt total,
+  }) = ReceiverUiEvent_ContentTransferProgress;
 
   /// An image or a PDF page waits: call [`take_content_frame`]. Sent again only after
   /// `take_content_frame` was called.
@@ -926,12 +1101,29 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     required UiContentError error,
   }) = ReceiverUiEvent_ContentError;
 
-  /// The sender left. The stream ends after this.
+  /// The sender left or was removed. **The room stays**: the stream goes on, the code, the
+  /// join mode, the block list and the queue are the same, and the next sender can join.
   const factory ReceiverUiEvent.peerLeft() = ReceiverUiEvent_PeerLeft;
+
+  /// The sender stopped its presentation but stays in the room: show Idle without a leave
+  /// notice. The next presentation of the same sender needs no new approval.
+  const factory ReceiverUiEvent.presentationStopped() =
+      ReceiverUiEvent_PresentationStopped;
+
+  /// The connection check code of the sender's connection, `"123 456"`, once per
+  /// connection; the presenter shows the same digits (`cc_transport::sas`).
+  const factory ReceiverUiEvent.connectionCode({
+    /// The six digits with a space in the middle.
+    required String sas,
+  }) = ReceiverUiEvent_ConnectionCode;
 
   /// Something failed. The stream ends after this.
   const factory ReceiverUiEvent.error({
-    /// Technical message in English (for logs and for showing next to a translated title).
+    /// The code the UI maps: a protocol code (`room_locked`, `server_full`, ...) or
+    /// `connection_lost`, `peer_failed`, `unknown`.
+    required String code,
+
+    /// Technical message in English (for logs only).
     required String message,
   }) = ReceiverUiEvent_Error;
 }

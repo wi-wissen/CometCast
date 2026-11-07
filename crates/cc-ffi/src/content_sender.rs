@@ -301,10 +301,13 @@ async fn guarded<T>(
     }
 }
 
-async fn send_payload(
+/// Reports the bytes handed to the channel; `false` when nobody listens any more.
+pub(crate) type ProgressFn<'a> = &'a (dyn Fn(u64, u64) -> bool + Sync);
+
+pub(crate) async fn send_payload(
     ctl: &ControlSender,
     prepared: &Prepared,
-    events: &StreamSink<ContentSenderUiEvent>,
+    progress: ProgressFn<'_>,
 ) -> Result<(), String> {
     let total = prepared.size;
     let chan = ctl.channel();
@@ -321,7 +324,7 @@ async fn send_payload(
             let url = prepared.url.as_deref().unwrap_or_default();
             let m = link_message(url).map_err(|e| e.to_string())?;
             chan.send_text(&m).await.map_err(|e| e.to_string())?;
-            return finish(ctl, events, total).await;
+            return finish(ctl, progress, total).await;
         }
     };
     for item in items {
@@ -334,25 +337,18 @@ async fn send_payload(
                 let pct = sent * 100 / total.max(1);
                 if pct != last_pct {
                     last_pct = pct;
-                    if events
-                        .add(ContentSenderUiEvent::Progress { sent, total })
-                        .is_err()
-                    {
+                    if !progress(sent, total) {
                         return Err("the app stopped listening".into());
                     }
                 }
             }
         }
     }
-    finish(ctl, events, total).await
+    finish(ctl, progress, total).await
 }
 
-async fn finish(
-    ctl: &ControlSender,
-    events: &StreamSink<ContentSenderUiEvent>,
-    total: u64,
-) -> Result<(), String> {
-    let _ = events.add(ContentSenderUiEvent::Progress { sent: total, total });
+async fn finish(ctl: &ControlSender, progress: ProgressFn<'_>, total: u64) -> Result<(), String> {
+    let _ = progress(total, total);
     if ctl.finish().await {
         Ok(())
     } else {
@@ -381,7 +377,12 @@ pub(crate) async fn drive(
         if events.add(ContentSenderUiEvent::Connected).is_err() {
             return None;
         }
-        match guarded(send_payload(&ctl, &prepared, &events), &mut sender, &mut stop, &events)
+        let report = |sent, total| {
+            events
+                .add(ContentSenderUiEvent::Progress { sent, total })
+                .is_ok()
+        };
+        match guarded(send_payload(&ctl, &prepared, &report), &mut sender, &mut stop, &events)
             .await
         {
             Ok(Ok(())) => {}

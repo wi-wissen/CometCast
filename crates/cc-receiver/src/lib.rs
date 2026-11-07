@@ -183,10 +183,10 @@ pub enum ReceiverEvent {
 /// connection ended, `peer_failed` when WebRTC failed, `unknown` otherwise. The messages are
 /// the ones made in this file; the text itself is for logs only.
 pub fn error_code(message: &str) -> String {
-    if let Some(rest) = message.strip_prefix("server error ") {
-        if let Some((code, _)) = rest.split_once(':') {
-            return code.to_owned();
-        }
+    if let Some(rest) = message.strip_prefix("server error ")
+        && let Some((code, _)) = rest.split_once(':')
+    {
+        return code.to_owned();
     }
     if message.starts_with("signalling connection") {
         "connection_lost".into()
