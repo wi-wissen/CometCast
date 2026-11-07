@@ -9,4 +9,6 @@ declare module '*.vue' {
 interface ImportMetaEnv {
   /** Build-time default relay, e.g. wss://relay.cometcast.de/ws (see src/core/relay.ts). */
   readonly VITE_DEFAULT_RELAY?: string
+  /** TEST-ONLY, build time: shortens the idle-dim delay for end-to-end builds (src/core/idleDim.ts). */
+  readonly VITE_E2E_DIM_MS?: string
 }

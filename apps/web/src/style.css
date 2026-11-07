@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 @import 'tailwindcss';
+@import './styles/display.css';
+@import './styles/presenter.css';
 
 /* Palette follows the planning mockup "Leise mit nativen Rändern". */
 :root {
@@ -75,4 +77,11 @@ body {
 /* Keep the focus ring visible inside clipped (overflow-hidden) button groups. */
 .overflow-hidden button:focus-visible {
   outline-offset: -2px;
+}
+
+/* The display never scrolls (spec 3.1). */
+html.cd-page,
+html.cd-page body {
+  overflow: hidden;
+  height: 100%;
 }

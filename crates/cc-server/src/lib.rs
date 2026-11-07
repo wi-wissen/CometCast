@@ -124,8 +124,26 @@ fn build_app_with_shutdown(
         .route("/altcha/challenge", get(puzzle::challenge_handler))
         .route("/ice-servers", get(turn::ice_servers_handler));
     if let Some(dir) = web_dir {
-        // Anything that is not one of the routes above is looked up as a file in `dir`.
-        app = app.fallback_service(ServeDir::new(dir));
+        // Anything that is not one of the routes above is looked up as a file in `dir`. A path that
+        // is no file and has no file extension (`/display`, a join code such as `/K7QM2W`) is a page
+        // of the web app: it gets `index.html`, and the app picks the page from the path.
+        let index = dir.join("index.html");
+        let spa = get(move |uri: axum::http::Uri| {
+            let index = index.clone();
+            async move {
+                let last = uri.path().rsplit('/').next().unwrap_or("");
+                if last.contains('.') {
+                    return StatusCode::NOT_FOUND.into_response();
+                }
+                match tokio::fs::read(&index).await {
+                    Ok(body) => {
+                        ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body).into_response()
+                    }
+                    Err(_) => StatusCode::NOT_FOUND.into_response(),
+                }
+            }
+        });
+        app = app.fallback_service(ServeDir::new(dir).fallback(axum::Router::new().fallback(spa)));
     }
     // The access check (allow/deny lists, client address) wraps everything, files included.
     // CORS is outermost so that refusals (429, 403) stay readable for an allowed page.

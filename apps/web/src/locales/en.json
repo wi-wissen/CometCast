@@ -2,7 +2,13 @@
   "app": {
     "name": "Comet Cast",
     "tagline": "Share your screen, documents, links and files.",
-    "preview": "Early version (v0.1): works over the local network only, without STUN/TURN relay servers. Connecting from another network may not work."
+    "preview": "Early version (v0.1): works over the local network only, without STUN/TURN relay servers. Connecting from another network may not work.",
+    "welcome": "Welcome to Comet Cast",
+    "codeFromLink": "taken from your link",
+    "codeScanned": "scanned",
+    "scanAgainBody": "Scan the QR code on the screen once more to continue.",
+    "scanQr": "Scan QR code",
+    "connect": "Connect"
   },
   "lang": {
     "label": "Language",
@@ -385,5 +391,252 @@
     "label": "Your name (shown to the host)",
     "hint": "Shown to the host when it has to approve you. Optional; up to 40 characters.",
     "placeholder": "e.g. Alex"
+  },
+  "common": {
+    "back": "Back",
+    "next": "Next",
+    "cancel": "Cancel",
+    "or": "or",
+    "noName": "No name",
+    "quoted": "“{name}”",
+    "stepOf": "Step {n} of 4"
+  },
+  "device": {
+    "phone": "Phone",
+    "android": "Android phone",
+    "iphone": "iPhone",
+    "ipad": "iPad",
+    "laptop": "Laptop",
+    "chromebook": "Chromebook"
+  },
+  "mode": {
+    "open": "Open",
+    "approval": "Approval on",
+    "locked": "Locked"
+  },
+  "appearance": {
+    "dark": "Dark",
+    "light": "Light",
+    "oled": "OLED black",
+    "auto": "Automatic"
+  },
+  "setup": {
+    "welcome": {
+      "title": "Hi! This screen is about to become a display device.",
+      "body": "Afterwards anyone in the room can show here what is on their phone or laptop. With a code, no account.",
+      "start": "Set up"
+    },
+    "name": {
+      "title": "What is this room called?",
+      "body": "The name is shown large on the screen so people know they are in the right place.",
+      "custom": "Custom name",
+      "s1": "Meeting room Elbe",
+      "s2": "Living room",
+      "s3": "Clubhouse",
+      "s4": "Workshop",
+      "s5": "Room 204"
+    },
+    "mode": {
+      "title": "Who may connect?",
+      "fewPeople": "Few people",
+      "manyPeople": "Many people",
+      "openText": "Anyone who sees the code connects at once. For small groups, teams and at home.",
+      "approvalText": "Each person shows up here as a request and you let them in. For rooms many people use.",
+      "later": "You can switch or lock any time later in the settings."
+    },
+    "address": {
+      "title": "Which address will others use?",
+      "body": "This address is shown large on the screen and is inside the QR code.",
+      "sourceDefault": "Default server. Nothing to set up.",
+      "sourceOwn": "Found via the company network (DNS entry).",
+      "sourceBox": "In-house box found on this network.",
+      "ok": "Looks right",
+      "change": "Other address"
+    },
+    "done": {
+      "title": "Done.",
+      "bodyRemote": "Open the settings any time with the Menu key or the Settings button: joining and appearance.",
+      "bodyPointer": "Open the settings any time with “Settings” at the bottom right: joining and appearance.",
+      "finish": "Go to idle screen"
+    }
+  },
+  "idle": {
+    "step1": "Open in your browser",
+    "step2": "Enter this code",
+    "altAddress": "or {ip}",
+    "locked": "Locked right now.",
+    "qrCaption": "Or scan",
+    "qrLocked": "Locked",
+    "appLine": "No download needed. Prefer an app: App Store · Google Play · {dom}/app",
+    "offline": {
+      "title": "No connection to {dom}",
+      "body": "This screen is offline right now. Code and QR code come back by themselves once the network is back."
+    }
+  },
+  "settings": {
+    "open": "Settings",
+    "title": "Settings",
+    "close": "Close",
+    "closeRemote": "Close (Back key)",
+    "join": {
+      "label": "Joining",
+      "openText": "Anyone with the code connects at once.",
+      "approvalText": "You let each person in one by one.",
+      "lockedText": "Nobody new can join. Connected stay."
+    },
+    "appearance": "Appearance"
+  },
+  "request": {
+    "title": "Request",
+    "queue": "+{n} waiting",
+    "subtitle": "wants to connect · {device}",
+    "check": "Check",
+    "yes": "Yes",
+    "no": "No",
+    "noBlock": "No and block",
+    "aria": "Request: {name}"
+  },
+  "present": {
+    "byline": "{name} is showing · {device}",
+    "end": "End"
+  },
+  "toast": {
+    "joined": "{name} connected",
+    "allowed": "{name} allowed",
+    "denied": "{name} denied",
+    "blocked": "{name} denied and blocked",
+    "expired": "Request from {name} expired",
+    "withdrawn": "{name} withdrew the request",
+    "left": "{name} disconnected",
+    "lockedRejected": "Locked · {n} open requests denied",
+    "sessionEnded": "Session ended · new code"
+  },
+  "start": {
+    "titleRoom": "Connect to “{room}”",
+    "titleGeneric": "Connect to a screen",
+    "fromQr": "from the QR code",
+    "codeLabel": "Code from the screen",
+    "codeEmpty": "Please enter the code shown large on the screen.",
+    "nameLabel": "Your name",
+    "browser": "Continue in the browser",
+    "browserPhone": "No install. Show photos, files and links.",
+    "browserLaptop": "No install. Show your screen, a window, files and links.",
+    "or": "or",
+    "appAndroid": "Get the app on Google Play",
+    "appIos": "Get the app on the App Store",
+    "appDesktop": "Download the app for {os}",
+    "appPhone": "With the app you can also share your whole phone screen.",
+    "appLaptop": "The app finds screens on the same network without a code. For now the browser is enough.",
+    "detected": "Detected: {device}, {browser}",
+    "beDisplay": "Should this device be the screen itself? Open {dom}/display.",
+    "downloadStarted": "Download started. Until the app is installed, everything works here in the browser."
+  },
+  "wait": {
+    "title": "Waiting for approval",
+    "checkLabel": "Your check number",
+    "checkHint": "Also shown on the screen.",
+    "expires": "The request expires in {n} s.",
+    "withdraw": "Withdraw request"
+  },
+  "what": {
+    "connectedTo": "Connected to “{room}”",
+    "title": "What would you like to show?",
+    "screen": "Share screen",
+    "screenLaptop": "Whole screen or one window, live",
+    "screenApp": "Your whole phone display, live",
+    "screenPhoneBrowser": "On a phone only with the app",
+    "file": "Show a photo or file",
+    "fileSub": "PDF or image. You turn pages, everything else stays with you",
+    "link": "Show a link",
+    "linkSub": "The screen opens the page itself",
+    "disconnect": "Disconnect"
+  },
+  "file": {
+    "title": "What would you like to show?",
+    "body": "Recent on this device. Or “Other file” in the system dialog."
+  },
+  "link": {
+    "label": "Page address",
+    "hint": "The screen needs its own internet for this.",
+    "go": "Open on the screen"
+  },
+  "presenting": {
+    "screen": "You are sharing your screen",
+    "file": "You are showing a file",
+    "link": "The screen shows your link",
+    "where": "On “{room}”.",
+    "stop": "Stop showing"
+  },
+  "bye": {
+    "title": "Disconnected",
+    "body": "You are no longer connected. You can close this tab.",
+    "again": "Connect again"
+  },
+  "error": {
+    "why": "Why",
+    "now": "What now",
+    "code": {
+      "title": "This code does not exist right now",
+      "why": "Usually a typo. Comet Cast reads an O in a code as zero and an I as one, so you need not tell them apart.",
+      "now": "Look at the screen again and retype the code."
+    },
+    "expired": {
+      "title": "This code is no longer valid",
+      "why": "The screen has a new code by now. Codes change when the display device restarts or a session ends.",
+      "now": "Type the code the screen shows now, or scan the QR code again."
+    },
+    "otherServer": {
+      "title": "This code belongs to another address",
+      "why": "You are on {here}. The code fits another server, for example a company’s or a club’s.",
+      "now": "Look at the screen: it shows the right address. Or scan the QR code and both match."
+    },
+    "noInternet": {
+      "title": "No internet on this device",
+      "why": "Your device is offline, or the Wi-Fi only allows certain sites.",
+      "now": "Turn on mobile data or join the room’s Wi-Fi. The page then retries by itself.",
+      "nowBox": "For {dom} you must be on the same Wi-Fi as the screen. Ask for the room’s Wi-Fi."
+    },
+    "noScreen": {
+      "title": "Screen sharing does not work in this browser",
+      "why": "Phone browsers may not pass on your screen. That is the browser, not you.",
+      "now": "Show a photo, a file or a link instead. Or get the app, then the screen works too."
+    },
+    "displayOff": {
+      "title": "The screen does not answer",
+      "why": "The display device is off, asleep, or Comet Cast is closed there. Your request did not arrive.",
+      "now": "Is the code still on the screen? If not, ask the host to open Comet Cast there."
+    },
+    "denied": {
+      "title": "Not allowed",
+      "why": "“No” was chosen on the screen.",
+      "now": "Ask in person if you need to."
+    },
+    "locked": {
+      "title": "Locked right now",
+      "why": "The code is right, but this screen is not taking anyone new right now.",
+      "whyWhile": "The host locked the room while you were waiting. Your request was dropped.",
+      "now": "Try again later or talk to the host."
+    },
+    "timeout": {
+      "title": "No answer",
+      "why": "Nobody answered your request within 60 seconds.",
+      "now": "Ask again and let the host know."
+    },
+    "ended": {
+      "title": "Presentation ended",
+      "why": "The session was ended on the screen.",
+      "now": "To continue, enter the new code or scan the QR code again."
+    },
+    "action": {
+      "retype": "Retype code",
+      "rescan": "Scan QR code again",
+      "retry": "Try again",
+      "showFile": "Show photo or file",
+      "showLink": "Show a link",
+      "getApp": "Get the app",
+      "ask": "Ask again",
+      "askIn": "Ask again in {n} s",
+      "openDom": "Open {dom}"
+    }
   }
 }
