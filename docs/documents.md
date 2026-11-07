@@ -7,7 +7,7 @@ Status: PDF part implemented and tested on generated files only. Rendering runs 
 seccomp where the kernel allows it (since the security reviews, see "Limits and safety"). It is
 **not a sandbox in the full sense**: read "What this protects and what it does not" before
 relying on it.
-Office conversion, the WASM build and speaker notes are **not** done. The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
+Office conversion and speaker notes are **not** done. The WASM build exists (`crates/cc-docs-wasm`) and is used by the web receiver, see [In the web client](#in-the-web-client). The Flutter UI (send a PDF, show pages, presenter controls) exists for the Linux desktop, see [In the Flutter app](#in-the-flutter-app).
 
 ## Idea (from the plan)
 
@@ -287,8 +287,8 @@ dies in between; the hard limit is the kernel's.
   or lower `Limits` (file size, image area).
 - **Web (wasm)**: render the hostile PDF in a **dedicated Web Worker** whose `WebAssembly.Memory`
   has a `maximum` (an allocation over it fails inside the worker) and that the page ends with
-  `worker.terminate()` on a timeout. The crate itself has no time limit on wasm. Not built or
-  tested here.
+  `worker.terminate()` on a timeout. The crate itself has no time limit on wasm. Built and used
+  this way by the web client, see [In the web client](#in-the-web-client).
 - **Server** (`cc-server`) only validates WebP headers; it does not render PDFs.
 
 ## Tests (what was really run)
@@ -392,6 +392,41 @@ sample proves nothing general.
 - `validate_webp` only parses the header (size, not animated, pixel budget). Pixels are not
   decoded, so a file with a valid header and a corrupt body passes.
 
+## In the web client
+
+The web receiver (`apps/web`) shows PDFs that arrive over the `control` DataChannel (message format in
+[web-m2.md](web-m2.md)). Rendering uses the **same code** as the native clients, compiled to WebAssembly:
+
+| Piece | What it is |
+| --- | --- |
+| `crates/cc-docs-wasm` | A small crate (`cdylib` + `rlib`) around `cc_docs::Document` with `wasm-bindgen`: `PdfDocument.open(bytes)`, `page_count()`, `render(index, width)` returning RGBA. Opens with the **in-process engine**, the only one on `wasm32` |
+| `apps/web/scripts/build-wasm.sh` (`npm run build:wasm`) | `cargo build --release --target wasm32-unknown-unknown`, with the linear memory capped at 512 MiB (`--max-memory`), then `wasm-bindgen --target web` into `apps/web/public/pdf/` (git-ignored). Needs a `wasm-bindgen` CLI of exactly the `Cargo.lock` version |
+| `src/core/pdfWorker.ts` | A module Web Worker that loads `/pdf/cc_docs_wasm.js` and the `.wasm` file at run time (same origin) and holds the one opened document |
+| `src/core/pdfRenderer.ts` | The page side: opens, renders **one page per request, never in advance**, one request at a time, with a wall-clock limit of 20 s for open and for each render. On a timeout, a crash or a memory failure the worker is **terminated** and the document is closed with a translated notice |
+| `src/components/DocumentView.vue` | Draws the page on a `<canvas>` with `putImageData`. Only pixels: no text layer, no links, nothing of the PDF is clickable |
+
+Limits in the browser (`web_limits()` in the crate; all UNCERTAIN guesses, none measured on real devices):
+file 64 MiB (the protocol limit), 1000 pages, output side 4096 px and area 4096 x 2304 px (a requested width is
+clamped, not refused), image area 16 Mpx, one inflated stream 128 MiB, all streams 512 MiB, plus the usual
+pre-checks and the inflate pre-scan of this crate. Memory is capped by `--max-memory` (512 MiB). The PDF is
+parsed and drawn only: hayro runs no JavaScript and this API exposes no link, so nothing in the file is
+executed or opened. The page width asked for is the stage width times the device pixel ratio, at most 3000 px.
+
+What this does **not** give, compared with the native worker process: no operating system sandbox and no
+CPU or time limit inside the module (the page ends the Web Worker instead, so a runaway render blocks only
+that worker, not the page), and on wasm every render re-parses the file (the inline engine parses per
+render; speed is not measured). A trap in the module, which `catch_unwind` cannot prevent on wasm, ends the
+worker and the document; the file is not opened again automatically.
+
+Checked (one Chromium/Chrome build on Linux): the `.wasm` file is 5.3 MB raw and about 1.8 MB with
+`gzip -9` (the server does not compress, so unless a proxy does, the raw size is transferred; the file is
+loaded only when a PDF arrives). A generated three-page PDF and the classroom PDF render into a non-blank
+canvas at the expected places and colours; a damaged PDF gives the notice; a link annotation inside a test PDF
+is not followed. Not checked: Firefox, Safari, mobile browsers, large or hostile files in the browser (the
+hostile-file tests run on the native target only), the fidelity of real classroom PDFs (point 7), and
+accessibility of the page content (the canvas is labelled with the page number only, there is no text
+alternative: UNCERTAIN, a text layer would need text extraction, which this API does not offer).
+
 ## Build and platforms
 
 - hayro 0.9.0 (newest found with `cargo info` on 2026-11-06; the plan names 0.8.0) is
@@ -401,9 +436,9 @@ sample proves nothing general.
 - hayro default features are kept: embedded substitute fonts (Foxit, about 240 KB per its
   documentation) and embedded CMaps. Binary size was not measured.
 - `cargo check -p cc-docs --target wasm32-unknown-unknown` **passes** (checked on this
-  machine). That proves that the code compiles for wasm, nothing more: it was **not linked,
-  run or measured** in a browser, so "hayro runs as WASM" is still unverified (measurement
-  point 7). On wasm the crate has no threads: it parses and renders inline, re-parsing the file
+  machine). Since the web client work the crate is also linked (`crates/cc-docs-wasm`) and runs in
+  Chromium (see [In the web client](#in-the-web-client)); only that browser was tried and the
+  measurement of point 7 (20 real PDFs, speed on weak devices) is still open. On wasm the crate has no threads: it parses and renders inline, re-parsing the file
   for every render, without time limit, cancel or panic protection (`catch_unwind` cannot
   catch there). Only the pre-checks (size, pages, nesting, output size) and the pre-scan apply.
 - `cargo check -p cc-docs --target x86_64-pc-windows-gnu --all-targets` passes (compile only).
@@ -466,7 +501,7 @@ Where the worker comes from, which platforms have it, and the limits of this sec
 
 ## Not done
 
-- 20 real PDFs (point 7), fidelity comparison with another viewer, WASM build and size.
+- 20 real PDFs (point 7), fidelity comparison with another viewer, WASM speed on weak devices (the WASM file size is in [In the web client](#in-the-web-client)).
 - Worker for macOS, Windows, Android and Flutter packaging: written, but only compile-checked or
   not built (see "Platform statements"); a long-lived worker per document (today one process per
   call, which costs a few milliseconds per page); a job object on Windows.

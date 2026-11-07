@@ -182,13 +182,17 @@ describe('ImageAssembler', () => {
 
 function collect() {
   const log: string[] = []
-  const handlers: ControlReceiverHandlers & { blob?: Blob; name?: string } = {
+  const handlers: ControlReceiverHandlers & { blob?: Blob; name?: string; docBytes?: Uint8Array } = {
     onCmd: (c) => log.push('cmd:' + JSON.stringify(c)),
     onProgress: (p) => log.push(p ? `progress:${p.received}/${p.size}` : 'progress:null'),
     onImage(blob, name) {
       handlers.blob = blob
       handlers.name = name
       log.push('image:' + name)
+    },
+    onDocument(bytes, name) {
+      handlers.docBytes = bytes
+      log.push(`document:${name}:${bytes.byteLength}`)
     },
     onLink: (u) => log.push('link:' + u),
     onError: (c) => log.push('error:' + c),
@@ -259,7 +263,7 @@ describe('ControlReceiver resource limits (regression: 1-byte message flood)', (
   })
 })
 
-describe('documents from native senders (the web client cannot show them yet)', () => {
+describe('documents (PDF)', () => {
   const start = (size: number, name = 'a.pdf', mime = 'application/pdf') =>
     JSON.stringify({ kind: 'document', name, mime, size })
 
@@ -271,23 +275,22 @@ describe('documents from native senders (the web client cannot show them yet)', 
     expect(parseControlMessage(start(64 * 1024 * 1024 + 1))).toBeNull()
     expect(parseControlMessage(start(5, ''))).toBeNull()
   })
-  it('skips the data and reports one translated error, without keeping bytes or crashing', () => {
+  it('hands out the complete bytes at document_end, with progress, and nothing for an image', () => {
     const { log, handlers } = collect()
-    const r = new ControlReceiver(handlers)
-    const size = CHUNK_SIZE * 2 + 10
-    r.handle(start(size))
-    r.handle(new ArrayBuffer(CHUNK_SIZE))
-    r.handle(new ArrayBuffer(CHUNK_SIZE))
-    r.handle(new ArrayBuffer(10))
+    const r = new ControlReceiver(handlers, () => 1000)
+    const data = bytes(CHUNK_SIZE * 2 + 10)
+    r.handle(start(data.byteLength))
+    for (const c of chunkBytes(data)) r.handle(c.slice().buffer)
     expect(log.filter((l) => l.startsWith('error:'))).toEqual([])
     r.handle('{"kind":"document_end"}')
-    expect(log.filter((l) => l.startsWith('error:'))).toEqual(['error:document_unsupported'])
+    expect(log.at(-1)).toBe('document:a.pdf:' + data.byteLength)
     expect(log.some((l) => l.startsWith('image:'))).toBe(false)
+    expect(handlers.docBytes).toEqual(data)
     // Data after the end is unexpected again.
     r.handle(new ArrayBuffer(CHUNK_SIZE))
     expect(log.at(-1)).toBe('error:unexpected_chunk')
   })
-  it('applies the chunk rule while skipping and does not accept incomplete documents', () => {
+  it('applies the chunk rule and does not accept incomplete documents', () => {
     const { log, handlers } = collect()
     const errs = () => log.filter((l) => l.startsWith('error:'))
     const r = new ControlReceiver(handlers)
@@ -305,8 +308,9 @@ describe('documents from native senders (the web client cannot show them yet)', 
     r.handle(new ArrayBuffer(CHUNK_SIZE))
     r.handle('{"kind":"document_end"}') // truncated
     expect(errs()).toEqual(['error:size_mismatch'])
+    expect(log.some((l) => l.startsWith('document:'))).toBe(false)
   })
-  it('lets an image replace a skipped document and stop clears it', () => {
+  it('lets an image replace a document in progress, refuses a mixed-up end, and stop clears it', () => {
     const { log, handlers } = collect()
     const r = new ControlReceiver(handlers, () => 0)
     r.handle(start(CHUNK_SIZE))
@@ -314,10 +318,63 @@ describe('documents from native senders (the web client cannot show them yet)', 
     r.handle(new ArrayBuffer(3))
     r.handle('{"kind":"image_end"}')
     expect(log.at(-1)).toBe('image:p.png')
+    // image_end for a document and document_end for an image are both refused.
+    r.handle(start(3))
+    r.handle(new ArrayBuffer(3))
+    r.handle('{"kind":"image_end"}')
+    expect(log.at(-1)).toBe('error:no_transfer')
+    r.handle(JSON.stringify({ kind: 'image', name: 'p.png', mime: 'image/png', size: 3 }))
+    r.handle(new ArrayBuffer(3))
+    r.handle('{"kind":"document_end"}')
+    expect(log.at(-1)).toBe('error:no_transfer')
     r.handle(start(CHUNK_SIZE))
     r.handle('{"kind":"cmd","cmd":"stop"}')
     r.handle(new ArrayBuffer(CHUNK_SIZE))
     expect(log.at(-1)).toBe('error:unexpected_chunk')
+  })
+})
+
+describe('ControlSender.sendDocument', () => {
+  const pdf = (n: number) => {
+    const b = bytes(n)
+    b.set(new TextEncoder().encode('%PDF-1.4\n'), 0)
+    return b
+  }
+  it('sends the document message, 16 KiB chunks and the end message, which the receiver reassembles', async () => {
+    const [a, b] = pair()
+    const data = pdf(CHUNK_SIZE * 2 + 123)
+    const got: { bytes?: Uint8Array; name?: string } = {}
+    const rx = new ControlReceiver({
+      onCmd: () => {},
+      onProgress: () => {},
+      onImage: () => {},
+      onDocument: (bytes, name) => Object.assign(got, { bytes, name }),
+      onLink: () => {},
+      onError: (c) => {
+        throw new Error('unexpected ' + c)
+      },
+    })
+    b.onmessage = (ev) => rx.handle(ev.data)
+    await new ControlSender(a).sendDocument(source(data, 'plan.pdf', 'application/pdf'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(JSON.parse(a.sent[0] as string)).toEqual({ kind: 'document', name: 'plan.pdf', mime: 'application/pdf', size: data.byteLength })
+    expect(a.sent.slice(1, -1).map((m) => (m as ArrayBuffer).byteLength)).toEqual([CHUNK_SIZE, CHUNK_SIZE, 123])
+    expect(a.sent.at(-1)).toBe('{"kind":"document_end"}')
+    expect(got.name).toBe('plan.pdf')
+    expect(got.bytes).toEqual(data)
+  })
+  it('refuses wrong types, empty, huge and non-PDF files before sending anything', async () => {
+    const [a] = pair()
+    const s = new ControlSender(a)
+    await expect(s.sendDocument(source(pdf(10), 'a.png', 'image/png'))).rejects.toMatchObject({ code: 'bad_type' })
+    await expect(s.sendDocument(source(new Uint8Array(0), 'a.pdf', 'application/pdf'))).rejects.toMatchObject({ code: 'empty' })
+    await expect(s.sendDocument(source(bytes(100), 'a.pdf', 'application/pdf'))).rejects.toMatchObject({ code: 'not_pdf' })
+    const huge = { ...source(pdf(10), 'a.pdf', 'application/pdf'), size: 64 * 1024 * 1024 + 1 }
+    await expect(s.sendDocument(huge)).rejects.toMatchObject({ code: 'too_large' })
+    expect(a.sent).toEqual([])
+    // An empty MIME type (some systems) is accepted when the marker is there.
+    await s.sendDocument(source(pdf(10), 'a.pdf', ''))
+    expect(a.sent.length).toBe(3)
   })
 })
 

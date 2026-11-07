@@ -631,6 +631,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-docs-wasm"
+version = "0.1.0"
+dependencies = [
+ "cc-docs",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "cc-ffi"
 version = "0.1.0"
 dependencies = [

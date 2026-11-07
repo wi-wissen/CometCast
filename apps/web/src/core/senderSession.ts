@@ -75,6 +75,11 @@ export class SenderSession {
     return this.requireControl().sendImage(file, onProgress)
   }
 
+  /** Sends a PDF (same protocol as the native clients). `file` is a File or Blob. */
+  sendDocument(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    return this.requireControl().sendDocument(file, onProgress)
+  }
+
   /** Returns false if the URL is not an acceptable http(s) link. */
   sendLink(url: string): boolean {
     return this.requireControl().sendLink(url)

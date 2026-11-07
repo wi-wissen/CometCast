@@ -20,7 +20,7 @@
     },
     "sendContent": {
       "title": "Send file or link",
-      "desc": "Hand over an image or a link. PDF and Office documents come later."
+      "desc": "Hand over an image, a PDF or a link. Office documents come later."
     },
     "receive": {
       "title": "Receive on this device",
@@ -54,7 +54,15 @@
       "size_mismatch": "The image arrived incomplete and was discarded.",
       "no_transfer": "An image transfer ended unexpectedly and was ignored.",
       "bad_chunk": "Image data arrived in an unexpected form and was discarded.",
-      "document_unsupported": "The sender sent a PDF document. This app cannot show documents yet."
+      "document_unsupported": "The sender sent a PDF document. This app cannot show documents yet.",
+      "document_invalid": "The PDF is damaged or not supported and cannot be shown.",
+      "document_encrypted": "The PDF is password protected and cannot be shown.",
+      "document_too_large": "The PDF is too large to be shown.",
+      "document_too_many_pages": "The PDF has too many pages to be shown.",
+      "document_rejected": "The PDF was refused by the safety check and is not shown.",
+      "document_memory": "The PDF needs more memory than allowed and was closed.",
+      "document_timeout": "Showing the PDF took too long and it was closed.",
+      "document_failed": "The PDF could not be shown."
     },
     "content": {
       "imageAlt": "Image from the sender: {name}",
@@ -71,7 +79,24 @@
       "image": "Image received: {name}.",
       "link": "Link request from {host}.",
       "replaced": "New content replaced the previous one.",
-      "closed": "Content closed."
+      "closed": "Content closed.",
+      "document": "Document received: {name}."
+    },
+    "document": {
+      "loading": "Opening {name}…",
+      "pageOf": "Page {page} of {pages}",
+      "canvasLabel": "{name}, page {page} of {pages}",
+      "controls": "Page control",
+      "prev": "Previous page",
+      "next": "Next page",
+      "close": "Close document",
+      "pageError": {
+        "failed": "This page could not be shown.",
+        "page_out_of_range": "This page does not exist.",
+        "bad_size": "This page has an unusable size.",
+        "timeout": "Showing this page took too long.",
+        "memory": "This page needs too much memory."
+      }
     }
   },
   "send": {
@@ -156,7 +181,7 @@
   },
   "sendContent": {
     "title": "Send file or link",
-    "intro": "Enter the receiver's room code, then send an image or a link. The content travels directly to the receiver; the server only helps to connect.",
+    "intro": "Enter the receiver's room code, then send an image, a PDF or a link. The content travels directly to the receiver; the server only helps to connect.",
     "connect": "Connect",
     "disconnect": "Disconnect",
     "stopShowing": "Stop showing on the receiver",
@@ -198,10 +223,29 @@
     },
     "later": {
       "title": "Coming later",
-      "pdf": "PDF documents",
       "office": "Office documents (Word, Excel, PowerPoint)",
       "video": "Playing media links directly",
       "note": "These need the native core and are not available in the browser version yet."
+    },
+    "document": {
+      "title": "PDF document",
+      "help": "A PDF file, up to {max}. The receiver shows it page by page; nothing in the file is run or opened.",
+      "drop": "Drop a PDF here, or",
+      "choose": "Choose PDF",
+      "progress": "Sending {name}: {percent} %",
+      "sent": "Sent {name}. It is now shown on the receiver.",
+      "prev": "Previous page",
+      "next": "Next page",
+      "pagesHelp": "Turns the page on the receiver.",
+      "error": {
+        "bad_type": "Only PDF files can be sent here.",
+        "not_pdf": "This file does not look like a PDF.",
+        "too_large": "This PDF is larger than {max}.",
+        "empty": "This file is empty.",
+        "not_open": "Not connected to the receiver.",
+        "channel_closed": "The connection was closed while sending.",
+        "failed": "The PDF could not be sent."
+      }
     }
   }
 }

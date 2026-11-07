@@ -4,8 +4,12 @@
 // browser web app, over the WebRTC DataChannel `control` (docs/web-m2.md).
 //   A) WEB sender (content-only mode) -> `cometcast-cli receive`: an image arrives byte for byte, a link
 //      is printed and never opened.
+//      The web sender also sends a PDF (file input) which the native receiver opens (`pages=3`), and its
+//      next-page button turns the page there.
 //   B) `cometcast-cli send-file` / `send-link` -> WEB receiver: the image decodes (<img> naturalWidth > 0), the
-//      link card appears, a PDF gives the translated "cannot show documents yet" notice (no web renderer yet).
+//      link card appears, a PDF is rendered into a non-blank page canvas when the WASM renderer was built
+//      into dist/pdf (npm run build:wasm before npm run build); without it the translated "cannot show
+//      documents yet" notice appears.
 //   C) `cometcast-cli send-file x.pdf --then ...` -> `cometcast-cli receive`: the PDF opens (rendered in the
 //      sandboxed worker process), pages turn with the page commands, stop ends it.
 // Starts the real cometcast-server, the real CLI binary and a real Chromium.
@@ -15,7 +19,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:net'
 import assert from 'node:assert/strict'
@@ -39,8 +43,11 @@ const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await freePor
 const base = `http://127.0.0.1:${port}`
 const targetDir = process.env.CARGO_TARGET_DIR ?? resolve(repo, 'target')
 const pdfPath = resolve(repo, 'crates/cc-docs/tests/data/classroom.pdf')
+const haveWasm = existsSync(resolve(webDir, 'pdf/cc_docs_wasm_bg.wasm'))
+console.log(haveWasm ? 'web PDF renderer (WASM) found in dist/pdf' : 'no WASM renderer in dist/pdf: expecting the notice')
 const work = mkdtempSync(resolve(tmpdir(), 'cometcast-content-'))
 
+if (process.env.E2E_CHROME) console.log('using browser', process.env.E2E_CHROME)
 const build = spawnSync('cargo', ['build', '-p', 'cometcast-server', '-p', 'cometcast-cli'], {
   cwd: repo,
   stdio: 'inherit',
@@ -159,6 +166,7 @@ const children = []
 try {
   await waitHealthy()
   browser = await chromium.launch({
+    executablePath: process.env.E2E_CHROME || undefined,
     args: [
       // Without this Chromium hides host IPs behind mDNS names that the Rust side cannot resolve.
       '--disable-features=WebRtcHideLocalIpsWithMdns',
@@ -197,6 +205,12 @@ try {
   const linkLine = await waitFor(() => rx.lines.find((l) => l.startsWith('Content: link ')), 'link line in CLI output')
   assert.equal(linkLine, 'Content: link url=https://example.org/path?x=1 (not opened)')
   assert.ok(!rx.lines.some((l) => l.startsWith('Content: error')), 'no content errors')
+  // A PDF from the web sender (same protocol as `cometcast-cli send-file`) opens in the native receiver.
+  await sender.getByTestId('pdf-input').setInputFiles({ name: 'classroom.pdf', mimeType: 'application/pdf', buffer: readFileSync(pdfPath) })
+  await waitFor(() => rx.lines.includes('Content: document name="classroom.pdf" pages=3'), 'document line in CLI output', 30000)
+  await sender.getByTestId('send-next-page').click()
+  await waitFor(() => rx.lines.some((l) => l.startsWith('Content: page=2 ')), 'page 2 line in CLI output')
+  assert.ok(!rx.lines.some((l) => l.startsWith('Content: error')), 'no content errors after the PDF')
   // The web sender's "stop showing" is a cmd the native receiver understands.
   await sender.getByTestId('stop-showing').click()
   await waitFor(() => rx.lines.includes('Content: stopped'), 'stopped line in CLI output')
@@ -236,10 +250,26 @@ try {
   await receiver.locator('[data-testid=status][data-phase=peer_left]').waitFor({ timeout: 10000 })
   const send3 = startCli(['send-file', code2, pdfPath, '--server', `127.0.0.1:${port}`])
   children.push(send3.proc)
-  const err = receiver.getByTestId('content-error')
-  await err.waitFor({ timeout: 20000 })
-  assert.match(await err.innerText(), /cannot show documents yet/)
-  console.log('B) web receiver says:', await err.innerText())
+  if (haveWasm) {
+    await receiver.getByTestId('document-canvas').waitFor({ state: 'visible', timeout: 30000 })
+    await receiver.getByText('Page 1 of 3').waitFor({ timeout: 30000 })
+    const nonWhite = await waitFor(
+      () =>
+        receiver.getByTestId('document-canvas').evaluate((c) => {
+          const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+          let n = 0
+          for (let i = 0; i < d.length; i += 4) if (d[i] < 250 || d[i + 1] < 250 || d[i + 2] < 250) n++
+          return n
+        }),
+      'native PDF page 1 is not blank',
+    )
+    console.log('B) web receiver rendered the native PDF, non-white pixels:', nonWhite)
+  } else {
+    const err = receiver.getByTestId('content-error')
+    await err.waitFor({ timeout: 20000 })
+    assert.match(await err.innerText(), /cannot show documents yet/)
+    console.log('B) web receiver says:', await err.innerText())
+  }
   await waitFor(() => send3.lines.includes('Sent.'), 'send-file pdf reports Sent.')
   send3.proc.kill('SIGTERM')
   // German translation of the same notice.
@@ -250,8 +280,12 @@ try {
   const code3 = (await de.getByTestId('room-code').innerText()).trim()
   const send4 = startCli(['send-file', code3, pdfPath, '--server', `127.0.0.1:${port}`])
   children.push(send4.proc)
-  await de.getByTestId('content-error').waitFor({ timeout: 20000 })
-  assert.match(await de.getByTestId('content-error').innerText(), /Dokumente noch nicht anzeigen/)
+  if (haveWasm) {
+    await de.getByText('Seite 1 von 3').waitFor({ timeout: 30000 })
+  } else {
+    await de.getByTestId('content-error').waitFor({ timeout: 20000 })
+    assert.match(await de.getByTestId('content-error').innerText(), /Dokumente noch nicht anzeigen/)
+  }
   await waitFor(() => send4.lines.includes('Sent.'), 'send-file pdf (de) reports Sent.')
 
   // ---------- C) native sender -> native receiver: PDF and page commands ----------

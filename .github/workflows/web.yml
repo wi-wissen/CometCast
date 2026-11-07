@@ -48,7 +48,15 @@ jobs:
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
+      # PDF renderer (cc-docs-wasm). UNCERTAIN: these steps were not run on GitHub. The wasm-bindgen CLI
+      # must be exactly the version of the wasm-bindgen crate in Cargo.lock (0.2.130 when this was written).
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - run: npm run build:wasm
+        working-directory: apps/web
       - run: npm run build
         working-directory: apps/web
       - run: npm run e2e
+        working-directory: apps/web
+      - run: npm run e2e:pdf
         working-directory: apps/web

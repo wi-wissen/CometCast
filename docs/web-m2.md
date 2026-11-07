@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# Web client, milestone M2: toolbar, images and links
+# Web client, milestone M2: toolbar, images, links and PDF documents
 
 Status: implemented in `apps/web` (v0.1 line). Written for developers of other clients.
 
@@ -14,11 +14,16 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
   Nothing is sent back to the sender or to the server. They are lost on reload.
 - **Freeze** paints the current video frame to a canvas shown above the video. The `<video>` element
   keeps playing the live stream underneath, so unfreezing continues at the live position.
-- **Send file or link** view on the sender: image (picker or drag and drop) and http(s) link, both over
-  a WebRTC DataChannel. The signalling server only mediates the connection setup (SDP and ICE); it never
+- **Send file or link** view on the sender: image and PDF (picker or drag and drop) and http(s) link, all over
+  a WebRTC DataChannel; two buttons (previous and next page) send the page commands. The signalling server only mediates the connection setup (SDP and ICE); it never
   sees the payloads.
-- PDF and Office documents, and playing media links directly, are **not implemented in the web client**; the
-  sender view says "coming later". Native clients can send and show PDFs (`document` kinds below).
+- **PDF documents** (receiver and sender) are implemented, see "Receiver behaviour and safety" and
+  [documents.md](documents.md#in-the-web-client). The receiver renders pages with hayro compiled to WebAssembly,
+  one page at a time on request, in a Web Worker. This needs the renderer files in `dist/pdf/`, which come from
+  `npm run build:wasm` (a separate step that needs Rust, see `apps/web/README.md`); **without them the app still
+  works, but a received PDF only gives the notice "cannot show documents yet"**.
+- Office documents and playing media links directly are **not implemented in the web client**; the sender view
+  lists them as "coming later".
 
 ## DataChannel `control`
 
@@ -36,18 +41,18 @@ protocol types) once it has been exercised, and it may change.
 
 | `kind` | Fields | Meaning |
 |--------|--------|---------|
-| `cmd` | `cmd`: a `ControlCmd` from cc-proto in serde's default form: `"next_page"`, `"prev_page"`, `"stop"`, `{"go_to_page":{"page":3}}` | Remote-control command. The web receiver acts only on `stop` (closes the shown image or link); page commands are accepted and ignored until documents exist. |
+| `cmd` | `cmd`: a `ControlCmd` from cc-proto in serde's default form: `"next_page"`, `"prev_page"`, `"stop"`, `{"go_to_page":{"page":3}}` | Remote-control command. The web receiver acts on `stop` (closes the shown image, link or document) and, while a document is shown, on the page commands (N counts from 1 and is clamped to the page count). Page commands are ignored while no document is shown. The web sender sends `next_page`, `prev_page` and `stop`; it has no control for `go_to_page`. |
 | `image` | `name` (string, 1..255 characters), `mime` (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `size` (integer bytes, 1..10 MiB) | Starts an image transfer. Binary chunks follow. |
 | `image_end` | none | Ends the transfer; the receiver checks that the received byte count equals `size`. |
 | `link` | `url` (string, at most 2048 characters, **and the normalised URL at most 2048 characters too**) | Asks the receiver to open a link. See below. |
-| `document` | `name` (string, 1..255 characters), `mime` (`application/pdf` only), `size` (integer bytes, 1..64 MiB) | Starts a PDF transfer, **sent by native clients; the web client does not send it**. Binary chunks follow, exactly as for an image. UNCERTAIN: new kind, defined by the native clients, not yet agreed anywhere else; the 64 MiB limit is a guess. |
+| `document` | `name` (string, 1..255 characters), `mime` (`application/pdf` only), `size` (integer bytes, 1..64 MiB) | Starts a PDF transfer, sent by the native clients and by the web client. Binary chunks follow, exactly as for an image. UNCERTAIN: new kind, defined by the native clients, not yet agreed anywhere else; the 64 MiB limit is a guess. |
 | `document_end` | none | Ends the PDF transfer; the receiver checks that the received byte count equals `size`, then opens the document. |
 
 Example sequence for a document: `{"kind":"document","name":"a.pdf","mime":"application/pdf","size":24832}`,
 then two binary messages (16384 and 8448 bytes), then `{"kind":"document_end"}`. A receiver that can show it opens
 the first page; `cmd` messages `next_page`, `prev_page` and `{"go_to_page":{"page":N}}` (N from 1) turn pages and
-`stop` closes the document (native receivers; N is clamped to the page count, page commands are ignored while no
-document is shown).
+`stop` closes the document (N is clamped to the page count, page commands are ignored while no document is
+shown; same in the native and the web receiver).
 
 Example sequence for an image: `{"kind":"image","name":"a.png","mime":"image/png","size":40000}`,
 then three binary messages (16384, 16384, 7232 bytes), then `{"kind":"image_end"}`.
@@ -96,12 +101,22 @@ measurements behind them. 16 KiB is the size commonly considered interoperable a
   parses it (internationalised names appear in their punycode form).
 - Malformed or unknown messages are ignored; the receiver shows a translated notice for transfer
   problems.
-- Documents: the web client **cannot show PDFs yet** (no web renderer). It skips the data of a `document`
-  transfer without keeping it (same chunk rule, counting only) and, at `document_end`, shows the translated
-  notice "The sender sent a PDF document. This app cannot show documents yet."
-  (`receive.transferError.document_unsupported`). Nothing crashes and nothing is stored. Native receivers
-  render PDFs through `cc-docs` in a child process (the file is treated as hostile, see
-  [documents.md](documents.md)).
+- Documents: the receiver collects a `document` transfer exactly like an image (one buffer of the announced size,
+  at most 64 MiB, every chunk exactly 16 KiB except the last, size must match at `document_end`) and then hands
+  the bytes to the PDF renderer, which treats the file as hostile (see [documents.md](documents.md#in-the-web-client)):
+  `cc-docs` as WebAssembly in a dedicated Web Worker, wall-clock limit of 20 s for open and for each page,
+  worker terminated on a timeout or failure, memory of the module capped at 512 MiB, 1000 pages at most. Pages
+  are rendered **only when shown** (first page after opening, then on page commands or the receiver's own
+  previous/next buttons) and drawn as pixels on a canvas. **Nothing from the PDF is run or opened**: no script,
+  no action, no link (links in the PDF are not exposed and the document view contains no anchor). A file
+  that cannot be shown gives a translated notice (`receive.transferError.document_*`: damaged or unsupported,
+  password protected, too large, too many pages, refused by the safety check, memory, timeout, failed); when the
+  renderer files are not installed it is `document_unsupported`. Annotations are cleared on every page turn.
+  Native receivers render PDFs through `cc-docs` in a child process (see [documents.md](documents.md)).
+- UNCERTAIN: a document that fails while a page is rendered (timeout, crash, memory) is closed and not
+  reopened by itself; the sender has to send it again. Opening a 64 MiB PDF allocates a 64 MiB buffer up front
+  and then roughly the same again inside the module; not measured. There is no stalled-transfer timeout in the
+  web receiver (the native one has 60 s).
 - Native receivers apply the same rules as the web client (MIME allow list, link validation, chunk rule, size
   limits) and a few more: a hard size cap while receiving, a message-count cap, a stalled-transfer timeout
   (60 s), merging of page commands, and blocking a peer after 64 protocol violations (which decay, one per 2 s).
@@ -114,17 +129,28 @@ example kiosks) is not decided; a policy or allow list may be needed later.
 
 - Unit (vitest): `tests/control.test.ts` (chunking, reassembly, validation, back-pressure),
   `tests/toolbar.test.ts` (toolbar state, annotation model), `tests/contentSession.test.ts`.
-- Interop with the native clients: `npm run build && npm run e2e:content` (web sender to `cometcast-cli receive`,
-  `cometcast-cli send-file` / `send-link` to the web receiver, the PDF notice, native PDF with page commands).
+- Unit (vitest) for documents: `tests/control.test.ts` (document reassembly, chunk rule, `sendDocument`),
+  `tests/pdfRenderer.test.ts` (worker protocol, time limits, termination, with a fake worker),
+  `tests/documentSession.test.ts` (page commands, clamping, error notices, renderer disposal). The renderer
+  crate has native unit tests (`cargo test -p cc-docs-wasm`).
+- Interop with the native clients: `npm run build && npm run e2e:content` (web sender to `cometcast-cli receive`
+  including a PDF and a page turn, `cometcast-cli send-file` / `send-link` to the web receiver, a native PDF
+  rendered in the web receiver when the WASM renderer was built, otherwise the notice, native PDF with page commands).
+- PDF in the browser: `npm run build:wasm && npm run build && npm run e2e:pdf` (web sender to web receiver in
+  English and German: a generated 3-page PDF renders to a non-blank canvas with a black box on page 1 and a red
+  box on page 2, next/prev from the sender and on the receiver with clamping, a link annotation is not followed,
+  a damaged PDF gives the notice, a non-PDF is refused by the sender, stop closes it). Set `E2E_CHROME=/path/to/chrome`
+  to use an installed Chrome instead of Playwright's Chromium (also read by `e2e:m2` and `e2e:content`).
 - End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): image arrives
   (`naturalWidth > 0`), link card appears and nothing opens until the click, pen changes canvas pixels,
   freeze keeps the frame while the video's `currentTime` keeps advancing.
 
-What the e2e does not prove: other browsers, touch input on real devices, behaviour across networks
-(no STUN/TURN yet), very large files, and real fullscreen (the button is not exercised).
+What the e2e does not prove: other browsers (PDFs: only Chrome/Chromium on Linux was run), touch input on real
+devices, behaviour across networks (no STUN/TURN yet), very large files, hostile PDFs in the browser, PDF
+speed and memory on weak devices, and real fullscreen (the button is not exercised).
 
 ## Chunk size rule
 
-Every binary chunk of an image must be exactly 16 KiB, except the last one. The receiver rejects
+Every binary chunk of an image or a PDF must be exactly 16 KiB, except the last one. The receiver rejects
 smaller chunks (`bad_chunk`) to bound the number of messages it must hold in memory. Other senders
 must follow this rule. UNCERTAIN: the value is unmeasured; see the other limits above.

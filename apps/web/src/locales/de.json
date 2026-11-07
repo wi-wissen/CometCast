@@ -20,7 +20,7 @@
     },
     "sendContent": {
       "title": "Datei oder Link senden",
-      "desc": "Ein Bild oder einen Link übergeben. PDF- und Office-Dokumente folgen später."
+      "desc": "Ein Bild, ein PDF oder einen Link übergeben. Office-Dokumente folgen später."
     },
     "receive": {
       "title": "Auf diesem Gerät empfangen",
@@ -54,7 +54,15 @@
       "size_mismatch": "Das Bild ist unvollständig angekommen und wurde verworfen.",
       "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert.",
       "bad_chunk": "Bilddaten kamen in unerwarteter Form an und wurden verworfen.",
-      "document_unsupported": "Der Absender hat ein PDF-Dokument gesendet. Diese App kann Dokumente noch nicht anzeigen."
+      "document_unsupported": "Der Absender hat ein PDF-Dokument gesendet. Diese App kann Dokumente noch nicht anzeigen.",
+      "document_invalid": "Das PDF ist beschädigt oder wird nicht unterstützt und kann nicht angezeigt werden.",
+      "document_encrypted": "Das PDF ist passwortgeschützt und kann nicht angezeigt werden.",
+      "document_too_large": "Das PDF ist zu groß, um angezeigt zu werden.",
+      "document_too_many_pages": "Das PDF hat zu viele Seiten, um angezeigt zu werden.",
+      "document_rejected": "Das PDF wurde von der Sicherheitsprüfung abgelehnt und wird nicht angezeigt.",
+      "document_memory": "Das PDF benötigt mehr Speicher als erlaubt und wurde geschlossen.",
+      "document_timeout": "Die Anzeige des PDFs hat zu lange gedauert; es wurde geschlossen.",
+      "document_failed": "Das PDF konnte nicht angezeigt werden."
     },
     "content": {
       "imageAlt": "Bild vom Absender: {name}",
@@ -71,7 +79,24 @@
       "image": "Bild empfangen: {name}.",
       "link": "Link-Anfrage von {host}.",
       "replaced": "Neuer Inhalt ersetzt den vorherigen.",
-      "closed": "Inhalt geschlossen."
+      "closed": "Inhalt geschlossen.",
+      "document": "Dokument empfangen: {name}."
+    },
+    "document": {
+      "loading": "{name} wird geöffnet…",
+      "pageOf": "Seite {page} von {pages}",
+      "canvasLabel": "{name}, Seite {page} von {pages}",
+      "controls": "Seitensteuerung",
+      "prev": "Vorherige Seite",
+      "next": "Nächste Seite",
+      "close": "Dokument schließen",
+      "pageError": {
+        "failed": "Diese Seite konnte nicht angezeigt werden.",
+        "page_out_of_range": "Diese Seite existiert nicht.",
+        "bad_size": "Diese Seite hat eine unbrauchbare Größe.",
+        "timeout": "Die Anzeige dieser Seite hat zu lange gedauert.",
+        "memory": "Diese Seite benötigt zu viel Speicher."
+      }
     }
   },
   "send": {
@@ -156,7 +181,7 @@
   },
   "sendContent": {
     "title": "Datei oder Link senden",
-    "intro": "Geben Sie den Raumcode des Empfängers ein und senden Sie dann ein Bild oder einen Link. Die Inhalte gehen direkt zum Empfänger; der Server hilft nur beim Verbinden.",
+    "intro": "Geben Sie den Raumcode des Empfängers ein und senden Sie dann ein Bild, ein PDF oder einen Link. Die Inhalte gehen direkt zum Empfänger; der Server hilft nur beim Verbinden.",
     "connect": "Verbinden",
     "disconnect": "Trennen",
     "stopShowing": "Anzeige beim Empfänger beenden",
@@ -198,10 +223,29 @@
     },
     "later": {
       "title": "Folgt später",
-      "pdf": "PDF-Dokumente",
       "office": "Office-Dokumente (Word, Excel, PowerPoint)",
       "video": "Medienlinks direkt abspielen",
       "note": "Dafür wird der native Kern benötigt; in der Browser-Version sind sie noch nicht verfügbar."
+    },
+    "document": {
+      "title": "PDF-Dokument",
+      "help": "Eine PDF-Datei, bis zu {max}. Der Empfänger zeigt sie seitenweise an; nichts in der Datei wird ausgeführt oder geöffnet.",
+      "drop": "Ziehen Sie ein PDF hierher, oder",
+      "choose": "PDF auswählen",
+      "progress": "{name} wird gesendet: {percent} %",
+      "sent": "{name} gesendet. Es wird jetzt beim Empfänger angezeigt.",
+      "prev": "Vorherige Seite",
+      "next": "Nächste Seite",
+      "pagesHelp": "Blättert beim Empfänger um.",
+      "error": {
+        "bad_type": "Hier können nur PDF-Dateien gesendet werden.",
+        "not_pdf": "Diese Datei sieht nicht wie ein PDF aus.",
+        "too_large": "Dieses PDF ist größer als {max}.",
+        "empty": "Diese Datei ist leer.",
+        "not_open": "Nicht mit dem Empfänger verbunden.",
+        "channel_closed": "Die Verbindung wurde beim Senden geschlossen.",
+        "failed": "Das PDF konnte nicht gesendet werden."
+      }
     }
   }
 }

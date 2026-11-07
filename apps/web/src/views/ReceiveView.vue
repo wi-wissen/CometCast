@@ -22,7 +22,7 @@ import {
 import { useReceiver } from '../composables/useReceiver'
 
 const { t, te } = useI18n()
-const { state, start, clearContent } = useReceiver()
+const { state, start, clearContent, nextPage, prevPage, renderPage } = useReceiver()
 const video = ref<HTMLVideoElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const freezeCanvas = ref<HTMLCanvasElement | null>(null)
@@ -95,10 +95,14 @@ const announce = ref('')
 watch(
   () => state.value.content,
   (c, old) => {
-    if (c) {
+    if (c?.kind === 'document' && old?.kind === 'document' && c.name === old.name) {
+      // Same document: a page turn (annotations belong to a page, so they go) or the page count arriving.
+      // The page label inside the document view is itself a live region, so nothing is announced here.
+      if (c.page !== old.page) model.reset()
+    } else if (c) {
       model.reset()
-      const key = c.kind === 'image' ? 'receive.announce.image' : 'receive.announce.link'
-      const text = t(key, { name: c.kind === 'image' ? c.name : c.host })
+      const key = c.kind === 'link' ? 'receive.announce.link' : c.kind === 'document' ? 'receive.announce.document' : 'receive.announce.image'
+      const text = t(key, { name: c.kind === 'link' ? c.host : c.name })
       announce.value = old ? `${t('receive.announce.replaced')} ${text}` : text
     } else if (old) {
       announce.value = t('receive.announce.closed')
@@ -203,7 +207,13 @@ const contentErrorText = computed(() => {
         {{ t('receive.stageWaiting') }}
       </p>
 
-      <ContentOverlay :content="state.content" @close="clearContent" />
+      <ContentOverlay
+        :content="state.content"
+        :render-page="renderPage"
+        @close="clearContent"
+        @prev="prevPage"
+        @next="nextPage"
+      />
       <p class="sr-only" role="status" aria-live="polite" data-testid="announce">{{ announce }}</p>
       <AnnotationLayer :inert="state.content?.kind === 'link'" :model="model" :toolbar="toolbar" :label="t('toolbar.canvasLabel')" @changed="onModelChanged" />
 

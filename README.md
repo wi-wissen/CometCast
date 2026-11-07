@@ -48,7 +48,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | `bins/` | Binaries: `cometcast-server`, `cometcast-cli` | yes |
 | `apps/flutter` | Flutter app for desktop, mobile and Android TV / Google TV | yes |
 | `apps/apple-tv` | Native SwiftUI receiver for Apple TV | yes |
-| `apps/web` | Web app (Vue 3, TypeScript, Vite; the Rust WASM core is planned, not built yet) | yes |
+| `apps/web` | Web app (Vue 3, TypeScript, Vite). PDF pages are rendered by `crates/cc-docs-wasm` (hayro as WASM, built separately with `npm run build:wasm`); the rest of the Rust core is not used in the browser yet | yes |
 | `assets/` | Logo and other assets | yes |
 | `docs/` | Documentation, see [docs/README.md](docs/README.md) | yes |
 | `tools/` | Helper scripts, for example the translation check | yes |

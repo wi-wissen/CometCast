@@ -5,9 +5,11 @@
 import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReceivedContent } from '../core/receiverSession'
+import type { PageBitmap } from '../core/pdfRenderer'
+import DocumentView from './DocumentView.vue'
 
-const props = defineProps<{ content: ReceivedContent | null }>()
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ content: ReceivedContent | null; renderPage: (page: number, width: number) => Promise<PageBitmap> }>()
+const emit = defineEmits<{ close: []; prev: []; next: [] }>()
 const { t } = useI18n()
 const dismissBtn = ref<HTMLButtonElement | null>(null)
 const closeBtn = ref<HTMLButtonElement | null>(null)
@@ -15,7 +17,7 @@ const closeBtn = ref<HTMLButtonElement | null>(null)
 watch(
   () => props.content,
   async (c) => {
-    if (!c) return
+    if (!c || c.kind === 'document') return // the document view focuses its own close button
     await nextTick()
     // Focus the safe choice, so an accidental Enter does not open a link.
     ;(c.kind === 'link' ? dismissBtn.value : closeBtn.value)?.focus()
@@ -50,7 +52,15 @@ function onKey(e: KeyboardEvent) {
 <template>
   <!-- Image below the annotation layer (z-10 < layer < z-[26]); its close button and the link card above it. -->
   <template v-if="content">
-    <div v-if="content.kind === 'image'" class="absolute inset-0 z-10 bg-black">
+    <DocumentView
+      v-if="content.kind === 'document'"
+      :content="content"
+      :render="renderPage"
+      @close="emit('close')"
+      @prev="emit('prev')"
+      @next="emit('next')"
+    />
+    <div v-else-if="content.kind === 'image'" class="absolute inset-0 z-10 bg-black">
       <img
         :src="content.url"
         :alt="t('receive.content.imageAlt', { name: content.name })"
@@ -70,7 +80,7 @@ function onKey(e: KeyboardEvent) {
       {{ t('receive.content.close') }}
     </button>
 
-    <div v-else class="absolute inset-0 z-[26] grid place-items-center bg-black/55 p-4" @keydown="onKey">
+    <div v-else-if="content.kind === 'link'" class="absolute inset-0 z-[26] grid place-items-center bg-black/55 p-4" @keydown="onKey">
       <div
         role="alertdialog"
         aria-modal="true"

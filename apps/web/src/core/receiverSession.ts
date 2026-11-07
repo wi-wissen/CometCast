@@ -2,7 +2,8 @@
 //
 // Receiver state machine: creates a room, waits for a sender, answers its offer, exposes the stream.
 import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
-import { CONTROL_CHANNEL_LABEL, ControlReceiver, type ControlChannel, type TransferErrorCode } from './control'
+import { CONTROL_CHANNEL_LABEL, ControlReceiver, type ControlChannel, type ControlCmd, type TransferErrorCode } from './control'
+import { createWorkerRenderer, PdfError, type PageBitmap, type PdfRenderer, type PdfRendererFactory } from './pdfRenderer'
 import { SignalingClient, type ServerMessage, type SocketFactory } from './signaling'
 
 export type ReceiverPhase =
@@ -19,6 +20,8 @@ export type ReceiverPhase =
 export type ReceivedContent =
   | { kind: 'image'; url: string; name: string }
   | { kind: 'link'; url: string; host: string }
+  /** A PDF. `pages` is 0 while it is being opened; `page` is the shown page, counted from 1. */
+  | { kind: 'document'; name: string; pages: number; page: number }
 
 export interface ReceiverState {
   phase: ReceiverPhase
@@ -46,9 +49,32 @@ export interface ReceiverDeps {
   altcha?: (signal: AbortSignal) => Promise<string>
   /** STUN/TURN list (GET /ice-servers). Must not reject; an empty list means none. */
   iceServers?: () => Promise<RTCIceServer[]>
+  /** Creates the renderer for one received PDF (default: a Web Worker with the WASM build of cc-docs). */
+  pdfRenderer?: PdfRendererFactory
   /** Test seam; defaults to URL.createObjectURL / revokeObjectURL. */
   objectUrl?: { create(b: Blob): string; revoke(u: string): void }
 }
+
+/** Maps an error code of the renderer to the translation key suffix of the receiver. */
+export function documentErrorCode(code: string): TransferErrorCode {
+  switch (code) {
+    case 'unavailable':
+      return 'document_unsupported'
+    case 'invalid':
+    case 'encrypted':
+    case 'too_large':
+    case 'too_many_pages':
+    case 'rejected':
+    case 'memory':
+    case 'timeout':
+      return `document_${code}`
+    default:
+      return 'document_failed'
+  }
+}
+
+/** After these the renderer is gone (worker ended), so the document is closed. */
+const FATAL_RENDER_CODES = new Set(['timeout', 'failed', 'memory', 'closed', 'unavailable'])
 
 const EMPTY: ReceiverState = {
   phase: 'idle',
@@ -63,15 +89,13 @@ const EMPTY: ReceiverState = {
 export class ReceiverSession {
   private state: ReceiverState = { ...EMPTY, phase: 'idle' }
   private readonly control = new ControlReceiver({
-    onCmd: (cmd) => {
-      // Page commands have nothing to act on until documents exist (later milestone); only stop is used.
-      if (cmd === 'stop') this.clearContent()
-    },
+    onCmd: (cmd) => this.onCmd(cmd),
     onProgress: (transfer) => this.set({ transfer }),
     onImage: (blob, name) => {
       this.clearContent()
       this.set({ content: { kind: 'image', url: this.urls.create(blob), name }, contentError: null })
     },
+    onDocument: (bytes, name) => this.openDocument(bytes, name),
     onLink: (url) => {
       this.clearContent()
       this.set({ content: { kind: 'link', url, host: new URL(url).host }, contentError: null })
@@ -104,8 +128,77 @@ export class ReceiverSession {
     this.deps.onChange(this.state)
   }
 
-  /** Closes the shown image or link (also used by the receiver's close/dismiss button). */
+  private renderer: PdfRenderer | null = null
+  private docRun = 0 // invalidates the completion of an earlier open
+
+  private onCmd(cmd: ControlCmd): void {
+    if (cmd === 'stop') this.clearContent()
+    else if (cmd === 'next_page') this.goToPage((this.state.content?.kind === 'document' ? this.state.content.page : 0) + 1)
+    else if (cmd === 'prev_page') this.goToPage((this.state.content?.kind === 'document' ? this.state.content.page : 0) - 1)
+    else this.goToPage(cmd.go_to_page.page)
+  }
+
+  /** Shows page `n` (from 1, clamped to the page count). Ignored while no document is shown or opened. */
+  goToPage(n: number): void {
+    const c = this.state.content
+    if (c?.kind !== 'document' || c.pages === 0) return
+    const page = Math.min(Math.max(Math.trunc(n), 1), c.pages)
+    if (page !== c.page) this.set({ content: { ...c, page } })
+  }
+  nextPage(): void {
+    this.onCmd('next_page')
+  }
+  prevPage(): void {
+    this.onCmd('prev_page')
+  }
+
+  private openDocument(bytes: Uint8Array, name: string): void {
+    this.clearContent()
+    const factory = this.deps.pdfRenderer ?? (typeof Worker === 'undefined' ? null : () => createWorkerRenderer())
+    if (!factory) return this.set({ contentError: 'document_unsupported' })
+    const run = ++this.docRun
+    const renderer = factory()
+    this.renderer = renderer
+    this.set({ content: { kind: 'document', name, pages: 0, page: 1 }, contentError: null })
+    renderer.open(bytes).then(
+      (pages) => {
+        const c = this.state.content
+        if (run !== this.docRun || c?.kind !== 'document') return
+        this.set({ content: { ...c, pages } })
+      },
+      (e: unknown) => {
+        if (run !== this.docRun) return
+        this.clearContent()
+        this.set({ contentError: documentErrorCode(e instanceof PdfError ? e.code : 'failed') })
+      },
+    )
+  }
+
+  /**
+   * Renders page `page` (from 1) about `width` pixels wide, on demand. Rejects with a PdfError. If the
+   * renderer is gone afterwards (time limit, memory, crash) the document is closed with a notice.
+   */
+  async renderPage(page: number, width: number): Promise<PageBitmap> {
+    const r = this.renderer
+    const run = this.docRun
+    if (!r) throw new PdfError('closed')
+    try {
+      return await r.render(page - 1, width)
+    } catch (e) {
+      const code = e instanceof PdfError ? e.code : 'failed'
+      if (run === this.docRun && FATAL_RENDER_CODES.has(code) && code !== 'closed') {
+        this.clearContent()
+        this.set({ contentError: documentErrorCode(code) })
+      }
+      throw e
+    }
+  }
+
+  /** Closes the shown image, link or document (also used by the receiver's close/dismiss button). */
   clearContent(): void {
+    this.docRun++
+    this.renderer?.dispose()
+    this.renderer = null
     const c = this.state.content
     if (c?.kind === 'image') this.urls.revoke(c.url)
     if (c || this.state.transfer || this.state.contentError) this.set({ content: null, transfer: null, contentError: null })
