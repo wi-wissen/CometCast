@@ -193,19 +193,23 @@ try {
   }, 'page 3 canvas is blank and landscape')
   console.log('page 3 canvas:', JSON.stringify(p3))
 
-  // Clamping without sleeps: commands on the sender's channel arrive in order, so "next" (clamped at 3)
-  // followed by "prev" must end on exactly page 2; without the clamp it would be page 3 (4 - 1).
-  await sender.getByTestId('send-next-page').click()
+  // The display reports the page to the presenter (decision 13.31): "Page 3 of 3" and Next is off on the last page.
+  // (The receiver's own clamping of commands is covered by tests/documentSession.test.ts.)
+  await sender.getByTestId('presenting-pageof').filter({ hasText: 'Page 3 of 3' }).waitFor({ timeout: 10000 })
+  assert.equal(await sender.getByTestId('send-next-page').isDisabled(), true, 'Next is disabled on the last page')
+  assert.equal(await sender.getByTestId('send-prev-page').isDisabled(), false)
   await sender.getByTestId('send-prev-page').click()
   await pageIs(receiver, 2)
+  await sender.getByTestId('presenting-pageof').filter({ hasText: 'Page 2 of 3' }).waitFor({ timeout: 10000 })
   // The display has no page buttons any more (pages are turned on the presenter's page).
   assert.equal(await receiver.getByTestId('doc-prev').count(), 0)
   assert.equal(await receiver.getByTestId('content-close').count(), 0)
   assert.equal(await receiver.locator('[data-testid=stage] button:not([data-tb])').count(), 0)
   await sender.getByTestId('send-prev-page').click()
   await pageIs(receiver, 1)
-  // The same at the first page: "prev" (clamped at 1) then "next" must end on exactly page 2.
-  await sender.getByTestId('send-prev-page').click()
+  // The same at the first page: Previous is disabled there.
+  await sender.getByTestId('presenting-pageof').filter({ hasText: 'Page 1 of 3' }).waitFor({ timeout: 10000 })
+  assert.equal(await sender.getByTestId('send-prev-page').isDisabled(), true, 'Previous is disabled on page 1')
   await sender.getByTestId('send-next-page').click()
   await pageIs(receiver, 2)
   await sender.getByTestId('send-prev-page').click()

@@ -573,7 +573,8 @@ try {
     await shot(m, 'presenter-390-light-start')
     await m.getByTestId('start-browser').click()
     await m.getByTestId('what-page').waitFor({ timeout: 20000 })
-    assert.match(await m.getByTestId('what-screen').innerText(), /On a phone only with the app/)
+    // No store listing exists yet: the row does not promise an app (spec 5.5)
+    assert.match(await m.getByTestId('what-screen').innerText(), /Not possible in a phone browser/)
     await shot(m, 'presenter-390-light-what')
     await m.getByTestId('what-screen').click()
     assert.equal((await m.getByTestId('error-title').innerText()).trim(), 'Screen sharing does not work in this browser')
@@ -581,6 +582,94 @@ try {
     await m.getByTestId('error-showLink').click()
     await m.getByTestId('link-page').waitFor()
     for (const x of [dctx, pctx, gctx, phone]) await x.close()
+  }
+
+  // ======================================================================================
+  // 8. Fix round 2: chip comes back, reconnect schedule, closed share dialog, black screen ends with the presentation
+  // ======================================================================================
+  {
+    // The custom name field emptied again: the chip chosen before typing is selected again (decision 13.39).
+    const s = await server()
+    const ctx = await newContext(browser)
+    const d = await ctx.newPage()
+    await d.goto(`${s.base}/display`)
+    await d.getByTestId('wz-start').click()
+    await d.locator('.cd-chip', { hasText: 'Workshop' }).click()
+    await d.getByTestId('wz-room').fill('X')
+    assert.equal(await d.locator('.cd-chip.on').count(), 0)
+    await d.getByTestId('wz-room').fill('')
+    assert.deepEqual(await d.locator('.cd-chip.on').allInnerTexts(), ['Workshop'])
+    // The card is at the same place in every step (top edge 64 reference px), the welcome card is centred
+    const top = async () => (await d.locator('.cd-wz').boundingBox()).y
+    const y1 = await top()
+    await d.getByTestId('wz-next').click()
+    assert.ok(Math.abs((await top()) - y1) < 1, 'the card does not jump between steps 1 and 2')
+    await d.getByTestId('wz-next').click()
+    assert.ok(Math.abs((await top()) - y1) < 1, 'nor between steps 2 and 3')
+    await ctx.close()
+  }
+  {
+    // A drop under 3 s never shows the box (retries at 1 s, 2 s, 3 s), checked by a series every 250 ms.
+    const first = await server()
+    const ctx = await newContext(browser)
+    const d = await ctx.newPage()
+    await openDisplay(d, first.base)
+    first.proc.kill('SIGTERM')
+    await d.locator('[data-testid=qr][data-empty=true]').waitFor({ timeout: 5000 })
+    await new Promise((r) => setTimeout(r, 400))
+    const back = startServer({ port: first.port })
+    servers.push(back)
+    await waitHealthy(back.base)
+    const seen = []
+    for (let i = 0; i < 16; i++) {
+      seen.push(await d.getByTestId('offline').count())
+      await d.waitForTimeout(250)
+    }
+    assert.ok(seen.every((n) => n === 0), `the offline box never showed while the server was away for about a second: ${seen}`)
+    await readCode(d)
+    await ctx.close()
+  }
+  {
+    // The share dialog is closed without a choice: back on "What to show", no error page.
+    const s = await server()
+    const dctx = await newContext(browser)
+    const d = await dctx.newPage()
+    const code = await openDisplay(d, s.base)
+    const pctx = await newContext(browser)
+    await pctx.addInitScript(() => {
+      navigator.mediaDevices.getDisplayMedia = () => Promise.reject(new DOMException('closed', 'NotAllowedError'))
+    })
+    const p = await pctx.newPage()
+    await presenterJoin(p, s.base, code, { name: 'Lena' })
+    await p.getByTestId('what-screen').click()
+    await p.waitForTimeout(500)
+    assert.equal(await p.getByTestId('error-page').count(), 0, 'no error page')
+    assert.equal(await p.getByTestId('what-page').count(), 1, 'back on "What to show"')
+    await dctx.close()
+    await pctx.close()
+  }
+  {
+    // The black screen ends with the presentation: stop, show again, the picture is visible.
+    const s = await server()
+    const dctx = await newContext(browser)
+    const d = await dctx.newPage()
+    const code = await openDisplay(d, s.base)
+    const pctx = await newContext(browser)
+    const p = await pctx.newPage()
+    await presenterScreen(p, s.base, code, { name: 'Lena' })
+    await status(d, 'receiving')
+    await d.waitForFunction(() => document.querySelector('[data-testid=remote-video]')?.videoWidth > 0)
+    await d.keyboard.press('ArrowRight')
+    await d.getByTestId('tb-black').click()
+    await d.getByTestId('black-screen').waitFor()
+    await p.getByTestId('presenting-stop').click()
+    await d.getByTestId('idle').waitFor()
+    await p.getByTestId('what-screen').click()
+    await p.getByTestId('presenting-page').waitFor({ timeout: 20000 })
+    await d.waitForFunction(() => document.querySelector('[data-testid=remote-video]')?.videoWidth > 0)
+    assert.equal(await d.getByTestId('black-screen').count(), 0, 'the next presentation starts visible')
+    await dctx.close()
+    await pctx.close()
   }
 
   console.log('E2E DISPLAY OK')

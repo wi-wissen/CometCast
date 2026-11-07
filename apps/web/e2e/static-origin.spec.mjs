@@ -220,6 +220,9 @@ try {
   async function wizardAddress(url) {
     const p = await newPage()
     await p.goto(url)
+    // A relay from a link is confirmed before the wizard shows (spec 7.2)
+    await p.locator('[data-testid=wz-start], [data-testid=relay-confirm-use]').first().waitFor()
+    if (await p.getByTestId('relay-confirm-use').count()) await p.getByTestId('relay-confirm-use').click()
     await p.getByTestId('wz-start').click()
     await p.getByTestId('wz-next').click()
     await p.getByTestId('wz-next').click()
@@ -231,7 +234,7 @@ try {
   console.log('1) ?server= : static origin S -> relay R (cross-origin, allow-listed)')
   await connectPair(`?server=${R.host}`, R.host, { expectConfirm: true })
   {
-    // Cancel: the default relay (here the static host, which has no relay) is used and nothing connects.
+    // Cancel: the display continues with the default relay (here the static host, which has no relay); the declined one is never contacted.
     const p = await newPage()
     await p.goto(`${S.app}display?server=${R.host}`)
     await p.getByTestId('relay-confirm-cancel').click()
@@ -239,7 +242,8 @@ try {
     await p.getByTestId('idle').waitFor()
     assert.equal((await p.getByTestId('address').innerText()).trim(), S.origin.replace('http://', ''))
     await new Promise((r) => setTimeout(r, 500))
-    assert.deepEqual(p.log.sockets, [], 'no WebSocket after Cancel')
+    // Cancel continues with the default relay (spec 7.2): the page's own host, never the declined relay.
+    assert.ok(p.log.sockets.every((u) => u === `ws://${S.origin.replace('http://', '')}/ws`), `only the default relay after Cancel: ${p.log.sockets}`)
     assert.ok(!p.log.requests.some((u) => u.startsWith(`http://${R.host}`)), 'no request to the declined relay')
     await p.context().close()
   }
