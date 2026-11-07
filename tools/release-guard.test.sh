@@ -49,4 +49,23 @@ expect "skip typo" 1 "$guard" skip-valid "linux,dokcer"
 expect "skip space" 1 "$guard" skip-valid "linux, docker"
 expect "skip trailing comma" 1 "$guard" skip-valid "linux,"
 
+# licenses-fresh
+lic="$tmp/lic"
+mkdir -p "$lic/apps/web" "$lic/apps/flutter"
+printf 'a\n' > "$lic/Cargo.lock"; printf 'b\n' > "$lic/apps/web/package-lock.json"; printf 'c\n' > "$lic/apps/flutter/pubspec.lock"
+expect "licenses missing" 1 "$guard" licenses-fresh "$lic"
+# shellcheck disable=SC2016 # the backticks are literal text of a Markdown fence
+mk_lic() { printf '# x\n\n```text\nCargo.lock-sha256: %s\npackage-lock.json-sha256: %s\npubspec.lock-sha256: %s\n```\n' \
+  "$(sha256sum "$lic/Cargo.lock" | cut -d' ' -f1)" "$(sha256sum "$lic/apps/web/package-lock.json" | cut -d' ' -f1)" "$(sha256sum "$lic/apps/flutter/pubspec.lock" | cut -d' ' -f1)" > "$lic/THIRD_PARTY_LICENSES.md"; }
+mk_lic
+expect "licenses fresh" 0 "$guard" licenses-fresh "$lic"
+printf 'changed\n' >> "$lic/Cargo.lock"
+expect "licenses older than Cargo.lock" 1 "$guard" licenses-fresh "$lic"
+mk_lic; printf 'changed\n' >> "$lic/apps/web/package-lock.json"
+expect "licenses older than package-lock" 1 "$guard" licenses-fresh "$lic"
+mk_lic; printf 'changed\n' >> "$lic/apps/flutter/pubspec.lock"
+expect "licenses older than pubspec.lock" 1 "$guard" licenses-fresh "$lic"
+printf '# no hashes\n' > "$lic/THIRD_PARTY_LICENSES.md"
+expect "licenses without hash lines" 1 "$guard" licenses-fresh "$lic"
+
 if [ "$fails" -eq 0 ]; then echo "all passed"; else echo "$fails failed"; exit 1; fi

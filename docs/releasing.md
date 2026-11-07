@@ -132,6 +132,27 @@ The Windows zip carries `vcruntime140.dll`, `vcruntime140_1.dll` and `msvcp140.d
 - `latest` is moved by the separate manual workflow **Promote latest** (`.github/workflows/promote-latest.yml`, input `version`), after you published the GitHub release. It refuses: a pre-release version, a release that is a draft or missing, a missing image, and a version **lower** than the one `latest` points to now (the current one is found by comparing digests with the published releases; if it cannot be determined the run fails). The same version again is a no-op. Only the default branch may start it.
 - **The image has no PDF viewer.** The server relays and stores files; it does not render or display PDFs. Viewing happens in the clients (the web app renders with the WASM renderer).
 
+## Third-party licences (release is refused when stale)
+
+Every artefact carries `LICENSE`, `THIRD_PARTY_NOTICES.md` (hand-written: what is bundled, special terms) and
+`THIRD_PARTY_LICENSES.md` (generated: all Rust crates, npm and Flutter packages with their licence texts, plus the
+bundled Office fonts). `tools/gen-third-party.mjs` makes the generated file from `cargo metadata --locked
+--all-features`, `apps/web/package-lock.json` and `apps/flutter/pubspec.lock` and records the SHA-256 of these three lock
+files in its header. The first job of the release workflow runs `tools/release-guard.sh licenses-fresh`, which fails when the file
+is **missing or its recorded checksums differ from the current lock files** (a file timestamp would not work: a checkout
+gives every file the same time). After any change of a lock file run, and commit the result:
+
+```
+cargo fetch --locked            # the crate sources hold the licence files
+(cd apps/flutter && flutter pub get)   # the pub cache holds the Flutter licence files
+node tools/gen-third-party.mjs
+```
+
+`node tools/gen-third-party.mjs --check` tells whether the committed file equals what would be generated now (it also
+depends on the contents of the local cargo registry and pub cache). The job also runs `node tools/check-fonts.mjs` (checksums of the
+bundled fonts against `crates/cc-office/fonts/FONTS.md`). Known gaps are listed at the top of `THIRD_PARTY_NOTICES.md` (crates that ship no licence file,
+the LiveKit xcframework's bundled notices, Flutter engine notices).
+
 ## H.264 (read before shipping)
 
 `docs/capture.md` says releases must not contain the OpenH264 source build. The Flutter CMake and Gradle steps run a plain `cargo build -p cc-ffi`, which uses the crate's default feature `h264-source`. The workflow therefore switches that default to `h264-libloading` in the runner (`set-version.mjs --h264 libloading`). Owner's decision: releases use Cisco's prebuilt binary and never build OpenH264 from source. The release does not bundle the library: on first use the app asks the user, downloads Cisco's file from `https://ciscobinary.openh264.org/` and verifies a pinned SHA-256 (crate `cc-codec`, section "Runtime codec" in `docs/capture.md`). So the "ships without video" situation no longer applies to the Flutter apps on Linux, Windows and macOS (UNCERTAIN: only the Linux x86_64 download and load was run; Windows and macOS were not). Offline networks: the administrator copies the exact file from `docs/capture.md` into a folder named by `COMETCAST_CODEC_DIR`, or sets `COMETCAST_CODEC_AUTO=1` to let the apps download without asking. **Still true:** the `cometcast-cli` release variant has no consent screen: `send`/`receive` find only a raw (decompressed) library in `COMETCAST_CODEC_DIR`, so a folder with only Cisco's `.bz2` file needs the app or a one-off `cometcast-cli codec install --yes` (which imports or downloads it); and Android needs a decision about Google Play policy (see `docs/capture.md`). The server and the web app do not use OpenH264. **Uncertain:** the legal questions in `docs/capture.md` are open (the binary is downloaded from Cisco by the user's device, it is not redistributed by this project).
