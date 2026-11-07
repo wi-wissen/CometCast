@@ -15,3 +15,6 @@ interface ImportMetaEnv {
 
 /** Version of this build (package.json), injected by vite.config.ts. */
 declare const __APP_VERSION__: string
+
+/** Branding of this build (branding/README.md), injected by vite.config.ts from COMETCAST_BRANDING. */
+declare const __BRANDING__: import('../../../tools/branding.mjs').Branding

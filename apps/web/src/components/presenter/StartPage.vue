@@ -82,10 +82,10 @@ function getApp() {
 const beDisplayParts = computed(() => splitSlot((m) => t('start.beDisplay', { dom: m }), '/display'.length))
 const displayHref = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/display`
 // Footer line (spec 15.9, web part): licence, source, the licence list of this build, and privacy / imprint only where
-// there is a page to name (cometcast.de, or the operator's config.json).
+// there is a page to name (the build's branding file, or the operator's config.json).
 const footSource = sourceUrl(__APP_VERSION__)
 const footLicences = licencesUrl(import.meta.env.BASE_URL)
-const footLegal = computed(() => legalLinks(location.hostname, locale.value === 'de' ? 'de' : 'en', props.legal ?? {}))
+const footLegal = computed(() => legalLinks(locale.value === 'de' ? 'de' : 'en', props.legal ?? {}))
 onMounted(() => {
   if (!props.qrCode) codeInput.value?.focus()
 })

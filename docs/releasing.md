@@ -16,6 +16,13 @@ The jobs are independent (`fail-fast: false` everywhere). When one fails, the ot
 
 The `release` job fails (and creates no draft) when the downloaded files contain **no platform artefact at all** (only LICENSE, SBOMs and the deploy bundle, or nothing): a "release" without any app is never created.
 
+## Branding (publisher and legal links)
+
+Release jobs that build the web app, Flutter apps, Apple TV app and the Docker image use the branding file named by `COMETCAST_BRANDING`
+(workflow-level `env` in `release.yml`: the repository variable `COMETCAST_BRANDING` if set, else the official `branding/cometcast.json`). The
+Flutter and Apple TV jobs run `node tools/gen-branding.mjs` first; the Docker build gets it as build argument. Before a store release, the values
+in that file must be real (publisher, privacy and imprint pages): [branding/README.md](../branding/README.md). A fork sets the variable to its own file.
+
 ## Version numbers
 
 `node tools/set-version.mjs VERSION --build-number N` (N is the workflow run number) sets:

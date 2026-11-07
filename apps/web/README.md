@@ -153,6 +153,11 @@ active attacker who has time to try many certificates, so it is a check against 
 tested with fake peers (vitest) and in `npm run e2e` / `npm run e2e:static` (both sides show the same code), never
 against a relay that really swaps fingerprints.
 
+**Branding.** The links "Privacy" and "Imprint" of the start page footer (and the source link) come from the branding file selected at
+build time by `COMETCAST_BRANDING` (default `branding/default.json`: no privacy or imprint link; `branding/cometcast.json` for the official
+cometcast.de build), embedded by `vite.config.ts`. A `config.json` with `privacy_url` / `imprint_url` overrides them at runtime. There is no
+host check any more. See `branding/README.md`.
+
 **Base path.** `VITE_BASE=/app/ npm run build` builds for `https://cometcast.de/app/` (default `/`; must be an absolute
 path, `./` is rejected because the PDF worker builds its URLs from it). Assets, the two Web Workers, the logo in the
 logos and fonts and `<base>pdf/` (the optional WASM renderer from `npm run build:wasm`) all follow it; there is no service

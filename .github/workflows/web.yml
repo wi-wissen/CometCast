@@ -27,6 +27,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Native branding constants are up to date
+        working-directory: ${{ github.workspace }}
+        run: node tools/gen-branding.mjs --check
 
   # UNCERTAIN: this job has not been run on GitHub; it was only verified locally.
   e2e:

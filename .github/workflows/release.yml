@@ -53,6 +53,9 @@ concurrency:
 env:
   FLUTTER_VERSION: '3.47.9' # the version everything else (flutter.yml) was verified with
   NODE_VERSION: '22'
+  # Publisher identity and legal links of the apps and the web app (branding/README.md, docs/releasing.md). Official
+  # release builds use the project's file; a fork sets the repository variable COMETCAST_BRANDING to its own file.
+  COMETCAST_BRANDING: ${{ vars.COMETCAST_BRANDING || 'branding/cometcast.json' }}
   # The one place that names the Rust compiler. Passed to .github/actions/rust-toolchain by every
   # job that compiles Rust (the Dockerfile has its own). Bump by hand and run a dry run.
   RUST_VERSION: '1.97.0'
@@ -216,6 +219,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      - name: Write the branding constants (tools/gen-branding.mjs)
+        run: node tools/gen-branding.mjs
       - name: Build the app (release)
         working-directory: apps/flutter
         run: |
@@ -326,6 +331,8 @@ jobs:
           for f in cc_ffi.dll cc_miracast_ffi.dll cc-docs-worker.exe cc-office-worker.exe; do
             test -f "target/release/$f" || { echo "::error::target/release/$f was not built"; exit 1; }
           done
+      - name: Write the branding constants (tools/gen-branding.mjs)
+        run: node tools/gen-branding.mjs
       - name: Build the app (release)
         working-directory: apps/flutter
         env:
@@ -432,6 +439,8 @@ jobs:
             lipo -create -output "rust-universal/$w" "target/aarch64-apple-darwin/release/$w" "target/x86_64-apple-darwin/release/$w"
           done
           lipo -info rust-universal/libcc_ffi.dylib
+      - name: Write the branding constants (tools/gen-branding.mjs)
+        run: node tools/gen-branding.mjs
       - name: Build the app (release)
         working-directory: apps/flutter
         run: |
@@ -613,6 +622,8 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" "build-tools;$BUILD_TOOLS" "ndk;28.2.13676358"
+      - name: Write the branding constants (tools/gen-branding.mjs)
+        run: node tools/gen-branding.mjs
       - name: Build APK and AAB (release, built with the debug key by the Gradle file)
         working-directory: apps/flutter
         run: |
@@ -717,6 +728,8 @@ jobs:
         with:
           version: ${{ env.RUST_VERSION }}
           targets: aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+      - name: Write the branding constants (tools/gen-branding.mjs)
+        run: node tools/gen-branding.mjs
       - name: Generate the Xcode project (XcodeGen, Flutter, CocoaPods)
         run: |
           set -euo pipefail
@@ -845,6 +858,8 @@ jobs:
           build-number: ${{ needs.prepare.outputs.build_number }}
           image: ${{ needs.prepare.outputs.image }}
           h264: keep
+      - name: Write the branding constants (tools/gen-branding.mjs)
+        run: node tools/gen-branding.mjs
       - name: Generate the Xcode project
         working-directory: apps/apple-tv
         run: |
@@ -1125,6 +1140,8 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
+          build-args: |
+            COMETCAST_BRANDING=${{ env.COMETCAST_BRANDING }}
           platforms: ${{ matrix.platform }}
           # Attestations would make the per-arch digests indexes; the join step needs plain images.
           provenance: false

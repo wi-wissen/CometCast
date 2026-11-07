@@ -17,7 +17,7 @@ rough; steps after the first failure were never timed.
 | `web.yml` | `npm ci`, typecheck, unit tests, build; a second job with the WASM renderer and the Playwright end-to-end tests | not measured | Expected green; typecheck, unit tests and build were run locally, the end-to-end job was not |
 | `i18n.yml` | `tools/check-i18n.test.mjs`, `tools/check-i18n.mjs` | under 1 min | Green (run locally) |
 | `appletv-core.yml` | Swift package tests in a `swift:6.0.3` container | not measured | Not examined; needs a Swift toolchain |
-| `pages.yml` | `build`: link check of `site/`, wasm-bindgen CLI, web app build, staging, link check of the staged artifact, upload. `deploy`: only when GitHub Pages is enabled | about 3 min | `build` green. `deploy` needs an owner setting, see below |
+| `pages.yml` | `build`: generates `site/` from the branding file (`COMETCAST_BRANDING`, `COMETCAST_PUBLIC_BUILD=1`: fails while the imprint is empty), link check of `site/`, wasm-bindgen CLI, web app build, staging, link check of the staged artifact, upload. `deploy`: only when GitHub Pages is enabled | about 3 min | `build` green. `deploy` needs an owner setting, see below |
 
 ### Pages needs an owner setting
 

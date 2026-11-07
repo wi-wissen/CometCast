@@ -22,7 +22,13 @@ RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
     npm ci
 COPY apps/web/ ./
-RUN npm run build
+# Branding (publisher and legal links, branding/README.md): vite.config.ts reads ../../tools/branding.mjs and the file
+# named by COMETCAST_BRANDING (a path below the repository root, e.g. branding/cometcast.json); empty = branding/default.json.
+#   docker build --build-arg COMETCAST_BRANDING=branding/cometcast.json ...
+COPY tools/branding.mjs /src/tools/branding.mjs
+COPY branding/ /src/branding/
+ARG COMETCAST_BRANDING=
+RUN COMETCAST_BRANDING="$COMETCAST_BRANDING" npm run build
 
 # ---- Stage 2: server binary ----
 # The workspace needs Rust >= 1.92 (rust-version in Cargo.toml). First run: built with 1.99.1

@@ -2,18 +2,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Generates the static pages in site/ (German at /, English at /en/) from the text below.
 // Run: node tools/build-site.mjs   (no dependencies). The generated HTML is committed.
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { IMPRINT_REQUIRED, REPO_ROOT, loadBranding, missingImprint } from './branding.mjs';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'site');
+// Publisher identity and imprint data come from the branding file (COMETCAST_BRANDING, default branding/default.json;
+// branding/README.md); the text of the privacy and imprint pages is in site-content/*.md.
+//   COMETCAST_PUBLIC_BUILD=1   fail while required imprint fields are empty (the guard "fill the imprint before enabling Pages")
+//   --out DIR                  write there instead of site/ (used by the tests)
+const oi = process.argv.indexOf('--out');
+const root = oi >= 0 ? resolve(process.argv[oi + 1]) : join(REPO_ROOT, 'site');
+const { file: brandingFile, branding } = loadBranding();
+const PUBLIC_BUILD = process.env.COMETCAST_PUBLIC_BUILD === '1';
+const missing = missingImprint(branding);
+if (PUBLIC_BUILD && missing.length) {
+  console.error(`build-site: PUBLIC BUILD REFUSED. The imprint is not filled in: ${missing.map((k) => `imprint.${k}`).join(', ')} (required: ${IMPRINT_REQUIRED.map((k) => `imprint.${k}`).join(', ')}).`);
+  console.error(`Fill these in ${brandingFile} (see branding/README.md and docs/website.md), or select your own file with COMETCAST_BRANDING. Never publish the site without an imprint.`);
+  process.exit(1);
+}
+const incomplete = missing.length > 0;
+// The imprint page exists when the branding names a publisher or any imprint detail; the default has neither.
+const hasImprint = Boolean(branding.publisher_name) || Object.values(branding.imprint).some(Boolean);
 const ORIGIN = 'https://cometcast.de';
-const GH = 'https://github.com/wi-wissen/CometCast';
+const GH = branding.source_url.replace(/\/$/, '');
 const RELAY = 'https://github.com/wi-wissen/CometCast-Relay';
+const pub = branding.publisher_name;
+const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const todo = (s) => `<span class="todo">TODO: ${s}</span>`;
 
 // slug per page and language ('' = start page)
-const pages = ['start', 'how', 'downloads', 'privacy', 'open', 'contact', 'imprint'];
+const pages = ['start', 'how', 'downloads', 'privacy', 'open', 'contact', ...(hasImprint ? ['imprint'] : [])];
 const slug = {
   de: { start: '', how: 'funktionsweise/', downloads: 'downloads/', privacy: 'datenschutz/', open: 'open-source/', contact: 'kontakt/', imprint: 'impressum/' },
   en: { start: '', how: 'how-it-works/', downloads: 'downloads/', privacy: 'privacy/', open: 'open-source/', contact: 'contact/', imprint: 'imprint/' },
@@ -194,47 +213,6 @@ ${statusTable('en')}
   },
 };
 
-content.privacy = {
-  de: {
-    title: 'Datenschutz und Selbst hosten',
-    desc: 'Was der Comet-Cast-Relay-Server sieht, wie man ihn selbst betreibt, und was diese Webseite sammelt (nichts).',
-    body: `
-<h1>Datenschutz und Selbst hosten</h1>
-<h2>Diese Webseite</h2>
-<p>Keine Cookies, kein Tracking, keine Schriften oder Skripte von Dritten. Die Seite wird über GitHub Pages ausgeliefert; GitHub verarbeitet dabei technisch bedingt Verbindungsdaten wie die IP-Adresse (siehe die Datenschutzhinweise von GitHub). ${todo('Datenschutzerklärung nach Art. 13 DSGVO von der Verantwortlichen prüfen lassen und hier ergänzen')}</p>
-<h2>Der Relay-Server</h2>
-<p>Der Relay-Server (<code>cometcast-server</code>) vermittelt zwischen Sender und Empfänger: Raumcodes und Verbindungsangebote (Signalisierung). Er speichert keine Bilder, Dateien oder Medien und leitet sie nicht weiter. Räume liegen nur im Arbeitsspeicher. Zum Schutz vor Missbrauch sieht und zählt er die Adresse des Clients (für Limits und zeitweise Sperren, ebenfalls nur im Speicher). Mit einem TURN-Relay (coturn, nur auf einem internen Server) läuft der Datenstrom bei Bedarf über diesen Rechner.</p>
-<p>Ein öffentlicher Server <code>relay.cometcast.de</code> ist geplant, <strong>existiert aber noch nicht</strong>. Betriebsdateien und Anleitung für diesen Host liegen im Repository <a href="${RELAY}">CometCast-Relay</a>.</p>
-<h2>Selbst hosten</h2>
-<p>Ein eigener Server ist ein Docker-Image (mit der Web-App darin, ein Container reicht auch ohne Internet) oder ein einzelnes Programm. Es gibt zwei Modi: <em>offen</em> (öffentlich, nur Vermittlung, ALTCHA-Rechenaufgabe zum Anlegen eines Raums) und <em>intern</em> (für die Geräte einer Organisation, mit TURN-Zugangsdaten).</p>
-<ul>
-<li><a href="${GH}/blob/main/deploy/README.md">Schnellstart mit Docker Compose</a> (englisch)</li>
-<li><a href="${GH}/blob/main/bins/cometcast-server/README.md">Server-README</a></li>
-<li><a href="${GH}/blob/main/docs/server.md">Ausführliche Referenz docs/server.md</a></li>
-</ul>
-<div class="note"><p>Der Server ist nur auf einer Maschine geprüft. Nicht geprüft: zwei echte Geräte über TURN, NAT, echtes Zertifikat, Last. Alle Grenzwerte sind ungemessene Platzhalter.</p></div>`,
-  },
-  en: {
-    title: 'Privacy and self-hosting',
-    desc: 'What the Comet Cast relay server sees, how to run your own, and what this website collects (nothing).',
-    body: `
-<h1>Privacy and self-hosting</h1>
-<h2>This website</h2>
-<p>No cookies, no tracking, no fonts or scripts from third parties. The site is delivered by GitHub Pages; GitHub technically processes connection data such as the IP address (see GitHub's privacy statement). ${todo('have the controller review and add a full privacy notice (GDPR Art. 13) here')}</p>
-<h2>The relay server</h2>
-<p>The relay server (<code>cometcast-server</code>) mediates between sender and receiver: room codes and connection offers (signalling). It stores no images, files or media and does not forward them. Rooms live in memory only. To protect itself it sees and counts the client address (for limits and temporary bans, also in memory only). With a TURN relay (coturn, internal server only) the media stream passes through that machine when needed.</p>
-<p>A public server <code>relay.cometcast.de</code> is planned but <strong>does not exist yet</strong>. Operations files and the guide for that host live in the repository <a href="${RELAY}">CometCast-Relay</a>.</p>
-<h2>Self-hosting</h2>
-<p>Your own server is a Docker image (the web app is bundled, so one container is enough, even without internet) or a single program. There are two modes: <em>open</em> (public, mediation only, ALTCHA puzzle to create a room) and <em>internal</em> (for an organisation's own devices, with TURN credentials).</p>
-<ul>
-<li><a href="${GH}/blob/main/deploy/README.md">Quick start with Docker Compose</a></li>
-<li><a href="${GH}/blob/main/bins/cometcast-server/README.md">Server README</a></li>
-<li><a href="${GH}/blob/main/docs/server.md">Deep reference docs/server.md</a></li>
-</ul>
-<div class="note"><p>The server has been checked on one machine only. Not verified: two real devices over TURN, NAT, a real certificate, load. All limits are unmeasured placeholders.</p></div>`,
-  },
-};
-
 content.open = {
   de: {
     title: 'Open Source und Lizenz',
@@ -246,7 +224,7 @@ content.open = {
 <p>Text der Lizenz: <a href="${GH}/blob/main/LICENSE">LICENSE</a>. Komponenten Dritter: <a href="${GH}/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.</p>
 <p>Die GPL deckt den Code. Sie gibt für sich keine Rechte am Namen „Comet Cast“ oder am Logo. Eine Namens- und Logo-Richtlinie gibt es noch nicht. Das ist ein Überblick, keine Rechtsberatung.</p>
 <h2>Mitmachen und CLA</h2>
-<p>Beiträge Dritter werden unter der <a href="${GH}/blob/main/CLA.md">CLA</a> angenommen. Sie erlaubt der Betreuerin, der Schulverwalter GmbH, die Apps in App-Stores zu verteilen; die öffentliche Version bleibt GPL-3.0-or-later. Der CLA-Text ist ein Entwurf und braucht noch eine juristische Prüfung. Siehe <a href="${GH}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> und den <a href="${GH}/blob/main/CODE_OF_CONDUCT.md">Verhaltenskodex</a>.</p>
+<p>Beiträge Dritter werden unter der <a href="${GH}/blob/main/CLA.md">CLA</a> angenommen. Sie erlaubt der Betreuerin${pub ? `, der ${pub},` : ''} die Apps in App-Stores zu verteilen; die öffentliche Version bleibt GPL-3.0-or-later. Der CLA-Text ist ein Entwurf und braucht noch eine juristische Prüfung. Siehe <a href="${GH}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> und den <a href="${GH}/blob/main/CODE_OF_CONDUCT.md">Verhaltenskodex</a>.</p>
 <h2>Was wir bewusst nicht tun</h2>
 <ul><li>Keine Schlüssel oder Zertifikate extrahieren, kein FairPlay-, AirServer- oder AirParrot-Material</li><li>Keine DRM-Umgehung</li><li>Kein Cast-Empfang in Version 1, kein AirDrop, kein DLNA/UPnP, kein Miracast-Sender</li></ul>`,
   },
@@ -260,7 +238,7 @@ content.open = {
 <p>Licence text: <a href="${GH}/blob/main/LICENSE">LICENSE</a>. Third-party components: <a href="${GH}/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.</p>
 <p>The GPL covers the code. It does not by itself grant rights to the name "Comet Cast" or the logo. A naming and logo policy is not written yet. This is an overview, not legal advice.</p>
 <h2>Contributing and the CLA</h2>
-<p>Contributions from third parties are accepted under the <a href="${GH}/blob/main/CLA.md">CLA</a>. It allows the steward, Schulverwalter GmbH, to distribute the apps in app stores; the public version stays GPL-3.0-or-later. The CLA text is a draft that still needs a lawyer's review. See <a href="${GH}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> and the <a href="${GH}/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>.</p>
+<p>Contributions from third parties are accepted under the <a href="${GH}/blob/main/CLA.md">CLA</a>. It allows the steward${pub ? `, ${pub},` : ''} to distribute the apps in app stores; the public version stays GPL-3.0-or-later. The CLA text is a draft that still needs a lawyer's review. See <a href="${GH}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> and the <a href="${GH}/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>.</p>
 <h2>What we deliberately do not do</h2>
 <ul><li>No extraction of keys or certificates, no FairPlay, AirServer or AirParrot material</li><li>No DRM circumvention</li><li>No Cast receiving in v1, no AirDrop, no DLNA/UPnP, no Miracast sender</li></ul>`,
   },
@@ -277,7 +255,7 @@ content.contact = {
 <h2>Sicherheitslücken</h2>
 <p>Bitte <strong>kein</strong> öffentliches Issue. Nutze die private Meldung von GitHub: im Repository den Reiter <em>Security</em> und dann <em>Report a vulnerability</em>. Wird das nicht angezeigt, eröffne ein Issue, das nur sagt, dass du einen privaten Weg brauchst, ohne Einzelheiten. Es gibt noch keine festen Antwortzeiten. Die ganze Richtlinie: <a href="${GH}/blob/main/SECURITY.md">SECURITY.md</a> (englisch).</p>
 <h2>E-Mail</h2>
-<p>${todo('Kontakt-E-Mail eintragen, falls gewünscht')}</p>`,
+<p>${branding.contact ? esc(branding.contact) : todo('Kontakt-E-Mail eintragen, falls gewünscht')}</p>`,
   },
   en: {
     title: 'Contact and security',
@@ -289,48 +267,73 @@ content.contact = {
 <h2>Vulnerabilities</h2>
 <p>Please do <strong>not</strong> open a public issue. Use GitHub's private reporting: open the <em>Security</em> tab of the repository and choose <em>Report a vulnerability</em>. If that is not shown, open an issue that says only that you need a private channel, without details. There are no fixed response times yet. The full policy: <a href="${GH}/blob/main/SECURITY.md">SECURITY.md</a>.</p>
 <h2>Email</h2>
-<p>${todo('add a contact email address if wanted')}</p>`,
+<p>${branding.contact ? esc(branding.contact) : todo('add a contact email address if wanted')}</p>`,
   },
 };
 
-content.imprint = {
-  de: {
-    title: 'Impressum (Platzhalter)',
-    desc: 'Platzhalter für das Impressum. Angaben fehlen noch.',
-    body: `
-<h1>Impressum</h1>
-<div class="note"><p><strong>Platzhalter.</strong> Diese Seite enthält keine echten Angaben. Alle Felder mit TODO müssen vor der Veröffentlichung von der verantwortlichen Stelle ausgefüllt werden (Pflichtangaben nach § 5 DDG; Prüfung durch eine Fachperson empfohlen).</p></div>
-<h2>Anbieter</h2>
-<p>${todo('vollständiger Name bzw. Firma und Rechtsform')}<br>${todo('Straße und Hausnummer')}<br>${todo('PLZ und Ort')}</p>
-<p>Hinweis: Das README nennt die Schulverwalter GmbH als Betreuerin des Projekts. ${todo('prüfen, ob sie auch Anbieterin dieser Seite ist')}</p>
-<h2>Vertretungsberechtigte</h2>
-<p>${todo('Geschäftsführung')}</p>
-<h2>Kontakt</h2>
-<p>${todo('E-Mail-Adresse')}<br>${todo('Telefon, falls vorgesehen')}</p>
-<h2>Register und Steuer</h2>
-<p>${todo('Registergericht und Registernummer')}<br>${todo('Umsatzsteuer-ID, falls vorhanden')}</p>
-<h2>Verantwortlich für den Inhalt</h2>
-<p>${todo('Name und Anschrift')}</p>`,
-  },
-  en: {
-    title: 'Imprint (placeholder)',
-    desc: 'Placeholder for the legal imprint. Details are missing.',
-    body: `
-<h1>Imprint</h1>
-<div class="note"><p><strong>Placeholder.</strong> This page holds no real data. Every field marked TODO must be filled in by the responsible party before publication (mandatory details under German law, section 5 DDG; review by a professional recommended). The German version of this page is the one that counts.</p></div>
-<h2>Provider</h2>
-<p>${todo('full name or company and legal form')}<br>${todo('street and number')}<br>${todo('postcode and city')}</p>
-<p>Note: the README names Schulverwalter GmbH as steward of the project. ${todo('check whether it is also the provider of this site')}</p>
-<h2>Represented by</h2>
-<p>${todo('managing director(s)')}</p>
-<h2>Contact</h2>
-<p>${todo('email address')}<br>${todo('phone, if intended')}</p>
-<h2>Register and tax</h2>
-<p>${todo('register court and number')}<br>${todo('VAT ID, if any')}</p>
-<h2>Responsible for content</h2>
-<p>${todo('name and address')}</p>`,
-  },
-};
+// ---- pages from site-content/*.md ----------------------------------------------------------------
+// A small block format (no dependencies): front matter (title, description, optional title_incomplete /
+// description_incomplete for the placeholder state), `# ` / `## ` headings, paragraphs (lines joined with <br>),
+// `- ` lists, `> ` notes; inline HTML passes through. `{{GH}}` `{{RELAY}}` `{{publisher_name}}` `{{contact}}`
+// `{{imprint.x|hint}}` (the value; empty: a TODO marker with the hint while the imprint is incomplete, else nothing)
+// `{{todo:text}}`; `{{#if a|b}}` ... `{{/if}}` on lines of their own (true when one of the names is set; `incomplete`
+// is true while required imprint fields are empty).
+const lookup = (name) => (name === 'incomplete' ? incomplete : name.startsWith('imprint.') ? branding.imprint[name.slice(8)] : name === 'publisher_name' || name === 'contact' ? branding[name] : undefined);
+
+function renderPage(name, lang) {
+  const f = join(REPO_ROOT, 'site-content', `${name}.${lang}.md`);
+  const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(readFileSync(f, 'utf8'));
+  if (!m) throw new Error(`${f}: front matter missing`);
+  const fm = Object.fromEntries(m[1].split('\n').map((l) => [l.slice(0, l.indexOf(':')), l.slice(l.indexOf(':') + 1).trim()]));
+  const lines = [];
+  const stack = [];
+  for (const raw of m[2].split('\n')) {
+    const c = /^\{\{#if ([^}]+)\}\}$/.exec(raw.trim());
+    if (c) { stack.push(c[1].split('|').some((n) => Boolean(lookup(n.trim())))); continue; }
+    if (raw.trim() === '{{/if}}') { stack.pop(); continue; }
+    if (stack.includes(false)) continue;
+    let hadToken = false;
+    const text = raw.replace(/\{\{([^}]+)\}\}/g, (_, t) => {
+      hadToken = true;
+      if (t === 'GH') return GH;
+      if (t === 'RELAY') return RELAY;
+      if (t.startsWith('todo:')) return todo(t.slice(5));
+      const [key, hint] = t.split('|');
+      const v = lookup(key.trim());
+      if (v === undefined) throw new Error(`${f}: unknown placeholder {{${t}}}`);
+      return v ? esc(v) : hint !== undefined && incomplete ? todo(hint) : '';
+    });
+    if (hadToken && !text.trim()) continue;
+    lines.push(text);
+  }
+  const blocks = [];
+  let cur = null;
+  const flush = () => {
+    if (!cur) return;
+    if (cur.t === 'ul') blocks.push(`<ul>\n${cur.l.map((x) => `<li>${x}</li>`).join('\n')}\n</ul>`);
+    else if (cur.t === 'note') blocks.push(`<div class="note"><p>${cur.l.join(' ')}</p></div>`);
+    else blocks.push(`<p>${cur.l.join('<br>')}</p>`);
+    cur = null;
+  };
+  for (const l of lines) {
+    const h = /^(#{1,2}) (.*)$/.exec(l);
+    if (!l.trim()) flush();
+    else if (h) { flush(); blocks.push(`<h${h[1].length}>${h[2]}</h${h[1].length}>`); }
+    else {
+      const t = l.startsWith('- ') ? 'ul' : l.startsWith('> ') ? 'note' : 'p';
+      if (!cur || cur.t !== t) { flush(); cur = { t, l: [] }; }
+      cur.l.push(t === 'p' ? l : l.slice(2));
+    }
+  }
+  flush();
+  const pick = (k) => (incomplete && fm[`${k}_incomplete`]) || fm[k];
+  return { title: pick('title'), desc: pick('description'), body: `\n${blocks.join('\n')}` };
+}
+for (const p of ['privacy', 'imprint']) {
+  if (p === 'imprint' && !hasImprint) continue;
+  content[p] = { de: renderPage(p, 'de'), en: renderPage(p, 'en') };
+}
+
 
 function layout(lang, p, c) {
   const t = ui[lang];
@@ -367,7 +370,7 @@ ${alt('en')}
 </div></header>
 <main id="main"><div class="wrap">${c.body}
 </div></main>
-<footer class="site"><div class="wrap"><span>${t.foot}</span><a href="${url(lang, 'imprint')}">${t.imprint}</a><a href="${GH}">GitHub</a></div></footer>
+<footer class="site"><div class="wrap"><span>${t.foot}</span>${hasImprint ? `<a href="${url(lang, 'imprint')}">${t.imprint}</a>` : ''}<a href="${GH}">GitHub</a></div></footer>
 </body>
 </html>
 `;

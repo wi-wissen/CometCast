@@ -5,6 +5,7 @@ import { mount } from '@vue/test-utils'
 import { createAppI18n } from '../src/i18n'
 import { joinUrl } from '../src/core/qr'
 import { joinAddress, loadRelayConfig, parseLegalConfig, resolveRelay } from '../src/core/relay'
+import { DEFAULT_BRANDING, loadBrandingFile } from '../../../tools/branding.mjs'
 import { legalLinks, licencesUrl, sourceUrl } from '../src/core/legal'
 import StartPage from '../src/components/presenter/StartPage.vue'
 import IdleScreen from '../src/components/display/IdleScreen.vue'
@@ -70,14 +71,18 @@ describe('W3 operator pages and footer (N83, 15.9)', () => {
     expect(r.relays).toEqual([])
     expect(r.legal.privacy).toBe('https://a.example/p')
   })
-  it('cometcast.de: the website pages in the UI language; elsewhere only the operator\'s; otherwise none', () => {
-    expect(legalLinks('cometcast.de', 'de', {})).toEqual({ privacy: 'https://cometcast.de/datenschutz/', imprint: 'https://cometcast.de/impressum/' })
-    expect(legalLinks('cometcast.de', 'en', {})).toEqual({ privacy: 'https://cometcast.de/en/privacy/', imprint: 'https://cometcast.de/en/imprint/' })
-    expect(legalLinks('cast.musterfirma.de', 'en', {})).toEqual({})
-    expect(legalLinks('cast.musterfirma.de', 'en', { privacy: 'https://m.example/dsgvo' })).toEqual({ privacy: 'https://m.example/dsgvo' })
+  it('legal links: config.json over the branding file over none; the host does not matter', () => {
+    const none = loadBrandingFile(DEFAULT_BRANDING)
+    const official = loadBrandingFile(DEFAULT_BRANDING.replace('default.json', 'cometcast.json'))
+    expect(legalLinks('de', {}, official)).toEqual({ privacy: 'https://cometcast.de/datenschutz/', imprint: 'https://cometcast.de/impressum/' })
+    expect(legalLinks('en', {}, official)).toEqual({ privacy: 'https://cometcast.de/en/privacy/', imprint: 'https://cometcast.de/en/imprint/' })
+    expect(legalLinks('en', {}, none)).toEqual({})
+    expect(legalLinks('en', { privacy: 'https://m.example/dsgvo' }, none)).toEqual({ privacy: 'https://m.example/dsgvo' })
+    expect(legalLinks('en', { privacy: 'https://m.example/dsgvo' }, official)).toEqual({ privacy: 'https://m.example/dsgvo', imprint: 'https://cometcast.de/en/imprint/' })
   })
   it('addresses of the footer', () => {
     expect(sourceUrl('1.2.3')).toBe('https://github.com/wi-wissen/CometCast/tree/v1.2.3')
+    expect(sourceUrl('1.2.3', { ...loadBrandingFile(DEFAULT_BRANDING), source_url: 'https://git.example/me/cast/' })).toBe('https://git.example/me/cast/tree/v1.2.3')
     expect(licencesUrl('/app/')).toBe('/app/third-party-licenses.txt')
     expect(licencesUrl('/')).toBe('/third-party-licenses.txt')
   })

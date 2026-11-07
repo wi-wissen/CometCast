@@ -20,6 +20,10 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # The official values (branding/README.md); a fork sets the repository variable COMETCAST_BRANDING to its own file.
+  COMETCAST_BRANDING: ${{ vars.COMETCAST_BRANDING || 'branding/cometcast.json' }}
+
 jobs:
   # Builds the static site and the web app and checks the links. Needs no Pages setting, so it is
   # a real check of the site even where Pages is not enabled.
@@ -36,6 +40,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      # The guard "fill the imprint before enabling Pages": a public build fails while required imprint fields are empty.
+      - name: Generate the static site from the branding file (public build)
+        env:
+          COMETCAST_PUBLIC_BUILD: '1'
+        run: node tools/build-site.mjs
       - name: Check links of the static site (the web app is added later)
         run: node tools/check-site-links.mjs site --without-app
       - name: Install the Rust toolchain and the wasm target
@@ -53,6 +62,7 @@ jobs:
       - name: Build the web app (PDF renderer and app)
         working-directory: apps/web
         env:
+          # The legal links of the start page footer come from the branding file (embedded at build time); no config.json needed.
           VITE_BASE: /app/
           VITE_DEFAULT_RELAY: wss://relay.cometcast.de/ws
         run: |

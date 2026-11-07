@@ -6,27 +6,32 @@ JavaScript at all.
 
 | Path | Content |
 | --- | --- |
-| `site/*/index.html`, `site/en/**` | Pages. **Generated** by `node tools/build-site.mjs` from the texts in that file; edit the script, run it, commit both |
+| `site/*/index.html`, `site/en/**` | Pages. **Generated** by `COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs` from the texts in that file and in `site-content/`; edit those, run it, commit both |
+| `site-content/*.md` | Text of the imprint and privacy pages (`imprint.de.md`, `imprint.en.md`, `privacy.de.md`, `privacy.en.md`): front matter, headings, paragraphs, lists, notes, inline HTML, and placeholders (`{{imprint.name\|hint}}`, `{{publisher_name}}`, `{{todo:text}}`, `{{#if ...}}`; format described at the top of the renderer in `tools/build-site.mjs`) |
+| `branding/*.json` | Publisher name, links and the imprint operator data ([branding/README.md](../branding/README.md)). Not hard-coded in the script |
 | `site/assets/style.css` | Styles (tokens from the web app, system fonts, dark mode through `prefers-color-scheme`) |
 | `site/assets/*.svg`, `favicon.svg`, `apple-touch-icon.png` | Copies of the logo files in `assets/logo/` |
 | `site/CNAME`, `.nojekyll`, `404.html`, `sitemap.xml`, `robots.txt` | Pages plumbing |
 | `tools/check-site-links.mjs` | Dependency-free link and metadata check; runs in the workflow before deploy (`--without-app` for `site/` alone, without flag on the staged artifact that contains `/app/`) |
-| `.github/workflows/pages.yml` | Builds the web app (`VITE_BASE=/app/`, WASM PDF renderer, `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws`), stages it under `/app/` next to `site/`, and deploys on push to `main` touching `site/**` or the web sources, and on manual start |
+| `.github/workflows/pages.yml` | Generates the site from the branding file (public build, fails while the imprint is empty), builds the web app (`VITE_BASE=/app/`, WASM PDF renderer, `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws`), stages it under `/app/` next to `site/`, and deploys on push to `main` touching `site/**` or the web sources, and on manual start |
 
-Local preview: `node tools/build-site.mjs && node tools/check-site-links.mjs site --without-app && (cd site && python3 -m http.server 8000)`.
+Local preview: `COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs && node tools/check-site-links.mjs site --without-app && (cd site && python3 -m http.server 8000)`.
 
-The imprint (`/impressum/`, `/en/imprint/`) is a **placeholder with TODO fields**. It must be filled in
-by the responsible party before the site goes public; no company data was invented. Likewise the
+The imprint (`/impressum/`, `/en/imprint/`) is a **placeholder with TODO fields** while the `imprint` section of the branding file is
+incomplete. It must be filled in by the responsible party before the site goes public; no company data was invented. Without a
+branding file (`branding/default.json`) the site has no imprint page at all: no page, no footer link, no sitemap entry. A build with
+`COMETCAST_PUBLIC_BUILD=1` (set in `pages.yml`) **fails** with a clear message while `imprint.name`, `imprint.street`, `imprint.city` or
+`imprint.email` is empty. Contact line: `contact` of the branding file. Self-hosters of the site use their own file (`COMETCAST_BRANDING`). Likewise the
 privacy page needs a proper privacy notice (TODO there). The downloads page copies its status table
 from [architecture.md](architecture.md); update both together.
 
 ## Before enabling Pages: fill the imprint
 
-- [ ] Fill in the imprint (`/impressum/`, `/en/imprint/`; source: `content.imprint` in `tools/build-site.mjs`). It is a placeholder
-      with TODO fields, set to `noindex` and left out of `sitemap.xml`; no data was invented. Remove the placeholder wording and
-      the `noindex` only when the real data is in.
-- [ ] Fill in the privacy notice (`/datenschutz/`, TODO there).
-- [ ] Regenerate (`node tools/build-site.mjs`), run `node tools/check-site-links.mjs site --without-app`, commit.
+- [ ] Fill in the `imprint` section of `branding/cometcast.json` (`/impressum/`, `/en/imprint/`; text: `site-content/imprint.*.md`). While it is
+      incomplete the page is a placeholder with TODO fields, set to `noindex` and left out of `sitemap.xml`; no data was invented. The placeholder wording goes
+      away by itself when the required fields are in (`noindex` stays). `pages.yml` refuses to build until then.
+- [ ] Fill in the privacy notice (`/datenschutz/`, TODO in `site-content/privacy.*.md`).
+- [ ] Regenerate (`COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs`), run `node tools/check-site-links.mjs site --without-app`, commit.
 
 ## What the owner must do once
 

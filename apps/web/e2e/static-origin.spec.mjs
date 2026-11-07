@@ -58,7 +58,7 @@ const freePort = () =>
   const b = spawnSync('npx', ['vite', 'build', '--outDir', distDir, '--emptyOutDir'], {
     cwd: webRoot,
     stdio: 'inherit',
-    env: { ...process.env, VITE_BASE: '/app/' },
+    env: { ...process.env, VITE_BASE: '/app/', COMETCAST_BRANDING: '' },
   })
   assert.equal(b.status, 0, 'web build failed')
   const c = spawnSync('cargo', ['build', '-p', 'cometcast-server'], { cwd: repo, stdio: 'inherit' })
@@ -375,7 +375,7 @@ try {
     await p.getByTestId('start-page').waitFor({ timeout: 10000 })
     assert.equal((await p.getByTestId('start-code-chip').innerText()).trim(), 'K7Q M2W')
     assert.equal(new URL(p.url()).pathname, '/app/K7QM2W', 'the address stays')
-    // footer: no privacy / imprint on a host that is not cometcast.de and has no config.json
+    // footer: no privacy / imprint when the build has the default branding and there is no config.json
     assert.match(await p.getByTestId('start-footer').innerText(), /^Free software \(GPL-3\.0\) · Source code · Licences$/)
     assert.equal(await p.getByTestId('foot-privacy').count(), 0)
     assert.equal(await p.getByTestId('foot-licences').getAttribute('target'), '_blank')

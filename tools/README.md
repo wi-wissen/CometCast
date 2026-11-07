@@ -22,6 +22,15 @@ Exit code 1 on a real mismatch or unreadable file. A missing file is reported
 as "skipped: file missing" and does not fail. Keys are compared only within
 each app, never across apps. Runs in CI via `.github/workflows/i18n.yml`.
 
+## branding.mjs, gen-branding.mjs, build-site.mjs (and branding.test.mjs)
+
+The branding file mechanism (publisher identity, privacy and imprint links; [branding/README.md](../branding/README.md)).
+`branding.mjs` loads and validates the file named by `COMETCAST_BRANDING` (default `branding/default.json`) and is shared by the others and by
+`apps/web/vite.config.ts`. `gen-branding.mjs` writes `apps/flutter/lib/src/branding.g.dart` and
+`apps/apple-tv/Sources/CometCastTV/Branding.g.swift` (`--check` fails when a committed file is stale; the committed ones are the default's).
+`build-site.mjs` generates `site/` (page text in `site-content/`; `COMETCAST_PUBLIC_BUILD=1` fails while required imprint fields are empty; `--out DIR`).
+`node --test tools/branding.test.mjs` tests all three.
+
 ## set-version.mjs, release-stage.sh, release-summary.mjs, release-guard.sh (and their tests)
 
 Helpers of `.github/workflows/release.yml` (docs/releasing.md). `set-version.mjs VERSION` writes one
