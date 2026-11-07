@@ -37,6 +37,11 @@ impl WorkerSpec {
         }
     }
 
+    /// The worker program (without the leading arguments).
+    pub fn program(&self) -> &Path {
+        &self.program
+    }
+
     /// Add a leading argument (for example the `office-worker` command of `cometcast-cli`).
     #[must_use]
     pub fn arg(mut self, a: impl Into<OsString>) -> Self {

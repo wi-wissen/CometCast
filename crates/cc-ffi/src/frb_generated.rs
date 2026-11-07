@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1333712061;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 257668634;
 
 // Section: executor
 
@@ -235,6 +235,35 @@ fn wire__crate__api__keyframe_requested_impl(
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
                 let output_ok = Ok::<_, ()>(crate::api::keyframe_requested())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__office_worker_path_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "office_worker_path",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::office_worker_path())?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -479,6 +508,38 @@ fn wire__crate__api__set_docs_worker_impl(
             transform_result_sse::<_, ()>((move || {
                 let output_ok = Ok::<_, ()>({
                     crate::api::set_docs_worker(api_path);
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__set_office_worker_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_office_worker",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::set_office_worker(api_path);
                 })?;
                 std::result::Result::Ok(output_ok)
             })())
@@ -1238,16 +1299,20 @@ impl SseDecode for crate::api::ContentSenderUiEvent {
                 };
             }
             1 => {
-                return crate::api::ContentSenderUiEvent::Joined;
+                let mut var_name = <String>::sse_decode(deserializer);
+                return crate::api::ContentSenderUiEvent::Converting { name: var_name };
             }
             2 => {
+                return crate::api::ContentSenderUiEvent::Joined;
+            }
+            3 => {
                 let mut var_state = <crate::api::UiConnectionState>::sse_decode(deserializer);
                 return crate::api::ContentSenderUiEvent::ConnectionState { state: var_state };
             }
-            3 => {
+            4 => {
                 return crate::api::ContentSenderUiEvent::Connected;
             }
-            4 => {
+            5 => {
                 let mut var_sent = <u64>::sse_decode(deserializer);
                 let mut var_total = <u64>::sse_decode(deserializer);
                 return crate::api::ContentSenderUiEvent::Progress {
@@ -1255,20 +1320,20 @@ impl SseDecode for crate::api::ContentSenderUiEvent {
                     total: var_total,
                 };
             }
-            5 => {
+            6 => {
                 return crate::api::ContentSenderUiEvent::Sent;
             }
-            6 => {
+            7 => {
                 return crate::api::ContentSenderUiEvent::Stopped;
             }
-            7 => {
+            8 => {
                 return crate::api::ContentSenderUiEvent::PeerLeft;
             }
-            8 => {
+            9 => {
                 let mut var_reason = <crate::api::UiSendRejection>::sse_decode(deserializer);
                 return crate::api::ContentSenderUiEvent::Rejected { reason: var_reason };
             }
-            9 => {
+            10 => {
                 let mut var_message = <String>::sse_decode(deserializer);
                 return crate::api::ContentSenderUiEvent::Error {
                     message: var_message,
@@ -1899,6 +1964,9 @@ impl SseDecode for crate::api::UiSendRejection {
             5 => crate::api::UiSendRejection::NotPdf,
             6 => crate::api::UiSendRejection::DocumentUnusable,
             7 => crate::api::UiSendRejection::BadLink,
+            8 => crate::api::UiSendRejection::OfficeUnavailable,
+            9 => crate::api::UiSendRejection::OfficeEncrypted,
+            10 => crate::api::UiSendRejection::OfficeFailed,
             _ => unreachable!("Invalid variant for UiSendRejection: {}", inner),
         };
     }
@@ -1937,18 +2005,18 @@ fn pde_ffi_dispatcher_primary_impl(
         1 => wire__crate__api__capture_info_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__discover_servers_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__start_advertising_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__start_content_sender_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__start_encoded_sender_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__start_receiver_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__start_sender_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__stop_advertising_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__stop_receiver_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__stop_sender_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__stop_watching_receivers_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__take_content_frame_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__take_frame_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__watch_receivers_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1964,16 +2032,18 @@ fn pde_ffi_dispatcher_sync_impl(
         2 => wire__crate__api__check_room_code_impl(ptr, rust_vec_len, data_len),
         4 => wire__crate__api__docs_worker_path_impl(ptr, rust_vec_len, data_len),
         6 => wire__crate__api__keyframe_requested_impl(ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__office_worker_path_impl(ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__push_codec_config_impl(ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__push_encoded_frame_impl(ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__room_code_alphabet_impl(ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__room_code_length_impl(ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__send_content_cmd_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__server_defaults_impl(ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__set_content_target_width_impl(ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__set_docs_worker_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__set_office_worker_impl(ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__set_video_max_size_impl(ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__validate_link_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2115,25 +2185,28 @@ impl flutter_rust_bridge::IntoDart for crate::api::ContentSenderUiEvent {
                 host.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            crate::api::ContentSenderUiEvent::Joined => [1.into_dart()].into_dart(),
-            crate::api::ContentSenderUiEvent::ConnectionState { state } => {
-                [2.into_dart(), state.into_into_dart().into_dart()].into_dart()
+            crate::api::ContentSenderUiEvent::Converting { name } => {
+                [1.into_dart(), name.into_into_dart().into_dart()].into_dart()
             }
-            crate::api::ContentSenderUiEvent::Connected => [3.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::Joined => [2.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::ConnectionState { state } => {
+                [3.into_dart(), state.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::ContentSenderUiEvent::Connected => [4.into_dart()].into_dart(),
             crate::api::ContentSenderUiEvent::Progress { sent, total } => [
-                4.into_dart(),
+                5.into_dart(),
                 sent.into_into_dart().into_dart(),
                 total.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            crate::api::ContentSenderUiEvent::Sent => [5.into_dart()].into_dart(),
-            crate::api::ContentSenderUiEvent::Stopped => [6.into_dart()].into_dart(),
-            crate::api::ContentSenderUiEvent::PeerLeft => [7.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::Sent => [6.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::Stopped => [7.into_dart()].into_dart(),
+            crate::api::ContentSenderUiEvent::PeerLeft => [8.into_dart()].into_dart(),
             crate::api::ContentSenderUiEvent::Rejected { reason } => {
-                [8.into_dart(), reason.into_into_dart().into_dart()].into_dart()
+                [9.into_dart(), reason.into_into_dart().into_dart()].into_dart()
             }
             crate::api::ContentSenderUiEvent::Error { message } => {
-                [9.into_dart(), message.into_into_dart().into_dart()].into_dart()
+                [10.into_dart(), message.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -2636,6 +2709,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::UiSendRejection {
             Self::NotPdf => 5.into_dart(),
             Self::DocumentUnusable => 6.into_dart(),
             Self::BadLink => 7.into_dart(),
+            Self::OfficeUnavailable => 8.into_dart(),
+            Self::OfficeEncrypted => 9.into_dart(),
+            Self::OfficeFailed => 10.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -2837,36 +2913,40 @@ impl SseEncode for crate::api::ContentSenderUiEvent {
                 <Option<u32>>::sse_encode(pages, serializer);
                 <Option<String>>::sse_encode(host, serializer);
             }
-            crate::api::ContentSenderUiEvent::Joined => {
+            crate::api::ContentSenderUiEvent::Converting { name } => {
                 <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(name, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Joined => {
+                <i32>::sse_encode(2, serializer);
             }
             crate::api::ContentSenderUiEvent::ConnectionState { state } => {
-                <i32>::sse_encode(2, serializer);
+                <i32>::sse_encode(3, serializer);
                 <crate::api::UiConnectionState>::sse_encode(state, serializer);
             }
             crate::api::ContentSenderUiEvent::Connected => {
-                <i32>::sse_encode(3, serializer);
+                <i32>::sse_encode(4, serializer);
             }
             crate::api::ContentSenderUiEvent::Progress { sent, total } => {
-                <i32>::sse_encode(4, serializer);
+                <i32>::sse_encode(5, serializer);
                 <u64>::sse_encode(sent, serializer);
                 <u64>::sse_encode(total, serializer);
             }
             crate::api::ContentSenderUiEvent::Sent => {
-                <i32>::sse_encode(5, serializer);
-            }
-            crate::api::ContentSenderUiEvent::Stopped => {
                 <i32>::sse_encode(6, serializer);
             }
-            crate::api::ContentSenderUiEvent::PeerLeft => {
+            crate::api::ContentSenderUiEvent::Stopped => {
                 <i32>::sse_encode(7, serializer);
             }
-            crate::api::ContentSenderUiEvent::Rejected { reason } => {
+            crate::api::ContentSenderUiEvent::PeerLeft => {
                 <i32>::sse_encode(8, serializer);
+            }
+            crate::api::ContentSenderUiEvent::Rejected { reason } => {
+                <i32>::sse_encode(9, serializer);
                 <crate::api::UiSendRejection>::sse_encode(reason, serializer);
             }
             crate::api::ContentSenderUiEvent::Error { message } => {
-                <i32>::sse_encode(9, serializer);
+                <i32>::sse_encode(10, serializer);
                 <String>::sse_encode(message, serializer);
             }
             _ => {
@@ -3444,6 +3524,9 @@ impl SseEncode for crate::api::UiSendRejection {
                 crate::api::UiSendRejection::NotPdf => 5,
                 crate::api::UiSendRejection::DocumentUnusable => 6,
                 crate::api::UiSendRejection::BadLink => 7,
+                crate::api::UiSendRejection::OfficeUnavailable => 8,
+                crate::api::UiSendRejection::OfficeEncrypted => 9,
+                crate::api::UiSendRejection::OfficeFailed => 10,
                 _ => {
                     unimplemented!("");
                 }

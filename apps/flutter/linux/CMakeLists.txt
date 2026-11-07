@@ -92,12 +92,18 @@ set(CC_FFI_LIB "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/libcc_ffi.so")
 # (feature `worker-bin`, on by default). It is installed next to the executable, where the Rust
 # core looks for it (crates/cc-ffi/src/content.rs, `worker()`).
 set(CC_DOCS_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-docs-worker")
+# The Office conversion worker (crates/cc-office, program `cc-office-worker`): converts .docx,
+# .pptx and .xlsx to PDF on the sender (docs/documents.md). `-p cc-office` builds its binary
+# (feature `worker-bin`, on by default) with the pure-Rust engine (feature `engine-rust`, also
+# default). Installed next to the executable like the PDF worker; `cc-ffi` finds it there
+# (crates/cc-ffi/src/office.rs).
+set(CC_OFFICE_WORKER "${CC_FFI_TARGET_DIR}/${CC_FFI_PROFILE}/cc-office-worker")
 add_custom_target(cc_ffi_build ALL
-  COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi -p cc-docs ${CC_FFI_CARGO_FLAGS}
+  COMMAND ${CARGO_EXECUTABLE} build -p cc-ffi -p cc-docs -p cc-office ${CC_FFI_CARGO_FLAGS}
           --manifest-path "${CC_REPO_ROOT}/Cargo.toml"
           --target-dir "${CC_FFI_TARGET_DIR}"
-  BYPRODUCTS "${CC_FFI_LIB}" "${CC_DOCS_WORKER}"
-  COMMENT "Building the Rust core (cc-ffi) and the PDF worker (cc-docs-worker, ${CC_FFI_PROFILE})"
+  BYPRODUCTS "${CC_FFI_LIB}" "${CC_DOCS_WORKER}" "${CC_OFFICE_WORKER}"
+  COMMENT "Building the Rust core (cc-ffi), the PDF worker (cc-docs-worker) and the Office worker (cc-office-worker, ${CC_FFI_PROFILE})"
   USES_TERMINAL)
 add_dependencies(${BINARY_NAME} cc_ffi_build)
 
@@ -148,6 +154,10 @@ install(FILES "${CC_FFI_LIB}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
 # The PDF render worker, a program next to the executable (bundle/cc-docs-worker). Not in lib/:
 # cc-docs and the Rust core look for it in the directory of the running executable.
 install(PROGRAMS "${CC_DOCS_WORKER}" DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
+
+# The Office conversion worker, next to the executable too (bundle/cc-office-worker).
+install(PROGRAMS "${CC_OFFICE_WORKER}" DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
 foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})

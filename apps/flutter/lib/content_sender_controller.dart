@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// State of the "Send file or link" screen: check and send an image, a PDF or a link, then (for
-// a PDF) the presenter commands. Like SenderController, but for the content channel.
+// State of the "Send file or link" screen: check and send an image, a PDF (also from an Office
+// file, converted first) or a link, then (for a PDF) the presenter commands. Like SenderController, but for the content channel.
 
 import 'dart:async';
 
@@ -14,6 +14,10 @@ enum ContentSendPhase {
 
   /// The file or link is being read and checked (by Rust).
   preparing,
+
+  /// An Office file is being converted to a PDF on this computer (seconds; no progress
+  /// figure, the conversion runs in a child process).
+  converting,
 
   /// Joined the room, waiting for the connection to the receiver.
   connecting,
@@ -73,6 +77,7 @@ class ContentSenderController extends ChangeNotifier {
 
   bool get isActive =>
       phase == ContentSendPhase.preparing ||
+      phase == ContentSendPhase.converting ||
       phase == ContentSendPhase.connecting ||
       phase == ContentSendPhase.sending ||
       phase == ContentSendPhase.ready;
@@ -143,6 +148,10 @@ class ContentSenderController extends ChangeNotifier {
         this.pages = pages;
         this.host = host;
         phase = ContentSendPhase.connecting;
+      case ContentSenderUiEvent_Converting(:final name):
+        // The name as picked (the PDF gets its name with `Prepared`).
+        this.name = displayName(name);
+        phase = ContentSendPhase.converting;
       case ContentSenderUiEvent_Joined():
         if (phase == ContentSendPhase.preparing) {
           phase = ContentSendPhase.connecting;

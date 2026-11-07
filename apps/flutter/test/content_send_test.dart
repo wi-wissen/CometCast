@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/content_sender_controller.dart';
 import 'package:cometcast/main.dart';
+import 'package:cometcast/send_content_page.dart' show contentTypeGroup;
 
 import 'fake_core.dart';
 
@@ -98,7 +99,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('pickFileButton')));
       await flush(tester);
-      expect(h.pickerLabels, ['Images and PDF']);
+      expect(h.pickerLabels, ['Images, PDF and Office files']);
       expect(find.text('Chosen: talk.pdf'), findsOneWidget);
 
       // A wrong room code is refused with the Rust rule.
@@ -418,6 +419,108 @@ void main() {
       await flush(tester);
       expect(find.byKey(const Key('presenter')), findsNothing);
       expect(find.text('The receiver has left.'), findsOneWidget);
+    });
+  });
+
+  group('office files', () {
+    testWidgets('an Office file is sent as a source; the screen shows the '
+        'conversion, then the PDF it became', (tester) async {
+      final h = await openSend(tester);
+      h.picked = '/home/user/Documents/Class notes.docx';
+      await chooseFileAndStart(tester);
+      expect(
+        h.core.contentSource,
+        const ContentSource.file(path: '/home/user/Documents/Class notes.docx'),
+      );
+      h.core.contentSenderEvents.add(
+        const ContentSenderUiEvent.converting(name: 'Class notes.docx'),
+      );
+      await flush(tester);
+      expect(
+        find.text(
+          'Converting “Class notes.docx” to PDF … This can take a few seconds.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('convertProgress')), findsOneWidget);
+      // The stop button is there while it converts.
+      expect(find.byKey(const Key('stopButton')), findsOneWidget);
+      expect(find.byKey(const Key('startButton')), findsNothing);
+
+      // After the conversion the PDF is what is checked and sent.
+      h.core.contentSenderEvents
+        ..add(
+          ContentSenderUiEvent.prepared(
+            name: 'Class notes.pdf',
+            kind: UiContentKind.pdf,
+            size: BigInt.from(4096),
+            pages: 7,
+          ),
+        )
+        ..add(const ContentSenderUiEvent.joined())
+        ..add(const ContentSenderUiEvent.connected())
+        ..add(const ContentSenderUiEvent.sent());
+      await flush(tester);
+      expect(find.byKey(const Key('convertProgress')), findsNothing);
+      expect(find.textContaining('“Class notes.pdf” was sent'), findsOneWidget);
+      // It is a PDF now: the presenter controls work.
+      expect(find.byKey(const Key('presenter')), findsOneWidget);
+      expect(find.text('Page 1 of 7'), findsOneWidget);
+    });
+
+    testWidgets('the file dialog offers the three Office types', (
+      tester,
+    ) async {
+      final h = await openSend(tester);
+      await tester.tap(find.byKey(const Key('pickFileButton')));
+      await flush(tester);
+      expect(h.pickerLabels, ['Images, PDF and Office files']);
+      expect(find.text('Choose image, PDF or Office file …'), findsOneWidget);
+      final group = contentTypeGroup('x');
+      expect(
+        group.extensions,
+        containsAll(['png', 'pdf', 'docx', 'pptx', 'xlsx']),
+      );
+      // Not offered: legacy and OpenDocument files (the core refuses them anyway).
+      expect(group.extensions, isNot(contains('doc')));
+      expect(group.extensions, isNot(contains('odt')));
+      expect(group.mimeTypes, hasLength(8));
+      expect(group.uniformTypeIdentifiers, hasLength(5));
+    });
+
+    testWidgets('a failed conversion shows its own sentence and the form is '
+        'usable again (en and de)', (tester) async {
+      const wanted = {
+        'en': {
+          UiSendRejection.officeUnavailable: 'Office files cannot be converted on this device because the conversion component was not found.',
+          UiSendRejection.officeEncrypted: 'This is an old Office format or a file protected by a password. Save it as .docx, .pptx or .xlsx without a password and try again.',
+          UiSendRejection.officeFailed: 'The Office file could not be converted. It may be damaged or too complex, or the conversion took too long.',
+        },
+        'de': {
+          UiSendRejection.officeUnavailable: 'Office-Dateien können auf diesem Gerät nicht umgewandelt werden, weil die Umwandlungskomponente nicht gefunden wurde.',
+          UiSendRejection.officeEncrypted: 'Das ist ein altes Office-Format oder eine passwortgeschützte Datei. Speichern Sie sie ohne Passwort als .docx, .pptx oder .xlsx und versuchen Sie es erneut.',
+          UiSendRejection.officeFailed: 'Die Office-Datei konnte nicht umgewandelt werden. Sie ist möglicherweise beschädigt oder zu umfangreich, oder die Umwandlung hat zu lange gedauert.',
+        },
+      };
+      for (final locale in ['en', 'de']) {
+        for (final entry in wanted[locale]!.entries) {
+          final h = await openSend(tester, locale: locale);
+          h.picked = '/tmp/a.pptx';
+          await chooseFileAndStart(tester);
+          h.core.contentSenderEvents
+            ..add(const ContentSenderUiEvent.converting(name: 'a.pptx'))
+            ..add(ContentSenderUiEvent.rejected(reason: entry.key));
+          await flush(tester);
+          expect(
+            tester.widget<Text>(find.byKey(const Key('statusText'))).data,
+            entry.value,
+            reason: '$locale ${entry.key}',
+          );
+          expect(find.byKey(const Key('convertProgress')), findsNothing);
+          expect(find.byKey(const Key('startButton')), findsOneWidget);
+          await tester.pumpWidget(const SizedBox());
+        }
+      }
     });
   });
 

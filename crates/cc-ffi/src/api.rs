@@ -40,6 +40,7 @@ use crate::content::{self, CONTENT};
 use crate::content_sender;
 use crate::encoded;
 use crate::frb_generated::StreamSink;
+use crate::office;
 use crate::video::{self, VIDEO};
 
 /// Called once when the library is loaded.
@@ -1500,6 +1501,23 @@ pub fn set_docs_worker(path: Option<String>) {
     content::set_worker_override(path.map(std::path::PathBuf::from));
 }
 
+/// Use this program to convert Office files (an absolute path) instead of looking for one;
+/// `None` goes back to the default search. For tests and for hosts whose layout differs.
+#[frb(sync)]
+pub fn set_office_worker(path: Option<String>) {
+    office::set_worker_override(path.map(std::path::PathBuf::from));
+}
+
+/// The Office conversion worker program (`cc-office-worker`) that would be used now, or
+/// `None` when none was found (then Office files are refused with
+/// [`UiSendRejection::OfficeUnavailable`]). Search order: [`set_office_worker`]; a file
+/// `cc-office-worker` in the directory of the running executable (or one directory up from a
+/// Cargo `deps` directory). No environment variable and no `PATH` search.
+#[frb(sync)]
+pub fn office_worker_path() -> Option<String> {
+    office::worker_path()
+}
+
 /// The PDF render worker program that would be used now, or `None` when none was found (then
 /// received PDFs fail with [`UiContentError::WorkerUnavailable`], and nothing falls back to
 /// the unprotected in-process engine). Search order: [`set_docs_worker`]; the environment
@@ -1517,8 +1535,10 @@ pub fn docs_worker_path() -> Option<String> {
 /// What the person wants to send.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContentSource {
-    /// A file on this computer: an image (`.png .jpg .jpeg .webp .gif`, at most 10 MiB) or a
-    /// PDF (`.pdf`, at most 64 MiB). Rust reads it; the bytes do not cross the bridge.
+    /// A file on this computer: an image (`.png .jpg .jpeg .webp .gif`, at most 10 MiB), a
+    /// PDF (`.pdf`, at most 64 MiB) or an Office file (`.docx .pptx .xlsx`, at most 50 MiB,
+    /// converted to a PDF here first; event `Converting`). Rust reads it; the bytes do not
+    /// cross the bridge.
     File {
         /// Path of the file.
         path: String,
@@ -1560,6 +1580,15 @@ pub enum UiSendRejection {
     DocumentUnusable,
     /// Not an acceptable http(s) link.
     BadLink,
+    /// An Office file (`.docx .pptx .xlsx`) cannot be converted on this system: the conversion
+    /// worker program is missing or the build has no conversion engine.
+    OfficeUnavailable,
+    /// An old binary Office file or one protected by a password (save it as `.docx`, `.pptx`
+    /// or `.xlsx` without a password).
+    OfficeEncrypted,
+    /// The Office file is damaged, refused by the safety checks (container, size after
+    /// unpacking), could not be converted or took too long (120 s).
+    OfficeFailed,
 }
 
 /// What the content sender tells the UI. Order: `Prepared`, `Joined`, `Connected`,
@@ -1579,6 +1608,13 @@ pub enum ContentSenderUiEvent {
         pages: Option<u32>,
         /// Host of a link in its punycode form.
         host: Option<String>,
+    },
+    /// An Office file is being converted to a PDF (takes seconds, up to 120 s; runs in a
+    /// child process). Comes before `Prepared` and only for `.docx .pptx .xlsx`; a failure
+    /// ends the stream with `Rejected`.
+    Converting {
+        /// The file name as picked.
+        name: String,
     },
     /// The room was joined and the offer sent.
     Joined,
@@ -1657,8 +1693,25 @@ pub async fn start_content_sender(
         }
     };
     let worker = content::worker();
+    // An Office file takes a while to convert: say so first. A person who stops now is
+    // noticed after the conversion (the child process runs to its end or its deadline; its
+    // result is dropped).
+    if let ContentSource::File { path } = &source {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if office::is_office_name(&name)
+            && events
+                .add(ContentSenderUiEvent::Converting { name })
+                .is_err()
+        {
+            return;
+        }
+    }
+    let office_options = office::options();
     let prepared = match tokio::task::spawn_blocking(move || {
-        content_sender::prepare(&source, &worker)
+        content_sender::prepare(&source, &worker, &office_options)
     })
     .await
     {

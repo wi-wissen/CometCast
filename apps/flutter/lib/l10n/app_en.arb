@@ -640,11 +640,11 @@
   "@sendContentModeLink": {
     "description": "Segment: send a web link."
   },
-  "sendContentPick": "Choose image or PDF …",
+  "sendContentPick": "Choose image, PDF or Office file …",
   "@sendContentPick": {
     "description": "Button that opens the file dialog."
   },
-  "sendContentPickerTypes": "Images and PDF",
+  "sendContentPickerTypes": "Images, PDF and Office files",
   "@sendContentPickerTypes": {
     "description": "Name of the file type filter in the file dialog."
   },
@@ -789,11 +789,11 @@
   "@sendRejectEmpty": {
     "description": "Reason a file cannot be sent."
   },
-  "sendRejectTooLarge": "The file is too large. Images may be up to 10 MiB, PDFs up to 64 MiB.",
+  "sendRejectTooLarge": "The file is too large. Images may be up to 10 MiB, PDFs up to 64 MiB, Office files up to 50 MiB.",
   "@sendRejectTooLarge": {
     "description": "Reason a file cannot be sent."
   },
-  "sendRejectType": "Only PNG, JPEG, WebP and GIF images and PDF files can be sent.",
+  "sendRejectType": "Only PNG, JPEG, WebP and GIF images, PDF files and Word, PowerPoint and Excel files (.docx, .pptx, .xlsx) can be sent.",
   "@sendRejectType": {
     "description": "Reason a file cannot be sent."
   },
@@ -804,5 +804,114 @@
   "sendRejectDocument": "A receiver could not show this PDF. It may be damaged or protected by a password.",
   "@sendRejectDocument": {
     "description": "Reason a PDF cannot be sent."
+  },
+  "sendContentConverting": "Converting “{name}” to PDF … This can take a few seconds.",
+  "@sendContentConverting": {
+    "description": "Status while an Office file is converted to a PDF on this device (before anything is sent).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sendContentConvertingLabel": "Conversion in progress",
+  "@sendContentConvertingLabel": {
+    "description": "Screen reader label of the indeterminate bar while an Office file is converted."
+  },
+  "sendRejectOfficeUnavailable": "Office files cannot be converted on this device because the conversion component was not found.",
+  "@sendRejectOfficeUnavailable": {
+    "description": "Reason an Office file cannot be sent: the cc-office worker is missing."
+  },
+  "sendRejectOfficeEncrypted": "This is an old Office format or a file protected by a password. Save it as .docx, .pptx or .xlsx without a password and try again.",
+  "@sendRejectOfficeEncrypted": {
+    "description": "Reason an Office file cannot be sent."
+  },
+  "sendRejectOfficeFailed": "The Office file could not be converted. It may be damaged or too complex, or the conversion took too long.",
+  "@sendRejectOfficeFailed": {
+    "description": "Reason an Office file cannot be sent: damaged, refused by the safety checks, failed or timed out."
+  },
+  "toolbarLabel": "Screen tools",
+  "@toolbarLabel": {
+    "description": "Label of the toolbar over the received screen."
+  },
+  "toolbarPen": "Pen",
+  "@toolbarPen": {
+    "description": "Toolbar button."
+  },
+  "toolbarMarker": "Highlighter",
+  "@toolbarMarker": {
+    "description": "Toolbar button."
+  },
+  "toolbarEraser": "Eraser",
+  "@toolbarEraser": {
+    "description": "Toolbar button."
+  },
+  "toolbarUndo": "Undo",
+  "@toolbarUndo": {
+    "description": "Toolbar button."
+  },
+  "toolbarClear": "Clear all annotations",
+  "@toolbarClear": {
+    "description": "Toolbar button."
+  },
+  "toolbarLaser": "Laser pointer",
+  "@toolbarLaser": {
+    "description": "Toolbar button."
+  },
+  "toolbarFreeze": "Freeze image (the live stream keeps running)",
+  "@toolbarFreeze": {
+    "description": "Toolbar button."
+  },
+  "toolbarUnfreeze": "Unfreeze image",
+  "@toolbarUnfreeze": {
+    "description": "Toolbar button while the image is frozen."
+  },
+  "toolbarCollapse": "Collapse toolbar",
+  "@toolbarCollapse": {
+    "description": "Toolbar button."
+  },
+  "toolbarExpand": "Show toolbar",
+  "@toolbarExpand": {
+    "description": "Button that brings the collapsed toolbar back."
+  },
+  "toolbarSizeSmall": "Thin",
+  "@toolbarSizeSmall": {
+    "description": "Line size."
+  },
+  "toolbarSizeMedium": "Medium",
+  "@toolbarSizeMedium": {
+    "description": "Line size."
+  },
+  "toolbarSizeLarge": "Thick",
+  "@toolbarSizeLarge": {
+    "description": "Line size."
+  },
+  "toolbarColorRed": "Red",
+  "@toolbarColorRed": {
+    "description": "Colour of the pen."
+  },
+  "toolbarColorYellow": "Yellow",
+  "@toolbarColorYellow": {
+    "description": "Colour of the pen."
+  },
+  "toolbarColorGreen": "Green",
+  "@toolbarColorGreen": {
+    "description": "Colour of the pen."
+  },
+  "toolbarColorBlue": "Blue",
+  "@toolbarColorBlue": {
+    "description": "Colour of the pen."
+  },
+  "toolbarColorWhite": "White",
+  "@toolbarColorWhite": {
+    "description": "Colour of the pen."
+  },
+  "toolbarCanvasLabel": "Annotations (visible only on this device)",
+  "@toolbarCanvasLabel": {
+    "description": "Screen reader label of the drawing layer. Annotations are local: nothing is sent to the sender."
+  },
+  "toolbarFrozenHint": "Frozen. The live stream keeps running in the background.",
+  "@toolbarFrozenHint": {
+    "description": "Shown while the image is frozen."
   }
 }

@@ -744,11 +744,12 @@ extension ContentSenderUiEventPatterns on ContentSenderUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ContentSenderUiEvent_Prepared value)?  prepared,TResult Function( ContentSenderUiEvent_Joined value)?  joined,TResult Function( ContentSenderUiEvent_ConnectionState value)?  connectionState,TResult Function( ContentSenderUiEvent_Connected value)?  connected,TResult Function( ContentSenderUiEvent_Progress value)?  progress,TResult Function( ContentSenderUiEvent_Sent value)?  sent,TResult Function( ContentSenderUiEvent_Stopped value)?  stopped,TResult Function( ContentSenderUiEvent_PeerLeft value)?  peerLeft,TResult Function( ContentSenderUiEvent_Rejected value)?  rejected,TResult Function( ContentSenderUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ContentSenderUiEvent_Prepared value)?  prepared,TResult Function( ContentSenderUiEvent_Converting value)?  converting,TResult Function( ContentSenderUiEvent_Joined value)?  joined,TResult Function( ContentSenderUiEvent_ConnectionState value)?  connectionState,TResult Function( ContentSenderUiEvent_Connected value)?  connected,TResult Function( ContentSenderUiEvent_Progress value)?  progress,TResult Function( ContentSenderUiEvent_Sent value)?  sent,TResult Function( ContentSenderUiEvent_Stopped value)?  stopped,TResult Function( ContentSenderUiEvent_PeerLeft value)?  peerLeft,TResult Function( ContentSenderUiEvent_Rejected value)?  rejected,TResult Function( ContentSenderUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ContentSenderUiEvent_Prepared() when prepared != null:
-return prepared(_that);case ContentSenderUiEvent_Joined() when joined != null:
+return prepared(_that);case ContentSenderUiEvent_Converting() when converting != null:
+return converting(_that);case ContentSenderUiEvent_Joined() when joined != null:
 return joined(_that);case ContentSenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case ContentSenderUiEvent_Connected() when connected != null:
 return connected(_that);case ContentSenderUiEvent_Progress() when progress != null:
@@ -775,11 +776,12 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ContentSenderUiEvent_Prepared value)  prepared,required TResult Function( ContentSenderUiEvent_Joined value)  joined,required TResult Function( ContentSenderUiEvent_ConnectionState value)  connectionState,required TResult Function( ContentSenderUiEvent_Connected value)  connected,required TResult Function( ContentSenderUiEvent_Progress value)  progress,required TResult Function( ContentSenderUiEvent_Sent value)  sent,required TResult Function( ContentSenderUiEvent_Stopped value)  stopped,required TResult Function( ContentSenderUiEvent_PeerLeft value)  peerLeft,required TResult Function( ContentSenderUiEvent_Rejected value)  rejected,required TResult Function( ContentSenderUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ContentSenderUiEvent_Prepared value)  prepared,required TResult Function( ContentSenderUiEvent_Converting value)  converting,required TResult Function( ContentSenderUiEvent_Joined value)  joined,required TResult Function( ContentSenderUiEvent_ConnectionState value)  connectionState,required TResult Function( ContentSenderUiEvent_Connected value)  connected,required TResult Function( ContentSenderUiEvent_Progress value)  progress,required TResult Function( ContentSenderUiEvent_Sent value)  sent,required TResult Function( ContentSenderUiEvent_Stopped value)  stopped,required TResult Function( ContentSenderUiEvent_PeerLeft value)  peerLeft,required TResult Function( ContentSenderUiEvent_Rejected value)  rejected,required TResult Function( ContentSenderUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case ContentSenderUiEvent_Prepared():
-return prepared(_that);case ContentSenderUiEvent_Joined():
+return prepared(_that);case ContentSenderUiEvent_Converting():
+return converting(_that);case ContentSenderUiEvent_Joined():
 return joined(_that);case ContentSenderUiEvent_ConnectionState():
 return connectionState(_that);case ContentSenderUiEvent_Connected():
 return connected(_that);case ContentSenderUiEvent_Progress():
@@ -802,11 +804,12 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ContentSenderUiEvent_Prepared value)?  prepared,TResult? Function( ContentSenderUiEvent_Joined value)?  joined,TResult? Function( ContentSenderUiEvent_ConnectionState value)?  connectionState,TResult? Function( ContentSenderUiEvent_Connected value)?  connected,TResult? Function( ContentSenderUiEvent_Progress value)?  progress,TResult? Function( ContentSenderUiEvent_Sent value)?  sent,TResult? Function( ContentSenderUiEvent_Stopped value)?  stopped,TResult? Function( ContentSenderUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ContentSenderUiEvent_Rejected value)?  rejected,TResult? Function( ContentSenderUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ContentSenderUiEvent_Prepared value)?  prepared,TResult? Function( ContentSenderUiEvent_Converting value)?  converting,TResult? Function( ContentSenderUiEvent_Joined value)?  joined,TResult? Function( ContentSenderUiEvent_ConnectionState value)?  connectionState,TResult? Function( ContentSenderUiEvent_Connected value)?  connected,TResult? Function( ContentSenderUiEvent_Progress value)?  progress,TResult? Function( ContentSenderUiEvent_Sent value)?  sent,TResult? Function( ContentSenderUiEvent_Stopped value)?  stopped,TResult? Function( ContentSenderUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ContentSenderUiEvent_Rejected value)?  rejected,TResult? Function( ContentSenderUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case ContentSenderUiEvent_Prepared() when prepared != null:
-return prepared(_that);case ContentSenderUiEvent_Joined() when joined != null:
+return prepared(_that);case ContentSenderUiEvent_Converting() when converting != null:
+return converting(_that);case ContentSenderUiEvent_Joined() when joined != null:
 return joined(_that);case ContentSenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that);case ContentSenderUiEvent_Connected() when connected != null:
 return connected(_that);case ContentSenderUiEvent_Progress() when progress != null:
@@ -832,10 +835,11 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  prepared,TResult Function()?  joined,TResult Function( UiConnectionState state)?  connectionState,TResult Function()?  connected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  sent,TResult Function()?  stopped,TResult Function()?  peerLeft,TResult Function( UiSendRejection reason)?  rejected,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  prepared,TResult Function( String name)?  converting,TResult Function()?  joined,TResult Function( UiConnectionState state)?  connectionState,TResult Function()?  connected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  sent,TResult Function()?  stopped,TResult Function()?  peerLeft,TResult Function( UiSendRejection reason)?  rejected,TResult Function( String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ContentSenderUiEvent_Prepared() when prepared != null:
-return prepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case ContentSenderUiEvent_Joined() when joined != null:
+return prepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case ContentSenderUiEvent_Converting() when converting != null:
+return converting(_that.name);case ContentSenderUiEvent_Joined() when joined != null:
 return joined();case ContentSenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case ContentSenderUiEvent_Connected() when connected != null:
 return connected();case ContentSenderUiEvent_Progress() when progress != null:
@@ -862,10 +866,11 @@ return error(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  prepared,required TResult Function()  joined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function()  connected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  sent,required TResult Function()  stopped,required TResult Function()  peerLeft,required TResult Function( UiSendRejection reason)  rejected,required TResult Function( String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  prepared,required TResult Function( String name)  converting,required TResult Function()  joined,required TResult Function( UiConnectionState state)  connectionState,required TResult Function()  connected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  sent,required TResult Function()  stopped,required TResult Function()  peerLeft,required TResult Function( UiSendRejection reason)  rejected,required TResult Function( String message)  error,}) {final _that = this;
 switch (_that) {
 case ContentSenderUiEvent_Prepared():
-return prepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case ContentSenderUiEvent_Joined():
+return prepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case ContentSenderUiEvent_Converting():
+return converting(_that.name);case ContentSenderUiEvent_Joined():
 return joined();case ContentSenderUiEvent_ConnectionState():
 return connectionState(_that.state);case ContentSenderUiEvent_Connected():
 return connected();case ContentSenderUiEvent_Progress():
@@ -888,10 +893,11 @@ return error(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  prepared,TResult? Function()?  joined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function()?  connected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  sent,TResult? Function()?  stopped,TResult? Function()?  peerLeft,TResult? Function( UiSendRejection reason)?  rejected,TResult? Function( String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  prepared,TResult? Function( String name)?  converting,TResult? Function()?  joined,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function()?  connected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  sent,TResult? Function()?  stopped,TResult? Function()?  peerLeft,TResult? Function( UiSendRejection reason)?  rejected,TResult? Function( String message)?  error,}) {final _that = this;
 switch (_that) {
 case ContentSenderUiEvent_Prepared() when prepared != null:
-return prepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case ContentSenderUiEvent_Joined() when joined != null:
+return prepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case ContentSenderUiEvent_Converting() when converting != null:
+return converting(_that.name);case ContentSenderUiEvent_Joined() when joined != null:
 return joined();case ContentSenderUiEvent_ConnectionState() when connectionState != null:
 return connectionState(_that.state);case ContentSenderUiEvent_Connected() when connected != null:
 return connected();case ContentSenderUiEvent_Progress() when progress != null:
@@ -983,6 +989,75 @@ as UiContentKind,size: null == size ? _self.size : size // ignore: cast_nullable
 as BigInt,pages: freezed == pages ? _self.pages : pages // ignore: cast_nullable_to_non_nullable
 as int?,host: freezed == host ? _self.host : host // ignore: cast_nullable_to_non_nullable
 as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ContentSenderUiEvent_Converting extends ContentSenderUiEvent {
+  const ContentSenderUiEvent_Converting({required this.name}): super._();
+  
+
+/// The file name as picked.
+ final  String name;
+
+/// Create a copy of ContentSenderUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ContentSenderUiEvent_ConvertingCopyWith<ContentSenderUiEvent_Converting> get copyWith => _$ContentSenderUiEvent_ConvertingCopyWithImpl<ContentSenderUiEvent_Converting>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ContentSenderUiEvent_Converting&&(identical(other.name, name) || other.name == name));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,name);
+}
+
+@override
+String toString() {
+    return 'ContentSenderUiEvent.converting(name: $name)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ContentSenderUiEvent_ConvertingCopyWith<$Res> implements $ContentSenderUiEventCopyWith<$Res> {
+  factory $ContentSenderUiEvent_ConvertingCopyWith(ContentSenderUiEvent_Converting value, $Res Function(ContentSenderUiEvent_Converting) _then) = _$ContentSenderUiEvent_ConvertingCopyWithImpl;
+@useResult
+$Res call({
+ String name
+});
+
+
+
+
+}
+/// @nodoc
+class _$ContentSenderUiEvent_ConvertingCopyWithImpl<$Res>
+    implements $ContentSenderUiEvent_ConvertingCopyWith<$Res> {
+  _$ContentSenderUiEvent_ConvertingCopyWithImpl(this._self, this._then);
+
+  final ContentSenderUiEvent_Converting _self;
+  final $Res Function(ContentSenderUiEvent_Converting) _then;
+
+/// Create a copy of ContentSenderUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? name = null,}) {
+  return _then(ContentSenderUiEvent_Converting(
+name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,
   ));
 }
 

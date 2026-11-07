@@ -210,6 +210,18 @@ LinkCheck validateLink({required String input}) =>
 void setDocsWorker({String? path}) =>
     RustLib.instance.api.crateApiSetDocsWorker(path: path);
 
+/// Use this program to convert Office files (an absolute path) instead of looking for one;
+/// `None` goes back to the default search. For tests and for hosts whose layout differs.
+void setOfficeWorker({String? path}) =>
+    RustLib.instance.api.crateApiSetOfficeWorker(path: path);
+
+/// The Office conversion worker program (`cc-office-worker`) that would be used now, or
+/// `None` when none was found (then Office files are refused with
+/// [`UiSendRejection::OfficeUnavailable`]). Search order: [`set_office_worker`]; a file
+/// `cc-office-worker` in the directory of the running executable (or one directory up from a
+/// Cargo `deps` directory). No environment variable and no `PATH` search.
+String? officeWorkerPath() => RustLib.instance.api.crateApiOfficeWorkerPath();
+
 /// The PDF render worker program that would be used now, or `None` when none was found (then
 /// received PDFs fail with [`UiContentError::WorkerUnavailable`], and nothing falls back to
 /// the unprotected in-process engine). Search order: [`set_docs_worker`]; the environment
@@ -421,6 +433,14 @@ sealed class ContentSenderUiEvent with _$ContentSenderUiEvent {
     String? host,
   }) = ContentSenderUiEvent_Prepared;
 
+  /// An Office file is being converted to a PDF (takes seconds, up to 120 s; runs in a
+  /// child process). Comes before `Prepared` and only for `.docx .pptx .xlsx`; a failure
+  /// ends the stream with `Rejected`.
+  const factory ContentSenderUiEvent.converting({
+    /// The file name as picked.
+    required String name,
+  }) = ContentSenderUiEvent_Converting;
+
   /// The room was joined and the offer sent.
   const factory ContentSenderUiEvent.joined() = ContentSenderUiEvent_Joined;
 
@@ -470,8 +490,10 @@ sealed class ContentSenderUiEvent with _$ContentSenderUiEvent {
 sealed class ContentSource with _$ContentSource {
   const ContentSource._();
 
-  /// A file on this computer: an image (`.png .jpg .jpeg .webp .gif`, at most 10 MiB) or a
-  /// PDF (`.pdf`, at most 64 MiB). Rust reads it; the bytes do not cross the bridge.
+  /// A file on this computer: an image (`.png .jpg .jpeg .webp .gif`, at most 10 MiB), a
+  /// PDF (`.pdf`, at most 64 MiB) or an Office file (`.docx .pptx .xlsx`, at most 50 MiB,
+  /// converted to a PDF here first; event `Converting`). Rust reads it; the bytes do not
+  /// cross the bridge.
   const factory ContentSource.file({
     /// Path of the file.
     required String path,
@@ -1087,6 +1109,18 @@ enum UiSendRejection {
 
   /// Not an acceptable http(s) link.
   badLink,
+
+  /// An Office file (`.docx .pptx .xlsx`) cannot be converted on this system: the conversion
+  /// worker program is missing or the build has no conversion engine.
+  officeUnavailable,
+
+  /// An old binary Office file or one protected by a password (save it as `.docx`, `.pptx`
+  /// or `.xlsx` without a password).
+  officeEncrypted,
+
+  /// The Office file is damaged, refused by the safety checks (container, size after
+  /// unpacking), could not be converted or took too long (120 s).
+  officeFailed,
 }
 
 /// One decoded picture for the UI.

@@ -47,6 +47,8 @@ export 'package:cometcast/src/rust/api.dart'
         validateLink,
         setDocsWorker,
         docsWorkerPath,
+        setOfficeWorker,
+        officeWorkerPath,
         startContentSender,
         sendContentCmd,
         captureInfo,
@@ -90,7 +92,15 @@ abstract class CoreApi {
   /// The PDF render worker that would be used now, or null if none was found.
   String? docsWorkerPath();
 
-  /// Check [source] (an image or PDF file, or a link), join the room [code] and send it with
+  /// Use this program to convert Office files, or null for the default search (next to the
+  /// executable). Tests and hosts with another layout.
+  void setOfficeWorker(String? path);
+
+  /// The Office conversion worker that would be used now, or null if none was found (Office
+  /// files are then refused with [UiSendRejection.officeUnavailable]).
+  String? officeWorkerPath();
+
+  /// Check [source] (an image, PDF or Office file, or a link), join the room [code] and send it with
   /// progress; commands follow with [sendContentCmd]. Errors arrive as events.
   Stream<ContentSenderUiEvent> startContentSender({
     required String code,
@@ -212,6 +222,12 @@ class RustCoreApi implements CoreApi {
 
   @override
   String? docsWorkerPath() => rust.docsWorkerPath();
+
+  @override
+  void setOfficeWorker(String? path) => rust.setOfficeWorker(path: path);
+
+  @override
+  String? officeWorkerPath() => rust.officeWorkerPath();
 
   @override
   Stream<ContentSenderUiEvent> startContentSender({

@@ -49,6 +49,10 @@ cc-sender.workspace = true
 cc-capture.workspace = true
 cc-files.workspace = true
 cc-docs.workspace = true
+# Office to PDF on the sender (docs/documents.md). Default features: the parent process must
+# know that the pure-Rust engine exists (`rust_engine_compiled`) to choose it; the conversion
+# itself runs in the separate `cc-office-worker` program.
+cc-office.workspace = true
 cc-discovery = { path = "../cc-discovery" }
 cc-media = { workspace = true, optional = true }
 tokio.workspace = true
@@ -59,3 +63,5 @@ flutter_rust_bridge = "=2.13.0"
 
 [dev-dependencies]
 tempfile = "3"
+# The ZIP writer of the cc-office tests is included by path (office.rs tests).
+flate2.workspace = true

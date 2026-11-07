@@ -164,6 +164,7 @@ fn file_name(path: &Path) -> String {
 pub(crate) fn prepare(
     source: &ContentSource,
     worker: &Worker,
+    office: &cc_office::Options,
 ) -> Result<Prepared, UiSendRejection> {
     match source {
         ContentSource::Link { url } => {
@@ -192,6 +193,22 @@ pub(crate) fn prepare(
                 let pages = pdf_pages(&bytes, worker)?;
                 Ok(Prepared {
                     name,
+                    kind: UiContentKind::Pdf,
+                    size: bytes.len() as u64,
+                    pages,
+                    host: None,
+                    url: None,
+                    payload: Payload::Pdf(bytes),
+                })
+            } else if crate::office::is_office_name(&name) {
+                // Converted to a PDF here; the receiver never sees the Office file. The
+                // converted bytes are checked like a PDF that was picked directly.
+                let (pdf_name, bytes) = crate::office::convert(p, office)?;
+                document_transfer(&pdf_name, &bytes)
+                    .map_err(|_| UiSendRejection::DocumentUnusable)?;
+                let pages = pdf_pages(&bytes, worker)?;
+                Ok(Prepared {
+                    name: pdf_name,
                     kind: UiContentKind::Pdf,
                     size: bytes.len() as u64,
                     pages,
@@ -448,14 +465,23 @@ mod tests {
     fn images_are_checked_by_content_not_by_name() {
         let d = tempfile::tempdir().unwrap();
         let ok = file(d.path(), "a.png", PNG);
-        let p = prepare(&ContentSource::File { path: ok }, &no_worker()).unwrap();
+        let p = prepare(
+            &ContentSource::File { path: ok },
+            &no_worker(),
+            &cc_office::Options::default(),
+        )
+        .unwrap();
         assert_eq!(p.kind, UiContentKind::Image);
         assert_eq!(p.name, "a.png");
         // A JPEG named .png is sent with the type of its bytes.
         let jpg = file(d.path(), "b.png", &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]);
-        match prepare(&ContentSource::File { path: jpg }, &no_worker())
-            .unwrap()
-            .payload
+        match prepare(
+            &ContentSource::File { path: jpg },
+            &no_worker(),
+            &cc_office::Options::default(),
+        )
+        .unwrap()
+        .payload
         {
             Payload::Image(m, _) => assert_eq!(m, ImageMime::Jpeg),
             _ => panic!("image expected"),
@@ -463,13 +489,23 @@ mod tests {
         // Text named .png is refused.
         let bad = file(d.path(), "c.png", b"hello world, not a picture");
         assert_eq!(
-            prepare(&ContentSource::File { path: bad }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: bad },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::UnsupportedType)
         );
         // An unknown extension is refused (SVG can carry script).
         let svg = file(d.path(), "d.svg", b"<svg/>");
         assert_eq!(
-            prepare(&ContentSource::File { path: svg }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: svg },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::UnsupportedType)
         );
     }
@@ -479,29 +515,54 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let empty = file(d.path(), "e.png", b"");
         assert_eq!(
-            prepare(&ContentSource::File { path: empty }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: empty },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::Empty)
         );
         let missing = d.path().join("nope.png").to_string_lossy().into_owned();
         assert_eq!(
-            prepare(&ContentSource::File { path: missing }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: missing },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::Unreadable)
         );
         let dir = d.path().to_string_lossy().into_owned() + "/sub.png";
         std::fs::create_dir(&dir).unwrap();
         assert_eq!(
-            prepare(&ContentSource::File { path: dir }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: dir },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::NotARegularFile)
         );
         let big = vec![0u8; usize::try_from(MAX_IMAGE_BYTES).unwrap() + 1];
         let big = file(d.path(), "big.png", &big);
         assert_eq!(
-            prepare(&ContentSource::File { path: big }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: big },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::TooLarge)
         );
         let notpdf = file(d.path(), "x.pdf", b"this is not a pdf");
         assert_eq!(
-            prepare(&ContentSource::File { path: notpdf }, &no_worker()).err(),
+            prepare(
+                &ContentSource::File { path: notpdf },
+                &no_worker(),
+                &cc_office::Options::default()
+            )
+            .err(),
             Some(UiSendRejection::NotPdf)
         );
     }
@@ -510,7 +571,12 @@ mod tests {
     fn a_pdf_without_a_worker_is_still_sendable_without_a_page_count() {
         let d = tempfile::tempdir().unwrap();
         let pdf = file(d.path(), "x.pdf", b"%PDF-1.4\n% not parsed here\n");
-        let p = prepare(&ContentSource::File { path: pdf }, &no_worker()).unwrap();
+        let p = prepare(
+            &ContentSource::File { path: pdf },
+            &no_worker(),
+            &cc_office::Options::default(),
+        )
+        .unwrap();
         assert_eq!(p.kind, UiContentKind::Pdf);
         assert_eq!(p.pages, None);
     }
@@ -522,6 +588,7 @@ mod tests {
                 url: " https://Example.org/a ".into(),
             },
             &no_worker(),
+            &cc_office::Options::default(),
         )
         .unwrap();
         assert_eq!(p.kind, UiContentKind::Link);
@@ -534,7 +601,12 @@ mod tests {
             "x",
         ] {
             assert_eq!(
-                prepare(&ContentSource::Link { url: bad.into() }, &no_worker()).err(),
+                prepare(
+                    &ContentSource::Link { url: bad.into() },
+                    &no_worker(),
+                    &cc_office::Options::default()
+                )
+                .err(),
                 Some(UiSendRejection::BadLink),
                 "{bad}"
             );
@@ -569,5 +641,33 @@ mod tests {
             .count();
         assert_eq!(accepted, CMD_QUEUE);
         clear_cmd_channel();
+    }
+
+    #[test]
+    fn office_files_are_converted_and_refused_with_their_own_reasons() {
+        let d = tempfile::tempdir().unwrap();
+        let none = cc_office::Options {
+            engine: cc_office::Engine::Rust,
+            worker: Some(cc_office::WorkerSpec::new(d.path().join("no-such-worker"))),
+            ..cc_office::Options::default()
+        };
+        // Legacy binary Office files and OpenDocument files are not accepted here.
+        for n in ["a.doc", "a.odt", "a.xls"] {
+            let f = file(d.path(), n, b"x");
+            assert_eq!(
+                prepare(&ContentSource::File { path: f }, &no_worker(), &none).err(),
+                Some(UiSendRejection::UnsupportedType),
+                "{n}"
+            );
+        }
+        // A damaged .docx fails in the container check, before any worker is started.
+        let bad = file(d.path(), "b.docx", b"not a zip");
+        assert_eq!(
+            prepare(&ContentSource::File { path: bad }, &no_worker(), &none).err(),
+            Some(UiSendRejection::OfficeFailed)
+        );
+        // An empty one is a failed conversion too (cc-office decides), never a panic.
+        let empty = file(d.path(), "c.pptx", b"");
+        assert!(prepare(&ContentSource::File { path: empty }, &no_worker(), &none).is_err());
     }
 }

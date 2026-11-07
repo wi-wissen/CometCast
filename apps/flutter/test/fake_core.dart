@@ -127,6 +127,14 @@ class FakeCoreApi implements CoreApi {
   @override
   String? docsWorkerPath() => docsWorker;
 
+  String? officeWorker;
+
+  @override
+  void setOfficeWorker(String? path) => officeWorker = path;
+
+  @override
+  String? officeWorkerPath() => officeWorker;
+
   // --- content sender -------------------------------------------------------------------
 
   final contentSenderEvents =

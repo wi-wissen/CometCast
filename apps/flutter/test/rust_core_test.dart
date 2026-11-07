@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/core/rust_loader.dart';
 
+import 'content_support.dart' show makeDocx;
 import 'fake_core.dart';
 
 String? findLibrary() {
@@ -319,6 +320,85 @@ void main() {
       expect(prepared.pages, 3);
       expect(events.last, isA<ContentSenderUiEvent_Error>());
     }, skip: skip);
+
+    test('Office files are refused with their own reasons, after a "converting" event', () async {
+      const core = RustCoreApi();
+      final dir = Directory.systemTemp.createTempSync('cometcast_office_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      Future<List<ContentSenderUiEvent>> run(String name) => core
+          .startContentSender(
+            code: 'K7M2QX',
+            server: '127.0.0.1:1',
+            source: ContentSource.file(path: '${dir.path}/$name'),
+          )
+          .toList();
+      void expectRejected(List<ContentSenderUiEvent> e, UiSendRejection r) {
+        expect(e, hasLength(2), reason: '$e');
+        expect(e.first, isA<ContentSenderUiEvent_Converting>());
+        expect((e.last as ContentSenderUiEvent_Rejected).reason, r);
+      }
+
+      // Not a ZIP: the container check refuses it before any worker starts.
+      File('${dir.path}/broken.docx').writeAsStringSync('this is not a zip');
+      expectRejected(await run('broken.docx'), UiSendRejection.officeFailed);
+      // An old binary (OLE) file or a password-protected one.
+      final ole = Uint8List(600)
+        ..setAll(0, [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+      File('${dir.path}/old.pptx').writeAsBytesSync(ole);
+      expectRejected(await run('old.pptx'), UiSendRejection.officeEncrypted);
+      // A valid file, but no worker program: unavailable, not "damaged".
+      core.setOfficeWorker('/nonexistent/cc-office-worker');
+      addTearDown(() => core.setOfficeWorker(null));
+      expect(core.officeWorkerPath(), isNull);
+      File('${dir.path}/ok.docx').writeAsBytesSync(makeDocx('Hello'));
+      expectRejected(await run('ok.docx'), UiSendRejection.officeUnavailable);
+      // OpenDocument and legacy names are not converted at all (no converting event).
+      for (final n in ['a.odt', 'a.doc', 'a.xls']) {
+        File('${dir.path}/$n').writeAsStringSync('x');
+        final e = await run(n);
+        expect(e, hasLength(1), reason: n);
+        expect(
+          (e.single as ContentSenderUiEvent_Rejected).reason,
+          UiSendRejection.unsupportedType,
+        );
+      }
+    }, skip: skip);
+
+    test(
+      'the real Office worker converts a .docx to a PDF before connecting',
+      () async {
+        const core = RustCoreApi();
+        final worker = File('${File(lib!).parent.path}/cc-office-worker');
+        if (!worker.existsSync()) {
+          markTestSkipped(
+            'cc-office-worker is missing (cargo build -p cc-office --bins)',
+          );
+          return;
+        }
+        core.setOfficeWorker(worker.absolute.path);
+        addTearDown(() => core.setOfficeWorker(null));
+        expect(core.officeWorkerPath(), worker.absolute.path);
+        final dir = Directory.systemTemp.createTempSync('cometcast_office_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        File('${dir.path}/Class notes.docx')
+            .writeAsBytesSync(makeDocx('Hello Comet Cast'));
+        final events = await core
+            .startContentSender(
+              code: 'K7M2QX',
+              server: '127.0.0.1:1',
+              source: ContentSource.file(path: '${dir.path}/Class notes.docx'),
+            )
+            .toList();
+        expect(events.first, isA<ContentSenderUiEvent_Converting>());
+        final prepared = events[1] as ContentSenderUiEvent_Prepared;
+        expect(prepared.kind, UiContentKind.pdf);
+        expect(prepared.name, 'Class notes.pdf');
+        expect(prepared.size.toInt(), greaterThan(100));
+        // No server on port 1: after the conversion the connection fails.
+        expect(events.last, isA<ContentSenderUiEvent_Error>());
+      },
+      skip: skip,
+    );
 
     test(
       'a missing worker is named, never replaced by an unprotected engine',

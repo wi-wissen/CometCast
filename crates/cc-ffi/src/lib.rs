@@ -11,6 +11,7 @@ pub mod api;
 mod content;
 mod content_sender;
 mod encoded;
+mod office;
 mod video;
 
 // Generated code uses `unsafe` (C calls) and has no docs, so it opts out of those lints.

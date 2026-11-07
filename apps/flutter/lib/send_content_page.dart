@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// "Send file or link": pick an image (PNG, JPEG, WebP, GIF) or a PDF, or type a web link;
+// "Send file or link": pick an image (PNG, JPEG, WebP, GIF), a PDF or an Office file (.docx,
+// .pptx, .xlsx; converted to a PDF on this computer first), or type a web link;
 // connect with the receiver's room code, send with a progress bar, and for a PDF turn pages
 // from here (previous / next / go to page / stop; arrow keys, Page Up, Page Down).
 //
@@ -27,23 +28,46 @@ typedef PickFile = Future<String?> Function(String typesLabel);
 /// copy of the chosen file whose path was not checked.
 Future<String?> pickImageOrPdf(String typesLabel) async {
   final file = await openFile(
-    acceptedTypeGroups: [
-      XTypeGroup(
-        label: typesLabel,
-        extensions: const ['png', 'jpg', 'jpeg', 'webp', 'gif', 'pdf'],
-        mimeTypes: const [
-          'image/png',
-          'image/jpeg',
-          'image/webp',
-          'image/gif',
-          'application/pdf',
-        ],
-        uniformTypeIdentifiers: const ['public.image', 'com.adobe.pdf'],
-      ),
-    ],
+    acceptedTypeGroups: [contentTypeGroup(typesLabel)],
   );
   return file?.path;
 }
+
+/// The file types of the dialog: images, PDF and the three Office types the Rust core
+/// converts (`.docx .pptx .xlsx`). UNCERTAIN: the Office types are listed by extension, MIME
+/// type and UTI; the GTK dialog filters by extension or MIME type, other platforms were not
+/// tried.
+XTypeGroup contentTypeGroup(String typesLabel) => XTypeGroup(
+  label: typesLabel,
+  extensions: const [
+    'png',
+    'jpg',
+    'jpeg',
+    'webp',
+    'gif',
+    'pdf',
+    'docx',
+    'pptx',
+    'xlsx',
+  ],
+  mimeTypes: const [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ],
+  uniformTypeIdentifiers: const [
+    'public.image',
+    'com.adobe.pdf',
+    'org.openxmlformats.wordprocessingml.document',
+    'org.openxmlformats.presentationml.presentation',
+    'org.openxmlformats.spreadsheetml.sheet',
+  ],
+);
 
 enum _Mode { file, link }
 
@@ -57,6 +81,9 @@ String sendRejectionText(AppLocalizations t, UiSendRejection r) => switch (r) {
   UiSendRejection.notPdf => t.sendRejectNotPdf,
   UiSendRejection.documentUnusable => t.sendRejectDocument,
   UiSendRejection.badLink => t.sendContentLinkInvalid,
+  UiSendRejection.officeUnavailable => t.sendRejectOfficeUnavailable,
+  UiSendRejection.officeEncrypted => t.sendRejectOfficeEncrypted,
+  UiSendRejection.officeFailed => t.sendRejectOfficeFailed,
 };
 
 class SendContentPage extends StatefulWidget {
@@ -281,6 +308,15 @@ class _SendContentPageState extends State<SendContentPage> {
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ),
+                if (_controller.phase == ContentSendPhase.converting) ...[
+                  const SizedBox(height: 12),
+                  Semantics(
+                    label: t.sendContentConvertingLabel,
+                    child: const LinearProgressIndicator(
+                      key: Key('convertProgress'),
+                    ),
+                  ),
+                ],
                 if (_controller.phase == ContentSendPhase.sending) ...[
                   const SizedBox(height: 12),
                   Semantics(
@@ -506,6 +542,8 @@ class _SendContentPageState extends State<SendContentPage> {
         return t.statusIdle;
       case ContentSendPhase.preparing:
         return t.sendContentPreparing;
+      case ContentSendPhase.converting:
+        return t.sendContentConverting(name);
       case ContentSendPhase.connecting:
         if (c.connectionState != null) {
           return connectionStateText(t, c.connectionState);
