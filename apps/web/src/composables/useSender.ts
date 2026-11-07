@@ -10,19 +10,24 @@ import { fetchIceServers } from '../core/altchaClient'
 export function useSender(opts: { contentOnly?: boolean } = {}) {
   const state = shallowRef<SenderState>({ phase: 'idle', errorCode: null, channelOpen: false })
   // The relay is fixed while a session exists; it is changed on the start page.
-  const { current } = useRelay()
-  const url = current.value.wsUrl
-  const base = current.value.httpBase
+  // The url is read when the session starts, after the relay was confirmed (see start below).
+  const { current, ensureTrusted } = useRelay()
   const session = new SenderSession({
-    url,
-    iceServers: () => fetchIceServers(base),
+    get url() {
+      return current.value.wsUrl
+    },
+    iceServers: () => fetchIceServers(current.value.httpBase),
     onChange: (s) => (state.value = s),
     getStream: opts.contentOnly ? undefined : getScreenStream,
   })
   onBeforeUnmount(() => session.stop())
   return {
     state,
-    start: (code: string) => session.start(code), stop: () => session.stop(),
+    // A relay that only a link asked for must be confirmed before anything is captured or connected.
+    start: async (code: string) => {
+      if (await ensureTrusted()) await session.start(code)
+    },
+    stop: () => session.stop(),
     sendImage: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendImage(f, onProgress),
     sendDocument: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendDocument(f, onProgress),
     sendLink: (url: string) => session.sendLink(url),

@@ -74,6 +74,9 @@ function reset() {
     </div>
 
     <template v-if="props.editable">
+      <p v-if="relay.configFailed.value" class="mt-1 text-warn" role="status" data-testid="relay-config-hint">
+        {{ t('relay.configFailed') }}
+      </p>
       <p class="mt-1 text-muted">{{ t('relay.hint') }}</p>
       <form class="mt-2 flex flex-col gap-1.5" @submit.prevent="apply(input)">
         <label for="relay-input" class="font-medium">{{ t('relay.inputLabel') }}</label>

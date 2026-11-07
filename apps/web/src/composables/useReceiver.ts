@@ -16,19 +16,23 @@ export function useReceiver() {
     contentError: null,
   })
   // The relay is fixed while a session exists; it is changed on the start page.
-  const { current } = useRelay()
-  const url = current.value.wsUrl
-  const base = current.value.httpBase
+  // The url is read when the session starts, after the relay was confirmed (see start below).
+  const { current, ensureTrusted } = useRelay()
   const session = new ReceiverSession({
-    url,
+    get url() {
+      return current.value.wsUrl
+    },
     onChange: (s) => (state.value = s),
-    altcha: (signal) => obtainAltchaPayload(base, { signal }),
-    iceServers: () => fetchIceServers(base),
+    altcha: (signal) => obtainAltchaPayload(current.value.httpBase, { signal }),
+    iceServers: () => fetchIceServers(current.value.httpBase),
   })
   onBeforeUnmount(() => session.stop())
   return {
     state,
-    start: () => session.start(),
+    // A relay that only a link asked for must be confirmed before anything is connected.
+    start: async () => {
+      if (await ensureTrusted()) session.start()
+    },
     stop: () => session.stop(),
     clearContent: () => session.clearContent(),
     nextPage: () => session.nextPage(),
