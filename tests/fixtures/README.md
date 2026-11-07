@@ -1,0 +1,40 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+# Shared test fixtures
+
+JSON vectors that several implementations must agree on. The **web client is the reference**
+(`apps/web/src/core/*`); the other implementations are held to the same files:
+
+| Implementation | Where it reads the files | Run |
+| --- | --- | --- |
+| Web (TypeScript) | `apps/web/tests/fixtures.test.ts` | `cd apps/web && npx vitest run tests/fixtures.test.ts` (part of `npm test`) |
+| Rust (`cc-files`: parser and link rules only) | `crates/cc-files/tests/shared_fixtures.rs` | `cargo test -p cc-files --test shared_fixtures` |
+| Swift (Apple TV, package `CometCastCore`) | `apps/apple-tv/CometCastCore/Tests/CometCastCoreTests/FixtureTests.swift` | `cd apps/apple-tv/CometCastCore && swift test` |
+
+| File | What | Cases |
+| --- | --- | --- |
+| `control-parse.json` | `parseControlMessage`: text in, normalised message or `null` | 107 |
+| `link-url.json` | `validateLinkUrl`: input in, normalised href or `null` | 131 |
+| `media.json` | `classifyMediaUrl`, `hostIsLocalOrIp`, `shortHost` | 28 + 29 + 7 |
+| `sas.json` | connection check code and `sdpFingerprint` | 24 + 24 |
+| `altcha.json` | puzzles (solution and payload), challenge limits, solve errors, HTTP error mapping | 7 + 19 + 5 + 8 |
+| `relay.json` | `parseRelay` | 72 |
+| `signaling.json` | `decodeServerMessage` | 36 |
+| `ice-servers.json` | `parseIceServers` | 30 |
+| `room-code.json` | `normalizeRoomCode`, `isValidRoomCode` | 15 |
+| `content-scenarios.json` | event sequences of the content receiver: chunking, limits, stall, throttling | 19 |
+
+## Format
+
+- A case has `name` (or `input`), the input as `input` (a string) or `input_parts` (strings and `{"repeat": "x", "count": n}`
+  objects, concatenated, to keep long inputs readable), and `expect`, the result of the **web implementation**.
+- `expect_apple_tv` (optional, may be `null`): a known and documented difference of the Swift code (it refuses more:
+  IDN and punycode hosts are not implemented, see `LinkURL.swift`). The Swift test uses it instead of `expect`.
+- `expect_rust` (optional) with `note_rust`: the same for `cc-files`, which differs in integral floats (`2.0`), extra
+  keys, how it counts message length (code points, not UTF-16 units) and several link edge cases.
+- `content-scenarios.json`: operations `{t, text}`, `{t, bin: n}` (byte *i* is `(i*31+7) mod 251`) and `{t, tick: true}`;
+  `events` is the expected list of callbacks (`cmd:`, `progress:`, `image:`, `document:`, `link:`, `error:`).
+- The expectations were produced by running the web implementation on hand-written inputs and then reviewed; they are
+  fixtures, not generated at test time. Change a web rule: change the fixture in the same commit, and the other
+  implementations show what to follow.
+
+All differences between the implementations are listed in [docs/appletv.md](../../docs/appletv.md#content-channel).

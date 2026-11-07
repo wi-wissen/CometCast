@@ -15,7 +15,7 @@ Checks:
 
 - `apps/web/src/locales/en.json` vs `de.json` (nested keys flattened with dots)
 - `apps/flutter/lib/l10n/app_en.arb` vs `app_de.arb` (keys starting with `@` ignored)
-- `apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings` (each key needs `en` and `de`)
+- `apps/apple-tv/Sources/CometCastTV/Localizable.xcstrings` (each key needs `en` and `de`; the Swift tests also check that every key the core can produce exists, and that placeholders agree)
 
 Exit code 1 on a real mismatch or unreadable file. A missing file is reported
 as "skipped: file missing" and does not fail. Keys are compared only within
@@ -26,7 +26,7 @@ each app, never across apps. Runs in CI via `.github/workflows/i18n.yml`.
 Helpers of `.github/workflows/release.yml` (docs/releasing.md). `set-version.mjs VERSION` writes one
 version into Cargo, Flutter, web, tvOS and the compose file (nothing is committed; run it in a
 scratch copy). `release-stage.sh` adds LICENSE, THIRD_PARTY_NOTICES.md and VERSION to a staging
-folder. `release-summary.mjs` writes the build-status part of the release notes.
+folder. `release-summary.mjs` writes the build-status part of the release notes. For the `tvos` job: `set-version.mjs` rewrites the **first** `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` lines of `apps/apple-tv/project.yml` (they must stay once, in the top level `settings`), and the job reads the **first** `PRODUCT_BUNDLE_IDENTIFIER` line (the app target's) and builds `-project CometCastTV.xcodeproj -scheme CometCastTV`; keep these names in step (docs/appletv.md).
 
 ```sh
 node --test tools/set-version.test.mjs

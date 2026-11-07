@@ -1,0 +1,207 @@
+{
+  "description": "decodeServerMessage (apps/web/src/core/signaling.ts): text in, message object (or null) out.",
+  "server_messages": [
+    {
+      "input": "{\"type\":\"hello\",\"proto_version\":1}",
+      "expect": {
+        "type": "hello",
+        "proto_version": 1
+      }
+    },
+    {
+      "input": "{\"type\":\"hello\",\"proto_version\":2}",
+      "expect": {
+        "type": "hello",
+        "proto_version": 2
+      }
+    },
+    {
+      "input": "{\"type\":\"hello\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"hello\",\"proto_version\":\"1\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"hello\",\"proto_version\":1.5}",
+      "expect": {
+        "type": "hello",
+        "proto_version": 1.5
+      }
+    },
+    {
+      "input": "{\"type\":\"room_created\",\"code\":\"ABC234\"}",
+      "expect": {
+        "type": "room_created",
+        "code": "ABC234"
+      }
+    },
+    {
+      "input": "{\"type\":\"room_created\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"room_created\",\"code\":5}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"joined\"}",
+      "expect": {
+        "type": "joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"peer_joined\"}",
+      "expect": {
+        "type": "peer_joined"
+      }
+    },
+    {
+      "input": "{\"type\":\"peer_left\"}",
+      "expect": {
+        "type": "peer_left"
+      }
+    },
+    {
+      "input": "{\"type\":\"peer_left\",\"x\":1}",
+      "expect": {
+        "type": "peer_left"
+      }
+    },
+    {
+      "input": "{\"type\":\"offer\",\"sdp\":\"v=0\"}",
+      "expect": {
+        "type": "offer",
+        "sdp": "v=0"
+      }
+    },
+    {
+      "input": "{\"type\":\"offer\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"answer\",\"sdp\":\"v=0\"}",
+      "expect": {
+        "type": "answer",
+        "sdp": "v=0"
+      }
+    },
+    {
+      "input": "{\"type\":\"ice_candidate\",\"candidate\":\"{}\"}",
+      "expect": {
+        "type": "ice_candidate",
+        "candidate": "{}"
+      }
+    },
+    {
+      "input": "{\"type\":\"ice_candidate\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"control\",\"cmd\":\"stop\"}",
+      "expect": {
+        "type": "control",
+        "cmd": "stop"
+      }
+    },
+    {
+      "input": "{\"type\":\"control\",\"cmd\":{\"go_to_page\":{\"page\":3}}}",
+      "expect": {
+        "type": "control",
+        "cmd": {
+          "go_to_page": {
+            "page": 3
+          }
+        }
+      }
+    },
+    {
+      "input": "{\"type\":\"control\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"control\",\"cmd\":null}",
+      "expect": {
+        "type": "control",
+        "cmd": null
+      }
+    },
+    {
+      "input": "{\"type\":\"error\",\"code\":\"rate_limited\",\"message\":\"slow down\"}",
+      "expect": {
+        "type": "error",
+        "code": "rate_limited",
+        "message": "slow down"
+      }
+    },
+    {
+      "input": "{\"type\":\"error\",\"code\":\"banned\"}",
+      "expect": {
+        "type": "error",
+        "code": "banned",
+        "message": ""
+      }
+    },
+    {
+      "input": "{\"type\":\"error\",\"code\":\"x\",\"message\":5}",
+      "expect": {
+        "type": "error",
+        "code": "x",
+        "message": ""
+      }
+    },
+    {
+      "input": "{\"type\":\"error\",\"message\":\"m\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"error\",\"code\":5}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"nope\"}",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":5}",
+      "expect": null
+    },
+    {
+      "input": "{}",
+      "expect": null
+    },
+    {
+      "input": "[]",
+      "expect": null
+    },
+    {
+      "input": "\"hello\"",
+      "expect": null
+    },
+    {
+      "input": "null",
+      "expect": null
+    },
+    {
+      "input": "",
+      "expect": null
+    },
+    {
+      "input": "not json",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"hello\",\"proto_version\":1",
+      "expect": null
+    },
+    {
+      "input": "{\"type\":\"error\",\"code\":\"altcha_required\",\"message\":\"\"}",
+      "expect": {
+        "type": "error",
+        "code": "altcha_required",
+        "message": ""
+      }
+    }
+  ]
+}

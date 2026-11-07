@@ -8,6 +8,7 @@ on:
       - 'crates/cc-docs-wasm/**'
       - 'crates/cc-docs/**'
       - 'Cargo.lock'
+      - 'tests/fixtures/**'
       - '.github/workflows/web.yml'
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - 'crates/cc-docs-wasm/**'
       - 'crates/cc-docs/**'
       - 'Cargo.lock'
+      - 'tests/fixtures/**'
       - '.github/workflows/web.yml'
 
 permissions:

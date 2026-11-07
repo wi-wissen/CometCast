@@ -1,0 +1,650 @@
+{
+  "description": "parseRelay (apps/web/src/core/relay.ts, no page protocol). `expect`: {ok:true, wsUrl, httpBase, host, insecure} or {ok:false, error}. `expect_apple_tv` marks a documented difference (IPv6 literals are refused).",
+  "cases": [
+    {
+      "input": "wss://relay.example.org",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org/ws",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org/ws/",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org:443/ws",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org:8443/ws",
+        "httpBase": "https://relay.example.org:8443",
+        "host": "relay.example.org:8443",
+        "insecure": false
+      }
+    },
+    {
+      "input": "WSS://RELAY.EXAMPLE.ORG",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "ws://relay.example.org",
+      "expect": {
+        "ok": false,
+        "error": "insecure"
+      }
+    },
+    {
+      "input": "ws://192.168.1.5:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://192.168.1.5:8443/ws",
+        "httpBase": "http://192.168.1.5:8443",
+        "host": "192.168.1.5:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://10.0.0.5",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://10.0.0.5/ws",
+        "httpBase": "http://10.0.0.5",
+        "host": "10.0.0.5",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://172.16.0.1",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://172.16.0.1/ws",
+        "httpBase": "http://172.16.0.1",
+        "host": "172.16.0.1",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://172.32.0.1",
+      "expect": {
+        "ok": false,
+        "error": "insecure"
+      }
+    },
+    {
+      "input": "ws://127.0.0.1:8443/ws",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://127.0.0.1:8443/ws",
+        "httpBase": "http://127.0.0.1:8443",
+        "host": "127.0.0.1:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://localhost:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://localhost:8443/ws",
+        "httpBase": "http://localhost:8443",
+        "host": "localhost:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://printer",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://printer/ws",
+        "httpBase": "http://printer",
+        "host": "printer",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://nas.local",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://nas.local/ws",
+        "httpBase": "http://nas.local",
+        "host": "nas.local",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://169.254.1.1",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://169.254.1.1/ws",
+        "httpBase": "http://169.254.1.1",
+        "host": "169.254.1.1",
+        "insecure": true
+      }
+    },
+    {
+      "input": "ws://8.8.8.8",
+      "expect": {
+        "ok": false,
+        "error": "insecure"
+      }
+    },
+    {
+      "input": "ws://[::1]:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://[::1]:8443/ws",
+        "httpBase": "http://[::1]:8443",
+        "host": "[::1]:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "wss://[2001:db8::1]",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://[2001:db8::1]/ws",
+        "httpBase": "https://[2001:db8::1]",
+        "host": "[2001:db8::1]",
+        "insecure": false
+      }
+    },
+    {
+      "input": "https://relay.example.org",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "http://relay.example.org",
+      "expect": {
+        "ok": false,
+        "error": "insecure"
+      }
+    },
+    {
+      "input": "http://192.168.1.2",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://192.168.1.2/ws",
+        "httpBase": "http://192.168.1.2",
+        "host": "192.168.1.2",
+        "insecure": true
+      }
+    },
+    {
+      "input": "https://relay.example.org/ws",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "relay.example.org",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "relay.example.org:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org:8443/ws",
+        "httpBase": "https://relay.example.org:8443",
+        "host": "relay.example.org:8443",
+        "insecure": false
+      }
+    },
+    {
+      "input": "192.168.1.5:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://192.168.1.5:8443/ws",
+        "httpBase": "http://192.168.1.5:8443",
+        "host": "192.168.1.5:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "localhost:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://localhost:8443/ws",
+        "httpBase": "http://localhost:8443",
+        "host": "localhost:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "printer",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://printer/ws",
+        "httpBase": "http://printer",
+        "host": "printer",
+        "insecure": true
+      }
+    },
+    {
+      "input": "nas.local:9000",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://nas.local:9000/ws",
+        "httpBase": "http://nas.local:9000",
+        "host": "nas.local:9000",
+        "insecure": true
+      }
+    },
+    {
+      "input": "[::1]:8443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://[::1]:8443/ws",
+        "httpBase": "http://[::1]:8443",
+        "host": "[::1]:8443",
+        "insecure": true
+      }
+    },
+    {
+      "input": "relay.example.org/ws",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "relay.example.org:99999",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "relay.example.org:",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "relay_.example.org",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "a b",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "",
+      "expect": {
+        "ok": false,
+        "error": "empty"
+      }
+    },
+    {
+      "input": "   ",
+      "expect": {
+        "ok": false,
+        "error": "empty"
+      }
+    },
+    {
+      "input": "wss://",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://user@relay.example.org",
+      "expect": {
+        "ok": false,
+        "error": "credentials"
+      }
+    },
+    {
+      "input": "wss://user:pw@relay.example.org",
+      "expect": {
+        "ok": false,
+        "error": "credentials"
+      }
+    },
+    {
+      "input": "wss://:@relay.example.org",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org/other",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "wss://relay.example.org/ws/x",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "wss://relay.example.org?x=1",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "wss://relay.example.org/ws?x=1",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "wss://relay.example.org#x",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "wss://relay.example.org/?",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "wss://relay.example.org/#",
+      "expect": {
+        "ok": false,
+        "error": "path"
+      }
+    },
+    {
+      "input": "ftp://relay.example.org",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "javascript:alert(1)",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://relay.example.org\\ws",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://relay.example.org:0",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org:0/ws",
+        "httpBase": "https://relay.example.org:0",
+        "host": "relay.example.org:0",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org:65536",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://relay.example.org:0443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "  wss://relay.example.org  ",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org\n",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://rel ay.example.org",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://münchen.example",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://xn--mnchen-3ya.example/ws",
+        "httpBase": "https://xn--mnchen-3ya.example",
+        "host": "xn--mnchen-3ya.example",
+        "insecure": false
+      },
+      "expect_apple_tv": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://xn--mnchen-3ya.example",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://xn--mnchen-3ya.example/ws",
+        "httpBase": "https://xn--mnchen-3ya.example",
+        "host": "xn--mnchen-3ya.example",
+        "insecure": false
+      },
+      "expect_apple_tv": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://relay.example.org.",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org./ws",
+        "httpBase": "https://relay.example.org.",
+        "host": "relay.example.org.",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.example.org",
+      "strict_ws": true,
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.example.org/ws",
+        "httpBase": "https://relay.example.org",
+        "host": "relay.example.org",
+        "insecure": false
+      }
+    },
+    {
+      "input": "relay.example.org",
+      "strict_ws": true,
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "https://relay.example.org",
+      "strict_ws": true,
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "ws://192.168.1.5",
+      "strict_ws": true,
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://192.168.1.5/ws",
+        "httpBase": "http://192.168.1.5",
+        "host": "192.168.1.5",
+        "insecure": true
+      }
+    },
+    {
+      "input": "wss://127.1",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://127.0.0.1/ws",
+        "httpBase": "https://127.0.0.1",
+        "host": "127.0.0.1",
+        "insecure": false
+      }
+    },
+    {
+      "input": "ws://0x7f.1",
+      "expect": {
+        "ok": true,
+        "wsUrl": "ws://127.0.0.1/ws",
+        "httpBase": "http://127.0.0.1",
+        "host": "127.0.0.1",
+        "insecure": true
+      }
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expect": {
+        "ok": false,
+        "error": "invalid"
+      }
+    },
+    {
+      "input": "wss://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example/ws",
+        "httpBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+        "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://a.b",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://a.b/ws",
+        "httpBase": "https://a.b",
+        "host": "a.b",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://a",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://a/ws",
+        "httpBase": "https://a",
+        "host": "a",
+        "insecure": false
+      }
+    },
+    {
+      "input": "wss://relay.cometcast.de:443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.cometcast.de/ws",
+        "httpBase": "https://relay.cometcast.de",
+        "host": "relay.cometcast.de",
+        "insecure": false
+      }
+    },
+    {
+      "input": "relay.cometcast.de:443",
+      "expect": {
+        "ok": true,
+        "wsUrl": "wss://relay.cometcast.de/ws",
+        "httpBase": "https://relay.cometcast.de",
+        "host": "relay.cometcast.de",
+        "insecure": false
+      }
+    }
+  ]
+}

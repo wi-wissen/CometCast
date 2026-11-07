@@ -1,0 +1,265 @@
+{
+  "description": "classifyMediaUrl, hostIsLocalOrIp and shortHost of apps/web/src/core/media.ts. `expect_apple_tv` marks a documented difference.",
+  "classify": [
+    {
+      "url": "https://a.example/video.mp4",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/video.MP4?x=1#y",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/clip.webm",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/clip.ogv",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/live.m3u8",
+      "expect": "hls"
+    },
+    {
+      "url": "https://a.example/live.M3U8",
+      "expect": "hls"
+    },
+    {
+      "url": "https://a.example/song.mp3",
+      "expect": "audio"
+    },
+    {
+      "url": "https://a.example/song.ogg",
+      "expect": "audio"
+    },
+    {
+      "url": "https://a.example/song.wav",
+      "expect": "audio"
+    },
+    {
+      "url": "https://a.example/song.m4a",
+      "expect": "audio"
+    },
+    {
+      "url": "https://a.example/page.html",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/noext",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/dir.mp4/",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/a.b.mp4",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/.mp4",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/x.mp4.exe",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/?file=a.mp4",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/#a.mp4",
+      "expect": null
+    },
+    {
+      "url": "ftp://a.example/a.mp4",
+      "expect": null
+    },
+    {
+      "url": "file.mp4",
+      "expect": null
+    },
+    {
+      "url": "",
+      "expect": null
+    },
+    {
+      "url": "http://a.example/a.mp4",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/a%2Emp4",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/a.mp4%20",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/v/..%2fa.mp4",
+      "expect": "video"
+    },
+    {
+      "url": "https://a.example/a.mov",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/a.aac",
+      "expect": null
+    },
+    {
+      "url": "https://a.example/A.Mp3",
+      "expect": "audio"
+    }
+  ],
+  "host_local_or_ip": [
+    {
+      "host": "example.com",
+      "expect": false
+    },
+    {
+      "host": "EXAMPLE.COM.",
+      "expect": false
+    },
+    {
+      "host": "192.168.1.5",
+      "expect": true
+    },
+    {
+      "host": "10.0.0.1",
+      "expect": true
+    },
+    {
+      "host": "8.8.8.8",
+      "expect": true
+    },
+    {
+      "host": "1.2.3",
+      "expect": false
+    },
+    {
+      "host": "1.2.3.4.5",
+      "expect": false
+    },
+    {
+      "host": "localhost",
+      "expect": true
+    },
+    {
+      "host": "printer",
+      "expect": true
+    },
+    {
+      "host": "nas.local",
+      "expect": true
+    },
+    {
+      "host": "x.localhost",
+      "expect": true
+    },
+    {
+      "host": "foo.lan",
+      "expect": true
+    },
+    {
+      "host": "foo.home.arpa",
+      "expect": true
+    },
+    {
+      "host": "a.internal",
+      "expect": true
+    },
+    {
+      "host": "a.corp",
+      "expect": true
+    },
+    {
+      "host": "a.private",
+      "expect": true
+    },
+    {
+      "host": "a.intranet",
+      "expect": true
+    },
+    {
+      "host": "a.home",
+      "expect": true
+    },
+    {
+      "host": "a.localdomain",
+      "expect": true
+    },
+    {
+      "host": "example.co.uk",
+      "expect": false
+    },
+    {
+      "host": "[::1]",
+      "expect": true
+    },
+    {
+      "host": "[fe80::1]",
+      "expect": true
+    },
+    {
+      "host": "",
+      "expect": false
+    },
+    {
+      "host": ".",
+      "expect": false
+    },
+    {
+      "host": "a.local.example.com",
+      "expect": false
+    },
+    {
+      "host": "local",
+      "expect": true
+    },
+    {
+      "host": "01.02.03.04",
+      "expect": true
+    },
+    {
+      "host": "a.b.c.d",
+      "expect": false
+    },
+    {
+      "host": "999.999.999.999",
+      "expect": true
+    }
+  ],
+  "short_host": [
+    {
+      "host": "short.example",
+      "expect": "short.example"
+    },
+    {
+      "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expect": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expect": "aaaaaaaaaaaaaaaaaaaaaaaa…aaaaaaaaaaaa"
+    },
+    {
+      "host": "bbbbbbbbbbbbbbbbbbbbbbbbXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXcccccccccccc",
+      "expect": "bbbbbbbbbbbbbbbbbbbbbbbb…cccccccccccc"
+    },
+    {
+      "host": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "expect": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+    },
+    {
+      "host": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "expect": "😀😀😀😀😀😀😀😀😀😀😀😀…😀😀😀😀😀😀"
+    },
+    {
+      "host": "",
+      "expect": ""
+    }
+  ]
+}
