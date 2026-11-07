@@ -39,8 +39,13 @@ const showField = ref(false)
 const fieldText = ref('')
 const fieldError = ref('')
 const typed = ref(false) // the address in use was entered in the field
-const isDefault = computed(() => relay.current.value.wsUrl === relay.default.value.wsUrl)
-const sourceKey = computed(() => addressSourceKey({ typed: typed.value, isDefault: isDefault.value }))
+const sourceKey = computed(() =>
+  addressSourceKey({
+    typed: typed.value,
+    source: relay.current.value.source,
+    inChoices: choices.value.some((c) => c.wsUrl === relay.current.value.wsUrl),
+  }),
+)
 function otherAddress() {
   const step = nextAddressStep(
     choices.value.map((c) => c.wsUrl),

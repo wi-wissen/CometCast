@@ -61,7 +61,16 @@ try {
     assert.equal(await d.getByTestId('wz-steps').count(), 0, 'no step dots on the welcome screen')
     assert.equal(await focused(d), 'wz-start')
     assert.equal(await bg(d), 'rgb(14, 22, 48)', 'Dark is the default (#0E1630)')
+    // Focus ring rule (7.2): the ring is there on load; the first mouse input hides it; the next key press shows it again
+    const ring = () => d.getByTestId('wz-start').evaluate((el) => getComputedStyle(el).outlineStyle)
+    assert.equal(await ring(), 'solid', 'the focus ring shows on load')
     await shot(d, 'display-1280-dark-setup-0-welcome')
+    await d.mouse.move(200, 200)
+    await d.mouse.move(210, 205)
+    await d.mouse.click(200, 200)
+    assert.equal(await ring(), 'none', 'no ring after mouse input')
+    await d.keyboard.press('ArrowRight')
+    assert.equal(await ring(), 'solid', 'the ring is back after a key press')
     await d.getByTestId('wz-start').click()
     assert.equal(await focused(d), 'wz-next')
     await shot(d, 'display-1280-dark-setup-1-name')
@@ -71,8 +80,14 @@ try {
     await d.keyboard.press('Escape')
     await d.getByTestId('wz-start').waitFor()
     await d.getByTestId('wz-start').click()
+    // the first suggestion is selected and the custom field is empty; typing deselects the chips, a chip clears the field
+    assert.equal(await d.getByTestId('wz-room').inputValue(), '', 'the custom field starts empty')
+    assert.equal(await d.locator('.cd-chip[aria-pressed=true]').innerText(), 'Meeting room Elbe')
+    await d.getByTestId('wz-room').fill('Annex')
+    assert.equal(await d.locator('.cd-chip[aria-pressed=true]').count(), 0, 'typing deselects every chip')
     await d.getByRole('button', { name: 'Workshop' }).click()
-    assert.equal(await d.getByTestId('wz-room').inputValue(), 'Workshop')
+    assert.equal(await d.getByTestId('wz-room').inputValue(), '', 'choosing a chip clears the field')
+    assert.equal(await d.locator('.cd-chip[aria-pressed=true]').innerText(), 'Workshop')
     await d.keyboard.press('Escape') // Back key = one step back
     await d.getByTestId('wz-start').waitFor()
     await d.getByTestId('wz-start').click()
@@ -85,7 +100,19 @@ try {
     await d.getByTestId('wz-next').click()
     assert.equal((await d.getByTestId('wz-domain').innerText()).trim(), `127.0.0.1:${s.port}`)
     assert.equal(await focused(d), 'wz-ok')
+    assert.equal((await d.getByTestId('wz-source').innerText()).trim(), 'Set by the server of this page.', 'the page\'s own server')
     await shot(d, 'display-1280-dark-setup-3-address')
+    // "Other address" with one relay opens the field in place; Back cancels it, an address typed by hand says so
+    await d.getByTestId('wz-change').click()
+    assert.equal((await d.locator('label[for=wz-addr]').innerText()).trim(), 'Server address')
+    assert.equal(await focused(d), 'wz-addr')
+    await d.keyboard.press('Escape')
+    await d.getByTestId('wz-domain').waitFor()
+    await d.getByTestId('wz-change').click()
+    await d.getByTestId('wz-addr').fill(`127.0.0.1:${s.port}`)
+    await d.keyboard.press('Enter')
+    assert.equal((await d.getByTestId('wz-source').innerText()).trim(), 'Entered by hand.')
+    await shot(d, 'display-1280-dark-setup-3-address-typed')
     await d.getByTestId('wz-ok').click()
     assert.equal(await focused(d), 'wz-finish')
     await shot(d, 'display-1280-dark-setup-4-done')
@@ -99,6 +126,8 @@ try {
     assert.equal((await d.getByTestId('address').innerText()).trim(), `127.0.0.1:${s.port}`)
     assert.equal(await d.locator('[data-testid=qr] svg').getAttribute('aria-label'), `QR: http://127.0.0.1:${s.port}/${code1}`)
     assert.equal(await focused(d), 'settings-open', 'on idle the focus starts on the Settings button')
+    // no store or download link exists yet: the footer names no store
+    assert.equal((await d.getByTestId('idle-foot').innerText()).trim(), 'No download needed.')
     await shot(d, 'display-1280-dark-idle')
 
     // The wizard is gone after a restart; room and default mode are kept
@@ -143,6 +172,11 @@ try {
     // every surface is black, separated only by borders (--panel and --panel2 are #000000)
     assert.equal(await d.getByTestId('settings-mode-locked').evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)')
     assert.equal(await d.locator('.cd-wz').evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)')
+    // a selected tile: black fill (no tint), amber border (--acc #D29E48)
+    for (const id of ['settings-mode-open', 'settings-look-oled']) {
+      const st = await d.getByTestId(id).evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).borderTopColor])
+      assert.deepEqual(st, ['rgb(0, 0, 0)', 'rgb(210, 158, 72)'], `${id}: selected, black with an amber border`)
+    }
     await shot(d, 'display-1280-oled-settings')
     await d.getByTestId('settings-look-auto').click()
     await d.emulateMedia({ colorScheme: 'light' })
@@ -188,6 +222,9 @@ try {
     const check = (await p.getByTestId('waiting-check').innerText()).trim()
     assert.match(check, /^\d{2}$/)
     assert.match(await p.getByTestId('waiting-left').innerText(), /expires in \d+ s/)
+    // the display's room name came through the protocol; the code is not shown in its place
+    assert.equal((await p.getByTestId('waiting-room').innerText()).trim(), 'Room 204')
+    assert.equal((await p.getByTestId('waiting-page').innerText()).includes(code), false)
     await shot(p, 'presenter-1280-light-waiting')
 
     // the request over idle
@@ -207,10 +244,14 @@ try {
     assert.equal(await focused(d), 'settings-open', 'the focus goes back to the Settings button')
 
     await p.getByTestId('what-page').waitFor({ timeout: 20000 })
-    assert.equal((await p.getByTestId('connected-to').innerText()).trim().startsWith('Connected to'), true)
+    assert.equal((await p.getByTestId('connected-to').innerText()).trim(), 'Connected to “Room 204”')
+    assert.equal(await p.getByTestId('sas-line').count(), 0, 'no security code on "What to show"')
     await shot(p, 'presenter-1280-light-what')
     await p.getByTestId('what-screen').click()
     await p.getByTestId('presenting-page').waitFor({ timeout: 20000 })
+    assert.equal((await p.getByTestId('presenting-where').innerText()).trim(), 'On “Room 204”.')
+    const presenterSas = await waitFor(async () => (await p.getByTestId('sas-code').innerText()).trim(), 'the security code on the presenter page')
+    assert.match((await p.getByTestId('sas-line').innerText()).trim(), /^Security code \d{3} \d{3}\. The screen shows the same code under your name\.$/)
     await shot(p, 'presenter-1280-light-presenting')
 
     // presenting: full bleed, nothing else at rest, the screen kept awake
@@ -221,6 +262,7 @@ try {
     assert.deepEqual([box.x, box.y, box.width, box.height], [0, 0, 1280, 720], 'the picture fills the screen edge to edge')
     assert.equal(await d.getByTestId('idle').isVisible(), false, 'no code, room name or mode while presenting')
     await waitFor(async () => (await opacity(d, 'byline')) === 0, 'controls hidden at rest')
+    assert.equal(await opacity(d, 'toolbar-root'), 0, 'the annotation toolbar is hidden at rest too')
     assert.deepEqual(await d.evaluate(() => window.__wake), ['acquire:screen'], 'wake lock acquired when presenting starts')
     await shot(d, 'display-1280-dark-presenting-rest')
 
@@ -230,6 +272,10 @@ try {
     await waitFor(async () => (await opacity(d, 'byline')) === 1, 'name tag fades in')
     assert.match((await d.getByTestId('byline').innerText()), /“Lena” is showing/)
     assert.equal((await d.getByTestId('end').innerText()).trim(), 'End')
+    await waitFor(async () => (await opacity(d, 'toolbar-root')) === 1, 'the toolbar fades in with the name tag')
+    // second line of the name tag: the same security code as on the presenter page
+    assert.equal((await d.getByTestId('sas-code').innerText()).trim(), presenterSas)
+    assert.match((await d.getByTestId('sas-line').innerText()).trim(), /^Security code \d{3} \d{3}$/)
     await shot(d, 'display-1280-dark-presenting-controls')
     await waitFor(async () => (await opacity(d, 'byline')) === 0, 'controls hide again', 9000)
     // the first key press only reveals (and focuses End); the second one activates it
@@ -360,6 +406,19 @@ try {
     await armed(d)
     await d.getByTestId('request-no').click()
     await d.getByTestId('request-modal').waitFor({ state: 'detached' })
+    // A request closes Settings (one dialog at a time), the focus goes to Yes, and back to the Settings button after it
+    await d.getByTestId('settings-open').click()
+    await d.getByTestId('settings-modal').waitFor()
+    const y = await mkp()
+    await presenterStart(y.p, s.base, code, { name: 'Yan' })
+    await d.getByTestId('request-modal').waitFor()
+    assert.equal(await d.getByTestId('settings-modal').count(), 0, 'only the request dialog is visible')
+    assert.equal(await focused(d), 'request-yes')
+    await armed(d)
+    await d.getByTestId('request-no').click()
+    await d.getByTestId('request-modal').waitFor({ state: 'detached' })
+    assert.equal(await d.getByTestId('settings-modal').count(), 0)
+    assert.equal(await focused(d), 'settings-open', 'the focus goes back to the Settings button')
     await d.getByTestId('settings-open').click()
     await d.getByTestId('settings-mode-locked').click()
     await d.locator('[data-testid=mode-pill]:has-text("Locked")').waitFor()
@@ -377,7 +436,7 @@ try {
     assert.equal((await q.p.getByTestId('error-title').innerText()).trim(), 'This code does not exist right now')
     await q.p.getByTestId('error-retype').click()
     await q.p.getByTestId('start-code').waitFor()
-    for (const m of [w, x, z, q]) await m.c.close()
+    for (const m of [w, x, y, z, q]) await m.c.close()
     await dctx.close()
   }
 
@@ -463,6 +522,25 @@ try {
     await p.getByTestId('start-browser').click()
     assert.equal((await p.getByTestId('start-code-error').innerText()).trim(), 'Please enter the code shown large on the screen.')
     assert.match(await p.getByTestId('detected').innerText(), /^Detected: Laptop, /)
+    // no download link exists yet: the laptop card ends after the detected line, no app button, no "or"
+    assert.equal(await p.getByTestId('start-app').count(), 0)
+    assert.equal(await p.getByTestId('start-or').count(), 0)
+    // "be the screen itself": {dom}/display is a visible link to /display in the same tab
+    const link = p.getByTestId('be-display-link')
+    assert.equal(await link.getAttribute('href'), '/display')
+    assert.equal((await link.innerText()).trim(), `127.0.0.1:${s.port}/display`)
+    assert.equal(await link.evaluate((el) => getComputedStyle(el).textDecorationLine), 'underline')
+    await p.keyboard.press('Shift') // keyboard input, so that the browser shows the ring for a scripted focus
+    await link.focus()
+    assert.notEqual(await link.evaluate((el) => getComputedStyle(el).outlineStyle), 'none', 'the link shows the focus outline')
+    // the code field shows every typed character; the wrong code is the error page, no server call
+    await p.getByTestId('start-code').fill('k7o m2w')
+    assert.equal(await p.getByTestId('start-code').inputValue(), 'K7O M2W')
+    await p.getByTestId('start-browser').click()
+    await p.getByTestId('error-page').waitFor()
+    assert.equal((await p.getByTestId('error-why').innerText()).trim(), 'Usually a typo. A code has 6 characters and never contains O, 0, I or 1.')
+    await shot(p, 'presenter-1280-light-error-code')
+    await p.getByTestId('error-retype').click()
     // the QR path: the code is filled in
     await p.goto(`${s.base}/${code}`)
     assert.equal((await p.getByTestId('start-code-chip').innerText()).replace(/\s+/g, ''), code)
@@ -488,7 +566,8 @@ try {
     })
     const m = await phone.newPage()
     await m.goto(`${s.base}/${code}`)
-    assert.equal((await m.getByTestId('start-app').innerText()).trim(), 'Get the app on Google Play')
+    assert.equal(await m.getByTestId('start-app').count(), 0, 'no Google Play link exists yet: no app button')
+    assert.equal(await m.getByTestId('start-or').count(), 0)
     assert.equal((await m.getByTestId('detected').innerText()).trim(), 'Detected: Android phone, Chrome')
     assert.equal(await m.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'no horizontal scrolling on a phone')
     await shot(m, 'presenter-390-light-start')

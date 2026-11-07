@@ -5,7 +5,7 @@ mockup. The implementer made no design decisions. Each item says what was found,
 code does **meanwhile** (the smallest neutral behaviour; no styling or wording was invented). A designer answers; the
 code is then changed in one place each time.
 
-**Status (2026-11-07): every question is answered** (lines "Answered:"). The decisions are also in the spec, section 13; the resulting work is in [fix-list-web.md](fix-list-web.md).
+**Status (2026-11-07): every question in A to C is answered** (lines "Answered:"). The decisions are also in the spec, section 13; the resulting work is in [fix-list-web.md](fix-list-web.md). D1 and section E (written while the fix list was built) are **not answered yet**.
 
 ## A. The spec and the protocol disagree
 
@@ -186,3 +186,102 @@ code is then changed in one place each time.
 - **Options:** (a) show nothing (current); (b) show a hint only if the connection then fails; (c) show a hint at once.
   Options (b) and (c) need the sessions to expose the state next to `iceServers` (a small change in `senderSession.ts`,
   `receiverSession.ts` and the Rust `ReceiverCore` / `SenderCore`).
+
+## E. Questions from the fix round
+
+Written while the web app was changed according to [fix-list-web.md](fix-list-web.md). The implementer made no design
+decisions: each item says what was found, the options, and what the code does **meanwhile** (the smallest neutral behaviour).
+No answer is needed for the fix list to be complete; each answer changes one place.
+
+### E1. Retry every 4 s, box after 3 s: a drop under 3 s cannot recover in time
+- **Found:** spec 4.2 retries every 4 s and shows the offline box after 3 s. The first retry comes 4 s after the error, so a
+  server that is back after 2 s is reached only at 4 s, and the box is visible from 3 s to 4 s (a flash of about one second).
+  The fix-list check says a drop under 3 s never flashes the box; that holds only for drops that end by themselves (the
+  browser's `online` event) or that the retry timer happens to hit.
+- **Options:** (a) keep both numbers as specified; (b) retry sooner at first (for example after 1 s, then 2 s, then every 4 s);
+  (c) show the box after 5 s.
+- **Meanwhile:** (a). The 3 s are counted from the first loss and are not restarted by a failed retry, so the box does not
+  flicker away while a retry runs.
+
+### E2. "Page n of m" cannot be shown on the presenter's page
+- **Found:** the control channel has no message from the display to the presenter, so a web presenter does not know the
+  page count (or the page the display shows). Spec 5.6 shows the line only "when the page count is known".
+- **Options:** (a) never show it on the web until a message exists; (b) add a display-to-presenter message (a protocol
+  addition of the control channel, not of the signalling).
+- **Meanwhile:** (a). `PresentingPage` has the optional props `page` and `total` and the keys exist, nothing passes them.
+
+### E3. Failures that spec 6 does not list: `error.code` or the existing wording?
+- **Found:** spec 6 says "anything not listed → `error.code`". The code has a page kind `generic` (existing wording
+  `errors.<code>` as the heading, no Why / What now card, "Try again") for codes such as `forbidden`, `altcha_*`, `wrong_role`,
+  `not_in_room`, `capture_denied`. "This code does not exist right now" would be wrong for most of them.
+- **Options:** (a) keep `generic`; (b) map them all to `error.code`; (c) a new page with a card for them.
+- **Meanwhile:** (a), unchanged. The three new pages (`occupied`, `busy`, `outdated`) take their codes out of `generic`.
+  `forbidden` also keeps its 30 s retry on the display.
+
+### E4. Relay confirmation on presenter pages: "buttons as on error pages" or "Cancel first"?
+- **Found:** error pages put the primary button first; the spec also says Cancel is first in the focus order, and Cancel is
+  the secondary button (initial focus, the safe answer).
+- **Options:** (a) Cancel (secondary) then Use this relay (primary); (b) primary first with a changed focus order.
+- **Meanwhile:** (a), the same order and roles as on the display card; Cancel has the initial focus. The host name is a line
+  of 17/700 `p-fg` on the presenter card and 18 mono `--mut` on the display card (the spec gives no style for it).
+
+### E5. Link card with a media link
+- **Found:** spec 4.5: the player "inside the same card with the existing texts". Not given: the Play button's look, its
+  place in the focus row, the look of the existing warning and error lines (they were red text, and the display has no red).
+- **Meanwhile:** Play is a secondary button before Open: focus row [Play, Open, Dismiss], initial focus Open (as for every
+  link). The warning and error lines are 16 `--fg` bold (everything else is `--mut`). The player is a header row (host, Stop) and
+  the media element up to 300 reference px high inside the 600 card; while it plays the card shows only title, address and
+  player. Stop, Escape and Dismiss still close the whole card.
+
+### E6. Address field in the wizard: what do the buttons do?
+- **Found:** spec 4.1 says OK / Enter confirms and Back cancels; the row [Back, Other address, Looks right] is only given for
+  the card. After the last relay of `config.json`, "Other address" opens the field; nothing says how to get back to the
+  first relay.
+- **Meanwhile:** with the field open, **Looks right** confirms it (like Enter), **Back** (and Escape) closes the field and stays
+  on step 3, **Other address** is not drawn. After the field was used or cancelled, "Other address" opens the field again
+  (the relays of `config.json` are reached again by going Back one step and forward).
+
+### E7. Wizard: the custom field is emptied again
+- **Found:** an emptied field leaves no chip selected and no name.
+- **Meanwhile:** Finish uses the first suggestion then (as before). The chips stay unselected until one is chosen.
+
+### E8. Which address counts as "the default relay" on the web?
+- **Found:** spec 4.1: `sourceDefault` for the default relay, `sourcePage` for the page's own server or `config.json`. When no
+  `config.json` and no build default exist the page's own server **is** the default.
+- **Meanwhile:** `sourceDefault` only for the relay built into the page (`VITE_DEFAULT_RELAY`); the page's own server, a
+  `config.json` relay (also when picked with "Other address") and a relay from `?server=` say `sourcePage`; a relay chosen in
+  this tab that the page does not offer says `sourceTyped`. With a plain self-hosted page the card therefore says "Set by the
+  server of this page." and never "Default server. Nothing to set up."
+
+### E9. "Get the app" on the error page "Screen sharing does not work in this browser"
+- **Found:** spec 6 lists it as a button; decision 13.6 says no button that does nothing. With empty store constants it did nothing.
+- **Meanwhile:** the button is drawn only when the app can be offered for the device (`appUrlFor`). Same rule as the start page.
+
+### E10. `room_name` that is not a string
+- **Found:** the server answers a `create_room` with a non-string `room_name` like any malformed message (`bad_message`); clients
+  must work without the field. For server messages the web app and the Swift core treat a missing, null, empty, blank or
+  non-string `room_name` as "no room name" and keep the rest of the message valid (fixtures in `tests/fixtures/signaling.json`).
+- **Question:** is the lenient client rule right, or should a wrong type make the message invalid like a wrong `check`?
+- **Meanwhile:** lenient (no room, no code, the presenter still joins).
+
+### E11. Which input hides the display's focus ring?
+- **Found:** spec 7.2: "the first mouse or touch input". The check in the fix list says "a mouse move and click".
+- **Meanwhile:** a pointer press, a touch start and a real mouse movement (non-zero movement) hide it; any key press shows it.
+
+### E12. Looks of the annotation toolbar that the spec does not give
+- **Meanwhile:** its own focus outline (2 `--focus`, not the D-pad ring, because it is not in the focus rows); the ink swatches have
+  a 1 px `--line` ring instead of the old white one (white ink on a light panel would vanish); the toast sits at 66 reference px
+  (toolbar bottom 58 + 8) while the toolbar is shown, whatever its width; a hidden toolbar is `inert`.
+
+### E13. Things seen and not changed (not on the fix list)
+- Black screen and "frozen" are kept in the toolbar state: the black screen stays on when the next presentation starts (the
+  frozen frame is dropped when the stream ends).
+- A PDF page is shown on grey (`bg-neutral-700`), not on black as spec 4.5 says; the progress and the content-error pills over the
+  picture still have the old black / red look; the PDF page error box is red.
+
+### E14. A banned address sees "No internet on this device" on later attempts
+- **Found:** the first refusal with `banned` gives the new page "The server is busy"; the server then closes the connection, so the
+  next attempt from the same address ends as `connection_lost` and shows "No internet on this device" (found while taking the
+  screenshots; `error-busy` exists for the first refusal only).
+- **Options:** (a) leave it; (b) tell a closed connection right after `banned` as busy for a while.
+- **Meanwhile:** (a).

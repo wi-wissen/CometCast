@@ -164,7 +164,7 @@ describe('setup wizard (4.1)', () => {
     await nextTick()
     // Step 3: the address, focus on "Looks right"
     expect(w.get('[data-testid=wz-domain]').text()).not.toBe('')
-    expect(w.text()).toContain('Default server. Nothing to set up.')
+    expect(w.text()).toContain('Set by the server of this page.') // no build default in the tests: the page's own server
     expect(document.activeElement).toBe(w.get('[data-testid=wz-ok]').element)
     await w.get('[data-testid=wz-ok]').trigger('click')
     await nextTick()
@@ -203,7 +203,7 @@ describe('setup wizard (4.1)', () => {
     // Back cancels the field (the card with the default address is back)
     await w.get('[data-testid=wz-back]').trigger('click')
     expect(w.find('[data-testid=wz-addr]').exists()).toBe(false)
-    expect(w.get('[data-testid=wz-source]').text()).toBe('Default server. Nothing to set up.')
+    expect(w.get('[data-testid=wz-source]').text()).toBe('Set by the server of this page.')
     await w.get('[data-testid=wz-change]').trigger('click')
     await w.get('[data-testid=wz-addr]').setValue('cast.example.org')
     await w.get('[data-testid=wz-addr]').trigger('keydown', { key: 'Enter' })

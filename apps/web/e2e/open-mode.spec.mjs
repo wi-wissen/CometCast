@@ -295,7 +295,7 @@ try {
   }
 
   // ================= Server C: ban =================
-  console.log('C) failed joins end in a translated banned message')
+  console.log('C) failed joins end in the "server is busy" page (a ban is told like a rate limit, spec 6)')
   {
     const C = await startServer('C open, ban after 3 failed joins', [
       '--mode', 'open',
@@ -308,7 +308,7 @@ try {
     for (let i = 0; i < 8; i++) {
       await p.getByTestId('error-page').waitFor({ timeout: 20000 })
       text = await p.getByTestId('error-title').innerText()
-      if (/blocked for a while/.test(text)) break
+      if (/The server is busy/.test(text)) break
       // a wrong code: "Retype code", then the same code again
       await p.getByTestId('error-retype').click()
       await p.getByTestId('start-code').fill('ZZZZZZ')
@@ -316,7 +316,7 @@ try {
       await p.waitForTimeout(200)
     }
     console.log('   shown:', text.replace(/\s+/g, ' '))
-    assert.match(text, /blocked for a while/, 'translated banned message')
+    assert.match(text, /The server is busy/, 'ban shows the busy page')
     await p.context().close()
     C.proc.kill('SIGTERM')
   }

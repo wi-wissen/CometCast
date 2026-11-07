@@ -231,7 +231,11 @@ try {
   await sender.getByTestId('send-next-page').click()
   await sender.getByTestId('send-prev-page').click()
   await pageIs(receiver, 2)
-  await receiver.getByTestId('doc-prev').click() // local control on the receiver as well
+  // The display has no page buttons any more (pages are turned on the presenter's page).
+  assert.equal(await receiver.getByTestId('doc-prev').count(), 0)
+  assert.equal(await receiver.getByTestId('content-close').count(), 0)
+  assert.equal(await receiver.locator('[data-testid=stage] button:not([data-tb])').count(), 0)
+  await sender.getByTestId('send-prev-page').click()
   await pageIs(receiver, 1)
   // The same at the first page: "prev" (clamped at 1) then "next" must end on exactly page 2.
   await sender.getByTestId('send-prev-page').click()

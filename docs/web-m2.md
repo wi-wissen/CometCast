@@ -7,13 +7,16 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
 ## What is in it
 
 - **Where it lives now.** The pages of the web app follow [design/first-run-and-display.md](design/first-run-and-display.md)
-  (see `apps/web/README.md`): the display at `/display` shows the received screen, image, link or PDF edge to edge; the
-  toolbar below is unchanged and is drawn over it. "Send file or link" is the presenter's "Show a photo or file" and
+  (see `apps/web/README.md`): the display at `/display` shows the received screen, image, link or PDF edge to edge and
+  **nothing else at rest**: the toolbar below fades in and out together with the name tag and End (spec 4.5), and the
+  display has no "Close image", "Close document" or PDF page buttons (a PDF is turned from the presenter's page, and every
+  content goes away when the presenter stops or leaves). "Send file or link" is the presenter's "Show a photo or file" and
   "Show a link" pages. Everything else in this file (control channel, limits, safety) is as written.
-- **Receiver toolbar** over the received screen (floating, draggable, collapsible to a dot): pen
-  (5 colours, 3 sizes), highlighter, eraser, undo, clear, laser pointer, freeze, black screen, full
+- **Receiver toolbar** over the received screen (top centre, in the display's tokens; hidden at rest, it shows for 5 s
+  after the last input together with name tag and End, a pointer stroke counts as input; no grip and no collapse button, it
+  does not move): pen (5 colours, 3 sizes), highlighter, eraser, undo, clear, laser pointer, freeze, black screen, full
   screen. Pointer events (mouse, touch, pen); the toolbar is a keyboard-operable `role="toolbar"`
-  (Tab enters, Left/Right/Home/End move, Escape collapses, arrow keys on the grip move it).
+  (Tab reaches it while it is shown, Left/Right/Home/End move; it is not in the D-pad focus rows).
 - **Annotations are local.** They are drawn on a canvas on the receiver and stored only in that tab.
   Nothing is sent back to the sender or to the server. They are lost on reload. There is no annotation message
   in the `control` channel below; the Flutter receiver has the same toolbar and the same local behaviour
@@ -21,8 +24,9 @@ Status: implemented in `apps/web` (v0.1 line). Written for developers of other c
 - **Freeze** paints the current video frame to a canvas shown above the video. The `<video>` element
   keeps playing the live stream underneath, so unfreezing continues at the live position.
 - **Show a photo or file** and **Show a link** on the presenter's pages: image and PDF (the system file dialog) and
-  http(s) link, all over a WebRTC DataChannel; while a PDF is shown, two buttons (previous and next page) send the
-  page commands. A new item replaces the old one only after "Stop showing". The signalling server only mediates the connection setup (SDP and ICE); it never
+  http(s) link, all over a WebRTC DataChannel; while a PDF is shown, two buttons (previous and next page, side by side
+  above "Stop showing") send the page commands. The presenter's page cannot say "Page n of m" yet: the control channel
+  has no message from the display back to the presenter, so the count is unknown there (the page is ready for it). A new item replaces the old one only after "Stop showing". The signalling server only mediates the connection setup (SDP and ICE); it never
   sees the payloads.
 - **PDF documents** (receiver and sender) are implemented, see "Receiver behaviour and safety" and
   [documents.md](documents.md#in-the-web-client). The receiver renders pages with hayro compiled to WebAssembly,
@@ -98,13 +102,17 @@ measurements behind them. 16 KiB is the size commonly considered interoperable a
 ### Receiver behaviour and safety
 
 - Images: only the four MIME types above are accepted (no SVG, which can carry script). The blob gets
-  the declared type from this allow list and is shown with `object-fit: contain`; a close button and
-  the `stop` command remove it, and the object URL is revoked.
+  the declared type from this allow list and is shown with `object-fit: contain`; the `stop` command (the
+  presenter's "Stop showing"), the presenter leaving or the host's End remove it, and the object URL is revoked. There is
+  no close button on the display.
 - Links: the receiver validates again (sender checks are not trusted). Only absolute `http:` and
   `https:` URLs without user name or password, without whitespace or control characters. A valid link
-  is shown as a card "`<host>` wants to open a link" with **Open** and **Dismiss**. **Nothing is opened
-  automatically**; Open is an anchor with `target="_blank"` and `rel="noopener noreferrer"`, so the
-  browser opens a tab only after the receiver's person clicks it. The host is shown as the browser
+  is shown as a **display dialog** (the look of the join request: 600 card on the 55 % scrim, section label
+  "`<host>` wants to open a link", the address in 18 mono, the hint) with **Open** (primary, initial focus) and
+  **Dismiss**. **Nothing is opened automatically**: input is ignored for 1 s after the card appeared (a key press
+  or click then does nothing), Back or Escape is Dismiss, the focus row is [Open, Dismiss]; Open is an anchor with
+  `target="_blank"` and `rel="noopener noreferrer"`, so the browser opens a tab only after the receiver's person
+  clicks it. The host is shown as the browser
   parses it (internationalised names appear in their punycode form).
 - Malformed or unknown messages are ignored; the receiver shows a translated notice for transfer
   problems.
@@ -141,8 +149,9 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
 
 - The link card of a media link gets a **Play from `<host>`** button next to Open and Dismiss. **Nothing is
   loaded, no request is made and no media element exists until the receiver's person clicks Play** (a click is
-  also the user activation that the browser's autoplay policy wants; the policy is not overridden). Dismiss
-  still has the initial focus.
+  also the user activation that the browser's autoplay policy wants; the policy is not overridden). Open has the
+  initial focus (as on every link card), and the same 1 s guard applies to Play. The player appears inside the same
+  card.
 - The player is one `<video>` or `<audio>` element (native controls: play/pause, seek, volume, fullscreen for
   video) plus our **Stop** button and Escape (inside the player). **Stop, Escape and Dismiss close the whole link
   card**, not only the player. Attributes: `crossorigin="anonymous"` (no cookies or credentials),
@@ -210,7 +219,9 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
 ## Tests
 
 - Unit (vitest): `tests/control.test.ts` (chunking, reassembly, validation, back-pressure),
-  `tests/toolbar.test.ts` (toolbar state, annotation model), `tests/contentSession.test.ts`.
+  `tests/toolbar.test.ts` (toolbar state, annotation model), `tests/contentSession.test.ts`,
+  `tests/contentOverlay.test.ts` (no buttons over image and PDF, the link card with its 1 s guard, Escape and focus row),
+  `tests/fixRound.test.ts` (toolbar hidden at rest, strokes count as input, focus ring rule, offline view).
 - Unit (vitest) for documents: `tests/control.test.ts` (document reassembly, chunk rule, `sendDocument`),
   `tests/pdfRenderer.test.ts` (worker protocol, time limits, termination, with a fake worker),
   `tests/documentSession.test.ts` (page commands, clamping, error notices, renderer disposal). The renderer
@@ -233,9 +244,11 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
   HLS and plain links. Needs `ffmpeg` for the `.webm`; Chrome (Google Chrome
   on Linux) only.
 - Static hosting: `tests/relay.test.ts`, `tests/relayField.test.ts` (relay validation, `config.json`, precedence `?server=` > config > build default > same origin, the relay field) and `npm run e2e:static` (app built with `VITE_BASE=/app/` on a second static origin, relays on other ports; `?server=`, `config.json`, ALTCHA across origins, a non-allowed origin rejected). Details: [apps/web/README.md](../apps/web/README.md#static-hosting-and-relay-selection), server side: [server.md](server.md#web-app-on-another-origin).
-- End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): image arrives
-  (`naturalWidth > 0`), link card appears and nothing opens until the click, pen changes canvas pixels,
-  freeze keeps the frame while the video's `currentTime` keeps advancing.
+- End to end: `npm run build && npm run e2e:m2` (real server and two Chromium pages): the toolbar is faded out
+  and inert at rest and comes with the controls, it has no grip or collapse button, sits at the top centre in the
+  display's tokens, image arrives (`naturalWidth > 0`) with no close button, link card appears, ignores input for 1 s
+  and nothing opens until the click on Open, pen changes canvas pixels (strokes stay after the toolbar fades),
+  freeze keeps the frame while the video's `currentTime` keeps advancing (the frozen badge is drawn at rest).
 
 What the e2e does not prove: other browsers (PDFs: only Chrome/Chromium on Linux was run), touch input on real
 devices, behaviour across networks (no STUN/TURN yet), very large files, hostile PDFs in the browser, PDF

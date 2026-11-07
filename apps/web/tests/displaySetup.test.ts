@@ -66,10 +66,15 @@ describe('setup wizard state machine', () => {
     expect(wizardReduce(wizardReduce(s, { type: 'custom', value: 'x' }), { type: 'custom', value: '' })).toMatchObject({ custom: '', room: '' })
   })
   it('the address step: the source line and "Other address" (web)', () => {
-    expect(addressSourceKey({ typed: false, isDefault: true })).toBe('setup.address.sourceDefault')
-    expect(addressSourceKey({ typed: false, isDefault: false })).toBe('setup.address.sourcePage')
-    expect(addressSourceKey({ typed: true, isDefault: false })).toBe('setup.address.sourceTyped')
-    expect(addressSourceKey({ typed: true, isDefault: true })).toBe('setup.address.sourceTyped')
+    const k = (typed: boolean, source: 'user' | 'query' | 'config' | 'build' | 'origin', inChoices = true) => addressSourceKey({ typed, source, inChoices })
+    expect(k(false, 'build')).toBe('setup.address.sourceDefault') // the default relay built into the page
+    expect(k(false, 'origin')).toBe('setup.address.sourcePage') // the page's own server
+    expect(k(false, 'config')).toBe('setup.address.sourcePage') // config.json
+    expect(k(false, 'query')).toBe('setup.address.sourcePage')
+    expect(k(false, 'user', true)).toBe('setup.address.sourcePage') // picked from the relays of config.json
+    expect(k(false, 'user', false)).toBe('setup.address.sourceTyped') // chosen earlier in this tab, not offered by the page
+    expect(k(true, 'user', false)).toBe('setup.address.sourceTyped')
+    expect(k(true, 'build')).toBe('setup.address.sourceTyped')
     const ws = ['wss://a/ws', 'wss://b/ws', 'wss://c/ws']
     // through the relays of config.json, then the field
     expect(nextAddressStep(ws, 'wss://a/ws', false)).toEqual({ kind: 'choice', ws: 'wss://b/ws' })

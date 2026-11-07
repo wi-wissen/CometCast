@@ -94,23 +94,57 @@ try {
   const video = receiver.getByTestId('remote-video')
   await waitFor(() => video.evaluate((v) => v.videoWidth > 0 && v.currentTime > 0), 'video playing')
 
-  // Toolbar: role, translated labels
+  // The toolbar is hidden at rest (presenting is quiet) and comes with the name tag and End (spec 4.5).
   const tb = receiver.getByTestId('toolbar')
-  await tb.waitFor()
+  const tbRoot = receiver.getByTestId('toolbar-root')
+  const opacity = () => tbRoot.evaluate((e) => Number(getComputedStyle(e).opacity))
+  const hidden = async () => (await tbRoot.getAttribute('class')).split(/\s+/).includes('hid')
+  let jiggle = 0
+  /** Input on the picture: moves the mouse a little and waits until the controls are shown. */
+  const reveal = async () => {
+    const vp = await receiver.evaluate(() => [innerWidth, innerHeight])
+    jiggle = (jiggle + 37) % 200
+    await receiver.mouse.move(vp[0] / 2 - 100 + jiggle, vp[1] * 0.7 + (jiggle % 50))
+    await waitFor(async () => !(await hidden()), 'controls shown')
+  }
+  await waitFor(async () => (await opacity()) === 0, 'toolbar faded out at rest')
+  assert.notEqual(await tbRoot.getAttribute('inert'), null, 'the hidden toolbar is not focusable')
+  assert.equal(await receiver.getByTestId('byline').getAttribute('class').then((c) => c.includes('hid')), true)
+  await reveal()
+  await waitFor(async () => (await opacity()) === 1, 'toolbar faded in with the name tag')
+  assert.equal(await tbRoot.getAttribute('inert'), null)
+  assert.equal(await receiver.getByTestId('end').isVisible(), true)
+
+  // Toolbar: role, translated labels; no grip, no collapse, no dot (it does not move and hides by itself)
   assert.equal(await tb.getAttribute('role'), 'toolbar')
   assert.equal(await receiver.getByTestId('tb-pen').getAttribute('aria-label'), 'Pen')
   assert.equal(await receiver.getByTestId('tb-pen').getAttribute('aria-pressed'), 'false')
+  for (const id of ['toolbar-grip', 'tb-collapse', 'toolbar-dot']) assert.equal(await receiver.getByTestId(id).count(), 0, id)
+  // top 12 reference px, centred, tokens only: panel fill, 2 px --line border (dark theme: #2e3c68)
+  const tbBox = await tb.boundingBox()
+  const vpW = await receiver.evaluate(() => innerWidth)
+  const scale = Math.min(vpW / 960, (await receiver.evaluate(() => innerHeight)) / 540)
+  assert.ok(Math.abs(tbBox.y - 12 * scale) < 2, `toolbar top ${tbBox.y} ~ ${12 * scale}`)
+  assert.ok(Math.abs(tbBox.x + tbBox.width / 2 - vpW / 2) < 2, 'toolbar centred')
+  assert.ok(Math.abs(tbBox.height - 46 * scale) < 2, 'toolbar 46 reference px high')
+  const tbStyle = await tb.evaluate((e) => {
+    const s = getComputedStyle(e)
+    return [s.borderTopColor, s.borderTopWidth]
+  })
+  assert.equal(tbStyle[0], 'rgb(46, 60, 104)')
+  assert.ok(Math.abs(parseFloat(tbStyle[1]) - 2 * scale) <= 1, `border ${tbStyle[1]} ~ ${2 * scale} (rounded to device pixels)`)
 
   // Keyboard: arrow keys move focus between buttons (roving tabindex)
   await receiver.getByTestId('tb-pen').focus()
   await receiver.keyboard.press('ArrowRight')
   assert.equal(await receiver.evaluate(() => document.activeElement?.getAttribute('data-testid')), 'tb-marker')
   await receiver.keyboard.press('Home')
-  assert.equal(await receiver.evaluate(() => document.activeElement?.getAttribute('data-testid')), 'toolbar-grip')
+  assert.equal(await receiver.evaluate(() => document.activeElement?.getAttribute('data-testid')), 'tb-pen')
 
   // Pen: drawing changes canvas pixels; nothing is drawn before
   const canvas = receiver.getByTestId('annotation-canvas')
   assert.equal(await paintedPixels(receiver, 'annotation-canvas'), 0, 'canvas starts empty')
+  await reveal()
   await receiver.getByTestId('tb-pen').click()
   assert.equal(await canvas.getAttribute('data-tool'), 'pen')
   const box = await canvas.boundingBox()
@@ -125,10 +159,14 @@ try {
   await receiver.mouse.move(cx, cy + 60, { steps: 12 })
   await receiver.mouse.move(cx + 200, cy - 20, { steps: 12 })
   await receiver.mouse.up()
+  // The toolbar auto-hide: drawing is input (strokes stay under the faded toolbar); the toolbar goes 5 s after the last input
+  await waitFor(async () => (await hidden()), 'toolbar hidden again 5 s after the last input', 9000)
+  assert.ok((await paintedPixels(receiver, 'annotation-canvas')) > 0, 'strokes stay visible after the controls fade')
   const painted = await waitFor(async () => (await paintedPixels(receiver, 'annotation-canvas')) || 0, 'pen pixels')
   console.log('annotation pixels:', painted)
   assert.ok(painted > 500, 'pen drew a visible stroke')
   // Marker with another colour, then undo removes only the marker stroke
+  await reveal()
   await receiver.getByTestId('tb-marker').click()
   await receiver.getByTestId('tb-color-yellow').click()
   await receiver.mouse.move(cx - 150, cy + 120)
@@ -139,6 +177,7 @@ try {
     const n = await paintedPixels(receiver, 'annotation-canvas')
     return n > painted + 500 ? n : 0
   }, 'marker pixels')
+  await reveal()
   await receiver.getByTestId('tb-undo').click()
   await waitFor(async () => (await paintedPixels(receiver, 'annotation-canvas')) === painted, 'undo restores pen-only pixels')
   assert.ok(both > painted)
@@ -149,6 +188,7 @@ try {
   if (shotDir) await receiver.screenshot({ path: resolve(shotDir, 'receiver-annotation-en.png') })
 
   // Eraser removes the pen stroke; clear is disabled when nothing is left
+  await reveal()
   await receiver.getByTestId('tb-eraser').click()
   await receiver.mouse.move(cx - 200, cy)
   await receiver.mouse.down()
@@ -157,20 +197,24 @@ try {
   await receiver.mouse.up()
   await waitFor(async () => (await paintedPixels(receiver, 'annotation-canvas')) === 0, 'eraser removed the stroke')
   assert.equal(await receiver.getByTestId('tb-clear').isDisabled(), true)
+  await reveal()
   await receiver.getByTestId('tb-undo').click()
   await waitFor(async () => (await paintedPixels(receiver, 'annotation-canvas')) > 0, 'undo of erase')
   await receiver.getByTestId('tb-eraser').click() // deselect
 
   // Laser: a dot follows the pointer, nothing is painted
   const before = await paintedPixels(receiver, 'annotation-canvas')
+  await reveal()
   await receiver.getByTestId('tb-laser').click()
   await receiver.mouse.move(cx, cy - 100)
   await receiver.getByTestId('laser-dot').waitFor()
   assert.equal(await paintedPixels(receiver, 'annotation-canvas'), before)
+  await reveal()
   await receiver.getByTestId('tb-laser').click()
 
   // Freeze: canvas shows the held frame while the live stream keeps running
   const frozenAt = await video.evaluate((v) => v.currentTime)
+  await reveal()
   await receiver.getByTestId('tb-freeze').click()
   const stage = receiver.getByTestId('stage')
   assert.equal(await stage.getAttribute('data-frozen'), 'true')
@@ -184,43 +228,30 @@ try {
     'stream still advancing while frozen',
   )
   console.log('frozen: video currentTime', frozenAt, '->', later[0], 'paused', later[1])
+  // The frozen badge is a state: drawn at rest (name tag style, top left) while the controls are hidden
+  await waitFor(async () => (await hidden()), 'controls hidden while frozen', 9000)
+  await receiver.getByTestId('frozen-badge').waitFor({ state: 'visible' })
+  const badge = await receiver.getByTestId('frozen-badge').boundingBox()
+  assert.ok(Math.abs(badge.x - 12 * scale) < 2 && Math.abs(badge.y - 12 * scale) < 2, 'frozen badge top left')
+  await reveal()
   await receiver.getByTestId('tb-freeze').click()
   assert.equal(await stage.getAttribute('data-frozen'), 'false')
 
-  // Black screen
+  // Black screen: the hint is 15 reference px --mut on black, drawn at rest too
+  await reveal()
   await receiver.getByTestId('tb-black').click()
   await receiver.getByTestId('black-screen').waitFor()
+  await waitFor(async () => (await hidden()), 'controls hidden over the black screen', 9000)
+  assert.equal(await receiver.getByTestId('black-screen').isVisible(), true)
+  const hint = await receiver.locator('.cd-blackhint').evaluate((e) => {
+    const s = getComputedStyle(e)
+    return [s.fontSize, s.color]
+  })
+  assert.equal(parseFloat(hint[0]), 15 * scale)
+  assert.equal(hint[1], 'rgb(185, 194, 216)')
+  await reveal()
   await receiver.getByTestId('tb-black').click()
   await receiver.getByTestId('black-screen').waitFor({ state: 'detached' })
-
-  // Collapse to a dot and back (mouse), and keyboard (Enter)
-  await receiver.getByTestId('tb-collapse').click()
-  await receiver.getByTestId('toolbar-dot').waitFor()
-  assert.equal(await tb.count(), 0)
-  await receiver.getByTestId('toolbar-dot').click()
-  await tb.waitFor()
-  await receiver.getByTestId('tb-pen').focus()
-  await receiver.keyboard.press('Escape')
-  await receiver.getByTestId('toolbar-dot').waitFor()
-  await receiver.getByTestId('toolbar-dot').focus()
-  await receiver.keyboard.press('Enter')
-  await tb.waitFor()
-
-  // Drag the toolbar by its grip
-  const g = await receiver.getByTestId('toolbar-grip').boundingBox()
-  const t0 = await tb.boundingBox()
-  await receiver.mouse.move(g.x + g.width / 2, g.y + g.height / 2)
-  await receiver.mouse.down()
-  await receiver.mouse.move(g.x + g.width / 2 - 250, g.y + g.height / 2 + 200, { steps: 8 })
-  await receiver.mouse.up()
-  const t1 = await tb.boundingBox()
-  // (the 690 px wide page column is barely wider than the toolbar, so only vertical movement is checked)
-  assert.ok(t1.y > t0.y + 100, `toolbar moved (${t0.x},${t0.y}) -> (${t1.x},${t1.y})`)
-  const stageBox = await stage.boundingBox()
-  assert.ok(t1.x >= stageBox.x - 1 && t1.x + t1.width <= stageBox.x + stageBox.width + 1, 'toolbar stays inside the stage')
-
-  // Leave the toolbar on the left-top for screenshots
-  await receiver.keyboard.press('Tab')
 
   // ===== Part B: content over the data channel ===============================================
   // The presenter stops showing the screen but stays connected, then shows a file and a link.
@@ -254,10 +285,11 @@ try {
   assert.deepEqual(dims, [64, 32])
   await cs.getByTestId('presenting-page').waitFor()
   console.log('received image natural size:', dims)
-  // Close button on the display
-  await receiver.getByTestId('content-close').click()
-  await img.waitFor({ state: 'detached' })
+  // Nothing is drawn over the picture: no close button (the presenter stops it)
+  assert.equal(await receiver.getByTestId('content-close').count(), 0)
+  assert.equal(await receiver.locator('[data-testid=stage] button:not([data-tb])').count(), 0)
   await back()
+  await img.waitFor({ state: 'detached' })
 
   // Link: validation on the sender
   const pagesBefore = rctx.pages().length
@@ -270,13 +302,25 @@ try {
   await cs.getByTestId('link-go').click()
   const card = receiver.getByTestId('link-card')
   await card.waitFor({ timeout: 10000 })
-  assert.match(await card.innerText(), /example\.org wants to open a link/)
+  assert.match(await card.innerText(), /example\.org wants to open a link/i) // the title is drawn in capitals
+  // The card is a display dialog: Open has the focus; a key press or click within 1 s does nothing
+  assert.equal(await receiver.evaluate(() => document.activeElement?.getAttribute('data-testid')), 'link-open')
+  assert.equal(await receiver.getByTestId('link-open').getAttribute('class').then((c) => c.includes('p')), true)
+  await receiver.keyboard.press('Enter')
+  await receiver.keyboard.press('Escape')
+  await receiver.getByTestId('link-dismiss').click()
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal(await card.count(), 1, 'the card ignores input for 1 s')
+  assert.equal(rctx.pages().length, pagesBefore, 'a key press within 1 s opens nothing')
   await new Promise((r) => setTimeout(r, 1500))
   assert.equal(rctx.pages().length, pagesBefore, 'no tab opened before the click')
   assert.equal(linkRequests, 0, 'no request to the link target before the click')
   if (shotDir) await receiver.screenshot({ path: resolve(shotDir, 'receiver-linkcard-en.png') })
-  // Dismiss: still nothing opens
-  await receiver.getByTestId('link-dismiss').click()
+  // The focus row is [Open, Dismiss]; Back (Escape) = Dismiss; still nothing opens
+  await receiver.keyboard.press('ArrowRight')
+  assert.equal(await receiver.evaluate(() => document.activeElement?.getAttribute('data-testid')), 'link-dismiss')
+  await receiver.keyboard.press('ArrowLeft')
+  await receiver.keyboard.press('Escape')
   await card.waitFor({ state: 'detached' })
   await new Promise((r) => setTimeout(r, 500))
   assert.equal(rctx.pages().length, pagesBefore, 'dismiss does not open a tab')
@@ -286,6 +330,7 @@ try {
   await cs.getByTestId('link-url').fill('https://example.org/path?x=1')
   await cs.getByTestId('link-go').click()
   await card.waitFor({ timeout: 10000 })
+  await new Promise((r) => setTimeout(r, 1300)) // the 1 s guard
   const [opened] = await Promise.all([rctx.waitForEvent('page'), receiver.getByTestId('link-open').click()])
   await opened.waitForLoadState()
   assert.match(opened.url(), /^https:\/\/example\.org\/path\?x=1$/)

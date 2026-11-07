@@ -105,10 +105,15 @@ export function wizardReduce(s: WizardState, a: WizardAction): WizardState {
 
 // --- the address step (web) --------------------------------------------------------------------------------
 
-/** Which line explains where the address comes from (spec 4.1, web): default relay, the page's own server or config.json, or typed. */
-export function addressSourceKey(o: { typed: boolean; isDefault: boolean }): 'setup.address.sourceTyped' | 'setup.address.sourceDefault' | 'setup.address.sourcePage' {
-  if (o.typed) return 'setup.address.sourceTyped'
-  return o.isDefault ? 'setup.address.sourceDefault' : 'setup.address.sourcePage'
+/**
+ * Which line explains where the address comes from (spec 4.1, web): `sourceDefault` for the default relay (the one built into this
+ * page), `sourcePage` for a relay that comes from the page's own server, its `config.json` or its link, `sourceTyped` for an
+ * address typed into the field. `source` is the relay's own source (core/relay.ts); `inChoices`: it is one of the relays the page offers.
+ */
+export function addressSourceKey(o: { typed: boolean; source: 'user' | 'query' | 'config' | 'build' | 'origin'; inChoices: boolean }): 'setup.address.sourceTyped' | 'setup.address.sourceDefault' | 'setup.address.sourcePage' {
+  // A relay that was chosen in this tab and is not one the page offers was typed (also after a reload of the tab).
+  if (o.typed || (o.source === 'user' && !o.inChoices)) return 'setup.address.sourceTyped'
+  return o.source === 'build' ? 'setup.address.sourceDefault' : 'setup.address.sourcePage'
 }
 
 /**

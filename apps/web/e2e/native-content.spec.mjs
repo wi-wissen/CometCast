@@ -237,7 +237,7 @@ try {
   children.push(send2.proc)
   const card = receiver.getByTestId('link-card')
   await card.waitFor({ timeout: 20000 })
-  assert.match(await card.innerText(), /example\.org wants to open a link/)
+  assert.match(await card.innerText(), /example\.org wants to open a link/i) // the title is drawn in capitals
   await waitFor(() => send2.lines.includes('Sent.'), 'send-link reports Sent.')
   send2.proc.kill('SIGTERM')
 

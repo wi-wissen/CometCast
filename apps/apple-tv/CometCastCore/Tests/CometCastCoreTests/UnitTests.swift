@@ -112,6 +112,25 @@ final class SignalingTests: XCTestCase {
         XCTAssertEqual(JSON.parse(ClientMessage.answer(sdp: "v=0\r\n").encode()), .object(["type": .string("answer"), "sdp": .string("v=0\r\n")]))
         XCTAssertEqual(JSON.parse(ClientMessage.iceCandidate(candidate: "{}").encode()), .object(["type": .string("ice_candidate"), "candidate": .string("{}")]))
     }
+    func testRoomNameIsOptionalAndStrict() {
+        // create_room: written only when present
+        XCTAssertEqual(JSON.parse(ClientMessage.createRoom(altcha: nil, joinMode: .open, roomName: "Meeting room Elbe").encode()),
+                       .object(["type": .string("create_room"), "join_mode": .string("open"), "room_name": .string("Meeting room Elbe")]))
+        XCTAssertEqual(JSON.parse(ClientMessage.createRoom(altcha: nil, joinMode: .open, roomName: nil).encode()),
+                       .object(["type": .string("create_room"), "join_mode": .string("open")]))
+        // joined and join_pending: a string is kept; absent, null, blank, not a string mean "no room name" and the message stays valid
+        XCTAssertEqual(ServerMessage.decode("{\"type\":\"joined\",\"room_name\":\"Wohnzimmer\"}"), .joined(roomName: "Wohnzimmer"))
+        XCTAssertEqual(ServerMessage.decode("{\"type\":\"joined\"}"), .joined(roomName: nil))
+        for bad in ["null", "\"\"", "\"  \\t \"", "5", "[\"x\"]", "false"] {
+            XCTAssertEqual(ServerMessage.decode("{\"type\":\"joined\",\"room_name\":\(bad)}"), .joined(roomName: nil), bad)
+            XCTAssertEqual(ServerMessage.decode("{\"type\":\"join_pending\",\"timeout_secs\":60,\"check\":42,\"room_name\":\(bad)}"),
+                           .joinPending(timeoutSecs: 60, check: 42, roomName: nil), bad)
+        }
+        XCTAssertEqual(ServerMessage.decode("{\"type\":\"join_pending\",\"timeout_secs\":60,\"check\":42,\"room_name\":\"Raum 204\"}"),
+                       .joinPending(timeoutSecs: 60, check: 42, roomName: "Raum 204"))
+        // the rest of the message is still checked
+        XCTAssertNil(ServerMessage.decode("{\"type\":\"join_pending\",\"timeout_secs\":60,\"room_name\":\"x\"}"))
+    }
     func testErrorKeys() {
         for code in ["altcha_required", "altcha_invalid", "rate_limited", "banned", "room_not_found", "connection_lost", "peer_failed", "altcha_too_hard"] {
             XCTAssertEqual(errorMessageKey(code), "errors.\(code)")

@@ -38,9 +38,8 @@ watch(
 const full = computed(() => cleanName(props.request.name))
 const shown = computed(() => (full.value ? t('common.quoted', { name: shortName(full.value, 18) }) : t('common.noName')))
 const aria = computed(() => t('request.aria', { name: full.value ? t('common.quoted', { name: full.value }) : t('common.noName') }))
-// The protocol does not carry a device type (see docs/design/implementation-questions.md): the
-// " · {device}" part is dropped.
-const sub = computed(() => t('request.subtitle', { device: '' }).replace(/[\s·]+$/, ''))
+// "wants to connect": the protocol carries no device type, so the sentence has none (decision 13.3).
+const sub = computed(() => t('request.subtitle'))
 
 function guarded(fn: () => void) {
   return () => {

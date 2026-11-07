@@ -182,6 +182,20 @@ final class JoinMachineTests: XCTestCase {
         XCTAssertEqual(m.state.joinMode, .open)
     }
 
+    func testRoomNameIsSentWithEveryCreateRoom() {
+        var m = ReceiverMachine(joinMode: .confirm, roomName: "Meeting room Elbe")
+        _ = m.handle(.start)
+        XCTAssertEqual(m.handle(.serverReady), [.send(.createRoom(altcha: nil, joinMode: .confirm, roomName: "Meeting room Elbe"))])
+        _ = m.handle(.message(.roomCreated(code: "K7M2QX", joinMode: .confirm)))
+        // the next room after End carries it too
+        let fx = m.handle(.message(.roomEnded))
+        XCTAssertTrue(fx.contains(.send(.createRoom(altcha: nil, joinMode: .confirm, roomName: "Meeting room Elbe"))), "\(fx)")
+        // no name: the field is absent
+        var n = ReceiverMachine()
+        _ = n.handle(.start)
+        XCTAssertEqual(n.handle(.serverReady), [.send(.createRoom(altcha: nil, joinMode: .open, roomName: nil))])
+    }
+
     func testModeChosenBeforeTheRoomExistsIsAppliedAfterRoomCreated() {
         var m = ReceiverMachine(joinMode: .confirm)
         _ = m.handle(.start)

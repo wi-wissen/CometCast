@@ -120,10 +120,10 @@ The Swift client speaks **protocol version 2** (`protoVersion = 2` in `Signaling
 | Direction | Message | Swift |
 | --- | --- | --- |
 | to server | `hello {proto_version: 2, role}` | `ClientMessage.hello` |
-| to server | `create_room {altcha?, join_mode}` | `.createRoom(altcha:joinMode:)`, always with a mode (`open` by default) |
+| to server | `create_room {altcha?, join_mode, room_name?}` | `.createRoom(altcha:joinMode:roomName:)`, always with a mode (`open` by default); `roomName` is optional (`ReceiverMachine(joinMode:roomName:)`, nothing in the app sets it yet) and is only written when present; the server cleans it and cuts it at 32 characters |
 | to server | `set_join_mode`, `join_decision {id?, allow, block?}`, `remove_peer {block?}`, `unblock {id}`, `end_room` | `.setJoinMode`, `.joinDecision`, `.removePeer`, `.unblock`, `.endRoom`; `block` is only written when true, and for `join_decision` only with a denial of one request |
 | from server | `room_created {code, join_mode}` (mode required), `peer_joined {name}` (name required) | `.roomCreated(code:joinMode:)`, `.peerJoined(name:)` |
-| from server | `join_request {id, name, check}`, `join_request_cancelled {id, reason}`, `join_mode_changed`, `blocked {id, name}`, `unblocked {id}`, `room_ended`, `join_pending` | `.joinRequest`, `.joinRequestCancelled`, `.joinModeChanged`, `.blocked`, `.unblocked`, `.roomEnded`, `.joinPending` (the receiver ignores it) |
+| from server | `join_request {id, name, check}`, `join_request_cancelled {id, reason}`, `join_mode_changed`, `blocked {id, name}`, `unblocked {id}`, `room_ended`, `join_pending` | `.joinRequest`, `.joinRequestCancelled`, `.joinModeChanged`, `.blocked`, `.unblocked`, `.roomEnded`, `.joinPending(timeoutSecs:check:roomName:)` and `.joined(roomName:)` (the receiver ignores both; `roomName` is read leniently: absent, not a string or blank is `nil`, the message stays valid) |
 
 **State machine** (`ReceiverMachine`, a port of the web `receiverSession.ts` join logic). New state in `ReceiverState`: `joinMode` (default `open`), `requests` (oldest first: `id`, cleaned `name`, two-digit `check`), `peerName`, `blocks`, `notice`. New inputs for the host's actions: `setJoinMode`, `decide(id:allow:block:)`, `denyAll`, `removePeer(block:)`, `unblock(id:)`, `endRoom`, `dismissNotice`; each returns a `send` effect and does nothing without a room (no code yet).
 

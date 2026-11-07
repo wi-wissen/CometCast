@@ -12,7 +12,7 @@ behaviour come from there; nothing visual was invented in the code). Two kinds o
 Screen video goes over WebRTC, signalling over WebSocket `/ws` (protocol in `docs/protocol.md`). Without a STUN/TURN list from
 the server it works over the local network only and may not work across networks. Servers in open mode require a small
 proof-of-work (ALTCHA) before a room is created; the page solves it by itself (see "Open servers and TURN" below). The display
-has a local annotation toolbar, and images, PDFs and links can be sent over a WebRTC DataChannel (milestone M2, see
+has a local annotation toolbar (hidden at rest, it shows with the name tag and End), and images, PDFs and links can be sent over a WebRTC DataChannel (milestone M2, see
 `docs/web-m2.md`). A PDF is rendered by `crates/cc-docs-wasm` (hayro compiled to WebAssembly, in a Web Worker). Build it with
 `npm run build:wasm` (needs the Rust target `wasm32-unknown-unknown` and a `wasm-bindgen` CLI of exactly the
 version in `Cargo.lock`) **before** `npm run build`; it is written to `public/pdf/` (git-ignored). Without it
@@ -34,7 +34,7 @@ cd apps/web && npm ci && npm run dev
 - `npm run preview` - serve the production build (no signalling server; use the Rust server below)
 - `npm run e2e` - end-to-end test, see below (not part of `npm test`)
 - `npm run e2e:native` - interop test with the native Rust peers, see below
-- `npm run e2e:m2` - end-to-end test for toolbar, freeze, images and links (needs `npm run build` first)
+- `npm run e2e:m2` - end-to-end test for the toolbar (hidden at rest), freeze, images and the link card (needs `npm run build` first)
 - `npm run e2e:static` - app on its own static origin, relay on another (builds by itself, see "Static hosting")
 - `npm run e2e:display` - the display and presenter pages, see "Display and presenter tests" (needs `npm run build` first; builds a second copy by itself for the dimming test)
 - `npm run e2e:join` - join approval with the request dialog, see "Join approval test"
@@ -54,7 +54,7 @@ then "Share screen". For development with `npm run dev`, add
 
 ## Code layout
 
-- `src/core/signaling.ts` - WebSocket client and typed messages (mirrors `cc-proto`)
+- `src/core/signaling.ts` - WebSocket client and typed messages (mirrors `cc-proto`). The optional `room_name` (display's room name, sent with `create_room`, back in `join_pending` and `joined`) is read leniently: absent, null, not a string or blank means no room name; the presenter pages then show no room at all and never the code
 - `src/core/relay.ts`, `src/composables/useRelay.ts`, `src/components/RelayConfirm.vue` - relay validation and selection, `config.json`, the confirmation dialog for a relay from a link
 - `src/core/peer.ts` - RTCPeerConnection wrapper (takes the STUN/TURN list from the server; none by default)
 - `src/core/altcha.ts`, `altchaWorker.ts`, `altchaClient.ts` - ALTCHA solver (WebCrypto PBKDF2, runs in a Web Worker), `GET /altcha/challenge` and `GET /ice-servers`
@@ -69,7 +69,10 @@ then "Share screen". For development with `npm run dev`, add
 - `src/core/appearance.ts`, `displaySetup.ts` - appearance (Dark default, OLED black, Light, Automatic; kept in `localStorage` of the display device) and the first-run setup (room name, default join mode, server)
 - `src/core/idleDim.ts`, `controlsReveal.ts`, `wakeLock.ts`, `dpad.ts` - idle dimming, controls on input while presenting, Screen Wake Lock, focus moving in rows
 - `src/core/qr.ts`, `platform.ts`, `presenterErrors.ts`, `codeFormat.ts` - QR code, "Detected: ...", which error page, code grouping
-- `src/config/stores.ts` - the store and download addresses: **placeholders** (empty) until the apps are published
+- `src/config/stores.ts` - the store and download addresses: **placeholders** (empty) until the apps are published. An empty address means no offer at all (no button, small print, "or" divider or download note on the start page, no "Get the app" on the error page; the idle footer says only "No download needed.")
+- `src/core/connectionView.ts` - what the idle screen shows about the connection: the code, "connecting" (empty code line and QR box) or, after 3 s without a connection (8 s at start), the offline box; the retry rules (4 s, 30 s for a busy server, none for a page that is out of date)
+- `src/core/focusRing.ts`, `composables/useFocusRing.ts` - the display's focus ring rule (shown on load, hidden by the first mouse or touch input, shown again by a key)
+- `src/core/textSlot.ts` - cuts a translated sentence where a styled value (security code, link) belongs
 
 ## Open servers and TURN
 
@@ -117,7 +120,10 @@ relay serve it (`--web-dir`, the Docker image does). The relay (`cometcast-serve
 3. Build-time default `VITE_DEFAULT_RELAY`, e.g. `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws npm run build`.
 4. The page's own origin (the relay serves the page: Docker image, `--web-dir`, `npm run dev` with `?server=`).
 
-The display's setup wizard shows the address in use (host only) in step 3 and the same address is the big address on the
+The display's setup wizard shows the address in use (host only) in step 3, with the source line `setup.address.sourceDefault` (the
+default relay built into the page), `sourcePage` (the page's own server, `config.json` or a link) or `sourceTyped`
+("Entered by hand."); "Other address" goes through the relays of `config.json` and then opens a text field in place (Back
+cancels it). The same address is the big address on the
 idle screen and inside the QR code (`https://{dom}/{CODE}`, plain `http://` for a local relay). The presenter pages take the relay
 from the same rules; a link (`?server=`) is the only way to point a presenter somewhere else. Presenter and display must use
 the same relay. The earlier relay field (tag "default" or "custom", a warning for a non-default relay) is gone: the spec has no
@@ -136,8 +142,10 @@ skips it (the e2e tests click through it). A `ws://` relay on an https page is r
 **What the relay can and cannot do (UNCERTAIN, not audited).** Screen, images and documents travel directly between
 the two browsers, encrypted (DTLS-SRTP), unless a TURN relay is configured, which then forwards the encrypted packets.
 The relay carries the signalling, including the DTLS certificate fingerprints, so a malicious relay could in
-principle interfere with the key exchange (swap fingerprints) and sit in the middle. **Connection check code**
-(`src/core/sas.ts`): when connected, sender and receiver show a 6 digit code, the SHA-256 (domain-separated
+principle interfere with the key exchange (swap fingerprints) and sit in the middle. **Security code**
+(`src/core/sas.ts`; "Security code" / "Sicherheitscode", not "check", which is the two-digit number): when connected, sender and
+receiver show a 6 digit code (display: second line of the name tag, only while the controls are shown; presenter: one line of
+small print on the "Presenting" page only), the SHA-256 (domain-separated
 `cometcast/connection-check/v1`) of the two DTLS fingerprints of the final offer and answer, sorted, reduced to 6 digits.
 Both sides show the same code unless the fingerprints were swapped. Limits: people have to compare it (nothing is
 enforced and the page cannot tell if they did); a short code without a commitment step can in principle be ground by an
@@ -198,14 +206,17 @@ the controls: "End presentation" and the block list with Unblock, "Later", the j
 ## Display and presenter tests
 
 `npm run build && E2E_CHROME=/usr/bin/google-chrome npm run e2e:display` (real server, real Chrome) covers: the setup wizard
-(focus per step, Back, what Finish stores), the idle screen (address, code, QR URL, pill), Settings (join mode, appearance
+(focus per step, Back, the empty custom name field and the chips, the address source lines and the address field, the focus ring
+rule: shown on load, hidden by the first mouse input, back after a key; what Finish stores), the idle screen (address, code, QR URL, pill), Settings (join mode, appearance
 Dark / Light / OLED black / Automatic, kept after a reload; arrow keys in rows; Escape and the Menu key), the request dialog
 (queue "+1 waiting", first come first served, 1 s guard), Yes -> presenting full bleed (the picture fills 1280 x 720, nothing
 else drawn) -> mouse and key reveal the name tag and End (first key only reveals, hides after 5 s) -> End -> new code and toast ->
 the presenter sees "Presentation ended"; "Stop showing" leaves the display on idle with the same code; No and No and block;
 Locked; the screen wake lock (`navigator.wakeLock` is replaced by a counting mock: nothing on idle, one `acquire` while presenting, `release`
 afterwards, also for a link); idle dimming; the presenter's start page (empty code, QR path, German, dark, a phone viewport with
-Android user agent, no horizontal scroll) and error pages. `E2E_SHOTS=/tmp/shots` also writes a PNG of each state.
+Android user agent, no horizontal scroll), the code field (every typed character stays, a code with an O is the error page without a
+server call), the room name on the presenter's waiting, "What to show" and "Presenting" pages, the security code on both sides,
+that a request closes Settings, that no app offer is drawn without a store link, and the error pages. `E2E_SHOTS=/tmp/shots` also writes a PNG of each state.
 
 **Idle dimming in tests.** The delay is 7 minutes (`IDLE_DIM_MS`). Only a build made with the environment variable
 `VITE_E2E_DIM_MS` (milliseconds) changes it; `e2e:display` makes such a build in a temporary folder. The normal build has no
@@ -218,7 +229,7 @@ the real `cometcast-cli`: a raw client without ALTCHA gets `altcha_required`; th
 "Checking your browser..." status (English and German), solves the puzzle in a Web Worker and creates a room on an
 open-mode server, a web sender joins and video plays; `cometcast-cli receive` creates a room on the open server and
 receives from a web sender; `cometcast-cli send` reaches a web receiver; repeated room creation ends in the translated
-`rate_limited` message and failed joins in the translated `banned` message; on an internal-mode server with a TURN
+`rate_limited` message and failed joins in the "The server is busy" page (a ban is told like a rate limit); on an internal-mode server with a TURN
 secret both web pages put the server's list (with credentials that match HMAC-SHA1 of the user name) into their
 `RTCPeerConnection` (read by wrapping the constructor in the test page) and the CLI reports the list; the CLI connects
 over `wss://` to a self-signed server with `--ca-file`. TURN is tested on a separate internal-mode server because open

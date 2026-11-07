@@ -164,12 +164,17 @@ try {
   const content = contentSender(cs)
   const sendLink = (u) => content.link(u)
   const card = receiver.getByTestId('link-card')
+  // The link card ignores input for 1 s after it appeared (the same guard as the join request).
+  const shown = async () => {
+    await card.waitFor({ timeout: 10000 })
+    await sleep(1200)
+  }
   const player = receiver.getByTestId('media-player')
   const elCount = () => receiver.evaluate(() => document.querySelectorAll('[data-testid=media-element]').length)
 
   // ---- audio: nothing loads before the click -------------------------------------------------------
   await sendLink(media('/a.wav'))
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   const play = receiver.getByTestId('media-play')
   assert.match(await play.innerText(), new RegExp(`Play from ${mhost.replace('.', '\\.')}`))
   assert.match(await receiver.getByTestId('media-host-warning').innerText(), /Warning/, '127.0.0.1 is an IP literal: warning line')
@@ -183,7 +188,7 @@ try {
 
   // ---- click Play: the audio runs; request carries no cookie and no referrer -----------------------
   await sendLink(media('/a.wav'))
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   await play.click()
   await player.waitFor()
   await waitFor(() => receiver.getByTestId('media-element').evaluate((m) => !m.paused && m.currentTime > 0), 'audio playing')
@@ -215,7 +220,7 @@ try {
 
   // ---- Escape inside the player closes it, like Stop ------------------------------------------------------
   await sendLink(media('/a.wav'))
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   await play.click()
   await player.waitFor()
   await receiver.keyboard.press('Escape')
@@ -226,7 +231,7 @@ try {
   // ---- video (webm) ------------------------------------------------------------------------------
   if (webm) {
     await sendLink(media('/v.webm'))
-    await card.waitFor({ timeout: 10000 })
+    await shown()
     assert.equal(hitsFor('/v.webm'), 0)
     await play.click()
     await waitFor(() => receiver.getByTestId('media-element').evaluate((m) => !m.paused && m.videoWidth === 160), 'video playing')
@@ -239,7 +244,7 @@ try {
   // ---- one player at a time: a new link, an image or a document replaces a playing one ----------------------
   const startPlaying = async (path) => {
     await sendLink(media(path))
-    await card.waitFor({ timeout: 10000 })
+    await shown()
     await play.click()
     await player.waitFor()
     await waitFor(() => receiver.getByTestId('media-element').evaluate((m) => !m.paused && m.currentTime > 0), 'audio playing')
@@ -252,7 +257,7 @@ try {
   }
   await startPlaying('/r1.wav')
   await sendLink(media('/a.wav?second=1'))
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   assert.equal(await elCount(), 0, 'new link closes the player')
   assert.equal(await player.count(), 0)
   await expectQuiet('/r1.wav', 'after replacement by a link')
@@ -264,14 +269,13 @@ try {
   assert.equal(await elCount(), 0, 'an image closes the player')
   assert.equal(await player.count(), 0)
   await expectQuiet('/r2.wav', 'after replacement by an image')
-  await receiver.getByTestId('content-close').click()
+  await content.stop() // no close button on the display: the presenter stops it
 
   await startPlaying('/r3.wav')
   await content.file({ name: 't.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
   await player.waitFor({ state: 'detached', timeout: 10000 })
   assert.equal(await elCount(), 0, 'a document closes the player')
   await expectQuiet('/r3.wav', 'after replacement by a document')
-  await receiver.getByTestId('content-close').click().catch(() => undefined)
   await content.stop()
 
   // ---- errors: translated, host only. Chrome reports a bad file, a 404 and a missing CORS header all as ----
@@ -279,7 +283,7 @@ try {
   const err = receiver.getByTestId('media-error')
   for (const [path, label] of [['/bad.mp4?secret=abc', 'bad file'], ['/missing.mp4?secret=abc', '404'], ['/nocors.wav?secret=abc', 'no CORS']]) {
     await sendLink(media(path))
-    await card.waitFor({ timeout: 10000 })
+    await shown()
     await play.click()
     await err.waitFor({ timeout: 15000 })
     const text = (await err.innerText()).replace(/\s+/g, ' ')
@@ -292,7 +296,7 @@ try {
 
   // ---- loading timeout (20 s): a server that never answers releases the element, network notice ---------
   await sendLink(media('/slow.mp4'))
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   await play.click()
   await player.waitFor()
   await err.waitFor({ timeout: 30000 })
@@ -303,7 +307,7 @@ try {
   // ---- HLS: native support only (Chromium has none) -----------------------------------------------------
   const hlsNative = await receiver.evaluate(() => document.createElement('video').canPlayType('application/vnd.apple.mpegurl') !== '')
   await sendLink(media('/live/index.m3u8'))
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   assert.equal(await receiver.getByTestId('media-play').count(), hlsNative ? 1 : 0)
   if (!hlsNative) await receiver.getByTestId('media-hls-unsupported').waitFor()
   await receiver.getByTestId('link-open').waitFor() // the plain Open choice stays
@@ -311,7 +315,7 @@ try {
 
   // ---- a normal link has no Play button ---------------------------------------------------------------
   await sendLink('https://example.org/page.html')
-  await card.waitFor({ timeout: 10000 })
+  await shown()
   assert.equal(await receiver.getByTestId('media-play').count(), 0)
   await receiver.getByTestId('link-dismiss').click()
 
