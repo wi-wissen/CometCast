@@ -1,6 +1,6 @@
 # First run and display: implementation spec
 
-Status: **final, approved for implementation; revised after the first, second and third implementation review of the web app (2026-11-07).** The owner approved round 4 with two changes, which are applied here and in the final mockup. The review decisions are listed in [section 13](#13-decisions-after-implementation-review) (1–29 first review, 30–53 second review, 57–69 third review) and are already worked into the sections below; the work items for the web app are in [fix-list-web.md](fix-list-web.md) (done) and [fix-list-web-2.md](fix-list-web-2.md) (done) and [fix-list-web-3.md](fix-list-web-3.md) (open, the last design work items for the web display, decision 69), the answered questions in [implementation-questions.md](implementation-questions.md). How the native apps (Flutter, SwiftUI on Apple TV) build the same product is in [native-apps.md](native-apps.md). Build from this document; do not wait for further design review. **Addendum (2026-11-07):** [section 14](#14-screens-on-the-same-network-apps-only) adds the list of screens on the same network to the app start page, and German now ships in the "du" form (decision 54).
+Status: **final, approved for implementation; revised after the first, second and third implementation review of the web app (2026-11-07).** The owner approved round 4 with two changes, which are applied here and in the final mockup. The review decisions are listed in [section 13](#13-decisions-after-implementation-review) (1–29 first review, 30–53 second review, 57–69 third review) and are already worked into the sections below; the work items for the web app are in [fix-list-web.md](fix-list-web.md) (done) and [fix-list-web-2.md](fix-list-web-2.md) (done) and [fix-list-web-3.md](fix-list-web-3.md) (open, the last design work items for the web display, decision 69), the answered questions in [implementation-questions.md](implementation-questions.md). How the native apps (Flutter, SwiftUI on Apple TV) build the same product is in [native-apps.md](native-apps.md). Build from this document; do not wait for further design review. **Addendum (2026-11-07):** [section 14](#14-screens-on-the-same-network-apps-only) adds the list of screens on the same network to the app start page, and German now ships in the "du" form (decision 54). **Flutter review (2026-11-07):** decisions N1–N28 in section 13, new sections 4.7 and 5.8 (video codec consent), copy 11.9–11.10; work items in [fix-list-flutter.md](fix-list-flutter.md).
 
 This document describes the **whole product**, including parts that the mockup never drew (annotation toolbar, link card, relay confirmation, security code, connecting and offline states, the later error pages, the PDF page row, the web file page, the wizard address field). Where an item has no mockup counterpart, the section named here is its design.
 
@@ -40,7 +40,7 @@ Where this document and the mockup disagree, this document wins. Known places wh
 | Security code | Six digits (`171 852`) computed on both sides from the connection's keys. Shown in the name tag on the display and on the presenter's "Presenting" page; if they differ, the connection may be intercepted. Not the check number, not the join code. |
 | Room name | The name chosen in setup step 1. Shown on the idle screen and, through the protocol field `room_name`, on the presenter's waiting, "What to show" and "Presenting" pages. |
 | Join mode | Open, Approval on (`Mit Freigabe`), Locked. |
-| `{dom}` | The address of the server the display uses, e.g. `cometcast.de`, `cast.musterfirma.de`, `cast-box.local`. |
+| `{dom}` | The address of the server the display uses, e.g. `cometcast.de`, `cast.musterfirma.de`, `cast-box.local`. Host name only; `:port` is added only when the port is not 443 (decision N12), on the idle screen, in the wizard, in `idle.offline.title` and in the QR URL alike. |
 
 ## 3. Design tokens
 
@@ -218,6 +218,7 @@ A card (780 ref px wide) centred horizontally on `--bg`. The welcome card (step 
 - Locked is not offered as a default; it only exists during a session.
 - The address is detected, not typed: DNS entry of the company network → own server; in-house box found on the network → box; otherwise the default server. "Other address" cycles through the found options (if only one exists, it opens a text field for an address).
 - **Web (`/display`)**: a web page cannot see DNS entries or boxes. The card shows the relay host the page uses. Source line: `setup.address.sourceDefault` for the default relay, `setup.address.sourcePage` for any relay that comes from the page's own server or its `config.json`, `setup.address.sourceTyped` for an address typed into the field. `setup.address.sourceOwn` and `setup.address.sourceBox` are used by the native apps only. "Other address" cycles through the relays of `config.json`, then opens the field; the field replaces the address card content in place: label `setup.address.fieldLabel`, the same input style as the room name field, OK/Enter confirms (back to the card with `sourceTyped`), Back cancels. With the field open the button row is [Back, Looks right]: **Looks right** confirms like Enter, **Back** (and Escape) closes the field and stays on step 3 with focus on "Other address", "Other address" is not drawn. After the field was used or cancelled, "Other address" opens the field again; the relays of `config.json` are reached again by going one step back and forward (decision 13.38). An invalid address shows the existing `relay.errors.*` line under the field (16, `--fg`, led by the `info` icon 20 in `--acc`, as the warning lines of 4.5; no red).
+- Which source line (native apps, decision N13): DNS entry → `sourceOwn`, in-house box → `sourceBox`, an administrator's policy → `sourcePolicy` ("Other address" is hidden when the policy locks the server), an address typed into the field → `sourceTyped`, otherwise `sourceDefault`.
 - Which source line (web, decision 13.40): `sourceDefault` only for the relay built into the page (`VITE_DEFAULT_RELAY`); the page's own server, a `config.json` relay (also when reached with "Other address") and a confirmed `?server=` relay say `sourcePage`; an address typed into the field says `sourceTyped`.
 - Back on the remote goes one step back; on step 0 it does nothing.
 - Finish stores room name, default join mode and server, then shows Idle with the chosen mode.
@@ -246,7 +247,7 @@ Reconnect schedule (decision 13.30): after a loss (at start, the first failed at
 | --- | --- | --- |
 | Network or server not reachable, connection lost | `idle.offline.body` | 1 s, 2 s, 3 s, then every 4 s |
 | `rate_limited`, `banned`, `server_full`, `forbidden` | `idle.offline.bodyBusy` (box at once, no 3 s wait) | after 30 s. A connection that closes within 60 s after one of these refusals counts as the same refusal (decision 13.44) |
-| `proto_mismatch`, `bad_hello` (page older than server) | `idle.offline.bodyOutdated` (box at once) | none; reload needed |
+| `proto_mismatch`, `bad_hello` (page older than server) | `idle.offline.bodyOutdated` (box at once); native apps `idle.offline.bodyOutdatedApp` (decision N14) | none; reload (web) or update (apps) needed |
 
 If the server refuses Open (`open_rooms_disabled`), the room becomes Approval on, the pill changes and toast `toast.openDisabled` appears once. A failed transfer of content (damaged PDF …) is a toast with the existing wording.
 
@@ -310,6 +311,8 @@ Not on the display: "Close image", "Close document" and PDF page buttons. Pages 
 
 - **Media link** (decision 13.34): a secondary button **Play** (`receive.media.play`, the word only, no host; decision 13.60) comes before Open: focus row [Play, Open, Dismiss], initial focus still Open. Warning and error lines (`receive.media.localWarning`, `.mixed`, `.hlsUnsupported`, `.error.*`) are 16/700 `--fg`, led by the `info` icon 20 in `--acc`; all other card text is `--mut`. No red. While playing, the card shows the section label, the address and the player: a header row (`receive.media.from` 15/700 `--fg` left, secondary **Stop** right) and the media element, full card width, at most 300 high, on `#000000`. Stop, Back/Escape and Dismiss close the whole card.
 - **Platforms that cannot open a web page** (Apple TV; an Android TV without a browser): no Open button; the hint is `receive.link.hintTv`; focus row [Dismiss] or [Play, Dismiss] for media; initial focus Dismiss (Play for media).
+- **Native display apps that can open a web page** (Android TV with a browser, tablets, computers): the hint is `receive.link.hintApp` (there is no tab; Open opens the system browser). `receive.link.hint` is web-only (decision N10).
+- **Flutter display apps, this round:** no media player; a media link gets the plain link card (no Play, no media warning lines). Apple TV keeps its AVPlayer rules (`docs/appletv.md`). Decision N11.
 
 **Content states while presenting** (decision 13.41): a PDF page is drawn on `#000000` like every picture (no grey page background). A running transfer, and then the opening of a received PDF, shows the transfer progress pill (3.5); there is no separate loading line. A failed transfer or a PDF that cannot be shown is a **toast** (`receive.transferError.*`); a single PDF page that cannot be drawn shows its `receive.document.pageError.*` text centred in a name-tag-look box (15/700 `--fg`). No red, no black pills. The **black screen, frozen picture and all strokes end with the presentation**: when the presenter stops, disconnects or the host presses End, the next presentation starts with a visible, live picture and no strokes.
 
@@ -317,11 +320,22 @@ Not on the display: "Close image", "Close document" and PDF page buttons. Pages 
 
 **End** closes the session: all presenters are disconnected, all waiting requests are dropped, blocks are cleared, a new code is made, the display returns to Idle, toast `toast.sessionEnded`. Presenters see "Presentation ended". There is no confirmation step.
 
-While presenting, the screen is kept awake (D5). When the presenter stops, the display returns to Idle with the same code; presenters stay connected.
+While presenting, the screen is kept awake (D5). When the presenter stops, the display returns to Idle with the same code; presenters stay connected. When the presenter **leaves** (Disconnect, closed app, lost connection), the display also keeps its code: Idle, toast `toast.left`; join mode, blocks and waiting requests stay (decision N8). Only End, a restart, a lost and re-made room and the background rule of native-apps.md 15 make a new code.
 
 ### 4.6 Toasts
 
 One line, centred at the top, `--fg` background with `--bg` text, 3.2 s. A new toast replaces the old one. Toasts never take focus and never cover the annotation toolbar (3.5). Keys: see the `toast.*` table.
+
+### 4.7 Video codec dialog (desktop display apps only)
+
+Added after the Flutter review (decision N17). Linux and Windows display apps may lack an H.264 decoder; the free one (Cisco OpenH264) may only be downloaded with the host's consent. The web display and TV, tablet and macOS display apps never show this.
+
+- **When:** only over **Presenting**, when the presenter's picture is H.264 and no decoder is ready. It appears by itself, like the link card, with the same rules: scrim, the presenting controls under the scrim and inert (decision 68), 1 s input guard, one dialog at a time (a join request or link card waits until it is closed). At most **once per presentation**: after "Not now" it does not come back until the next presentation. Never over Idle, Settings or setup.
+- **Look:** the link-card dialog of 4.5 (600 card, padding 28 × 34, radius 22, 1 px `--line`, gap 16, display tokens, no Material card, no Material icon). Section label `codec.title`. Body `codec.explain` (16 `--mut`, line height 1.4). Source line `codec.source` (15 `--mut`). Admin note `codec.offline` or `codec.offlineNoDir` (14 `--mut`). Buttons left-aligned, 50 high: **Download** (`codec.download`, primary, initial focus), **Not now** (`codec.later`, secondary). Focus row [Download, Not now]; Back/Escape = Not now.
+- **Downloading:** the button row is replaced by one line `codec.downloading` + ` ` + `codec.progress` (16/700 `--fg`) and below it a 6 ref bar (track `--panel2` with 1 px `--line`, fill `--acc`, radius 3), then the row [Not now] (it only hides the card; the download goes on). When the decoder is ready the card closes by itself and the picture appears; no toast.
+- **Failed:** the line `codec.failed` (16/700 `--fg`, led by the `info` icon 20 in `--acc`, as the warning lines of 4.5; no red), the admin note, row [**Try again** (`codec.retry`, primary, initial focus), Not now].
+- **Unsupported** (`codec.unsupported`): body text only, row [**Close**] (`settings.close`).
+- OLED black: as every dialog (black card, `--line` border); the bar track is `#000000` with the `--line` border.
 
 ## 5. Presenter flow
 
@@ -362,6 +376,9 @@ Code handling: the field shows what is typed, in uppercase; it never drops chara
 - App first-run page: heading `app.welcome`; code chip with `app.codeFromLink` (Android) or `app.codeScanned` (after scanning); if there is no code: `app.scanAgainBody` and a secondary button `app.scanQr`; name field; primary `app.connect` (disabled while there is no code).
 - **Screens on the same network:** the app start page gets the section of [14](#14-screens-on-the-same-network-apps-only) between the name field (which moves up) and the code. One tap on a found screen connects without a code.
 - Platform variants (details in [native-apps.md](native-apps.md)): devices without a camera (computers) show the code field of 5.2 instead of `app.scanQr`; on tablets and computers the page ends with the text link `app.beDisplay`, which starts the display setup (4.1). Scanning uses the system scanner (not designed by us). In the apps the disconnected page (5.7) omits `bye.body` (it speaks of a browser tab).
+- **Order of the app first-run page (decision N22, replaces the two items above where they differ):** 1. brand row (logo 28 + "Comet Cast", as 5.2); 2. heading `app.welcome`; 3. name field `start.nameLabel`; 4. the code part: either the **code chip** (code from a link, the install referrer or a scan: `XXX XXX` mono + green tick + `app.codeFromLink` / `app.codeScanned`) or, without a code, [section `nearby.title` + divider `start.or`, when spec 14 is built] then the secondary button `app.scanQr` (only where a system scanner exists) and below it the **code field** of 5.2 (label `start.codeLabel`, placeholder `XXX XXX` in `p-fg3`, same rules); 5. primary `app.connect` (phone layout: at the bottom; laptop layout: follows the content); 6. tablets and computers only, after Connect (in the phone layout below it, as the last item of the bottom area): the text link `app.beDisplay`, and on Windows below it the text link `app.miracast` (same style, decision N18). With a code field, Connect is always enabled and validates on submit (5.2: `start.codeEmpty`, `error.code`); with neither chip nor field it does not exist.
+- `app.scanAgainBody` (15 `p-fg2`, above the scan button) is shown only on the first launch after an install that brought no code (iOS from the store, Android without referrer); never when the app was opened before (it says "once more").
+- **Scan result** (decision N7): the URL forms of a link (native-apps.md 20.4). A valid code for a known server → chip `app.codeScanned`; a server this device has not confirmed → the relay confirmation page (7.2) first; anything else (not our URL, no valid code) → nothing changes and the line `app.scanWrong` (13/700 `p-error`) appears under the scan button until the next tap. Cancelling the scanner changes nothing.
 
 ### 5.4 Waiting for approval
 
@@ -373,7 +390,7 @@ Header row: green tick disc (40) + `what.connectedTo` (room name from `joined.ro
 
 | Row | Title | Subtitle |
 | --- | --- | --- |
-| Screen | `what.screen` | Laptop: `what.screenLaptop`; app: `what.screenApp`; phone browser: `what.screenPhoneBrowser` when an app can be offered for this device, otherwise `what.screenPhoneBrowserNoApp` (icon in `p-warn` in both cases) |
+| Screen | `what.screen` | Laptop: `what.screenLaptop`; app: `what.screenApp` on phones, `what.screenTablet` on tablets (decision N15; chosen by device kind, not by layout width), `what.screenLaptop` on computers; phone browser: `what.screenPhoneBrowser` when an app can be offered for this device, otherwise `what.screenPhoneBrowserNoApp` (icon in `p-warn` in both cases) |
 | File | `what.file` | `what.fileSub` |
 | Link | `what.link` | `what.linkSub` |
 
@@ -383,7 +400,7 @@ Bottom: secondary `what.disconnect` → "Disconnected" page; toast `toast.left` 
 - Screen in a phone browser → error "Screen sharing does not work in this browser" (it is known before; the page says so in the subtitle). Without an app offer for the device (13.6) the page has no "Get the app" button and its "What now" text is `error.noScreen.nowNoApp` (decision 13.42).
 - Screen in the app → the system prompt (Android "Start recording or casting", iOS "Start Broadcast").
 - Cancelling the system dialog returns to this page without an error (`capture_denied` never shows an error page).
-- File → file page. **App:** heading `file.title`, `file.body`, recent files as a 2-column grid of thumbnails, secondary `common.back`. **Browser** (a browser cannot list recent files): heading `what.file`, body `file.bodyWeb`, primary `file.pick` (opens the system file dialog: PNG, JPEG, WebP, GIF, PDF), then while sending a progress line (small print "{name} · {n} %" + 6 px bar), an inline error in `p-error` if it fails, secondary `common.back` at the bottom. Picking a file starts presenting. Cancelling the dialog changes nothing.
+- File → file page. **App (decision N16):** the browser variant below on every app platform (the system picker already offers recent files; no media permission is asked). Body `file.bodyApp` where the app can convert Office files (desktops with the conversion component), else `file.bodyWeb`; while an Office file is converted the progress line shows `file.converting` (small print, no bar). The recent-files grid, `file.title` and `file.body` are not used. **Browser** (a browser cannot list recent files): heading `what.file`, body `file.bodyWeb`, primary `file.pick` (opens the system file dialog: PNG, JPEG, WebP, GIF, PDF), then while sending a progress line (small print "{name} · {n} %" + 6 px bar), an inline error in `p-error` if it fails, secondary `common.back` at the bottom. Picking a file starts presenting. Cancelling the dialog changes nothing.
 - Link → link page: heading `what.link`, field `link.label` (type url), `link.hint`, primary `link.go`, secondary `common.back`. The display asks its host before opening (4.5).
 - Replacing what is shown: "Stop showing", then pick again (the display shows Idle in between). No "replace" action.
 
@@ -396,6 +413,18 @@ While a PDF is shown: a row of two secondary buttons `presenting.prevPage` and `
 ### 5.7 Disconnected
 
 Grey tick disc, `bye.title`, `bye.body`, primary `bye.again` (back to the start page; phone: start route).
+
+### 5.8 Video codec page (desktop presenter apps only)
+
+Added after the Flutter review (decision N17). When a Linux or Windows presenter chooses Screen and the H.264 encoder is missing, this page comes **before** the system picker (the picker would be useless without it). Layout of the relay confirmation page (7.2, presenter variant):
+
+- Icon disc 56 `download` in `p-primary` on `p-primary-soft`; heading `codec.title`; body `codec.explain` (15 `p-fg2`); `codec.source` and the admin note (`codec.offline` / `codec.offlineNoDir`) as small print.
+- Actions (laptop row, primary first): **Download** (`codec.download`, primary, initial focus), **Back** (`common.back`, secondary → "What to show"). System Back = Back.
+- Downloading: the primary is disabled with the label `codec.downloading`; under the body a progress line as on the file page (small print `codec.progress` + 6 px bar). Back stays enabled (the download goes on).
+- Failed: inline error `codec.failed` in `p-error` (as the file page error); the primary reads `codec.retry`.
+- Ready: the primary reads `what.screen` and opens the system picker (a system dialog only as the direct result of the person's tap, native-apps.md 8). Picking starts presenting as usual; cancelling the picker returns to "What to show" without an error.
+- Unsupported: `error.other` with `codec.unsupported` as its "why".
+- No Material `Card`, `FilledButton`, `LinearProgressIndicator` or Material icon.
 
 ## 6. Error states (presenter pages)
 
@@ -415,10 +444,10 @@ Every error page has the same layout: icon disc (56), heading, a card with two l
 | `error.ended` | Host pressed End, or the host removed this presenter (`removed_by_host`) | (i) in grey | Retype code; app on a phone: Scan again |
 | `error.occupied` | Someone else is already connected (`room_full`; one presenter per room) | (i) in grey | Try again |
 | `error.busy` | `rate_limited`, `banned`, `server_full` | clock in `p-warn` | Try again |
-| `error.outdated` | `proto_mismatch`, `bad_hello`, `bad_message` (page and server do not match) | (i) in grey | `error.action.reload` (reloads the page) |
+| `error.outdated` | `proto_mismatch`, `bad_hello`, `bad_message` (page and server do not match) | (i) in grey | `error.action.reload` (reloads the page). **Apps** (decision N14): heading `error.outdated.titleApp`, why `error.outdated.why`, now `error.outdated.nowApp`, button `error.action.retry` |
 | `error.other` | Every other failure: `forbidden`, `altcha_*`, `wrong_role`, `not_in_room`, `unknown` and any code not listed (decision 13.32) | (i) in grey | Try again |
 
-For the in-house box, `error.noInternet` uses the `nowBox` text (must be on the same Wi-Fi). Mapping of other failures:
+For the in-house box, `error.noInternet` uses the `nowBox` text (must be on the same Wi-Fi). The apps map failures by the structured `code` the core reports (native-apps.md 20.1, decision N9), never by message text. `error.noScreen` is web-only: an app that cannot capture (`capture_unavailable`) shows `error.other`. Mapping of other failures:
 
 - `connection_lost` → `error.noInternet`, **except** within 60 s after a `rate_limited`, `banned` or `server_full` refusal, where it is `error.busy` again (the server closes the connection after a ban; decision 13.44).
 - `peer_failed` → `error.displayOff`; **but** when the list of STUN/TURN servers (`/ice-servers`) was refused for this connection (`rate_limited` or `refused`) → `error.busy`, and when it failed otherwise (`http_error`, `bad_answer`, `unreachable`) → `error.displayOff` with the "why" text `error.displayOff.whyRelay`. A relay that offers no list (404, `none`) changes nothing. Nothing is shown before the connection fails (decision 13.45). A refused list does **not** start the 60 s memory of the line above (decision 13.59).
@@ -472,7 +501,7 @@ Keys:
 - The server (or any static host) must answer `/display`, `/{CODE}` and `/app` with `index.html`; otherwise the QR code leads to a 404 (GitHub Pages: a copy of `index.html` as `404.html`).
 - A relay that only a link asked for (`?server=`) is confirmed **before anything else is shown or connects** (decision 13.37). Nothing of the page that would use the relay is drawn behind it, and the relay host appears nowhere else (not as `{dom}`, not in the `start.beDisplay` link) until it is confirmed.
   - **On `/display`:** on the scaled canvas (3.1, all sizes in reference px), over plain `--bg` with only the logo (46) at the idle screen's top-left position. Dialog card 600 wide as 4.4 (no scrim needed: there is nothing behind it), centred: section label `relay.confirm.title`; body `relay.confirm.body` 16 `--mut`; the host on its own line, 18 mono `--fg`, wrapping anywhere; `relay.confirm.risk` 16 `--mut`; buttons [**Cancel** (`relay.confirm.cancel`, secondary, initial focus), **Use this relay** (primary)], left-aligned, 50 high. Back/Escape = Cancel. Cancel continues with the default relay (setup or idle); Use continues with the confirmed relay.
-  - **On presenter pages:** its own **page** in the error-page layout (6), replacing the start page: icon disc `info` in `p-warn`; heading `relay.confirm.title`; body `relay.confirm.body` (15, `p-fg2`); the host on its own line, 17 mono 700 `p-fg`; `relay.confirm.risk` as small print; actions [**Cancel** secondary, **Use this relay** primary] in this order (phone: stacked at the bottom, Cancel on top; laptop: in a row below the content, Cancel left). Cancel has the initial focus; Enter on load cancels. After the decision the start page appears (with the code chip if the link carried a code).
+  - **On presenter pages:** its own **page** in the error-page layout (6), replacing the start page: icon disc `info` in `p-warn`; heading `relay.confirm.title`; body `relay.confirm.body` (15, `p-fg2`); the host on its own line, 17 mono 700 `p-fg`; `relay.confirm.risk` as small print; actions [**Cancel** secondary, **Use this relay** primary] in this order (phone: stacked at the bottom, Cancel on top; laptop: in a row below the content, Cancel left). Cancel has the initial focus; Enter on load cancels. After the decision the start page appears (with the code chip if the link carried a code). **In the apps** (decision N6) the page is reached from an app link, the install referrer or a scanned QR code, and its body is `relay.confirm.bodyApp` ("this app", not "this page"); Cancel continues with the server the app would use anyway, Use remembers the host as confirmed on this device. Native **displays** never get a server from a link, so the display variant above is web-only (decision N19).
   - Copy unchanged (11.7).
 - Mouse movement over the screen during a presentation shows the controls (throttled to one trigger per 400 ms); a click or tap anywhere shows them; clicking End ends the session. The pointer hides together with the controls.
 - Keyboard: arrows = D-pad, Enter or Space = OK, Escape = Back, `M` = Menu. Tab follows the focus order above.
@@ -860,6 +889,36 @@ The du file must contain **every** key whose Sie value addresses the reader (Sie
 
 `tools/check-i18n.mjs` gets a rule: a key whose `de` value contains the word Sie, Ihr/Ihre/Ihren/Ihrem/Ihrer/Ihres or Ihnen must exist in `de-du` (the "Sie wird" of `receive.media.hint` means "it" and is the one known false alarm; list it as an exception).
 
+### 11.9 Native app copy (Flutter review, decisions N6–N18)
+
+| Key | EN | DE du (shipped) | DE Sie |
+| --- | --- | --- | --- |
+| `receive.link.hintApp` | The sender asks you to open this link. Open it only if you expect it. It opens in the browser, and only if you choose “Open”. | Der Absender bittet dich, diesen Link zu öffnen. Öffne ihn nur, wenn du ihn erwartest. Er öffnet sich im Browser, und nur wenn du „Öffnen“ wählst. | Der Absender bittet Sie, diesen Link zu öffnen. Öffnen Sie ihn nur, wenn Sie ihn erwarten. Er öffnet sich im Browser, und nur wenn Sie „Öffnen“ wählen. |
+| `setup.address.sourcePolicy` | Set by the administrator of this device. | Vom Administrator dieses Geräts vorgegeben. | same as du |
+| `idle.offline.bodyOutdatedApp` | This app is out of date. Update it to get a code. | Diese App ist veraltet. Aktualisiere sie, um einen Code zu bekommen. | Diese App ist veraltet. Aktualisieren Sie sie, um einen Code zu bekommen. |
+| `error.outdated.titleApp` | This app is out of date | Diese App ist veraltet | same as du |
+| `error.outdated.nowApp` | Update the app, then try again. | Aktualisiere die App und versuch es dann noch einmal. | Aktualisieren Sie die App und versuchen Sie es dann noch einmal. |
+| `what.screenTablet` | Your whole tablet display, live | Dein ganzes Tablet-Display, live | Ihr ganzes Tablet-Display, live |
+| `file.bodyApp` | A PDF, an image or an Office file from this device. It appears on the screen as soon as you pick it. | Ein PDF, ein Bild oder eine Office-Datei von diesem Gerät. Die Datei erscheint auf dem Bildschirm, sobald du sie auswählst. | Ein PDF, ein Bild oder eine Office-Datei von diesem Gerät. Die Datei erscheint auf dem Bildschirm, sobald Sie sie auswählen. |
+| `file.converting` | Converting {name} … | {name} wird umgewandelt … | same as du |
+| `relay.confirm.bodyApp` | A link asks this app to use the relay {host} instead of the default. Only continue if you know and trust its operator. | Ein Link fordert diese App auf, das Relay {host} statt des Standards zu verwenden. Mach nur weiter, wenn du den Betreiber kennst und ihm vertraust. | Ein Link fordert diese App auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen. |
+| `app.scanWrong` | This QR code is not from a Comet Cast screen. | Dieser QR-Code stammt nicht von einem Comet-Cast-Bildschirm. | same as du |
+| `app.miracast` | Receive Miracast on this PC | Miracast auf diesem PC empfangen | same as du |
+| `ios.cameraUsage` (`NSCameraUsageDescription`, shown by the system) | Comet Cast uses the camera only to scan the QR code on the screen. | Comet Cast nutzt die Kamera nur, um den QR-Code auf dem Bildschirm zu scannen. | same as du |
+| `codec.later` | Not now | Nicht jetzt | same as du |
+| `codec.downloading` (changed: typographic ellipsis) | Downloading the video codec … | Der Video-Codec wird heruntergeladen … | same as du |
+
+### 11.10 Built strings outside the designed flow (decision N27)
+
+These keys exist in the Flutter ARB files and are used by surfaces this spec now places (4.7, 5.8, N18) or by system UI. Their values stay as in `apps/flutter/lib/l10n/app_en.arb`, `app_de.arb` (du, converted from Sie by pronoun and verb ending only) and `sie/app_de.arb` (Sie); they are part of the i18n check (every key in both German sets, the du/Sie rule of 11.1):
+
+- `codec.title`, `.explain`, `.source`, `.download`, `.progress`, `.retry`, `.failed`, `.offline`, `.offlineNoDir`, `.unsupported` (ARB `codecTitle` …);
+- `miracast.*` (the Miracast page, outside this design, spec 10);
+- `sendReject.*` and `sendContent.*` refusal texts (inline error of the file and link pages);
+- the Android capture notification texts (system notification of the foreground service).
+
+Strings of the removed pre-design UI that nothing uses any more (the old discovery notes, the test-stream and monitor texts) are deleted from all three files.
+
 ## 12. Open points that do not block implementation
 
 - ~~The owner's question "du" or "Sie" (D6).~~ Answered: "du" ships (decision 54).
@@ -958,6 +1017,39 @@ Made on 2026-11-07 after reviewing fix round 2 (`apps/web`, main 7d33eb7) and it
 67. **Locked QR in Light** keeps its 1 px `--line` border at full opacity; only the code fades (3.2).
 68. **Dialogs over a presentation.** Name tag, End, toolbar, badge and pill sit under the scrim and are inert while a join request or link card is open (4.4).
 69. **The web display is design-complete.** With [fix-list-web-3.md](fix-list-web-3.md) done, no further design review round is needed for `/display` and the web presenter pages; the engineer checks each item against its screenshot. New design work (spec 14, native apps) does not reopen the web.
+
+### Decisions after the Flutter review
+
+Made on 2026-11-07 after reviewing the Flutter app (`apps/flutter`, main 66de24c) and its 198 screenshots (`/tmp/shots-flutter`: display TV 1920 × 1080 and tablet 1280 × 800 in Dark, Light and OLED black; presenter phone 400 × 800 and tablet 1280 × 800 in Light and Dark), compared with the web screenshots (`/tmp/shots3`). Questions C1–C9 and D1–D13 are answered in [implementation-questions-flutter.md](implementation-questions-flutter.md); the work items are in [fix-list-flutter.md](fix-list-flutter.md); the core interface the apps need is native-apps.md 20. Numbered N1… so they do not collide with the web review's numbers. The sections above already contain these decisions.
+
+- **N1 Room name (C1).** `cc-ffi` passes the setup name to `create_room` and reports `room_name` from `join_pending` / `joined` to the presenter (decision 2 applies unchanged).
+- **N2 Security code (C2).** Computed in the core with exactly the web algorithm (`core/sas.ts`), reported once per connection to both sides; name-tag line 2 and `presenting.sas`.
+- **N3 Page message (C3).** The native display sends and the native presenter reads `{"kind":"page","page":n,"pages":m}` (decision 58).
+- **N4 Receive progress (C4).** The receiver reports bytes received; the transfer pill shows the real percentage.
+- **N5 One join per presenter (C5).** Connect joins; "What to show" comes after the join (with its header); Stop keeps the join; Disconnect leaves. The host approves a person once per connection, not once per thing shown.
+- **N6 Server of a presenter app (C6).** No server field. Links and the install referrer on the built-in relay's domain; an unknown `server` is confirmed first on the relay confirmation page with `relay.confirm.bodyApp` (7.2).
+- **N7 QR scanner (C7).** System scanner on Android and iOS/iPadOS phones and tablets; scan button and code field together; `app.scanWrong` for a foreign QR code; rescan buttons only where the scanner exists (5.3).
+- **N8 Same code after a presenter leaves (C8).** The receiver keeps its room after `PeerLeft` (4.5).
+- **N9 Structured errors (C9).** Error events carry a `code`; pages are chosen by code (6), never by message text.
+- **N10 Link hint in apps (D1).** `receive.link.hintApp`; `receive.link.hint` is web-only (4.5).
+- **N11 No media player in Flutter link cards this round.** Plain link card for media links (4.5).
+- **N12 No default port in `{dom}`.** `:443` is never shown (glossary).
+- **N13 Policy source line (D3).** `setup.address.sourcePolicy` (4.1).
+- **N14 Outdated in apps.** `idle.offline.bodyOutdatedApp`; presenter `error.outdated.titleApp` / `nowApp` with Try again (4.2, 6).
+- **N15 Tablet screen row.** `what.screenTablet` on tablets, chosen by device kind (5.5).
+- **N16 File page in apps.** The browser variant on every app platform; `file.bodyApp` with Office conversion; no recent-files grid (5.5).
+- **N17 Video codec consent (D6).** Desktop display: a link-card-style dialog over Presenting, once per presentation (4.7). Desktop presenter: its own page before the system picker (5.8). Replaces "codec notices as toasts".
+- **N18 Miracast entry (D7).** Windows only: text link `app.miracast` below `app.beDisplay` on the app first-run page; the Miracast page is rebuilt with the presenter kit but not redesigned (outside this flow, 10).
+- **N19 Relay confirmation on native displays.** Not needed: native displays get no server from a link (7.2).
+- **N20 Annotation toolbar (D11).** Stays unreachable in every native build of this round.
+- **N21 Shadows.** The product keeps the soft shadows of 3.5. The hard edges in the Flutter screenshots come from `flutter_test` (`debugDisableShadows`); review screenshots are taken with it off.
+- **N22 App first-run page.** Brand row; order brand, heading, name, code part, Connect, then `app.beDisplay` / `app.miracast`; placeholder `XXX XXX`; `app.scanAgainBody` only on the first launch without a code (5.3). This is already the order spec 14 needs, so the nearby round only inserts its section.
+- **N23 Secondary buttons.** 16/500 as built on the web (native-apps.md 10 corrected); disabled secondary = `p-disabled` fill, no border, `p-ondisabled` text; on the laptop layout the two PDF page buttons are content width (min 160), as on the web.
+- **N24 Initial focus is visible in the first frame.** A screen or dialog never shows a frame with no ring or with the ring still on a control under the scrim (7.1: exactly one ring).
+- **N25 Nearby list and announcement (D8).** Both come in the spec-14 round together; no interim announcement.
+- **N26 Desktop capture (D9).** Through the system picker on Linux, Windows and macOS (whole screen or one window, as `what.screenLaptop` says); test stream, duration and monitor list stay removed.
+- **N27 Legacy strings (D10).** Accepted as converted and listed in 11.10; unused ones are deleted.
+- **N28 Flutter design-complete.** With [fix-list-flutter.md](fix-list-flutter.md) done (part A and part B), the Flutter display and presenter are design-complete for this round, except the nearby list (spec 14, next round). No further design review round is needed; the engineer checks each item against its acceptance line and screenshot.
 
 ## 14. Screens on the same network (apps only)
 

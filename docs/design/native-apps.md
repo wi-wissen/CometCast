@@ -1,6 +1,6 @@
 # Native apps: platform guidance
 
-Status: **final for this round (2026-11-07).** Companion to [first-run-and-display.md](first-run-and-display.md) (the spec). This file adds **no new design** (the list of screens on the same network is designed in spec 14; section 4.1 below says how each platform builds it). It says, for each native platform, how the screens and states of the spec are built, what is shared, and where a platform needs a variant because of what the platform can or cannot do. Where this file and the spec disagree, the spec wins; tell the designer.
+Status: **final for this round (2026-11-07); revised after the Flutter review (spec decisions N1–N28, section 20 added).** Companion to [first-run-and-display.md](first-run-and-display.md) (the spec). This file adds **no new design** (the list of screens on the same network is designed in spec 14; section 4.1 below says how each platform builds it). It says, for each native platform, how the screens and states of the spec are built, what is shared, and where a platform needs a variant because of what the platform can or cannot do. Where this file and the spec disagree, the spec wins; tell the designer.
 
 Platforms of this round:
 
@@ -50,17 +50,18 @@ Engineers must not change these per platform. A difference is a bug.
 | --- | --- | --- | --- | --- |
 | 3.1 canvas | Full screen, landscape. Scale `min(w/960, h/540)`, rest `--bg` | Same | Same; the app is locked to landscape while in the display role; in portrait (iPad in split view) the 16:9 canvas is letterboxed (spec 7.2) | Same, in a window or full screen |
 | 4.1 wizard | Same. Text fields open the system keyboard on OK only (section 8) | Same; text fields use the full-screen tvOS keyboard on Select | Same; touch keyboard; `setup.done.bodyPointer` | Same; `setup.done.bodyPointer` |
-| 4.1 address step | Detects own server (DNS) and in-house box: `sourceOwn`, `sourceBox`; "Other address" cycles the found ones, then opens the field | Same | Same | Same |
+| 4.1 address step | Detects own server (DNS) and in-house box: `sourceOwn`, `sourceBox`; administrator policy: `sourcePolicy` (N13); `{dom}` without `:443` (N12); "Other address" cycles the found ones, then opens the field | Same | Same | Same |
 | 4.2 idle | Same. `idle.altAddress` with the box IP when the box is used | Same | Same | Same |
 | 4.2 connecting / offline | Same (empty QR box of spec 3.2) | Same | Same | Same |
 | 4.3 settings | Opened by focus on the Settings button, or Menu key; close label `settings.closeRemote` | Play/Pause = Menu; `settings.closeRemote` | Tap; `settings.close` | Click, `M` key; `settings.close` |
 | 4.4 join request | Same; Back does nothing while open | Menu (Back) does nothing while open | Same | Same; Escape does nothing while open |
 | 4.5 presenting | Same; no toolbar | Same; no toolbar | Same; no toolbar this round (section 9) | Same; no toolbar this round (section 9) |
 | 4.5 content states | Same: transfer pill one line, max 340, name shortened in the middle, then `receive.document.loading` in the same pill (spec 3.5); the display sends the page message `{"kind":"page","page":n,"pages":m}` (spec 5.6, decision 13.58) | Same | Same | Same |
-| 4.5 link card | Open only if the system can open web links (Flutter `canLaunchUrl`); otherwise the no-browser variant (`receive.link.hintTv`, [Dismiss]) | Always the no-browser variant (tvOS has no browser) | Open opens the system browser | Open opens the default browser |
-| 4.5 media in link card | Same player rules (`card`, `loading`, `playing`, `error`); formats the platform cannot play show `receive.media.error.unsupported` | AVPlayer; same rules (see `docs/appletv.md`) | Same | Same |
+| 4.5 link card | Open only if the system can open web links (Flutter `canLaunchUrl`), hint `receive.link.hintApp`; otherwise the no-browser variant (`receive.link.hintTv`, [Dismiss]). Address 18 mono `--fg` | Always the no-browser variant (tvOS has no browser) | Open opens the system browser; `receive.link.hintApp` | Open opens the default browser; `receive.link.hintApp` |
+| 4.5 media in link card | Not this round (spec N11): plain link card, no Play | AVPlayer; same rules (see `docs/appletv.md`) | Not this round: plain link card | Not this round: plain link card |
+| 4.7 video codec dialog | n/a (system decoders) | n/a | n/a | Linux, Windows: spec 4.7 (over Presenting, once per presentation); macOS: n/a |
 | 4.6 toasts | Same | Same | Same | Same |
-| 7.2 relay confirmation | When a server address arrives from a link the app did not know (a universal / app link with another host), confirm it with the display dialog card of spec 7.2 | Same | Same | Same |
+| 7.2 relay confirmation | Not used: a display app gets no server from a link (spec N19) | Not used | Not used | Not used |
 
 ## 4. Presenter screens per platform
 
@@ -69,14 +70,14 @@ Presenter pages use the phone layout below 720 logical px of window width and th
 | Spec | Android phone / tablet | iPhone / iPad | Linux / Windows / macOS |
 | --- | --- | --- | --- |
 | 5.2 start page | Not in the app (web only) | Not in the app | Not in the app |
-| 5.3 app first-run page | Code chip `app.codeFromLink` when the code came from an app link or the install referrer; otherwise `app.scanAgainBody` + `app.scanQr` (system scanner, section 8) and the code field of spec 5.2 below it | Code chip `app.codeScanned` after scanning; otherwise `app.scanAgainBody` + `app.scanQr` and the code field | No scanning: the code field of spec 5.2 (`start.codeLabel`, `XXX XXX`), name field, `app.connect`. Tablets and computers: `app.beDisplay` link at the end (section 1) |
+| 5.3 app first-run page | Order of spec 5.3 (N22): brand row, `app.welcome`, name field, then the code chip (`app.codeFromLink` from an app link or the install referrer, `app.codeScanned` after a scan) or `app.scanQr` (system scanner, section 8) with the code field of spec 5.2 below it, `app.connect`; tablets: `app.beDisplay` after Connect. `app.scanAgainBody` only on the first launch without a code | Same (iPhone, iPad) | No scanning: brand row, `app.welcome`, name field, code field (`start.codeLabel`, placeholder `XXX XXX`), `app.connect`, then `app.beDisplay`; Windows: `app.miracast` below it (spec N18) |
 | 5.4 waiting | Same | Same | Same |
-| 5.5 what to show: Screen | `what.screenApp`; opens the system capture consent (section 8) | `what.screenApp`; opens the system broadcast picker | `what.screenLaptop`; opens the system window/screen picker |
-| 5.5 file page | App variant: `file.title`, `file.body`, recent files as a 2-column thumbnail grid, `common.back` | Same (recent = files the app has access to; the system picker for "other file") | Same as the web file page (spec 5.5 browser variant: `file.bodyWeb`, primary `file.pick`), because desktops have no "recent" list we may read |
+| 5.5 what to show: Screen | Phone `what.screenApp`, tablet `what.screenTablet` (by device kind, not width); opens the system capture consent (section 8) | iPhone `what.screenApp`, iPad `what.screenTablet`; opens the system broadcast picker | `what.screenLaptop`; opens the system window/screen picker (Linux, Windows: the codec page of spec 5.8 first when the encoder is missing) |
+| 5.5 file page | The browser variant of spec 5.5 (N16): `what.file`, `file.bodyWeb`, primary `file.pick` (system document picker), progress line, inline error, `common.back`. No recent-files grid | Same | Same; `file.bodyApp` where Office conversion is available, progress line `file.converting` while converting |
 | 5.5 link page | Same | Same | Same |
 | 5.6 presenting | Same; no 76 px reserve (no Chrome bar). The system's own capture indicator (status bar chip) is drawn by the system | Same; the red status pill is drawn by the system | Same; no 76 px reserve. The OS draws its own indicator (Windows yellow border, macOS menu bar icon) |
 | 5.7 disconnected | `bye.title` and `bye.again` only (note below) | Same | Same |
-| 6 error pages | Same; "Scan QR code again" on phones and tablets with a camera | Same | No rescan button |
+| 6 error pages | Same; "Scan QR code again" only where the system scanner exists; `error.outdated` with `titleApp` / `nowApp` / Try again; `error.noScreen` never | Same | No rescan button; otherwise as Android |
 
 Note on 5.7: `bye.body` says "You can close this tab", which is wrong in an app. In the apps, the disconnected page shows `bye.title` and the button only; the body line is omitted. (No new copy.)
 
@@ -158,7 +159,7 @@ Touch first. Keyboard (desktop, tablets with a keyboard): Tab order = reading or
 | --- | --- | --- | --- | --- | --- | --- |
 | Share screen | MediaProjection consent ("Start recording or casting") | `RPSystemBroadcastPickerView` ("Start Broadcast") | xdg-desktop-portal ScreenCast picker | Graphics Capture picker | ScreenCaptureKit picker (`SCContentSharingPicker`, macOS 14+); Screen Recording permission on first use | n/a |
 | Choose a file | System document picker (`file_selector`) | `UIDocumentPickerViewController` | Portal / GTK file chooser | Windows file dialog | `NSOpenPanel` | n/a |
-| Scan the QR code (`app.scanQr`) | Google code scanner (ML Kit, system UI) | VisionKit `DataScannerViewController` (system UI) | n/a | n/a | n/a | n/a |
+| Scan the QR code (`app.scanQr`) | Google code scanner (`GmsBarcodeScanning`, system UI, no camera permission), phones and tablets | VisionKit `DataScannerViewController` (system UI; `NSCameraUsageDescription` = `ios.cameraUsage`), iPhone and iPad | n/a | n/a | n/a | n/a |
 | Text input on TV | System IME (Gboard for TV), opened on OK | Full-screen tvOS keyboard, opened on Select | | | | |
 | Open a link (link card Open) | `url_launcher`, external browser | n/a (presenter only) | default browser | default browser | default browser | n/a |
 | Permissions asked before use | Notifications (Android 13+, for the capture foreground service) when Share screen is first chosen | Local network (when the person taps `nearby.search` the first time, spec 14.2), camera (on Scan) | | | Screen Recording | |
@@ -172,7 +173,9 @@ TV text input: a text field gets focus like a button (with the ring) and opens t
 - **Share sheet entry points** ("Share to Comet Cast" from other apps, Android `ACTION_SEND`, iOS share extension, macOS share menu): not designed, not built.
 - The annotation toolbar on native display apps (tablets, computers): not built until the owner decides on drawing tools (spec 12). Existing annotation code in the Flutter receiver stays behind a build flag that is off.
 - ~~The list of nearby screens (discovery without a code)~~: now designed for all presenter apps (spec 14, section 4.1 above).
-- AirPlay, Google Cast and Miracast receiving screens, widgets, notifications other than the system's capture notification, home-screen shortcuts, Picture in Picture, multiple windows.
+- The Miracast receiver page (Windows) is reachable only through the text link `app.miracast` (spec N18) and is rebuilt with the presenter kit, not redesigned.
+- The annotation toolbar stays unreachable in every Flutter build of this round (confirmed in the Flutter review, N20).
+- AirPlay, Google Cast and Miracast receiving screens (beyond the existing Windows page above), widgets, notifications other than the system's capture notification, home-screen shortcuts, Picture in Picture, multiple windows.
 - Any OLED black for presenter pages; any platform-specific appearance (Material You, Liquid Glass, Mica, vibrancy).
 
 ## 10. Flutter: tokens and theme
@@ -236,7 +239,7 @@ ThemeData presenterTheme(PresenterTokens p, Brightness b) => ThemeData(
   focusColor: Colors.transparent,                         // focus = 2 px p-primary outline, drawn by our button style
   textTheme: presenterText(p),                            // section 11
   filledButtonTheme: /* primary: min 50 high, radius 10, 17/700, p-primary; disabled p-disabled / onDisabled */,
-  outlinedButtonTheme: /* secondary: min 48, radius 10, p-surface fill, 1 px p-border, 17/700 p-fg */,
+  outlinedButtonTheme: /* secondary: min 48, radius 10, p-surface fill, 1 px p-border, 16/500 p-fg (as the web, N23); disabled: p-disabled fill, no border, p-ondisabled text */,
   inputDecorationTheme: /* 46 high, radius 8, p-surface, 1 px border-input; focus 2 px p-primary; error border p-error */,
 );
 ```
@@ -365,7 +368,7 @@ These are as built today (`docs/android.md`, `docs/appletv.md`) and differ from 
 - Apple TV: the idle timer is disabled while a room is open → only while presenting (section 15).
 - Apple TV link card: "Close button that has the default focus", content shown with a Close button → spec 4.5 link card (no-browser variant) and no close buttons on content (spec 10).
 - Apple TV: the connection check code as a badge on the video → second line of the name tag (spec 4.5), visible only with the controls.
-- Flutter receiver: statistics overlay, codec card and annotation toolbar on the display → statistics only in debug builds; codec notices as toasts; toolbar off (section 9).
+- Flutter receiver: statistics overlay, codec card and annotation toolbar on the display → statistics only in debug builds; the codec consent as the dialog of spec 4.7 (display) and the page of spec 5.8 (presenter), not as toasts; toolbar off (section 9).
 
 ## 19. Acceptance per platform
 
@@ -377,3 +380,36 @@ A platform build is accepted for this round when, in all three display appearanc
 4. Reduced motion removes the fades and the ring scale.
 5. Switching the German file set from du to Sie changes every addressing string and nothing else.
 6. Presenter apps: the states of spec 14.2 (not asked, searching, found, nothing found, paused, not allowed, no local network) and the tap outcomes of 14.4 (open, approval, other relay, gone) match the mockup and spec 14 on a real network with two displays of the same name; a display that is switched off leaves the list within 30 s.
+
+## 20. Core interface and platform integration the apps need (Flutter review)
+
+Added after the Flutter review (spec decisions N1–N9, N26). These are engineering requirements derived from the design; names are proposals, the behaviour is binding. Keep them minimal: nothing here adds a screen.
+
+### 20.1 Presenter session (`cc-ffi`, `cc-sender`)
+
+One session per join, replacing "join when sending" (N5):
+
+- `start_presenter(server, code, name, events: StreamSink<PresenterUiEvent>)` joins the room at once (on Connect). `stop_presenter()` leaves (Disconnect, withdraw while waiting, app ends).
+- Inside a joined session: `present_screen(…)` (desktop: the system picker, 20.3; mobile: the existing capture paths), `present_content(source)` (file or link), `send_content_cmd(cmd)` (pages), `stop_presenting()`. Stopping ends only the presentation: the display returns to Idle with the same code and the presenter stays joined. A new presentation in the same session needs no new approval. Video and content use the same peer connection (renegotiation or a pre-negotiated track; the engineers choose).
+- `PresenterUiEvent`: `WaitingForApproval { timeout_secs, check, room_name: Option<String> }`, `Joined { room_name: Option<String> }`, `ConnectionCode { sas: String }` (N2), `Page { page: u32, pages: u32 }` (N3), `Progress { sent, total }`, `Presenting`, `PresentingStopped` (also when the system ended the capture), `Ended { code }` (`removed_by_host`, the room ended, the display left), `Error { code: String, message: String }` (N9; codes in implementation-questions-flutter.md C9). `room_name` follows decision 49 (lenient).
+
+### 20.2 Receiver (`cc-ffi`, `cc-receiver`)
+
+- `start_receiver(…, room_name: Option<String>, …)` → `create_room.room_name` (N1).
+- Keep the room after `PeerLeft` and `remove_peer`: fresh WebRTC session and content task for the next presenter, same signalling connection, code, join mode, blocks and queue; the event stream stays open (N8). A presenter's `stop_presenting` is reported as `PresentationStopped` (display → Idle, no toast), a leave as `PeerLeft` (display → Idle, `toast.left`).
+- `ConnectionCode { sas }` once per presenter connection (N2).
+- `ContentTransferProgress { received, total }`, at most one per percent and four per second (N4).
+- Send `{"kind":"page","page":n,"pages":m}` on the control channel when the page count is known and on every page change (N3).
+- `Error { code, message }` with the same code rule as 20.1; the display picks the offline body by code (spec 4.2).
+
+### 20.3 Desktop capture (`cc-capture`)
+
+Screen sharing on Linux, Windows and macOS opens the system picker directly (section 8): xdg-desktop-portal ScreenCast, `GraphicsCapturePicker`, `SCContentSharingPicker`. Cancel or refusal = `capture_denied` (no error page). No monitor list, duration or test stream in the UI (N26).
+
+### 20.4 Links, install referrer and scanner (Flutter + platform)
+
+- **Accepted URL forms** (link, referrer, scanned QR): `https://{host}/{CODE}` and `https://{host}/{CODE}?server={server}`, `{CODE}` = 6 characters of the code alphabet (spaces and dashes removed; anything else = no code). The server is `{server}` if given, else `{host}`.
+- **App Links / Universal Links:** only for the built-in relay's host (`assetlinks.json`, `apple-app-site-association` served there, path `/*` with a 6-character code). Other hosts stay browser links.
+- **Android install referrer:** `code` and `server` parameters, same rules (spec 12: still an assumption; without it Android behaves like iOS).
+- **Trust:** a server that is the built-in relay, the policy server, the DNS server, the in-house box or confirmed on this device before is used at once (chip). Any other server opens the relay confirmation page (spec 7.2, `relay.confirm.bodyApp`) before anything connects; Use stores it as confirmed. A link never changes the stored "last used" server until a join succeeded.
+- **Scanner:** section 8; result handling spec 5.3 (`app.scanWrong` for anything else).
