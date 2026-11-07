@@ -3,6 +3,7 @@
 // "Share this screen" to send the screen of this computer (Linux/X11 only for now; the Rust
 // core says whether that works on this system). On Android the same switch starts the native
 // screen capture (consent dialog, MediaCodec) and sends what it encodes, see capture_feeder.dart.
+// On iOS it opens the system broadcast sheet; the ReplayKit extension sends (docs/ios.md).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import 'codec_controller.dart';
 import 'codec_notice.dart';
 import 'core/android_capture.dart';
 import 'core/core_api.dart';
+import 'core/ios_broadcast.dart';
 import 'discovery.dart';
 import 'sender_controller.dart';
 import 'settings.dart';
@@ -28,6 +30,7 @@ class SendPage extends StatefulWidget {
     required this.core,
     required this.settings,
     this.androidCapture,
+    this.iosBroadcast,
   });
 
   final CoreApi core;
@@ -35,6 +38,9 @@ class SendPage extends StatefulWidget {
 
   /// The Android screen capture; null where there is none.
   final AndroidCapture? androidCapture;
+
+  /// The iOS broadcast hand-over; null where there is none.
+  final IosBroadcast? iosBroadcast;
 
   @override
   State<SendPage> createState() => _SendPageState();
@@ -45,6 +51,7 @@ class _SendPageState extends State<SendPage> {
     core: widget.core,
     udpBind: widget.settings.udpBind,
     capture: widget.androidCapture,
+    iosBroadcast: widget.iosBroadcast,
   );
   late final CodecController _codec = CodecController(
     core: widget.core,
@@ -106,6 +113,16 @@ class _SendPageState extends State<SendPage> {
       (_capture?.monitors.any((m) => m.id == androidProjectionMonitorId) ??
           false);
 
+  /// The core listed the iOS broadcast (it does so only when built for iOS): the screen is
+  /// sent by the broadcast extension, not by this app.
+  bool get _iosMode =>
+      widget.iosBroadcast != null &&
+      (_capture?.monitors.any((m) => m.id == iosBroadcastMonitorId) ?? false);
+
+  /// The screen is captured and encoded by native code, so neither the OpenH264 card nor the
+  /// monitor list apply.
+  bool get _nativeCapture => _androidMode || _iosMode;
+
   @override
   void dispose() {
     widget.settings.removeListener(_syncNearby);
@@ -157,8 +174,15 @@ class _SendPageState extends State<SendPage> {
     }
     // Desktop screen sharing encodes with OpenH264, which release builds download first (the
     // card under the switch explains it). Android encodes with MediaCodec.
-    if (sharing && !_androidMode && !_codec.ready) return;
+    if (sharing && !_nativeCapture && !_codec.ready) return;
     widget.settings.rememberServer();
+    if (sharing && _iosMode) {
+      _controller.startBroadcast(
+        code: check.code,
+        server: widget.settings.serverAddress.trim(),
+      );
+      return;
+    }
     if (sharing && _androidMode) {
       final t = AppLocalizations.of(context);
       _controller.startCapture(
@@ -294,6 +318,13 @@ class _SendPageState extends State<SendPage> {
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ),
+                if (_controller.awaitingBroadcast)
+                  NoticeBox(
+                    noticeKey: const Key('iosBroadcastInstructions'),
+                    text: _controller.broadcastPickerFailed
+                        ? t.iosBroadcastPickerFailed
+                        : t.iosBroadcastInstructions,
+                  ),
                 const SizedBox(height: 16),
                 NoticeBox(
                   noticeKey: const Key('sendNotice'),
@@ -418,13 +449,17 @@ class _SendPageState extends State<SendPage> {
           contentPadding: EdgeInsets.zero,
           title: Text(t.sendShareScreen),
           subtitle: Text(
-            _androidMode ? t.sendShareScreenHintAndroid : t.sendShareScreenHint,
+            _iosMode
+                ? t.sendShareScreenHintIos
+                : (_androidMode
+                      ? t.sendShareScreenHintAndroid
+                      : t.sendShareScreenHint),
           ),
           value: _shareScreen && supported,
           onChanged: (supported && !active)
               ? (v) {
                   setState(() => _shareScreen = v);
-                  if (v && !_androidMode) _codec.init();
+                  if (v && !_nativeCapture) _codec.init();
                 }
               : null,
         ),
@@ -432,12 +467,12 @@ class _SendPageState extends State<SendPage> {
           Text(t.sendCaptureChecking, key: const Key('captureChecking'))
         else if (reason != null)
           NoticeBox(noticeKey: const Key('captureUnsupported'), text: reason),
-        if (_shareScreen && supported && !_androidMode)
+        if (_shareScreen && supported && !_nativeCapture)
           CodecNotice(controller: _codec),
         if (_shareScreen &&
             supported &&
             monitors.isNotEmpty &&
-            !_androidMode) ...[
+            !_nativeCapture) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             key: const Key('monitorDropdown'),
@@ -467,6 +502,11 @@ class _SendPageState extends State<SendPage> {
   String _statusText(AppLocalizations t) {
     final c = _controller;
     if (c.error != null) return t.statusError(c.error!);
+    if (c.broadcastError != null) {
+      return _broadcastErrorText(t, c.broadcastError!);
+    }
+    if (c.awaitingBroadcast) return t.iosBroadcastWaitingForStart;
+    if (c.broadcastNotStarted) return t.iosBroadcastNotStarted;
     if (c.awaitingConsent) return t.sendCaptureWaitingForConsent;
     if (c.captureDenied) return t.sendCaptureDenied;
     if (c.captureStopped) return t.sendCaptureStopped;
@@ -475,12 +515,23 @@ class _SendPageState extends State<SendPage> {
       case SenderPhase.idle:
         return t.statusIdle;
       case SenderPhase.starting:
+        if (c.broadcastStatus?.state == IosBroadcastState.waiting) {
+          return t.iosBroadcastWaitingForReceiver;
+        }
         return t.statusConnecting;
       case SenderPhase.finished:
         return t.sendFinished(c.framesSent);
       case SenderPhase.ended:
         return t.statusEnded;
       case SenderPhase.running:
+        switch (c.broadcastStatus?.state) {
+          case IosBroadcastState.reconnecting:
+            return t.iosBroadcastReconnecting;
+          case IosBroadcastState.paused:
+            return t.iosBroadcastPaused;
+          default:
+            break;
+        }
         if (c.framesSent > 0) {
           return c.sharingScreen
               ? t.sendStreamingScreen(c.framesSent)
@@ -493,6 +544,24 @@ class _SendPageState extends State<SendPage> {
     }
   }
 }
+
+/// The translated sentence for a failed or lost iOS broadcast.
+String _broadcastErrorText(AppLocalizations t, IosBroadcastError e) =>
+    switch (e) {
+      IosBroadcastError.none ||
+      IosBroadcastError.stoppedByApp => t.sendCaptureStopped,
+      IosBroadcastError.peerLeft => t.statusPeerLeftReceiver,
+      IosBroadcastError.noConfig => t.iosErrorNoConfig,
+      IosBroadcastError.configExpired => t.iosErrorConfigExpired,
+      IosBroadcastError.invalidRoomCode => t.iosErrorInvalidRoomCode,
+      IosBroadcastError.invalidRelay => t.iosErrorInvalidRelay,
+      IosBroadcastError.roomNotFound => t.iosErrorRoomNotFound,
+      IosBroadcastError.serverUnreachable => t.iosErrorServerUnreachable,
+      IosBroadcastError.connectionLost => t.iosErrorConnectionLost,
+      IosBroadcastError.encoderFailed => t.iosErrorEncoderFailed,
+      IosBroadcastError.memory => t.iosErrorMemory,
+      IosBroadcastError.internalError => t.iosErrorInternal,
+    };
 
 /// Turns typed a-z into capitals (room codes are uppercase). Also used by the content screen.
 class UpperCaseFormatter extends TextInputFormatter {

@@ -57,10 +57,15 @@ List<String> coreLibraryCandidates({
         join([exeDir, 'lib', name]),
       ];
     case CoreOs.windows:
-      return [join([exeDir, 'lib', name]), join([exeDir, name])];
+      return [
+        join([exeDir, 'lib', name]),
+        join([exeDir, name]),
+      ];
     case CoreOs.linux:
     case CoreOs.other:
-      return [join([exeDir, 'lib', name])];
+      return [
+        join([exeDir, 'lib', name]),
+      ];
     case CoreOs.android:
     case CoreOs.ios:
       return const [];
@@ -84,8 +89,7 @@ String resolveCoreLibraryPath({
   final theOs = os ?? _currentOs();
   final override = (environment ?? Platform.environment)[ffiLibraryEnvVar];
   if (override != null && override.isNotEmpty) return override;
-  final exeDir =
-      executableDir ?? File(Platform.resolvedExecutable).parent.path;
+  final exeDir = executableDir ?? File(Platform.resolvedExecutable).parent.path;
   final exists = fileExists ?? (String p) => File(p).existsSync();
   for (final candidate in coreLibraryCandidates(
     os: theOs,
@@ -98,7 +102,20 @@ String resolveCoreLibraryPath({
 }
 
 /// Load the Rust library once. Call before using any function of the core.
+///
+/// iOS: the core is linked into the app as a static library (`libcc_ffi.a`, see
+/// ios/project.yml and tools/ios-build-rust.sh): its symbols are in the process itself, so they
+/// are looked up there; there is no file to open (an app may not load downloaded or loose
+/// libraries). `COMETCAST_FFI_LIB` and an explicit [libraryPath] still win (tests).
 Future<void> initRustCore({String? libraryPath}) {
+  final overridden =
+      libraryPath != null ||
+      (Platform.environment[ffiLibraryEnvVar]?.isNotEmpty ?? false);
+  if (Platform.isIOS && !overridden) {
+    return RustLib.init(
+      externalLibrary: ExternalLibrary.process(iKnowHowToUseIt: true),
+    );
+  }
   return RustLib.init(
     externalLibrary: ExternalLibrary.open(
       libraryPath ?? resolveCoreLibraryPath(),

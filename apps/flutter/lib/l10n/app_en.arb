@@ -1012,5 +1012,85 @@
   "codecRemembered": "Your consent is remembered; later downloads start without asking.",
   "@codecRemembered": {
     "description": "Note that consent is stored."
+  },
+  "sendShareScreenHintIos": "iOS asks you to start the broadcast in a list. Sending continues in the background until you stop it here or with the red bar at the top of the screen.",
+  "@sendShareScreenHintIos": {
+    "description": "Subtitle of the \"Share this screen\" switch on iPhone and iPad."
+  },
+  "iosBroadcastWaitingForStart": "Waiting for you to start the broadcast …",
+  "@iosBroadcastWaitingForStart": {
+    "description": "Status text on iOS while the system broadcast list is open and nothing has started yet."
+  },
+  "iosBroadcastInstructions": "In the list, choose \"Comet Cast\" and tap \"Start Broadcast\". If no list appeared: open Control Center, press and hold the record button, choose \"Comet Cast\" and start.",
+  "@iosBroadcastInstructions": {
+    "description": "Instructions shown on iOS while waiting for the person to start the broadcast. The quoted names are the names iOS shows."
+  },
+  "iosBroadcastPickerFailed": "The broadcast list could not be opened from the app. Open Control Center, press and hold the record button, choose \"Comet Cast\" and start. The room code is already handed over.",
+  "@iosBroadcastPickerFailed": {
+    "description": "Shown on iOS when the system list could not be opened by the app."
+  },
+  "iosBroadcastNotStarted": "The broadcast was not started. Nothing is sent.",
+  "@iosBroadcastNotStarted": {
+    "description": "Status text on iOS when nobody started the broadcast within the time limit."
+  },
+  "iosBroadcastWaitingForReceiver": "Connected to the server. Waiting for the receiver …",
+  "@iosBroadcastWaitingForReceiver": {
+    "description": "Status text on iOS: the broadcast extension joined the room and negotiates with the receiver."
+  },
+  "iosBroadcastReconnecting": "The connection was lost. Trying to reconnect …",
+  "@iosBroadcastReconnecting": {
+    "description": "Status text on iOS while the connection to the receiver is temporarily lost."
+  },
+  "iosBroadcastPaused": "The broadcast is paused, for example because of a call.",
+  "@iosBroadcastPaused": {
+    "description": "Status text on iOS while the system has paused the broadcast."
+  },
+  "iosErrorNoConfig": "The broadcast was started without a room code. Start it from the \"Send screen\" page of Comet Cast.",
+  "@iosErrorNoConfig": {
+    "description": "Error on iOS: the extension found no room code (started from Control Center)."
+  },
+  "iosErrorConfigExpired": "The broadcast was not started in time. Start it again.",
+  "@iosErrorConfigExpired": {
+    "description": "Error on iOS: the hand-over of the room code was too old."
+  },
+  "iosErrorInvalidRoomCode": "The room code is not valid.",
+  "@iosErrorInvalidRoomCode": {
+    "description": "Error on iOS: the extension rejected the room code."
+  },
+  "iosErrorInvalidRelay": "The server address is not valid.",
+  "@iosErrorInvalidRelay": {
+    "description": "Error on iOS: the extension rejected the server address."
+  },
+  "iosErrorRoomNotFound": "No receiver with this room code was found. Check the code on the receiving screen.",
+  "@iosErrorRoomNotFound": {
+    "description": "Error on iOS: the server knows no room with this code."
+  },
+  "iosErrorServerUnreachable": "The server cannot be reached. Check your network connection.",
+  "@iosErrorServerUnreachable": {
+    "description": "Error on iOS: the broadcast extension cannot reach the server."
+  },
+  "iosErrorConnectionLost": "The connection to the receiver was lost.",
+  "@iosErrorConnectionLost": {
+    "description": "Error on iOS: the connection failed or was closed."
+  },
+  "iosErrorEncoderFailed": "The screen could not be encoded on this device.",
+  "@iosErrorEncoderFailed": {
+    "description": "Error on iOS: the hardware video encoder failed."
+  },
+  "iosErrorMemory": "The broadcast was stopped because the device ran low on memory.",
+  "@iosErrorMemory": {
+    "description": "Error on iOS: the extension reached its memory limit."
+  },
+  "iosErrorInternal": "The broadcast ended because of an unexpected problem, or the system stopped it.",
+  "@iosErrorInternal": {
+    "description": "Error on iOS: unexpected failure, or the extension stopped reporting."
+  },
+  "codecNotNeededDevice": "The video is decoded by your device. No extra video codec is needed.",
+  "@codecNotNeededDevice": {
+    "description": "Shown in the receiver on iOS instead of the codec download card."
+  },
+  "videoDecoderFailedNoFallback": "This device could not decode the video. There is no other decoder on this system.",
+  "@videoDecoderFailedNoFallback": {
+    "description": "Shown in the receiver on iOS when the device decoder failed (no software fallback exists)."
   }
 }

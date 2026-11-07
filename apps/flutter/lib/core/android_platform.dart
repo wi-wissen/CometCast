@@ -61,6 +61,7 @@ class DeviceProfile extends InheritedWidget {
     this.platform,
     this.videoDecoder,
     this.deviceName,
+    this.hardwareDecoderOnly = false,
   });
 
   /// A television: receiver only, big room code, no pointer-only controls.
@@ -73,6 +74,12 @@ class DeviceProfile extends InheritedWidget {
   /// Chosen in `main.dart`: on a television by default, elsewhere only when asked for with
   /// `--dart-define=COMETCAST_VIDEO=hardware` (docs/android.md, "Receiver video").
   final AndroidVideoDecoder? videoDecoder;
+
+  /// There is no software decoder on this platform (iOS: OpenH264 would have to be downloaded
+  /// and loaded at run time, which the App Store does not allow), so the decoder in
+  /// [videoDecoder] is the only one: the receiver shows that no codec is needed instead of the
+  /// download card, and a failing decoder is reported instead of silently falling back.
+  final bool hardwareDecoderOnly;
 
   /// Name this device announces itself with in the local network (the model name on Android,
   /// where the host name is not meaningful), or null to use the host name.
@@ -93,7 +100,8 @@ class DeviceProfile extends InheritedWidget {
   bool updateShouldNotify(DeviceProfile old) =>
       tv != old.tv ||
       platform != old.platform ||
-      videoDecoder != old.videoDecoder;
+      videoDecoder != old.videoDecoder ||
+      hardwareDecoderOnly != old.hardwareDecoderOnly;
 }
 
 /// Where the PDF and Office workers are shipped on Android: `lib<name>.so` files in the native

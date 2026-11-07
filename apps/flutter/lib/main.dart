@@ -14,6 +14,7 @@ import 'core/android_capture.dart';
 import 'core/android_platform.dart';
 import 'core/android_video.dart';
 import 'core/core_api.dart';
+import 'core/ios_broadcast.dart';
 import 'core/rust_loader.dart';
 import 'home_page.dart';
 import 'receive_page.dart' show launchInBrowser;
@@ -47,9 +48,16 @@ Future<void> main() async {
       settings: settings,
       // Used only when the Rust core lists the Android projection (Android builds).
       androidCapture: Platform.isAndroid ? const ChannelAndroidCapture() : null,
+      // Used only when the Rust core lists the iOS broadcast (iOS builds).
+      iosBroadcast: Platform.isIOS ? const ChannelIosBroadcast() : null,
       tv: android.tv,
       androidPlatform: android.platform,
-      videoDecoder: android.videoDecoder,
+      // iOS: VideoToolbox through the same channel protocol as the Android MediaCodec bridge
+      // (ios/Runner/Video/VideoBridge.swift). There is no software fallback on iOS.
+      videoDecoder: Platform.isIOS
+          ? const ChannelAndroidVideoDecoder()
+          : android.videoDecoder,
+      hardwareDecoderOnly: Platform.isIOS,
       deviceName: android.deviceName,
     ),
   );
@@ -133,6 +141,8 @@ class CometCastApp extends StatelessWidget {
     required this.core,
     AppSettings? settings,
     this.androidCapture,
+    this.iosBroadcast,
+    this.hardwareDecoderOnly = false,
     this.pickFile = pickImageOrPdf,
     this.openUrl = launchInBrowser,
     this.tv = false,
@@ -158,6 +168,12 @@ class CometCastApp extends StatelessWidget {
   /// The Android screen capture (a fake in tests); null on other platforms.
   final AndroidCapture? androidCapture;
 
+  /// The iOS broadcast hand-over (a fake in tests); null on other platforms.
+  final IosBroadcast? iosBroadcast;
+
+  /// No software video decoder exists (iOS): see [DeviceProfile.hardwareDecoderOnly].
+  final bool hardwareDecoderOnly;
+
   /// The Rust core (or a fake in tests).
   final CoreApi core;
 
@@ -176,6 +192,7 @@ class CometCastApp extends StatelessWidget {
       tv: tv,
       platform: androidPlatform,
       videoDecoder: videoDecoder,
+      hardwareDecoderOnly: hardwareDecoderOnly,
       deviceName: deviceName,
       child: _app(),
     );
@@ -207,6 +224,7 @@ class CometCastApp extends StatelessWidget {
         core: core,
         settings: settings,
         androidCapture: androidCapture,
+        iosBroadcast: iosBroadcast,
         pickFile: pickFile,
         openUrl: openUrl,
       ),

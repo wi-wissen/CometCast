@@ -1,11 +1,11 @@
 /* Meldungen, die iOS beim Ende der Übertragung zeigt. Einfache Sätze, keine Fachbegriffe. */
 "error.none" = "Die Übertragung wurde beendet.";
-"error.noConfig" = "Öffne Comet Cast, gib unter „Senden“ den Raumcode ein und starte die Bildschirmübertragung dort.";
-"error.configExpired" = "Die Übertragung wurde nicht rechtzeitig gestartet. Öffne Comet Cast und starte sie erneut.";
-"error.invalidRoomCode" = "Der Raumcode ist ungültig. Prüfe ihn in Comet Cast.";
-"error.invalidRelay" = "Die Serveradresse ist ungültig. Prüfe sie in Comet Cast.";
-"error.roomNotFound" = "Es wurde kein Empfänger mit diesem Raumcode gefunden. Prüfe den Code auf dem Empfangsbildschirm.";
-"error.serverUnreachable" = "Der Server ist nicht erreichbar. Prüfe deine Netzwerkverbindung.";
+"error.noConfig" = "Öffnen Sie Comet Cast, geben Sie unter „Bildschirm senden“ den Raumcode ein und starten Sie die Übertragung dort.";
+"error.configExpired" = "Die Übertragung wurde nicht rechtzeitig gestartet. Öffnen Sie Comet Cast und starten Sie sie erneut.";
+"error.invalidRoomCode" = "Der Raumcode ist ungültig. Prüfen Sie ihn in Comet Cast.";
+"error.invalidRelay" = "Die Serveradresse ist ungültig. Prüfen Sie sie in Comet Cast.";
+"error.roomNotFound" = "Es wurde kein Empfänger mit diesem Raumcode gefunden. Prüfen Sie den Code auf dem Empfangsbildschirm.";
+"error.serverUnreachable" = "Der Server ist nicht erreichbar. Prüfen Sie Ihre Netzwerkverbindung.";
 "error.connectionLost" = "Die Verbindung zum Empfänger wurde unterbrochen.";
 "error.peerLeft" = "Der Empfänger hat die Sitzung beendet.";
 "error.encoderFailed" = "Der Bildschirm konnte auf diesem Gerät nicht kodiert werden.";
