@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cometcast/core/core_api.dart';
 import 'package:cometcast/src/presenter/file_picker.dart';
+import 'package:cometcast/tv_controller.dart';
 
 import 'nearby_support.dart' show screen, settle;
 import 'round5_support.dart';
@@ -130,6 +131,40 @@ void main() {
       await finish(t, r);
     },
   );
+
+  testWidgets(
+    'hidden by the announced addresses of a Comet Cast row (N105): one row, no TV row',
+    (t) async {
+      final r = await desktop(t);
+      // The screen's server is a relay name; only its resolved addresses name the TV's box.
+      r.core.search.add(const NearbyUiEvent.searchStarted());
+      r.core.search.add(
+        NearbyUiEvent.added(
+          screen: screen('a', addresses: ['192.168.1.20', 'fd00::2']),
+        ),
+      );
+      await see(t, r, [
+        airplay('airplay:1', name: 'Apple TV', addresses: ['192.168.1.20']),
+        cast('cast:1', name: 'Mapped', addresses: ['::ffff:192.168.1.20']),
+        cast('cast:2', name: 'Other', addresses: ['192.168.1.99']),
+      ]);
+      expect(find.byKey(const Key('tv-row-airplay:1')), findsNothing);
+      expect(find.byKey(const Key('tv-row-cast:1')), findsNothing);
+      expect(find.byKey(const Key('tv-row-cast:2')), findsOneWidget);
+      await finish(t, r);
+    },
+  );
+
+  test('normaliseAddress and hiddenTvAddresses', () {
+    expect(normaliseAddress('[FD00::2%en0]'), 'fd00::2');
+    expect(normaliseAddress('::ffff:10.0.0.1'), '10.0.0.1');
+    expect(
+      hiddenTvAddresses([
+        screen('a', server: 'wss://[fd00::9]:8443', addresses: ['10.0.0.1']),
+      ]),
+      {'10.0.0.1', 'fd00::9'},
+    );
+  });
 
   testWidgets('a row that is gone leaves at once', (t) async {
     final r = await desktop(t);

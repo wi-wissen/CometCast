@@ -110,6 +110,20 @@ pub struct NearbyScreen {
     /// The current code (6 characters of [`CODE_ALPHABET`]); `None` exactly when the mode is
     /// [`ScreenMode::Locked`].
     pub code: Option<String>,
+    /// The IPv4 and IPv6 addresses the announcement resolved to (of every instance of this
+    /// screen), as normalised text, sorted, at most [`crate::announce::MAX_ADDRESSES`]; empty
+    /// when the backend resolved none. Used only to hide TV rows that are the same device
+    /// (decision N105); never shown.
+    pub addresses: Vec<String>,
+}
+
+/// The addresses as sorted, de-duplicated, normalised text (IPv4-mapped IPv6 as IPv4).
+fn address_texts<'a>(addrs: impl IntoIterator<Item = &'a IpAddr>) -> Vec<String> {
+    let mut v: Vec<IpAddr> = addrs.into_iter().map(IpAddr::to_canonical).collect();
+    v.sort();
+    v.dedup();
+    v.truncate(crate::announce::MAX_ADDRESSES);
+    v.iter().map(ToString::to_string).collect()
 }
 
 /// Is `code` exactly [`CODE_LEN`] characters of [`CODE_ALPHABET`]?
@@ -171,6 +185,7 @@ pub fn screen_from_raw(rec: &RawRecord) -> Option<NearbyScreen> {
         server,
         mode,
         code,
+        addresses: address_texts(&rec.addresses),
     })
 }
 
@@ -279,6 +294,9 @@ impl NearbyTracker {
                 None => {}
             }
             e.last_seen = now;
+            // The addresses of the row are those of all its instances.
+            let mut screen = screen;
+            screen.addresses = address_texts(e.instances.iter().flat_map(|(_, a)| a.iter()));
             if e.screen != screen {
                 e.screen = screen.clone();
                 changes.push(NearbyChange::Updated(screen));
@@ -314,6 +332,8 @@ impl NearbyTracker {
                     changes.push(NearbyChange::Removed(self.entries.remove(n).screen.id));
                     continue;
                 }
+                // No change is reported for it: the addresses only hide TV rows.
+                e.screen.addresses = address_texts(e.instances.iter().flat_map(|(_, a)| a.iter()));
             }
             n += 1;
         }
@@ -534,6 +554,42 @@ mod tests {
     }
 
     #[test]
+    fn the_row_carries_the_normalised_addresses_of_the_announcement() {
+        let r = RawRecord {
+            instance: "a".into(),
+            addresses: vec![ip("192.168.1.20"), ip("::ffff:192.168.1.20"), ip("fd00::2")],
+            txt: txt(&pairs(&open(ID1, "P4X9TR"))),
+        };
+        let s = screen_from_raw(&r).unwrap();
+        // An IPv4-mapped address is the IPv4 address; sorted, no duplicates.
+        assert_eq!(s.addresses, ["192.168.1.20", "fd00::2"]);
+        // A backend that resolves nothing (Apple's browser) gives an empty list.
+        let s = screen_from_raw(&rec("a", "", &pairs(&open(ID1, "P4X9TR")))).unwrap();
+        assert!(s.addresses.is_empty());
+    }
+
+    #[test]
+    fn a_row_with_two_instances_has_the_addresses_of_both() {
+        let mut t = NearbyTracker::new();
+        let now = Instant::now();
+        let v = open(ID1, "P4X9TR");
+        t.on_seen(&rec("a", "192.168.1.20", &pairs(&v)), now);
+        let r2 = RawRecord {
+            instance: "b".into(),
+            addresses: vec![ip("192.168.1.20"), ip("192.168.1.21")],
+            txt: txt(&pairs(&v)),
+        };
+        let ch = t.on_seen(&r2, now);
+        assert!(
+            matches!(ch.as_slice(), [NearbyChange::Updated(s)] if s.addresses == ["192.168.1.20", "192.168.1.21"])
+        );
+        assert_eq!(t.screens()[0].addresses, ["192.168.1.20", "192.168.1.21"]);
+        // One instance goes: its addresses leave the row, without a change event.
+        assert!(t.on_gone("b").is_empty());
+        assert_eq!(t.screens()[0].addresses, ["192.168.1.20"]);
+    }
+
+    #[test]
     fn locked_never_has_a_code() {
         let mut v = open(ID1, "P4X9TR");
         v[3] = ("mode", "locked".into());
@@ -703,7 +759,11 @@ mod tests {
         // The same id under another instance name, from an address the row knows.
         let mut r = rec("a (2)", "10.0.0.1", &pairs(&a));
         r.addresses.push(ip("192.168.1.1"));
-        assert!(t.on_seen(&r, now).is_empty());
+        // Only the addresses of the row grew: it is reported as updated (N105).
+        let ch = t.on_seen(&r, now);
+        assert!(
+            matches!(ch.as_slice(), [NearbyChange::Updated(s)] if s.addresses == ["10.0.0.1", "192.168.1.1"])
+        );
         assert_eq!(t.screens().len(), 1);
         // One goodbye does not remove the row, the second does.
         assert!(t.on_gone("a").is_empty());

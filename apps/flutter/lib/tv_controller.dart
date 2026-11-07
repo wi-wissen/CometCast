@@ -64,7 +64,7 @@ class TvController extends ChangeNotifier {
     final out = <TvRow>[];
     for (final r in _all) {
       if (!r.listed) continue;
-      if (r.addresses.any(_hidden.contains)) continue;
+      if (r.addresses.map(normaliseAddress).any(_hidden.contains)) continue;
       if (out.length >= maxRows) break;
       out.add(r);
     }
@@ -78,8 +78,9 @@ class TvController extends ChangeNotifier {
   /// The addresses of the Comet Cast rows in the nearby list: a TV with one of them is hidden
   /// (N84), so that people pick the Comet Cast row, which honours the join mode.
   void setHiddenAddresses(Set<String> addresses) {
-    if (setEquals(addresses, _hidden)) return;
-    _hidden = addresses;
+    final norm = {for (final a in addresses) normaliseAddress(a)};
+    if (setEquals(norm, _hidden)) return;
+    _hidden = norm;
     _notify();
   }
 
@@ -173,4 +174,27 @@ class TvController extends ChangeNotifier {
     _sub = null;
     super.dispose();
   }
+}
+
+/// An IP address as comparable text: brackets and zone id removed, lower case, an IPv4-mapped
+/// IPv6 address as the IPv4 address (the core's `addresses` are normalised the same way).
+String normaliseAddress(String a) {
+  var t = a.trim().toLowerCase();
+  if (t.startsWith('[') && t.endsWith(']')) t = t.substring(1, t.length - 1);
+  final zone = t.indexOf('%');
+  if (zone >= 0) t = t.substring(0, zone);
+  final mapped = RegExp(r'^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$').firstMatch(t);
+  return mapped == null ? t : mapped.group(1)!;
+}
+
+/// The addresses of the Comet Cast rows of the nearby list that hide a TV row (spec 15.14 N105):
+/// every address the announcement resolved to and the host of the row's `server`.
+Set<String> hiddenTvAddresses(Iterable<NearbyScreenInfo> screens) {
+  final out = <String>{};
+  for (final s in screens) {
+    out.addAll(s.addresses.map(normaliseAddress));
+    final host = Uri.tryParse(s.server)?.host ?? '';
+    if (host.isNotEmpty) out.add(normaliseAddress(host));
+  }
+  return out;
 }

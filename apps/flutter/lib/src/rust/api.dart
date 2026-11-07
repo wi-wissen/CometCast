@@ -1108,12 +1108,18 @@ class NearbyScreenInfo {
   /// The current code (6 characters); `None` exactly when the mode is `Locked`.
   final String? code;
 
+  /// The IPv4 and IPv6 addresses the announcement resolved to, as normalised text (as
+  /// `TvUiEvent::Seen.addresses`; may be empty: Apple's browser hands over no addresses). Used
+  /// only to hide TV rows of the same device (decision N105); never shown.
+  final List<String> addresses;
+
   const NearbyScreenInfo({
     required this.id,
     required this.name,
     required this.server,
     required this.mode,
     this.code,
+    required this.addresses,
   });
 
   @override
@@ -1122,7 +1128,8 @@ class NearbyScreenInfo {
       name.hashCode ^
       server.hashCode ^
       mode.hashCode ^
-      code.hashCode;
+      code.hashCode ^
+      addresses.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1133,7 +1140,8 @@ class NearbyScreenInfo {
           name == other.name &&
           server == other.server &&
           mode == other.mode &&
-          code == other.code;
+          code == other.code &&
+          addresses == other.addresses;
 }
 
 @freezed

@@ -2895,14 +2895,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   NearbyScreenInfo dco_decode_nearby_screen_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return NearbyScreenInfo(
       id: dco_decode_String(arr[0]),
       name: dco_decode_String(arr[1]),
       server: dco_decode_String(arr[2]),
       mode: dco_decode_nearby_mode(arr[3]),
       code: dco_decode_opt_String(arr[4]),
+      addresses: dco_decode_list_String(arr[5]),
     );
   }
 
@@ -4056,12 +4057,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_server = sse_decode_String(deserializer);
     var var_mode = sse_decode_nearby_mode(deserializer);
     var var_code = sse_decode_opt_String(deserializer);
+    var var_addresses = sse_decode_list_String(deserializer);
     return NearbyScreenInfo(
       id: var_id,
       name: var_name,
       server: var_server,
       mode: var_mode,
       code: var_code,
+      addresses: var_addresses,
     );
   }
 
@@ -5414,6 +5417,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.server, serializer);
     sse_encode_nearby_mode(self.mode, serializer);
     sse_encode_opt_String(self.code, serializer);
+    sse_encode_list_String(self.addresses, serializer);
   }
 
   @protected

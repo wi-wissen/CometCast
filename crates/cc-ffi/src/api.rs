@@ -2041,6 +2041,10 @@ pub struct NearbyScreenInfo {
     pub mode: NearbyMode,
     /// The current code (6 characters); `None` exactly when the mode is `Locked`.
     pub code: Option<String>,
+    /// The IPv4 and IPv6 addresses the announcement resolved to, as normalised text (as
+    /// `TvUiEvent::Seen.addresses`; may be empty: Apple's browser hands over no addresses). Used
+    /// only to hide TV rows of the same device (decision N105); never shown.
+    pub addresses: Vec<String>,
 }
 
 impl From<cc_discovery::NearbyScreen> for NearbyScreenInfo {
@@ -2051,6 +2055,7 @@ impl From<cc_discovery::NearbyScreen> for NearbyScreenInfo {
             server: s.server,
             mode: s.mode.into(),
             code: s.code,
+            addresses: s.addresses,
         }
     }
 }

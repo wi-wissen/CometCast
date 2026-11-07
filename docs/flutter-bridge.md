@@ -248,3 +248,9 @@ Spec: `docs/design/first-run-and-display.md` section 14, `docs/design/native-app
   all three are non-fatal (the join stays) and show the page `error.capture`.
 * `present_screen(None)` is what the desktop app calls (the system picker on every tap); the owner window of the Windows
   picker is found in Rust (`cc_capture::windows_wgc::own_window`), so no signature carries a window handle.
+
+## Round 5 fixes (fix list round 5-2)
+
+- **`NearbyScreenInfo.addresses: Vec<String>`** (P1, N105): the IPv4 and IPv6 addresses the announcement resolved to, as normalised text (an IPv4-mapped IPv6 address as IPv4), sorted, at most `MAX_ADDRESSES`, of all instances of the row; empty when the backend resolves none (Apple's browser). Used only to hide TV rows (`hiddenTvAddresses` in `lib/tv_controller.dart`: any address of a Comet Cast row and the host of its server); never shown. Codegen was run twice (`cc-ffi`'s default feature `h264-libloading` for the run, restored afterwards): the second run changed no file.
+- **Share page, Android** (U14, N112): the channel `cometcast/share` has `returnToCaller` (`ShareBridge.kt`: `moveTaskToBack(true)`, `finish()` only after a cold start by the share intent); Dart `ShareIntake.returnToCaller()`.
+

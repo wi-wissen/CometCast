@@ -3361,12 +3361,14 @@ impl SseDecode for crate::api::NearbyScreenInfo {
         let mut var_server = <String>::sse_decode(deserializer);
         let mut var_mode = <crate::api::NearbyMode>::sse_decode(deserializer);
         let mut var_code = <Option<String>>::sse_decode(deserializer);
+        let mut var_addresses = <Vec<String>>::sse_decode(deserializer);
         return crate::api::NearbyScreenInfo {
             id: var_id,
             name: var_name,
             server: var_server,
             mode: var_mode,
             code: var_code,
+            addresses: var_addresses,
         };
     }
 }
@@ -4796,6 +4798,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::NearbyScreenInfo {
             self.server.into_into_dart().into_dart(),
             self.mode.into_into_dart().into_dart(),
             self.code.into_into_dart().into_dart(),
+            self.addresses.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6134,6 +6137,7 @@ impl SseEncode for crate::api::NearbyScreenInfo {
         <String>::sse_encode(self.server, serializer);
         <crate::api::NearbyMode>::sse_encode(self.mode, serializer);
         <Option<String>>::sse_encode(self.code, serializer);
+        <Vec<String>>::sse_encode(self.addresses, serializer);
     }
 }
 

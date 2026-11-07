@@ -74,12 +74,14 @@ NearbyScreenInfo screen(
   String server = 'wss://relay.cometcast.de:443',
   NearbyMode mode = NearbyMode.open,
   String? code = 'K7QM2W',
+  List<String> addresses = const [],
 }) => NearbyScreenInfo(
   id: id,
   name: name,
   server: server,
   mode: mode,
   code: mode == NearbyMode.locked ? null : code,
+  addresses: addresses,
 );
 
 class Nearby {
