@@ -29,6 +29,7 @@ base64.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 rustls-native-certs.workspace = true
+sha2 = "0.11"
 
 [dev-dependencies]
 cc-server.workspace = true

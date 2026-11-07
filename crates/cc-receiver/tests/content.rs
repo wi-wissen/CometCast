@@ -133,7 +133,7 @@ impl Rx {
     }
 }
 
-/// Next content event within 20 s, skipping transfer-start notices.
+/// Next content event within 20 s, skipping transfer-start and progress notices.
 async fn next(rx: &mut Rx) -> ContentEvent {
     loop {
         let ev = tokio::time::timeout(Duration::from_secs(20), async {
@@ -148,7 +148,10 @@ async fn next(rx: &mut Rx) -> ContentEvent {
         })
         .await
         .expect("timeout waiting for a content event");
-        if !matches!(ev, ContentEvent::TransferStarted { .. }) {
+        if !matches!(
+            ev,
+            ContentEvent::TransferStarted { .. } | ContentEvent::TransferProgress { .. }
+        ) {
             return ev;
         }
     }

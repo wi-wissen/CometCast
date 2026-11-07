@@ -19,7 +19,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
-use cc_files::{ContentEvent, ContentOptions, ContentReceiver, Next, WorkDone};
+use cc_files::{ContentEvent, ContentOptions, ContentReceiver, Next, WorkDone, page_message};
 use cc_transport::{ControlChannel, ControlData};
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinHandle;
@@ -94,7 +94,11 @@ impl EventSink {
     /// A queued `PageRendered` is replaced by a newer one.
     pub(crate) async fn push(&self, event: ContentEvent) -> Result<(), ()> {
         let w = weight(&event);
-        let superseding = matches!(event, ContentEvent::PageRendered { .. });
+        let superseding = matches!(
+            event,
+            ContentEvent::PageRendered { .. } | ContentEvent::TransferProgress { .. }
+        );
+        let progress = matches!(event, ContentEvent::TransferProgress { .. });
         loop {
             {
                 let mut st = self.0.lock();
@@ -104,7 +108,13 @@ impl EventSink {
                 if superseding {
                     let mut freed = 0;
                     st.items.retain(|(e, w)| {
-                        let stale = matches!(e, ContentEvent::PageRendered { .. });
+                        // A newer picture replaces an older one, a newer progress an older
+                        // progress.
+                        let stale = if progress {
+                            matches!(e, ContentEvent::TransferProgress { .. })
+                        } else {
+                            matches!(e, ContentEvent::PageRendered { .. })
+                        };
                         if stale {
                             freed += w;
                         }
@@ -175,10 +185,12 @@ pub(crate) fn spawn(
     channel: ControlChannel,
     opts: ContentOptions,
     mut widths: mpsc::UnboundedReceiver<u32>,
-    events: EventSink,
+    events: Arc<EventSink>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut rx = ContentReceiver::new(opts);
+        // What the presenter was last told (decision 58): the page and the page count.
+        let mut told: Option<(u32, u32)> = None;
         let mut running: Option<(u64, JoinHandle<WorkDone>)> = None;
         let mut closed = false;
         loop {
@@ -251,6 +263,16 @@ pub(crate) fn spawn(
                 if events.push(e).await.is_err() {
                     channel.close().await;
                     return;
+                }
+            }
+            // Tell the presenter the page and the page count once the count is known and on
+            // every page change; the next document starts afresh.
+            let now_page = rx.document_state();
+            if now_page != told {
+                told = now_page;
+                if let Some((page, pages)) = now_page {
+                    // A failed send only means that the channel is closing.
+                    let _ = channel.send_text(&page_message(page, pages)).await;
                 }
             }
             if rx.is_blocked() {

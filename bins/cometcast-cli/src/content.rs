@@ -155,6 +155,8 @@ pub fn print_event(ev: &ContentEvent) {
             "Content: transfer {} name={name:?} size={size}",
             if *document { "document" } else { "image" }
         ),
+        // Progress is for the apps' progress display.
+        ContentEvent::TransferProgress { .. } => {}
         ContentEvent::ImageReceived { name, mime, bytes } => println!(
             "Content: image name={name:?} mime={} bytes={} fnv1a64={:016x}",
             mime.as_str(),

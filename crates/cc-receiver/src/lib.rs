@@ -13,6 +13,14 @@
 //! [`ContentEvent`]s from [`ReceiverCore::take_content_events`] (docs/web-m2.md, `cc-files`).
 //! Links are only reported, never opened. Without the option the channel is closed.
 //!
+//! The room outlives a presenter: when the sender leaves (or is removed with
+//! [`ReceiverCore::remove_peer`]) the core reports [`ReceiverEvent::PeerLeft`], tears down the
+//! WebRTC session and the content task, makes a fresh session and waits for the next sender in
+//! the same room. Code, join mode, block list and request queue stay. A sender that only stops
+//! presenting (it closes its control channel, or starts a new offer, but stays in the room) is
+//! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well.
+//! The core stops on [`ReceiverEvent::RoomEnded`], an error or [`ReceiverCore::stop`].
+//!
 //! Use: [`ReceiverCore::start`] -> show [`ReceiverCore::room_code`] -> loop on
 //! [`ReceiverCore::next_event`].
 
@@ -156,11 +164,41 @@ pub enum ReceiverEvent {
     },
     /// Counters of incoming video, sent about once per second after the track arrived.
     Stats(MediaSnapshot),
-    /// The sender left. The core stops after this event.
-    /// UNCERTAIN: one sender per core in this version; a second sender needs a new core.
+    /// The sender left (or was removed). The room stays: the core is ready for the next sender
+    /// with the same code, join mode, block list and queue.
     PeerLeft,
+    /// The sender stopped its presentation but is still in the room (it closed its control
+    /// channel, or began a new offer). Whatever is shown should go; the next presentation
+    /// of the same sender needs no new approval.
+    PresentationStopped,
+    /// The connection check code (`"123 456"`) of the sender's connection, once per connection,
+    /// as soon as it is connected. Identical to the one the sender shows (`cc_transport::sas`).
+    ConnectionCode(String),
     /// Something failed. The core stops after this event.
     Error(String),
+}
+
+/// The code of a [`ReceiverEvent::Error`] message, for the apps (native-apps.md 20.2): the
+/// protocol code of a `server error <code>: ...`, `connection_lost` when the signalling
+/// connection ended, `peer_failed` when WebRTC failed, `unknown` otherwise. The messages are
+/// the ones made in this file; the text itself is for logs only.
+pub fn error_code(message: &str) -> String {
+    if let Some(rest) = message.strip_prefix("server error ") {
+        if let Some((code, _)) = rest.split_once(':') {
+            return code.to_owned();
+        }
+    }
+    if message.starts_with("signalling connection") {
+        "connection_lost".into()
+    } else if message.starts_with("WebRTC connection failed")
+        || message.starts_with("no WebRTC connection")
+        || message.starts_with("cannot answer offer")
+        || message.starts_with("cannot start a session")
+    {
+        "peer_failed".into()
+    } else {
+        "unknown".into()
+    }
 }
 
 /// The server's answer to `create_room`.
@@ -198,7 +236,8 @@ pub struct ReceiverCore {
     join_mode: JoinMode,
     commands: mpsc::UnboundedSender<ClientMsg>,
     ice_servers: Vec<IceServerConfig>,
-    session: Arc<Session>,
+    /// The current session (replaced when a sender left); see [`Self::session`].
+    session: Arc<std::sync::Mutex<Arc<Session>>>,
     events: mpsc::UnboundedReceiver<ReceiverEvent>,
     content_events: Option<content::EventStream>,
     content_width: mpsc::UnboundedSender<u32>,
@@ -249,22 +288,27 @@ impl ReceiverCore {
                 ice::fetch_ice_servers_or_none(&addr, &options.trust).await;
         }
         let ice_servers = session_config.ice_servers.clone();
-        let (session, session_events) = Session::new(session_config).await?;
-        let session = Arc::new(session);
+        let (session, session_events) = Session::new(session_config.clone()).await?;
+        let session = Arc::new(std::sync::Mutex::new(Arc::new(session)));
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (width_tx, width_rx) = mpsc::unbounded_channel();
         let (content_tx, content_rx) = content::event_queue();
-        let content = options.content.map(|o| ContentSetup {
-            options: o,
-            widths: width_rx,
-            events: content_tx,
+        let content = options.content.map(|mut o| {
+            // The apps show a progress for incoming files.
+            o.progress = true;
+            ContentSetup {
+                options: o,
+                widths: width_rx,
+                events: Arc::new(content_tx),
+            }
         });
         let has_content = content.is_some();
         let task = tokio::spawn(run(
             sig,
             Arc::clone(&session),
+            session_config,
             session_events,
             events_tx,
             stop_rx,
@@ -350,8 +394,8 @@ impl ReceiverCore {
     }
 
     /// Remove the connected sender (end its presentation); with `block` also block its address
-    /// bucket for the rest of this room session. UNCERTAIN: one sender per core in this version,
-    /// so the core ends with `PeerLeft` afterwards and a new room (new code) has to be started.
+    /// bucket for the rest of this room session. The core reports [`ReceiverEvent::PeerLeft`]
+    /// and waits for the next sender in the same room.
     pub fn remove_peer(&self, block: bool) {
         let _ = self.commands.send(ClientMsg::RemovePeer { block });
     }
@@ -359,12 +403,16 @@ impl ReceiverCore {
     /// Ask the sender for a new key frame (picture loss indication), for example after a
     /// decoding error. Fails if no video track has arrived yet.
     pub async fn request_keyframe(&self) -> Result<(), TransportError> {
-        self.session.request_keyframe().await
+        self.session().request_keyframe().await
     }
 
-    /// Current video counters.
+    /// Current video counters (of the current sender's connection).
     pub fn stats(&self) -> MediaSnapshot {
-        self.session.stats()
+        self.session().stats()
+    }
+
+    fn session(&self) -> Arc<Session> {
+        Arc::clone(&self.session.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
     /// Next event, or `None` after the core has stopped and all events were read.
@@ -409,28 +457,59 @@ impl Drop for ReceiverCore {
 struct ContentSetup {
     options: ContentOptions,
     widths: mpsc::UnboundedReceiver<u32>,
-    events: content::EventSink,
+    events: Arc<content::EventSink>,
+}
+
+/// What belongs to the connection of one sender and starts over with the next one.
+#[derive(Default)]
+struct Conn {
+    have_track: bool,
+    connected: bool,
+    offer_at: Option<tokio::time::Instant>,
+}
+
+/// Close the session of a sender that is gone and make a fresh one for the next sender.
+/// The new session is also published for [`ReceiverCore::stats`] and the key frame requests.
+async fn fresh_session(
+    old: &Session,
+    config: &SessionConfig,
+    shared: &std::sync::Mutex<Arc<Session>>,
+) -> Result<(Arc<Session>, mpsc::UnboundedReceiver<SessionEvent>), TransportError> {
+    let _ = old.close().await;
+    let (session, events) = Session::new(config.clone()).await?;
+    let session = Arc::new(session);
+    *shared.lock().unwrap_or_else(|p| p.into_inner()) = Arc::clone(&session);
+    Ok((session, events))
 }
 
 /// The background loop: signalling messages in, session events in, receiver events out.
+#[allow(clippy::too_many_arguments)]
 async fn run(
     mut sig: SignalingClient,
-    session: Arc<Session>,
+    shared_session: Arc<std::sync::Mutex<Arc<Session>>>,
+    session_config: SessionConfig,
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<ReceiverEvent>,
     mut stop: oneshot::Receiver<()>,
     mut commands: mpsc::UnboundedReceiver<ClientMsg>,
     mut content: Option<ContentSetup>,
 ) {
+    let mut session = Arc::clone(&shared_session.lock().unwrap_or_else(|p| p.into_inner()));
     let mut content_task: Option<tokio::task::JoinHandle<()>> = None;
+    // Width changes go to the running content task; the last one also applies to the next.
+    let mut task_widths: Option<mpsc::UnboundedSender<u32>> = None;
+    let mut target_width: Option<u32> = None;
+    let mut widths_open = true;
     let emit = |e: ReceiverEvent| {
         let _ = out.send(e);
     };
     let mut tick = tokio::time::interval(Duration::from_secs(1));
-    let mut have_track = false;
-    let mut offer_at: Option<tokio::time::Instant> = None;
-    let mut connected = false;
+    let mut conn = Conn::default();
+    // Why the loop ended: stop, a fatal error or the end of the room all close the session below.
     loop {
+        // The sender is gone or its presentation ended: forget its connection and start
+        // afresh. (`reset` is set by the arms below; the new session is made after the select.)
+        let mut reset = false;
         tokio::select! {
             _ = &mut stop => break,
             cmd = commands.recv() => {
@@ -442,6 +521,34 @@ async fn run(
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
                     break;
                 }
+            }
+            w = async {
+                match content.as_mut() {
+                    Some(c) if widths_open => c.widths.recv().await,
+                    _ => std::future::pending().await,
+                }
+            } => match w {
+                Some(w) => {
+                    target_width = Some(w);
+                    if let Some(tx) = &task_widths {
+                        let _ = tx.send(w);
+                    }
+                }
+                None => widths_open = false,
+            },
+            _ = async {
+                match content_task.as_mut() {
+                    Some(t) => { let _ = t.await; }
+                    None => std::future::pending().await,
+                }
+            } => {
+                // The control channel of the sender ended while it is still in the room (a
+                // leaving sender is told by the server: `PeerLeft` below): its presentation
+                // is over.
+                content_task = None;
+                task_widths = None;
+                emit(ReceiverEvent::PresentationStopped);
+                reset = true;
             }
             msg = sig.recv() => match msg {
                 None => {
@@ -465,7 +572,27 @@ async fn run(
                     break;
                 }
                 Some(ServerMsg::Offer { sdp }) => {
-                    offer_at.get_or_insert_with(tokio::time::Instant::now);
+                    if conn.offer_at.is_some() {
+                        // A second offer in a connection that had one: the sender begins a
+                        // new presentation. The old one is over; start on a fresh session.
+                        if let Some(t) = content_task.take() {
+                            t.abort();
+                        }
+                        task_widths = None;
+                        emit(ReceiverEvent::PresentationStopped);
+                        match fresh_session(&session, &session_config, &shared_session).await {
+                            Ok((s, ev)) => {
+                                session = s;
+                                session_events = ev;
+                                conn = Conn::default();
+                            }
+                            Err(e) => {
+                                emit(ReceiverEvent::Error(format!("cannot start a session: {e}")));
+                                break;
+                            }
+                        }
+                    }
+                    conn.offer_at.get_or_insert_with(tokio::time::Instant::now);
                     let answer = match session.accept_offer(sdp).await {
                         Ok(a) => a,
                         Err(e) => {
@@ -484,11 +611,14 @@ async fn run(
                 }
                 Some(ServerMsg::PeerLeft) => {
                     // Content that is still on its way is handed over first.
-                    if let Some(t) = content_task.take() {
-                        let _ = tokio::time::timeout(CONTENT_DRAIN_TIMEOUT, t).await;
+                    if let Some(mut t) = content_task.take()
+                        && tokio::time::timeout(CONTENT_DRAIN_TIMEOUT, &mut t).await.is_err()
+                    {
+                        t.abort();
                     }
+                    task_widths = None;
                     emit(ReceiverEvent::PeerLeft);
-                    break;
+                    reset = true;
                 }
                 Some(ServerMsg::Error { code, message }) => {
                     emit(ReceiverEvent::Error(format!("server error {code}: {message}")));
@@ -504,40 +634,93 @@ async fn run(
                 }
                 Some(SessionEvent::State(s)) => {
                     emit(ReceiverEvent::State(s));
-                    if s == ConnectionState::Connected {
-                        connected = true;
+                    if s == ConnectionState::Connected && !conn.connected {
+                        conn.connected = true;
+                        if let Some(code) = session.connection_code() {
+                            emit(ReceiverEvent::ConnectionCode(code));
+                        }
                     }
                     if s == ConnectionState::Failed {
                         emit(ReceiverEvent::Error("WebRTC connection failed".into()));
                         break;
                     }
                 }
-                Some(SessionEvent::ControlChannel(channel)) => match content.take() {
+                Some(SessionEvent::ControlChannel(channel)) => match content.as_ref() {
                     Some(c) => {
-                        content_task =
-                            Some(content::spawn(channel, c.options, c.widths, c.events));
+                        let mut options = c.options.clone();
+                        if let Some(w) = target_width {
+                            options.target_width = w;
+                        }
+                        let (wtx, wrx) = mpsc::unbounded_channel();
+                        task_widths = Some(wtx);
+                        content_task = Some(content::spawn(
+                            channel,
+                            options,
+                            wrx,
+                            Arc::clone(&c.events),
+                        ));
                     }
                     // Content is not wanted: refuse the channel.
                     None => channel.close().await,
                 },
                 Some(SessionEvent::VideoTrack { mime, codec }) => {
-                    have_track = true;
+                    conn.have_track = true;
                     emit(ReceiverEvent::VideoTrack { mime, codec });
                 }
             },
             _ = tick.tick() => {
-                if !connected && offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
+                if !conn.connected && conn.offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
                     emit(ReceiverEvent::Error(format!(
                         "no WebRTC connection {} s after the offer arrived",
                         CONNECT_TIMEOUT.as_secs()
                     )));
                     break;
                 }
-                if have_track {
+                if conn.have_track {
                     emit(ReceiverEvent::Stats(session.stats()));
                 }
             }
         }
+        if reset {
+            match fresh_session(&session, &session_config, &shared_session).await {
+                Ok((s, ev)) => {
+                    session = s;
+                    session_events = ev;
+                    conn = Conn::default();
+                }
+                Err(e) => {
+                    emit(ReceiverEvent::Error(format!("cannot start a session: {e}")));
+                    break;
+                }
+            }
+        }
+    }
+    if let Some(t) = content_task {
+        t.abort();
     }
     let _ = session.close().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_codes_are_read_from_the_messages_of_this_crate() {
+        assert_eq!(
+            error_code("server error room_full: the room is full"),
+            "room_full"
+        );
+        assert_eq!(
+            error_code("signalling connection closed"),
+            "connection_lost"
+        );
+        assert_eq!(error_code("WebRTC connection failed"), "peer_failed");
+        assert_eq!(
+            error_code("no WebRTC connection 30 s after the offer arrived"),
+            "peer_failed"
+        );
+        assert_eq!(error_code("cannot answer offer: x"), "peer_failed");
+        assert_eq!(error_code("something else"), "unknown");
+    }
 }

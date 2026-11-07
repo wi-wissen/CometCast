@@ -108,6 +108,14 @@ pub enum Message {
         /// The normalised `http` or `https` URL.
         url: String,
     },
+    /// Display to presenter: the shown PDF page and the page count (decision 13.31). A
+    /// receiver ignores it; a presenter keeps the last one for the current document.
+    Page {
+        /// The shown page, from 1.
+        page: u32,
+        /// The page count, from 1, at least `page`.
+        pages: u32,
+    },
 }
 
 /// Why a text message was refused.
@@ -191,8 +199,25 @@ pub fn parse_message(text: &str, max_image: u64, max_document: u64) -> Result<Me
             let url = validate_link(url).ok_or(ParseError::BadLink)?;
             Ok(Message::Link { url })
         }
+        "page" => {
+            let n = |k: &str| {
+                o.get(k)
+                    .and_then(|v| v.as_u64().or_else(|| v.as_f64().and_then(whole_number)))
+                    .and_then(|v| u32::try_from(v).ok())
+                    .filter(|v| (1..=MAX_PAGE_NUMBER).contains(v))
+            };
+            match (n("page"), n("pages")) {
+                (Some(page), Some(pages)) if page <= pages => Ok(Message::Page { page, pages }),
+                _ => Err(ParseError::InvalidFields),
+            }
+        }
         _ => Err(ParseError::UnknownKind),
     }
+}
+
+/// An integral float (`2.0`, `1e1`) as an integer, as JavaScript's `Number.isInteger` sees it.
+fn whole_number(f: f64) -> Option<u64> {
+    (f.is_finite() && f >= 0.0 && f.fract() == 0.0 && f <= 4_294_967_295.0).then_some(f as u64)
 }
 
 fn parse_name(v: Option<&serde_json::Value>) -> Result<String, ParseError> {
@@ -363,6 +388,7 @@ impl Message {
             }
             Message::DocumentEnd => json!({"kind": "document_end"}),
             Message::Link { url } => json!({"kind": "link", "url": url}),
+            Message::Page { page, pages } => json!({"kind": "page", "page": page, "pages": pages}),
         };
         v.to_string()
     }
@@ -399,6 +425,35 @@ mod tests {
             parse(r#"{"kind":"cmd","cmd":"stop"}"#),
             Ok(Message::Cmd(ControlCmd::Stop))
         );
+    }
+
+    #[test]
+    fn page_messages_follow_the_web_rules() {
+        let page = |p, n| Ok(Message::Page { page: p, pages: n });
+        assert_eq!(parse(r#"{"kind":"page","page":1,"pages":3}"#), page(1, 3));
+        assert_eq!(parse(r#"{"kind":"page","page":3,"pages":3}"#), page(3, 3));
+        assert_eq!(
+            parse(r#"{"kind":"page","page":2.0,"pages":1e1}"#),
+            page(2, 10)
+        );
+        assert_eq!(
+            parse(r#"{"kind":"page","page":1000000,"pages":1000000}"#),
+            page(1_000_000, 1_000_000)
+        );
+        for bad in [
+            r#"{"kind":"page","page":4,"pages":3}"#,
+            r#"{"kind":"page","page":0,"pages":3}"#,
+            r#"{"kind":"page","page":1,"pages":0}"#,
+            r#"{"kind":"page","page":-1,"pages":3}"#,
+            r#"{"kind":"page","page":1.5,"pages":3}"#,
+            r#"{"kind":"page","page":1,"pages":1000001}"#,
+            r#"{"kind":"page","page":"1","pages":3}"#,
+            r#"{"kind":"page","pages":3}"#,
+        ] {
+            assert_eq!(parse(bad), Err(ParseError::InvalidFields), "{bad}");
+        }
+        let m = Message::Page { page: 2, pages: 7 };
+        assert_eq!(parse(&m.to_json()), Ok(m));
     }
 
     #[test]

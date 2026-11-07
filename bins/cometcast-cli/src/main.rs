@@ -921,6 +921,8 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                 }
                 Some(ReceiverEvent::PeerJoined { name }) => println!("Sender joined: \"{name}\"."),
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
+                Some(ReceiverEvent::ConnectionCode(c)) => println!("Connection check code: {c}"),
+                Some(ReceiverEvent::PresentationStopped) => println!("The sender stopped presenting."),
                 Some(ReceiverEvent::VideoTrack { mime, .. }) => {
                     got_video = true;
                     println!("Video track: {mime}");
@@ -1045,6 +1047,7 @@ async fn send(
                     connected |= s == cc_transport::ConnectionState::Connected;
                     println!("Connection: {s:?}");
                 }
+                Some(SenderEvent::ConnectionCode(c)) => println!("Connection check code: {c}"),
                 Some(SenderEvent::Streaming { frames_sent }) => {
                     if screen_mode {
                         let st = core.screen_stats();

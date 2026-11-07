@@ -132,6 +132,12 @@ pub fn link_message(url: &str) -> Result<String, SendError> {
     Ok(json)
 }
 
+/// The message with which a display tells the presenter the shown PDF page and the page
+/// count (`{"kind":"page","page":n,"pages":m}`).
+pub fn page_message(page: u32, pages: u32) -> String {
+    Message::Page { page, pages }.to_json()
+}
+
 /// The message that sends a remote-control command.
 pub fn cmd_message(cmd: ControlCmd) -> String {
     Message::Cmd(cmd).to_json()
