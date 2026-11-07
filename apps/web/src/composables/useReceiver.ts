@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { onBeforeUnmount, shallowRef } from 'vue'
 import { ReceiverSession, type ReceiverState } from '../core/receiverSession'
-import { signalingUrl } from '../core/signaling'
-import { fetchIceServers, httpBaseUrl, obtainAltchaPayload } from '../core/altchaClient'
+import { useRelay } from './useRelay'
+import { fetchIceServers, obtainAltchaPayload } from '../core/altchaClient'
 
 export function useReceiver() {
   // shallowRef: MediaStream must not be wrapped in a reactive proxy.
@@ -15,8 +15,10 @@ export function useReceiver() {
     transfer: null,
     contentError: null,
   })
-  const url = signalingUrl(location)
-  const base = httpBaseUrl(url)
+  // The relay is fixed while a session exists; it is changed on the start page.
+  const { current } = useRelay()
+  const url = current.value.wsUrl
+  const base = current.value.httpBase
   const session = new ReceiverSession({
     url,
     onChange: (s) => (state.value = s),

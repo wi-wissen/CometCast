@@ -12,6 +12,30 @@
   "nav": {
     "back": "Back to start"
   },
+  "relay": {
+    "label": "Relay server",
+    "using": "Using relay: {host}",
+    "hint": "The relay only connects the two devices (room codes and connection data pass through it, never your screen or files). Sender and receiver must use the same relay.",
+    "defaultTag": "default",
+    "customTag": "custom",
+    "inputLabel": "Use another relay",
+    "inputHint": "Example: wss://relay.example.org (an address on your local network may start with ws://)",
+    "apply": "Use this relay",
+    "reset": "Use the default",
+    "choose": "Known relays",
+    "warnTitle": "A different relay than the default is in use.",
+    "warn": "This page would normally use {def}, but {host} is selected. Only continue if you trust the operator of this relay and have not been sent here by an unknown link.",
+    "insecureNote": "Unencrypted connection (ws://), only suitable for a trusted local network.",
+    "applied": "Relay changed to {host}.",
+    "resetDone": "Default relay restored.",
+    "errors": {
+      "empty": "Please enter an address.",
+      "invalid": "This is not a valid relay address.",
+      "insecure": "Unencrypted ws:// is only allowed for localhost and local network addresses. Please use wss://.",
+      "credentials": "The address must not contain a user name or password.",
+      "path": "The address must not contain a path, query or fragment (only an optional /ws)."
+    }
+  },
   "home": {
     "title": "What would you like to do?",
     "sendScreen": {

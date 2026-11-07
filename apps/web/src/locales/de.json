@@ -12,6 +12,30 @@
   "nav": {
     "back": "Zurück zum Start"
   },
+  "relay": {
+    "label": "Relay-Server",
+    "using": "Verwendetes Relay: {host}",
+    "hint": "Das Relay verbindet nur die beiden Geräte (Raumcodes und Verbindungsdaten laufen darüber, niemals Ihr Bildschirm oder Ihre Dateien). Sender und Empfänger müssen dasselbe Relay verwenden.",
+    "defaultTag": "Standard",
+    "customTag": "eigenes",
+    "inputLabel": "Anderes Relay verwenden",
+    "inputHint": "Beispiel: wss://relay.example.org (eine Adresse im lokalen Netzwerk darf mit ws:// beginnen)",
+    "apply": "Dieses Relay verwenden",
+    "reset": "Standard verwenden",
+    "choose": "Bekannte Relays",
+    "warnTitle": "Es wird ein anderes Relay als der Standard verwendet.",
+    "warn": "Diese Seite würde normalerweise {def} verwenden, ausgewählt ist aber {host}. Fahren Sie nur fort, wenn Sie dem Betreiber dieses Relays vertrauen und nicht über einen unbekannten Link hierher gelangt sind.",
+    "insecureNote": "Unverschlüsselte Verbindung (ws://), nur für ein vertrauenswürdiges lokales Netzwerk geeignet.",
+    "applied": "Relay geändert auf {host}.",
+    "resetDone": "Standard-Relay wiederhergestellt.",
+    "errors": {
+      "empty": "Bitte geben Sie eine Adresse ein.",
+      "invalid": "Das ist keine gültige Relay-Adresse.",
+      "insecure": "Unverschlüsseltes ws:// ist nur für localhost und Adressen im lokalen Netzwerk erlaubt. Bitte verwenden Sie wss://.",
+      "credentials": "Die Adresse darf keinen Benutzernamen und kein Passwort enthalten.",
+      "path": "Die Adresse darf keinen Pfad, keine Query und kein Fragment enthalten (nur optional /ws)."
+    }
+  },
   "home": {
     "title": "Was möchten Sie tun?",
     "sendScreen": {

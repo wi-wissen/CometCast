@@ -3,14 +3,16 @@ import { onBeforeUnmount, shallowRef } from 'vue'
 import type { ControlCmd, ImageSource } from '../core/control'
 import { getScreenStream } from '../core/capture'
 import { SenderSession, type SenderState } from '../core/senderSession'
-import { signalingUrl } from '../core/signaling'
-import { fetchIceServers, httpBaseUrl } from '../core/altchaClient'
+import { useRelay } from './useRelay'
+import { fetchIceServers } from '../core/altchaClient'
 
 /** `contentOnly`: no screen capture, only the control channel (images, links). */
 export function useSender(opts: { contentOnly?: boolean } = {}) {
   const state = shallowRef<SenderState>({ phase: 'idle', errorCode: null, channelOpen: false })
-  const url = signalingUrl(location)
-  const base = httpBaseUrl(url)
+  // The relay is fixed while a session exists; it is changed on the start page.
+  const { current } = useRelay()
+  const url = current.value.wsUrl
+  const base = current.value.httpBase
   const session = new SenderSession({
     url,
     iceServers: () => fetchIceServers(base),
