@@ -151,10 +151,13 @@ jobs:
           java-version: '21'
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      # The Gradle tasks build into build/cargo-target-android (not target/): cache that too.
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: '. -> target'
+          workspaces: |
+            . -> target
+            . -> apps/flutter/build/cargo-target-android
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
       # The NDK version must match flutter.ndkVersion of Flutter 3.47.9.
@@ -183,6 +186,28 @@ jobs:
           grep -q 'lib/arm64-v8a/libcc_docs_worker.so' apk-list.txt
           grep -q 'lib/arm64-v8a/libcc_office_worker.so' apk-list.txt
           grep -q 'lib/arm64-v8a/libflutter.so' apk-list.txt
+      # The APK build above covers arm64-v8a and armeabi-v7a. x86_64 (emulators, some Chromebooks
+      # and TV boxes) is only type-checked: no linking, so it is cheap. UNCERTAIN: not run on GitHub.
+      - name: cargo ndk check (x86_64, core only)
+        working-directory: .
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          cargo ndk --platform 24 -t x86_64 check -p cc-ffi --target-dir apps/flutter/build/cargo-target-android
+      # Google Play requires 16 KB page alignment of native libraries (Android 15+ devices with 16 KB
+      # pages). Every shipped .so must have all LOAD segments aligned to >= 0x4000 (p_align).
+      - name: Check 16 KB page alignment of the shipped libraries
+        run: |
+          ndk="$ANDROID_HOME/ndk/28.2.13676358"
+          readelf="$(ls "$ndk"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -n1)"
+          rm -rf apk-libs && mkdir apk-libs
+          unzip -q build/app/outputs/flutter-apk/app-debug.apk 'lib/*.so' -d apk-libs
+          fail=0
+          for f in apk-libs/lib/*/*.so; do
+            while read -r align; do
+              if [ "$((align))" -lt $((0x4000)) ]; then echo "::error::$f has a LOAD segment with p_align $align (< 0x4000)"; fail=1; fi
+            done < <("$readelf" -lW "$f" | awk '$1=="LOAD" {print $NF}')
+          done
+          exit $fail
       # JVM unit tests of the pure Kotlin helpers (capture size arithmetic, H.264 parsing).
       # UNCERTAIN: not run on GitHub; the same task was run locally (docs/android.md).
       - name: Kotlin unit tests

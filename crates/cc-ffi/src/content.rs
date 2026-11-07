@@ -320,8 +320,7 @@ pub(crate) fn set_worker_override(path: Option<PathBuf>) {
 /// 4. `cc-docs`' own discovery (also finds the Cargo test layout).
 pub(crate) fn worker() -> Worker {
     if let Some(p) = lock(&WORKER_OVERRIDE).clone() {
-        let found = p.is_file();
-        return with_found(Isolation::Process(WorkerSpec::new(p)), found);
+        return override_worker(p);
     }
     if std::env::var_os(WORKER_ENV).is_some_and(|v| !v.is_empty()) {
         return auto_worker();
@@ -337,6 +336,14 @@ pub(crate) fn worker() -> Worker {
         };
     }
     auto_worker()
+}
+
+/// A worker given by path (by the app): the same trust check as the Office worker and the
+/// environment variable (absolute, owned by this user or root, not writable by others, in a
+/// directory others cannot write). A path that fails it counts as "no worker".
+fn override_worker(p: PathBuf) -> Worker {
+    let found = cc_docs::check_worker_file(&p).is_ok();
+    with_found(Isolation::Process(WorkerSpec::new(p)), found)
 }
 
 /// `cc-docs`' own discovery, checked (an untrusted `COMETCAST_DOCS_WORKER` counts as not found).
@@ -395,6 +402,33 @@ pub(crate) fn check_link(input: &str) -> LinkCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_worker_path_from_the_app_gets_the_same_trust_check() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let w = d.path().join("w");
+        std::fs::write(&w, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&w, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(override_worker(w.clone()).found);
+        // Missing, relative, group/other writable, in a world-writable directory: refused.
+        assert!(!override_worker(d.path().join("missing")).found);
+        assert!(!override_worker(PathBuf::from("w")).found);
+        std::fs::set_permissions(&w, std::fs::Permissions::from_mode(0o757)).unwrap();
+        assert!(!override_worker(w.clone()).found);
+        std::fs::set_permissions(&w, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(!override_worker(w.clone()).found);
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        // A refused worker cannot start: no silent in-process fallback.
+        match override_worker(d.path().join("missing")).isolation {
+            Isolation::Process(spec) => {
+                assert_eq!(spec.program, std::path::Path::new(NO_WORKER_PROGRAM))
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
 
     fn img(n: usize) -> Stored {
         Stored::Image {

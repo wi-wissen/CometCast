@@ -25,6 +25,12 @@ import java.util.concurrent.atomic.AtomicLong
  *   system revoked it, or the service was stopped). Sent at most once per session.
  * - `{type: "error", message: String}`: the encoder or the projection failed.
  *
+ * Size changes: every encoder carries a generation ([GenerationGate]); output of an encoder that
+ * is not the active one is dropped, also while it waits for the main looper, so the old and the
+ * new size never mix. The service activates the new generation just before it points the
+ * VirtualDisplay at the new encoder, and the new encoder publishes its config only together with
+ * its first key frame.
+ *
  * Backpressure: frames are dropped (and counted) while nobody listens and while more than
  * [MAX_PENDING_FRAMES] frames wait for the main looper. After a drop the encoder discards delta
  * frames until it has produced a key frame (it asks for one), so the receiver never gets a
@@ -49,6 +55,9 @@ object CaptureEvents {
     private val pendingFrames = AtomicInteger(0)
     private val droppedFrames = AtomicLong(0)
     private val stoppedEmitted = AtomicBoolean(false)
+
+    /** Which encoder may deliver (see [GenerationGate]); the others are dropped. */
+    val generations = GenerationGate()
 
     /** Number of frames dropped in the current session. */
     val dropped: Long get() = droppedFrames.get()
@@ -76,10 +85,12 @@ object CaptureEvents {
         lastConfig = null
         droppedFrames.set(0)
         stoppedEmitted.set(false)
+        generations.reset()
     }
 
     /** True if a frame produced now would be delivered (a listener exists and the queue has room). */
-    fun wantsFrame(): Boolean = sink != null && pendingFrames.get() < MAX_PENDING_FRAMES
+    fun wantsFrame(generation: Int): Boolean =
+        generations.accepts(generation) && sink != null && pendingFrames.get() < MAX_PENDING_FRAMES
 
     fun countDropped() {
         droppedFrames.incrementAndGet()
@@ -90,14 +101,22 @@ object CaptureEvents {
         main.post { sink?.success(event) }
     }
 
-    /** Caches the codec config for late listeners, then sends it. */
-    fun emitConfig(event: Map<String, Any?>) {
+    /** Caches the codec config for late listeners, then sends it (dropped for an old encoder). */
+    fun emitConfig(
+        generation: Int,
+        event: Map<String, Any?>,
+    ) {
+        if (!generations.accepts(generation)) return
         lastConfig = event
-        emit(event)
+        main.post { if (generations.accepts(generation)) sink?.success(event) }
     }
 
     /** Queues a frame unless nobody listens or the queue is full. Returns whether it was queued. */
-    fun emitFrame(event: Map<String, Any?>): Boolean {
+    fun emitFrame(
+        generation: Int,
+        event: Map<String, Any?>,
+    ): Boolean {
+        if (!generations.accepts(generation)) return false // an old encoder: no count, no request
         if (sink == null) {
             countDropped()
             return false
@@ -109,7 +128,8 @@ object CaptureEvents {
         }
         main.post {
             pendingFrames.decrementAndGet()
-            sink?.success(event)
+            // The generation may have changed while the frame waited for the looper.
+            if (generations.accepts(generation)) sink?.success(event)
         }
         return true
     }

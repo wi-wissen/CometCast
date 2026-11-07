@@ -76,6 +76,7 @@ class ScreenCaptureService : Service() {
     /** Size wanted by the last resize trigger; applied by [applyResize] after the debounce. */
     private var pendingSource: Pair<Int, Int>? = null
     private val resizeRunnable = Runnable { applyResize() }
+    private val renewRunnable = Runnable { renewWakeLock() }
 
     private val projectionCallback =
         object : MediaProjection.Callback() {
@@ -113,6 +114,9 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        // A new start attempt (no session runs): forget the previous one so that this attempt, even
+        // if it fails early, ends with a `stopped` or `error` event that reaches Dart.
+        if (projection == null) CaptureEvents.beginSession()
         // Every start command that came from startForegroundService() must reach startForeground()
         // within about 5 s, even if we then ignore it; otherwise Android throws
         // ForegroundServiceDidNotStartInTimeException. So this happens first, on every path.
@@ -147,7 +151,6 @@ class ScreenCaptureService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        CaptureEvents.beginSession()
         contentSize = null
         maxDimension = intent.getIntExtra(EXTRA_MAX_DIMENSION, 1280)
         fps = intent.getIntExtra(EXTRA_FPS, 30)
@@ -163,7 +166,9 @@ class ScreenCaptureService : Service() {
             p.registerCallback(projectionCallback, main)
 
             val (w, h) = captureSize(screenSize())
-            val enc = ScreenEncoder(w, h, fps, bitrate)
+            val gen = CaptureEvents.generations.allocate()
+            CaptureEvents.generations.activate(gen)
+            val enc = ScreenEncoder(w, h, fps, bitrate, gen)
             enc.start() // releases its own resources if it throws
             encoder = enc
             captureW = enc.width // the encoder may have rounded the size to its alignment
@@ -260,22 +265,32 @@ class ScreenCaptureService : Service() {
         // The encoder may round the size (alignment), so this only filters the obvious case; the
         // exact comparison happens below, with the size the new encoder really got.
         if (!CaptureGeometry.needsResize(captureW, captureH, w, h)) return
+        val gate = CaptureEvents.generations
+        val next = ScreenEncoder(w, h, fps, bitrate, gate.allocate())
         try {
-            val next = ScreenEncoder(w, h, fps, bitrate)
-            next.start()
+            next.start() // delivers nothing yet: its generation is not active
             if (!CaptureGeometry.needsResize(captureW, captureH, next.width, next.height)) {
                 // Rounded to the same size as now: nothing changes.
                 next.stop()
                 return
             }
+            // Order of the swap (see [GenerationGate]): 1. the new generation becomes the only
+            // one that may deliver, so the old encoder's output (also what is still queued for
+            // Dart) is dropped; 2. the display is pointed at the new encoder; 3. the old encoder
+            // stops; 4. a key frame is requested, and the new config is published together with
+            // it (the encoder holds it back until then).
+            gate.activate(next.generation)
             d.resize(next.width, next.height, densityDpi())
             d.surface = next.inputSurface
             encoder = next
             captureW = next.width
             captureH = next.height
             old.stop()
+            next.requestKeyFrame()
         } catch (e: Exception) {
             // The old encoder keeps running at the old size; report and carry on.
+            gate.activate(old.generation)
+            next.stop()
             CaptureEvents.emitError("Could not follow the size change: ${e.message}")
         }
     }
@@ -289,9 +304,11 @@ class ScreenCaptureService : Service() {
             wakeLock =
                 pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "cometcast:capture").also {
                     it.setReferenceCounted(false)
-                    // A safety timeout: a forgotten lock must not drain the battery for ever.
+                    // A safety timeout: a forgotten lock must not drain the battery for ever. It is
+                    // renewed on a timer while the session runs (see [renewWakeLock]).
                     it.acquire(WAKE_LOCK_MS)
                 }
+            main.postDelayed(renewRunnable, WAKE_LOCK_RENEW_MS)
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             val mode =
                 if (Build.VERSION.SDK_INT >= 29) {
@@ -309,7 +326,20 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    /** Re-acquires the wake lock with a fresh timeout; runs every [WAKE_LOCK_RENEW_MS]. */
+    @Suppress("DEPRECATION")
+    private fun renewWakeLock() {
+        val lock = wakeLock ?: return
+        try {
+            lock.acquire(WAKE_LOCK_MS)
+        } catch (e: Exception) {
+            // SecurityException: the lock lapses at its timeout; the session goes on.
+        }
+        main.postDelayed(renewRunnable, WAKE_LOCK_RENEW_MS)
+    }
+
     private fun releaseLocks() {
+        main.removeCallbacks(renewRunnable)
         try {
             wakeLock?.takeIf { it.isHeld }?.release()
             wifiLock?.takeIf { it.isHeld }?.release()
@@ -422,7 +452,9 @@ class ScreenCaptureService : Service() {
         const val EXTRA_STOP_LABEL = "stopLabel"
         private const val CHANNEL_ID = "cometcast_capture"
         private const val NOTIFICATION_ID = 4711
-        private const val WAKE_LOCK_MS = 4L * 60 * 60 * 1000
+        /** Timeout of one acquire; the lock is renewed well before it lapses. */
+        private const val WAKE_LOCK_MS = 10L * 60 * 1000
+        private const val WAKE_LOCK_RENEW_MS = 5L * 60 * 1000
 
         /** The running service, or null. Used to reach [requestKeyFrame]. */
         @Volatile

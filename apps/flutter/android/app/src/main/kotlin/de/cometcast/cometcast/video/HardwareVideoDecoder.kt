@@ -5,8 +5,8 @@ import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Build
 import android.view.Surface
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * H.264 decoding with the device's MediaCodec into a [Surface] (the Flutter texture). Fed with
@@ -19,9 +19,12 @@ import java.util.concurrent.TimeUnit
  * - The codec is created at the first key frame, with the size read from its SPS ([H264Util.spsSize])
  *   and the SPS/PPS as `csd-0` / `csd-1`. A key frame with another size (the sender rotated) makes
  *   the worker release the codec and configure a new one: no reliance on adaptive playback.
- * - Backpressure: at most [QUEUE] units wait. When the queue is full or the codec has no free input
- *   buffer for [INPUT_WAIT_MS], the unit is dropped, delta frames are skipped until the next key
- *   frame, and [Listener.onNeedKeyFrame] asks the sender for one.
+ * - Backpressure: at most [QUEUE] units wait (the oldest delta frame goes first, see [UnitQueue]).
+ *   When the queue overflowed or the codec has no free input buffer for [INPUT_WAIT_MS], delta
+ *   frames are skipped until the next key frame. [Listener.onNeedKeyFrame] asks the sender for
+ *   one, and again once per second ([DecoderState]) up to [MAX_KEY_REQUESTS] times; if none comes
+ *   the decoder reports an error (the app then decodes in software).
+ * - Surface teardown is synchronous (see [surfaceDestroyed]); the pure decisions are in [DecoderState].
  * - Output buffers are released with `render = true` as soon as they come: lowest latency, no
  *   pacing (screen sharing, not film playback).
  * - Errors (CodecException, IllegalStateException, a missing decoder) end the codec and call
@@ -48,21 +51,22 @@ class HardwareVideoDecoder(
         val key: Boolean,
     )
 
-    private val queue = ArrayBlockingQueue<Frame>(QUEUE)
+    private val queue = UnitQueue<Frame>(QUEUE) { it.key }
+    private val state = DecoderState()
+    private val pts = PtsUnwrapper()
+
+    /** Guards `codec` and everything done with it (worker, teardown from the platform thread). */
+    private val codecLock = ReentrantLock()
 
     @Volatile
     private var running = false
     private var thread: Thread? = null
 
-    // Worker thread only.
+    // Under codecLock only.
     private var codec: MediaCodec? = null
     private var width = 0
     private var height = 0
-    private var needKey = true
     private var lastSps: ByteArray? = null
-
-    @Volatile
-    private var surfaceLost = false
 
     @Volatile
     var dropped = 0L
@@ -74,6 +78,7 @@ class HardwareVideoDecoder(
 
     fun start() {
         if (running) return
+        state.reset()
         running = true
         thread =
             Thread({ loop() }, "cometcast-video-decode").also {
@@ -89,74 +94,94 @@ class HardwareVideoDecoder(
         key: Boolean,
     ): Boolean {
         if (!running) return false
-        if (!queue.offer(Frame(data, ptsUs, key))) {
+        if (queue.offer(Frame(data, pts.unwrap(ptsUs), key))) {
+            // The oldest delta frame was dropped: the stream has a hole until the next key frame.
             dropped++
-            // Everything queued is useless for a decoder that will have a hole: drop it all and
-            // wait for a key frame.
-            queue.clear()
-            needKeyFromOutside = true
-            listener.onNeedKeyFrame()
+            state.requireKeyFrame()
             return false
         }
         return true
     }
 
-    @Volatile
-    private var needKeyFromOutside = false
-
-    /** The texture's surface is gone (app backgrounded): release the codec on the worker. */
+    /**
+     * The texture's surface is gone (Flutter's `onSurfaceCleanup`). Synchronous: when this returns
+     * the codec is released and nothing renders any more, unless the worker is stuck inside the
+     * codec for longer than [TEARDOWN_WAIT_MS] (then the worker releases it at its next step and
+     * [DecoderState.mayRender] already keeps it from rendering).
+     */
     fun surfaceDestroyed() {
-        surfaceLost = true
+        state.surfaceDestroyed()
+        state.beginTeardown()
         queue.clear()
+        if (codecLock.tryLock(TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)) {
+            try {
+                releaseCodec()
+            } finally {
+                codecLock.unlock()
+            }
+        }
     }
 
     /** A new surface exists: decoding restarts at the next key frame. */
     fun surfaceAvailable() {
-        surfaceLost = false
-        needKeyFromOutside = true
+        state.surfaceAvailable()
         listener.onNeedKeyFrame()
     }
 
     fun stop() {
+        state.beginTeardown()
         running = false
         queue.clear()
         thread?.join(1_000)
         thread = null
-        releaseCodec()
+        if (codecLock.tryLock(TEARDOWN_WAIT_MS, TimeUnit.MILLISECONDS)) {
+            try {
+                releaseCodec()
+            } finally {
+                codecLock.unlock()
+            }
+        }
     }
 
     private fun loop() {
         val info = MediaCodec.BufferInfo()
         try {
             while (running) {
-                if (surfaceLost && codec != null) {
-                    releaseCodec()
-                    needKey = true
+                if (state.keyRequestDue()) listener.onNeedKeyFrame()
+                if (state.exhausted()) {
+                    listener.onError("No key frame arrived after $MAX_KEY_REQUESTS requests")
+                    return
                 }
-                if (needKeyFromOutside) {
-                    needKeyFromOutside = false
-                    needKey = true
+                val u = queue.poll(10)
+                codecLock.lock()
+                try {
+                    if (state.isSurfaceLost() && codec != null) releaseCodec()
+                    if (u != null && !state.isSurfaceLost()) feed(u)
+                    drain(info)
+                } finally {
+                    codecLock.unlock()
                 }
-                val u = queue.poll(10, TimeUnit.MILLISECONDS)
-                if (u != null && !surfaceLost) feed(u)
-                drain(info)
             }
         } catch (e: Exception) {
             if (running) listener.onError("Video decoder failed: ${e.message}")
         } finally {
-            releaseCodec()
+            // The worker is gone: later queue() calls must not pretend to feed it.
+            running = false
+            codecLock.lock()
+            try {
+                releaseCodec()
+            } finally {
+                codecLock.unlock()
+            }
         }
     }
 
     private fun feed(u: Frame) {
         val nals = H264Util.splitNals(u.data)
         val isKey = u.key || H264Util.hasIdr(nals)
-        if (needKey) {
-            if (!isKey) {
-                dropped++
-                return
-            }
-            needKey = false
+        if (!state.admit(isKey)) {
+            dropped++
+            return
         }
         if (isKey) {
             val sets = H264Util.parameterSets(u.data, nals)
@@ -172,9 +197,8 @@ class HardwareVideoDecoder(
                     configure(sets, size)
                 }
             } else if (codec == null) {
-                // A key frame without SPS/PPS cannot start a decoder; ask again.
-                needKey = true
-                listener.onNeedKeyFrame()
+                // A key frame without SPS/PPS cannot start a decoder; ask again (backoff).
+                state.requireKeyFrame()
                 return
             }
         }
@@ -182,16 +206,20 @@ class HardwareVideoDecoder(
         val index = c.dequeueInputBuffer(INPUT_WAIT_MS * 1000L)
         if (index < 0) {
             dropped++
-            needKey = true
-            listener.onNeedKeyFrame()
+            state.requireKeyFrame()
             return
         }
         val buf = c.getInputBuffer(index)
         if (buf == null || buf.capacity() < u.data.size) {
             c.queueInputBuffer(index, 0, 0, u.ptsUs, 0)
             dropped++
-            needKey = true
-            listener.onNeedKeyFrame()
+            // Asking again for the same too large unit would never end: after a few tries the
+            // decoder reports an error and the app falls back to the software decoder.
+            if (state.oversize() == DecoderState.Overflow.GIVE_UP) {
+                throw IllegalStateException(
+                    "access unit of ${u.data.size} bytes does not fit the input buffer (${buf?.capacity()})",
+                )
+            }
             return
         }
         buf.clear()
@@ -206,7 +234,7 @@ class HardwareVideoDecoder(
     ) {
         val surface = surfaceProvider()
         if (surface == null || !surface.isValid) {
-            needKey = true
+            state.requireKeyFrame()
             return
         }
         // Without a parsed size a generous default is used; the decoder reports the real one.
@@ -245,7 +273,7 @@ class HardwareVideoDecoder(
             val index = c.dequeueOutputBuffer(info, if (first) 2_000L else 0L)
             first = false
             when {
-                index >= 0 -> c.releaseOutputBuffer(index, true)
+                index >= 0 -> c.releaseOutputBuffer(index, state.mayRender())
                 index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     val f = c.outputFormat
                     val ow = f.getInteger(MediaFormat.KEY_WIDTH)
@@ -291,6 +319,9 @@ class HardwareVideoDecoder(
         const val INPUT_WAIT_MS = 20L
         const val DEFAULT_W = 1920
         const val DEFAULT_H = 1080
-        const val MAX_INPUT = 2 * 1024 * 1024
+        /** Same limit as the RTP assembler (`MAX_ACCESS_UNIT_BYTES` in cc-media): nothing it passes on is refused here. */
+        const val MAX_INPUT = 8 * 1024 * 1024
+        const val TEARDOWN_WAIT_MS = 500L
+        const val MAX_KEY_REQUESTS = DecoderState.MAX_KEY_REQUESTS
     }
 }

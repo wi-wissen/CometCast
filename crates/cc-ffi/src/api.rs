@@ -1544,8 +1544,9 @@ pub fn validate_link(input: String) -> LinkCheck {
 }
 
 /// Use this program to render PDFs (an absolute path) instead of looking for one; `None` goes
-/// back to the default search. For tests and for hosts whose layout differs. The path is not
-/// checked for ownership: only pass a path the app itself controls.
+/// back to the default search. For tests and for hosts whose layout differs. Only pass a path
+/// the app itself controls. It must pass the same trust check as the Office worker (`cc-docs::check_worker_file`: absolute,
+/// owned by this user or root, not writable by others); otherwise there is no worker.
 #[frb(sync)]
 pub fn set_docs_worker(path: Option<String>) {
     content::set_worker_override(path.map(std::path::PathBuf::from));

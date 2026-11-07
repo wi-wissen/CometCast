@@ -75,14 +75,17 @@ object H264Util {
             r.bits(8) // level_idc
             r.ue() // seq_parameter_set_id
             var chromaFormat = 1
+            var chromaFormatIdc = 1
             if (profile in HIGH_PROFILES) {
-                chromaFormat = r.ue()
-                if (chromaFormat == 3) r.bits(1) // separate_colour_plane_flag
+                chromaFormatIdc = r.ue()
+                chromaFormat = chromaFormatIdc
+                // separate_colour_plane_flag = 1: ChromaArrayType is 0 (three monochrome planes).
+                if (chromaFormat == 3 && r.bits(1) == 1) chromaFormat = 0
                 r.ue() // bit_depth_luma_minus8
                 r.ue() // bit_depth_chroma_minus8
                 r.bits(1) // qpprime_y_zero_transform_bypass_flag
                 if (r.bits(1) == 1) { // seq_scaling_matrix_present_flag
-                    val lists = if (chromaFormat != 3) 8 else 12
+                    val lists = if (chromaFormatIdc != 3) 8 else 12
                     for (i in 0 until lists) {
                         if (r.bits(1) == 1) skipScalingList(r, if (i < 6) 16 else 64)
                     }

@@ -60,6 +60,12 @@ class CaptureBridge(
                     result.error("busy", "A consent dialog is already open", null)
                     return
                 }
+                if (ScreenCaptureService.instance != null) {
+                    // One session at a time: refuse before asking for consent, which would be
+                    // used for nothing (the running service ignores a second start).
+                    result.success(false)
+                    return
+                }
                 pendingResult = result
                 pendingArgs = (call.arguments as? Map<*, *>) ?: emptyMap<Any, Any>()
                 if (needsNotificationPermission()) {

@@ -33,8 +33,13 @@ class VideoBridge(
 ) : MethodChannel.MethodCallHandler,
     HardwareVideoDecoder.Listener {
     private val main = Handler(Looper.getMainLooper())
+    @Volatile
     private var producer: TextureRegistry.SurfaceProducer? = null
     private var decoder: HardwareVideoDecoder? = null
+
+    /** The surface for the worker thread; set and cleared on the platform thread only. */
+    @Volatile
+    private var surface: android.view.Surface? = null
 
     @Volatile
     private var sink: EventChannel.EventSink? = null
@@ -66,12 +71,21 @@ class VideoBridge(
                 try {
                     release()
                     val p = engine.renderer.createSurfaceProducer()
-                    val d = HardwareVideoDecoder({ p.surface }, this)
+                    val d = HardwareVideoDecoder({ surface }, this)
+                    surface = p.surface
                     p.setCallback(
                         object : io.flutter.view.TextureRegistry.SurfaceProducer.Callback {
-                            override fun onSurfaceAvailable() = d.surfaceAvailable()
+                            override fun onSurfaceAvailable() {
+                                surface = p.surface
+                                d.surfaceAvailable()
+                            }
 
-                            override fun onSurfaceCleanup() = d.surfaceDestroyed()
+                            // Flutter may destroy the surface when this returns: the decoder has
+                            // released its codec (bounded wait) before it does.
+                            override fun onSurfaceCleanup() {
+                                surface = null
+                                d.surfaceDestroyed()
+                            }
                         },
                     )
                     producer = p
@@ -102,6 +116,7 @@ class VideoBridge(
     fun release() {
         decoder?.stop()
         decoder = null
+        surface = null
         producer?.let {
             it.setCallback(null)
             it.release()
@@ -117,7 +132,8 @@ class VideoBridge(
         width: Int,
         height: Int,
     ) {
-        producer?.setSize(width, height)
+        // Called on the decoder's worker thread; the producer belongs to the platform thread.
+        main.post { producer?.setSize(width, height) }
         emit(mapOf("type" to "size", "width" to width, "height" to height))
     }
 

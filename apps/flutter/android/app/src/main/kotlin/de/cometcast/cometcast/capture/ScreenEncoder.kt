@@ -23,6 +23,8 @@ class ScreenEncoder(
     requestedHeight: Int,
     private val fps: Int,
     private val bitrate: Int,
+    /** Generation tag of this encoder's output (see [GenerationGate]). */
+    val generation: Int = 0,
 ) {
     /**
      * Size the encoder really uses: the requested size rounded down to what the chosen encoder
@@ -48,6 +50,9 @@ class ScreenEncoder(
     // Drain thread only: after a dropped frame, delta frames are discarded until a key frame.
     private var needKeyFrame = false
     private var lastKeyRequestMs = 0L
+
+    // The codec config waits for the first key frame that is sent (see [ConfigHold]).
+    private val configHold = ConfigHold<ByteArray>()
 
     private fun makeFormat(
         withProfile: Boolean,
@@ -202,7 +207,7 @@ class ScreenEncoder(
      * drops the frame (counted); until the next key frame all delta frames are dropped as well.
      */
     private fun shouldSend(isKey: Boolean): Boolean {
-        if (!CaptureEvents.wantsFrame()) {
+        if (!CaptureEvents.wantsFrame(generation)) {
             CaptureEvents.countDropped()
             needKeyFrame = true
             return false
@@ -239,18 +244,26 @@ class ScreenEncoder(
                         val data = ByteArray(info.size)
                         buffer.get(data)
                         if (isConfig) {
-                            CaptureEvents.emitConfig(
-                                mapOf(
-                                    "type" to "config",
-                                    "mime" to MediaFormat.MIMETYPE_VIDEO_AVC,
-                                    "width" to width,
-                                    "height" to height,
-                                    "data" to data,
-                                ),
-                            )
+                            // Not published yet: with the first key frame (below).
+                            configHold.hold(data)
                         } else {
+                            if (isKey) {
+                                configHold.takeForKeyFrame()?.let { cfg ->
+                                    CaptureEvents.emitConfig(
+                                        generation,
+                                        mapOf(
+                                            "type" to "config",
+                                            "mime" to MediaFormat.MIMETYPE_VIDEO_AVC,
+                                            "width" to width,
+                                            "height" to height,
+                                            "data" to cfg,
+                                        ),
+                                    )
+                                }
+                            }
                             val queued =
                                 CaptureEvents.emitFrame(
+                                    generation,
                                     mapOf(
                                         "type" to "frame",
                                         "ptsUs" to info.presentationTimeUs,

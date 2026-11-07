@@ -255,23 +255,33 @@ impl Video {
         self.h264.load(Ordering::SeqCst)
     }
 
-    /// Ask for a key frame (rate limited). The receiver task sends the actual PLI.
+    /// Ask for a key frame. A request inside the rate limit window is not lost: it stays
+    /// pending (coalesced with others) and is handed out by [`Self::take_keyframe_request`]
+    /// when the window ends. The receiver task polls that on a timer and sends the PLI.
     pub(crate) fn request_keyframe(&self) {
-        let mut last = lock(&self.last_keyframe_request);
-        if last.is_some_and(|t| t.elapsed() < KEYFRAME_MIN_INTERVAL) {
-            return;
-        }
-        *last = Some(Instant::now());
         self.want_keyframe.store(true, Ordering::SeqCst);
     }
 
-    /// True once per request; the caller then sends the PLI.
+    /// True once per (coalesced) request, not more often than every [`KEYFRAME_MIN_INTERVAL`];
+    /// the caller then sends the PLI.
     pub(crate) fn take_keyframe_request(&self) -> bool {
-        let wanted = self.want_keyframe.swap(false, Ordering::SeqCst);
-        if wanted {
-            self.keyframe_requests.fetch_add(1, Ordering::Relaxed);
+        self.take_keyframe_request_at(Instant::now())
+    }
+
+    fn take_keyframe_request_at(&self, now: Instant) -> bool {
+        if !self.want_keyframe.load(Ordering::SeqCst) {
+            return false;
         }
-        wanted
+        let mut last = lock(&self.last_keyframe_request);
+        if last.is_some_and(|t| now.saturating_duration_since(t) < KEYFRAME_MIN_INTERVAL) {
+            return false; // stays pending, handed out when the window is over
+        }
+        if !self.want_keyframe.swap(false, Ordering::SeqCst) {
+            return false;
+        }
+        *last = Some(now);
+        self.keyframe_requests.fetch_add(1, Ordering::Relaxed);
+        true
     }
 
     /// Put a finished picture of decoder `generation` into the mailbox. Returns true if the
@@ -757,13 +767,20 @@ mod tests {
     }
 
     #[test]
-    fn keyframe_requests_are_rate_limited() {
+    fn keyframe_requests_are_deferred_not_dropped() {
         let v = Video::new();
+        let t0 = Instant::now();
         v.request_keyframe();
-        assert!(v.take_keyframe_request());
+        assert!(v.take_keyframe_request_at(t0));
+        // Two more requests inside the window: coalesced, pending, not lost.
         v.request_keyframe();
-        assert!(!v.take_keyframe_request(), "second request within a second");
-        assert_eq!(v.counters().keyframe_requests, 1);
+        v.request_keyframe();
+        assert!(!v.take_keyframe_request_at(t0 + Duration::from_millis(500)));
+        assert!(!v.take_keyframe_request_at(t0 + Duration::from_millis(999)));
+        // The window is over: exactly one request goes out.
+        assert!(v.take_keyframe_request_at(t0 + KEYFRAME_MIN_INTERVAL));
+        assert!(!v.take_keyframe_request_at(t0 + KEYFRAME_MIN_INTERVAL * 3));
+        assert_eq!(v.counters().keyframe_requests, 2);
     }
 
     #[test]

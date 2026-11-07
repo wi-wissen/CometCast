@@ -126,6 +126,10 @@ Use the TV remote only (no touch screen, no keyboard, no mouse), except to read 
 | D11 | Cheap 32-bit box (A7): D1, D3, D5, D7 | Record whether it installs (ABI), starts, the picture is smooth enough, the hardware decoder path works or falls back | |
 | D12 | Does the TV offer screen capture at all? The app is receiver only on a TV by design (the send entries are hidden), so this is a question about the system: check `adb shell dumpsys media_projection` and whether any system screen recorder exists | Information only: many TV boxes have no MediaProjection UI | Decides whether a sender mode on TV would ever work |
 | D13 | Google TV with a Bluetooth keyboard/mouse (optional) | Everything the remote does also works | |
+| D14 (new) | Force the hardware decoder to fail (a TV whose decoder rejects the stream, or kill the codec with `adb shell`), then watch the screen | The receive screen shows the translated message "The video decoder of this device failed ..." and the **Video codec needed** card with the download button (consent asked first, nothing downloaded before it); after the download the next start decodes in software | UNCERTAIN: whether a running stream recovers by itself after the download (expected: start again). Restarting the receive view must go straight to software (sticky for the app run) and keep the card |
+| D15 (new) | Home, wait for the screen to be turned off by the TV and on again, and background/foreground the app while a sender is active | The picture comes back within a few seconds without a manual restart; log shows `needKeyFrame` requests about once per second, not a storm | Surface teardown: no crash, no frozen last frame, no `IllegalStateException` in logcat. UNCERTAIN: the synchronous release in `onSurfaceCleanup` |
+| D16 (new) | Sender sends a 1080p screen, then a very detailed full-screen image (large key frame) | No "does not fit the input buffer" error; if the decoder reports an error it falls back to software | `MAX_INPUT` 8 MiB |
+| D17 (new) | Receive for more than 13 hours (or note only: the timestamp unwrap is covered by a unit test) | The picture keeps moving past the 32 bit RTP clock wrap | Optional, long |
 
 ## E. Network cases
 
@@ -137,6 +141,8 @@ Use the TV remote only (no touch screen, no keyboard, no mouse), except to read 
 | E4 | Server over `ws://` on the local network (development) | Works (the Rust core uses its own sockets, Android's cleartext policy should not apply: UNCERTAIN) |
 
 ## F. Edge and error cases worth one try each
+
+0. (new) Sender, rotate the device four times in quick succession while a receiver watches: the receiver never shows a garbled mix of two sizes (old frames dropped by encoder generation), the picture re-fits within about a second after the last rotation. Also: `adb shell dumpsys power | grep cometcast` shows the wake lock renewed every 5 minutes during a 20 minute session and gone after stopping. Press "Share screen" twice quickly (second tap while running): no second consent dialog, no change. Make the consent dialog fail early (deny the notification permission, then Cancel): Dart always ends in the stopped state.
 
 1. Start sharing, then quickly press Home and revoke the notification permission in settings.
 2. Start the capture while another screen recorder is running (some devices refuse a second projection).
