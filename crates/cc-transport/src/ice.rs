@@ -120,13 +120,34 @@ pub async fn fetch_ice_servers(
     }
 }
 
+/// One line for a failed `/ice-servers` call, so that a `429` (budget used up) or a `403` is not
+/// mistaken for a relay that simply offers no STUN/TURN (that one is `Ok(vec![])`, silent).
+pub fn describe_ice_failure(e: &TransportError) -> String {
+    match e {
+        TransportError::Server { code, message } => {
+            format!("refused by the server ({code}: {message})")
+        }
+        other => format!("failed ({other})"),
+    }
+}
+
 /// Like [`fetch_ice_servers`] but any failure means "no list": a missing TURN list must not
-/// stop a connection that could work directly.
+/// stop a connection that could work directly. A failure is written to standard error (a relay
+/// without a list is not a failure and stays silent).
 pub async fn fetch_ice_servers_or_none(
     addr: &ServerAddr,
     trust: &TlsTrust,
 ) -> Vec<IceServerConfig> {
-    fetch_ice_servers(addr, trust).await.unwrap_or_default()
+    match fetch_ice_servers(addr, trust).await {
+        Ok(list) => list,
+        Err(e) => {
+            eprintln!(
+                "cometcast: GET /ice-servers {}; connecting without STUN/TURN servers",
+                describe_ice_failure(&e)
+            );
+            Vec::new()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -161,6 +182,18 @@ mod tests {
         assert_eq!(list[0].urls, ["stun:a:1"]);
         assert!(parse_ice_servers(b"{}").is_err());
         assert!(parse_ice_servers(b"[{\"nope\":1}]").is_err());
+    }
+
+    #[test]
+    fn a_429_is_described_as_a_refusal_not_as_no_list() {
+        let e = TransportError::Server {
+            code: "rate_limited".into(),
+            message: "too many requests, try again later".into(),
+        };
+        let text = describe_ice_failure(&e);
+        assert!(text.contains("rate_limited"), "{text}");
+        assert!(text.contains("refused"), "{text}");
+        assert!(describe_ice_failure(&TransportError::Protocol("x".into())).starts_with("failed"));
     }
 
     #[test]

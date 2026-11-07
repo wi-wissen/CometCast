@@ -94,7 +94,7 @@ options. Unknown keys in the file are errors. The file and every key in it are o
 | `COMETCAST_CONFIG` | Path of the config file |
 | `COMETCAST_LISTEN` | Same as `listen` |
 | `COMETCAST_MODE` | Same as `mode` |
-| `COMETCAST_WEB_DIR` | Same as `web_dir` |
+| `COMETCAST_WEB_DIR` | Same as `web_dir` (set it to an empty value to switch off the directory the Docker image presets) |
 | `COMETCAST_ALLOWED_ORIGINS` | Same as `allowed_origins` (comma-separated) |
 | `COMETCAST__SECTION__KEY` | Any setting; double underscore is a dot, e.g. `COMETCAST__LIMITS__MAX_ROOMS=500` sets `limits.max_rooms` |
 
@@ -119,7 +119,7 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | --- | --- | --- | --- |
 | `mode` | `internal` | | `open` or `internal` |
 | `listen` | `127.0.0.1:8443` | | Address and port |
-| `web_dir` | not set | | Serve the web app from this directory |
+| `web_dir` | not set | | Serve the web app from this directory. Empty (`""`, or `COMETCAST_WEB_DIR=`) means not set: no files, unknown paths are `404` |
 | `allowed_origins` | `[]` | | Exact web origins (`https://host[:port]`) that may use this relay from another site: CORS on `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`; empty = same-origin only and any `/ws` origin; `*` internal mode only. [Details](../../docs/server.md#web-app-on-another-origin) |
 | `idle_room_secs` | 1800 | | A room without a sender is removed after this |
 | `hello_secs` | 5 | | A connection must say hello within this |
@@ -137,7 +137,8 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `limits.create_room_per_min` | 60 | 6 | `create_room` per client address |
 | `limits.join_attempts_per_min` | 120 | 20 | `join_room` per client address |
 | `limits.failed_join_weight` | 2 | 5 | A failed join counts as this many attempts |
-| `limits.http_per_min` | 300 | 30 | `/altcha/challenge` and `/ice-servers` per address |
+| `limits.http_per_min` | 300 | 30 | `/altcha/challenge` per address |
+| `limits.ice_per_min` | 300 | 30 | `/ice-servers` per address (its own bucket, not shared with `/altcha/challenge`) |
 | `limits.max_rooms` | 100000 | 10000 | Rooms, whole server |
 | `limits.max_connections` | 20000 | 5000 | Open WebSockets, whole server |
 | `limits.ban_after_failed_joins` | 30 | 10 | Failed joins within the window cause a ban |
@@ -190,7 +191,7 @@ Notes that the table cannot show: `ban_secs` repeats its last value; the failure
 
 Consequence: a TURN relay with credentials from this server only works in internal mode. An open
 server can still help direct connections across NATs by listing a public STUN server (`[stun]`;
-no `ALTCHA` for that call, per-address `http_per_min` applies, CORS as for the other endpoints).
+no `ALTCHA` for that call, per-address `ice_per_min` applies, CORS as for the other endpoints).
 The STUN service is a separate program, see [docs/server.md](../../docs/server.md#stun-list-and-ice-servers).
 
 ## HTTP endpoints

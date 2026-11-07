@@ -136,13 +136,31 @@ async fn open_mode_still_refuses_turn() {
 #[tokio::test]
 async fn open_mode_keeps_the_per_address_http_limit() {
     let mut c = open_with_stun(&[STUN]);
-    c.limits.http_per_min = 2;
+    c.limits.ice_per_min = 2;
     let addr = start(c).await;
     assert_eq!(get(addr, &[]).await.status, 200);
     assert_eq!(get(addr, &[]).await.status, 200);
     let r = get(addr, &[]).await;
     assert_eq!(r.status, 429);
     assert!(r.head.contains("retry-after:"));
+}
+
+#[tokio::test]
+async fn ice_servers_do_not_share_the_challenge_bucket() {
+    let mut c = open_with_stun(&[STUN]);
+    c.limits.http_per_min = 1;
+    c.limits.ice_per_min = 2;
+    let addr = start(c).await;
+    // Use up the /altcha/challenge budget of this address ...
+    let _ = request(addr, "GET", "/altcha/challenge", &[]).await;
+    assert_eq!(
+        request(addr, "GET", "/altcha/challenge", &[]).await.status,
+        429
+    );
+    // ... the ICE list is still served, from its own bucket, until that one is used up.
+    assert_eq!(get(addr, &[]).await.status, 200);
+    assert_eq!(get(addr, &[]).await.status, 200);
+    assert_eq!(get(addr, &[]).await.status, 429);
 }
 
 #[tokio::test]
@@ -188,7 +206,7 @@ async fn stun_list_has_cors_for_allowed_origins_only() {
     // The 429 stays readable for the allowed page too.
     let mut c = open_with_stun(&[STUN]);
     c.allowed_origins = vec![PAGE.into()];
-    c.limits.http_per_min = 1;
+    c.limits.ice_per_min = 1;
     let addr = start(c).await;
     assert_eq!(get(addr, &[("Origin", PAGE)]).await.status, 200);
     let r = get(addr, &[("Origin", PAGE)]).await;

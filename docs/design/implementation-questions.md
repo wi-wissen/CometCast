@@ -147,3 +147,19 @@ code is then changed in one place each time.
   and a screen that is added to and removed from a connected session by renegotiation (so "Stop showing" returns to "What to
   show" without leaving the room). A direct stream removal is detected with the `removetrack` event of the remote stream
   (works in Chrome; other browsers were not tried).
+
+## D. ICE server list refused (relay review fixes)
+
+### D1. What should the user see when `/ice-servers` is refused?
+- **Found:** `GET /ice-servers` has its own per-address rate limit (`limits.ice_per_min`, 30 per minute in open mode). A client
+  that hits it (HTTP 429), is banned or not allowed (403), or fails to fetch the list otherwise, connects without
+  STUN/TURN servers. That works on the same network and across many NATs, but can fail across strict NATs, and nobody can tell why.
+- **Meanwhile (no UI):** the web client keeps a typed state, `IceFetchState` (`ok`, `none` = 404 = relay offers no list,
+  `rate_limited`, `refused`, `http_error`, `bad_answer`, `unreachable`), returned by `fetchIceServersDetailed()` in
+  `apps/web/src/core/altchaClient.ts`; `fetchIceServers()` logs every state except `ok` and `none` with `console.warn`.
+  The sessions still take `iceServers: () => Promise<RTCIceServer[]>`; nothing in the UI reads the state. The native cores
+  get the refusal as an error with the code (`rate_limited`, `banned`, `forbidden`) from `ice::fetch_ice_servers`; the
+  `_or_none` variant writes one line to standard error and continues without a list.
+- **Options:** (a) show nothing (current); (b) show a hint only if the connection then fails; (c) show a hint at once.
+  Options (b) and (c) need the sessions to expose the state next to `iceServers` (a small change in `senderSession.ts`,
+  `receiverSession.ts` and the Rust `ReceiverCore` / `SenderCore`).

@@ -189,20 +189,85 @@ export function parseIceServers(v: unknown): RTCIceServer[] {
 const ICE_FETCH_TIMEOUT_MS = 5000
 
 /**
- * GET /ice-servers. `404` (no TURN configured) and every failure mean "no list": the page then
- * connects without STUN/TURN, as before.
+ * How a `GET /ice-servers` call ended. Typed so that callers and tests can tell "this relay offers
+ * no list" (`none`, normal) from "the relay refused us" (`rate_limited`, `refused`) and from a
+ * broken answer or network. Every state except `ok` yields an empty list, so a connection that could
+ * work directly is never stopped, but only `none` is silent: the others are logged by
+ * {@link fetchIceServers}. TODO(design): whether the UI should say anything about it is open, see
+ * docs/design/implementation-questions.md.
  */
-export async function fetchIceServers(baseUrl: string, deps: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<RTCIceServer[]> {
+export type IceFetchState =
+  | { kind: 'ok' }
+  | { kind: 'none' } // 404: no [stun]/[turn] configured
+  | { kind: 'rate_limited'; retryAfterSecs?: number } // 429: the per-address /ice-servers budget is used up
+  | { kind: 'refused'; retryAfterSecs?: number } // 403: address banned or not allowed
+  | { kind: 'http_error'; status: number }
+  | { kind: 'bad_answer' } // 200 but not a JSON list
+  | { kind: 'unreachable'; timedOut: boolean }
+
+export interface IceFetchResult {
+  servers: RTCIceServer[]
+  state: IceFetchState
+}
+
+function retryAfterOf(res: Response): number | undefined {
+  const n = Number(res.headers.get('retry-after'))
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
+/** GET /ice-servers with the outcome as a typed state (never rejects). */
+export async function fetchIceServersDetailed(baseUrl: string, deps: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<IceFetchResult> {
   const doFetch = deps.fetchImpl ?? fetch
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), deps.timeoutMs ?? ICE_FETCH_TIMEOUT_MS)
   try {
     const res = await doFetch(`${baseUrl}/ice-servers`, { cache: 'no-store', signal: ctl.signal })
-    if (!res.ok) return []
-    return parseIceServers(await res.json())
+    if (res.status === 404) return { servers: [], state: { kind: 'none' } }
+    if (res.status === 429) return { servers: [], state: { kind: 'rate_limited', retryAfterSecs: retryAfterOf(res) } }
+    if (res.status === 403) return { servers: [], state: { kind: 'refused', retryAfterSecs: retryAfterOf(res) } }
+    if (!res.ok) return { servers: [], state: { kind: 'http_error', status: res.status } }
+    let body: unknown
+    try {
+      body = await res.json()
+    } catch {
+      return { servers: [], state: { kind: 'bad_answer' } }
+    }
+    return { servers: parseIceServers(body), state: { kind: 'ok' } }
   } catch {
-    return []
+    return { servers: [], state: { kind: 'unreachable', timedOut: ctl.signal.aborted } }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** One log line for a state that costs the client its ICE servers (nothing for `ok` and `none`). */
+export function describeIceFetchState(state: IceFetchState): string | null {
+  switch (state.kind) {
+    case 'ok':
+    case 'none':
+      return null
+    case 'rate_limited':
+      return `rate limited (429${state.retryAfterSecs ? `, retry after ${state.retryAfterSecs} s` : ''}): connecting without STUN/TURN servers`
+    case 'refused':
+      return `refused (403${state.retryAfterSecs ? `, banned, retry after ${state.retryAfterSecs} s` : ''}): connecting without STUN/TURN servers`
+    case 'http_error':
+      return `unexpected HTTP status ${state.status}: connecting without STUN/TURN servers`
+    case 'bad_answer':
+      return 'the answer is not a JSON list: connecting without STUN/TURN servers'
+    case 'unreachable':
+      return `${state.timedOut ? 'timed out' : 'request failed'}: connecting without STUN/TURN servers`
+  }
+}
+
+/**
+ * GET /ice-servers. `404` (no list configured) and every failure mean "no list": the page then
+ * connects without STUN/TURN, as before. A failure other than 404 is logged to the console
+ * (`console.warn`) so that a 429 is not mistaken for a relay without STUN; see
+ * {@link fetchIceServersDetailed} for the typed state.
+ */
+export async function fetchIceServers(baseUrl: string, deps: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<RTCIceServer[]> {
+  const { servers, state } = await fetchIceServersDetailed(baseUrl, deps)
+  const note = describeIceFetchState(state)
+  if (note) console.warn(`[cometcast] GET /ice-servers ${note}`)
+  return servers
 }

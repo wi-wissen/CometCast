@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  describeIceFetchState,
   fetchIceServers,
+  fetchIceServersDetailed,
   MAX_ICE_FIELD,
   MAX_ICE_SERVERS,
   MAX_ICE_URLS,
@@ -92,6 +94,40 @@ describe('ICE servers', () => {
     expect(await fetchIceServers('http://h', { fetchImpl: async () => new Response('', { status: 429 }) })).toEqual([])
     expect(await fetchIceServers('http://h', { fetchImpl: async () => new Response('<html>', { status: 200 }) })).toEqual([])
     expect(await fetchIceServers('http://h', { fetchImpl: async () => { throw new TypeError('x') } })).toEqual([])
+  })
+
+  it('tells a 429, a 403 and a network failure apart from "no list" and logs them', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const r429 = await fetchIceServersDetailed('http://h', {
+        fetchImpl: async () => new Response('', { status: 429, headers: { 'Retry-After': '2' } }),
+      })
+      expect(r429).toEqual({ servers: [], state: { kind: 'rate_limited', retryAfterSecs: 2 } })
+      expect((await fetchIceServersDetailed('http://h', { fetchImpl: async () => new Response('', { status: 403 }) })).state).toEqual({ kind: 'refused', retryAfterSecs: undefined })
+      expect((await fetchIceServersDetailed('http://h', { fetchImpl: async () => new Response('', { status: 404 }) })).state).toEqual({ kind: 'none' })
+      expect((await fetchIceServersDetailed('http://h', { fetchImpl: async () => new Response('', { status: 503 }) })).state).toEqual({ kind: 'http_error', status: 503 })
+      expect((await fetchIceServersDetailed('http://h', { fetchImpl: async () => new Response('<html>', { status: 200 }) })).state).toEqual({ kind: 'bad_answer' })
+      expect((await fetchIceServersDetailed('http://h', { fetchImpl: async () => { throw new TypeError('x') } })).state).toEqual({ kind: 'unreachable', timedOut: false })
+      expect(warn).not.toHaveBeenCalled()
+      // The plain function logs the degraded states, and stays quiet for 404 and for a good list.
+      await fetchIceServers('http://h', { fetchImpl: async () => new Response('', { status: 429 }) })
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0][0])).toContain('rate limited (429')
+      await fetchIceServers('http://h', { fetchImpl: async () => new Response('', { status: 404 }) })
+      await fetchIceServers('http://h', { fetchImpl: async () => json([{ urls: ['stun:a:1'] }]) })
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(describeIceFetchState({ kind: 'ok' })).toBeNull()
+      expect(describeIceFetchState({ kind: 'none' })).toBeNull()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('reports a timeout as unreachable with timedOut', async () => {
+    const hang: typeof fetch = (_u, init) =>
+      new Promise((_res, rej) => init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))))
+    const r = await fetchIceServersDetailed('http://h', { fetchImpl: hang, timeoutMs: 10 })
+    expect(r.state).toEqual({ kind: 'unreachable', timedOut: true })
   })
 
   it('takes a plain STUN answer of an open relay (no username, credential or ttl) as it is', async () => {

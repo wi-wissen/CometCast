@@ -130,7 +130,7 @@ them with the owners shown above (for example in a certbot deploy hook).
 ## Configuration
 
 The server reads `/etc/cometcast/server.toml` in the image (`CMD ["--config", ...]`); inside a container
-`COMETCAST_LISTEN=0.0.0.0:8443` and `COMETCAST_WEB_DIR=/srv/cometcast/web` are preset. Full settings
+`COMETCAST_LISTEN=0.0.0.0:8443` and `COMETCAST_WEB_DIR=/srv/cometcast/web` are preset (an API-only deployment sets `COMETCAST_WEB_DIR` to an empty value: with a release that supports it, `docker compose` `environment: COMETCAST_WEB_DIR: ""` then serves no files; older releases treat the empty value as a path). Full settings
 table and environment variables: [bins/cometcast-server/README.md](../bins/cometcast-server/README.md#configuration).
 Secrets: `secret_file` (`/run/secrets/turn_secret`, `/run/secrets/altcha_secret` through compose secrets); never `--set`.
 

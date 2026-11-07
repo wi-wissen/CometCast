@@ -366,6 +366,32 @@ async fn healthz_and_static_files() {
 }
 
 #[tokio::test]
+async fn without_web_dir_the_server_itself_answers_404() {
+    // `web_dir` unset (what an empty COMETCAST_WEB_DIR gives): no file serving at all, the
+    // server returns 404 for every unknown path, with no reverse proxy in front.
+    let addr = start(ServerConfig::default()).await;
+    async fn get(addr: std::net::SocketAddr, path: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+        s.write_all(format!("GET {path} HTTP/1.0\r\n\r\n").as_bytes())
+            .await
+            .unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).await.unwrap();
+        out
+    }
+    for path in ["/", "/index.html", "/WS", "/Healthz", "/assets/app.js"] {
+        let r = get(addr, path).await;
+        assert!(
+            r.starts_with("HTTP/1.0 404") || r.starts_with("HTTP/1.1 404"),
+            "{path}: {r}"
+        );
+    }
+    let r = get(addr, "/healthz").await;
+    assert!(r.starts_with("HTTP/1.0 200") || r.starts_with("HTTP/1.1 200"));
+}
+
+#[tokio::test]
 async fn pings_do_not_keep_a_silent_client_alive() {
     let config = ServerConfig {
         hello_timeout: Duration::from_millis(300),
