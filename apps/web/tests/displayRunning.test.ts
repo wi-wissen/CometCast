@@ -356,6 +356,20 @@ describe('display: presenting', () => {
     expect(w.get('.cd-canvas').attributes('style') ?? '').not.toContain('display: none')
   })
 
+  it('a link card or a join request puts name tag and End under the scrim and makes them inert (decision 13.68)', async () => {
+    const w = mk()
+    await set({ ...presentingState(), content: { kind: 'link', url: 'https://example.org/x', host: 'example.org' } })
+    await flushPromises()
+    expect(w.get('[data-testid=byline]').attributes('inert')).toBeDefined()
+    expect(w.get('[data-testid=byline]').classes()).toContain('under')
+    expect(w.get('[data-testid=end]').element.closest('.cd-pv')!.hasAttribute('inert')).toBe(true)
+    await set({ content: { kind: 'image', url: 'blob:x', name: 'a.png' } })
+    expect(w.get('[data-testid=byline]').attributes('inert')).toBeUndefined()
+    await set({ requests: [{ id: 1, name: 'Ana', check: 'AB' }] as never })
+    expect(w.get('[data-testid=byline]').attributes('inert')).toBeDefined()
+    expect(w.get('[data-testid=byline]').classes()).not.toContain('under')
+  })
+
   it('input reveals the name tag and End for 5 s; the first key only reveals; End ends the session', async () => {
     const w = mk()
     await set(presentingState())

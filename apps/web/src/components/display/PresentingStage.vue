@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AnnotationLayer from '../AnnotationLayer.vue'
 import ContentOverlay from '../ContentOverlay.vue'
 import ReceiverToolbar from '../ReceiverToolbar.vue'
+import TransferPill from './TransferPill.vue'
 import { AnnotationModel } from '../../core/annotations'
 import type { ReceiverState } from '../../core/receiverSession'
 import type { PageBitmap } from '../../core/pdfRenderer'
@@ -29,6 +30,8 @@ const props = defineProps<{
   state: ReceiverState
   renderPage: (page: number, width: number) => Promise<PageBitmap>
   controlsShown: boolean
+  /** A join request is open (the link card is known from the content): everything but the dialog is inert (decision 13.68). */
+  requestOpen?: boolean
 }>()
 const emit = defineEmits<{ close: []; playing: [on: boolean]; input: [] }>()
 const { t } = useI18n()
@@ -157,6 +160,16 @@ function onFullscreen() {
 onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange))
 onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
 
+// A PDF that is being opened: the pill says so until its first page is drawn (decision 13.57 / F1).
+const readyDoc = ref<number | null>(null)
+const opening = computed(() => {
+  const c = props.state.content
+  return c?.kind === 'document' && readyDoc.value !== c.id ? c : null
+})
+const linkOpen = computed(() => props.state.content?.kind === 'link')
+const dialogOpen = computed(() => linkOpen.value || props.requestOpen === true)
+// The toolbar is visible: the frozen badge steps aside (decision 13.65).
+const toolbarShown = computed(() => props.controlsShown && !linkOpen.value)
 const transferPercent = computed(() => {
   const tr = props.state.transfer
   return tr ? Math.floor((tr.received / tr.size) * 100) : 0
@@ -194,7 +207,7 @@ defineExpose({ stage })
       class="absolute inset-0 z-[1] h-full w-full bg-black object-contain"
     />
 
-    <ContentOverlay :content="state.content" :render-page="renderPage" @close="emit('close')" />
+    <ContentOverlay :content="state.content" :render-page="renderPage" @close="emit('close')" @ready="readyDoc = $event" />
     <p class="sr-only" role="status" aria-live="polite" data-testid="announce">{{ announce }}</p>
     <AnnotationLayer
       :inert="state.content?.kind === 'link' ? true : undefined"
@@ -210,13 +223,12 @@ defineExpose({ stage })
     </div>
 
     <!-- Reference-px layer: the frozen badge (a state, drawn at rest) and the annotation toolbar (with the controls). -->
-    <div class="cd-hud cd-stagehud">
+    <div class="cd-hud cd-stagehud" :inert="dialogOpen ? true : undefined">
       <!-- A running transfer (at rest too, it is a state): the name-tag-look pill, bottom 12, centred (spec 3.5, 4.5).
            A failed transfer is a toast (DisplayRunning), never a pill over the picture. -->
-      <p v-if="state.transfer" data-testid="transfer" role="status" class="cd-tag cd-transfer">
-        {{ t('receive.transfer', { name: state.transfer.name, percent: transferPercent }) }}
-      </p>
-      <p v-if="toolbar.frozen" data-testid="frozen-badge" class="cd-badge">{{ t('toolbar.frozenHint') }}</p>
+      <TransferPill v-if="state.transfer" message-key="receive.transfer" :name="state.transfer.name" :percent="transferPercent" />
+      <TransferPill v-else-if="opening" message-key="receive.document.loading" :name="opening.name" />
+      <p v-if="toolbar.frozen" data-testid="frozen-badge" class="cd-badge" :class="{ hid: toolbarShown }" :aria-hidden="toolbarShown">{{ t('toolbar.frozenHint') }}</p>
       <ReceiverToolbar
         :shown="controlsShown && state.content?.kind !== 'link'"
         :state="toolbar"

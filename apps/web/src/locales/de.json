@@ -72,7 +72,7 @@
     },
     "media": {
       "hint": "Dieser Link verweist auf eine Mediendatei. Sie wird von {host} nur geladen, wenn du auf „Abspielen“ klickst.",
-      "play": "Von {host} abspielen",
+      "play": "Abspielen",
       "retry": "Erneut versuchen",
       "stop": "Stopp",
       "label": "Medienwiedergabe, {host}",
@@ -96,7 +96,7 @@
       "document": "Dokument empfangen: {name}."
     },
     "document": {
-      "loading": "{name} wird geöffnet…",
+      "loading": "{name} wird geöffnet …",
       "pageOf": "Seite {page} von {pages}",
       "canvasLabel": "{name}, Seite {page} von {pages}",
       "controls": "Seitensteuerung",

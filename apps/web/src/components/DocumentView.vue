@@ -9,6 +9,7 @@ import type { PageBitmap } from '../core/pdfRenderer'
 
 type DocContent = { kind: 'document'; id: number; name: string; pages: number; page: number }
 const props = defineProps<{ content: DocContent; render: (page: number, width: number) => Promise<PageBitmap> }>()
+const emit = defineEmits<{ ready: [id: number] }>()
 const { t, te } = useI18n()
 
 const box = ref<HTMLElement | null>(null)
@@ -40,10 +41,12 @@ async function draw() {
     canvas.value.getContext('2d')?.putImageData(new ImageData(bmp.rgba, bmp.width, bmp.height), 0, 0)
     renderedWidth = width
     pageError.value = ''
+    emit('ready', c.id)
   } catch (e) {
     if (my !== token) return
     const code = (e as { code?: string } | null)?.code ?? 'failed'
     pageError.value = te(`receive.document.pageError.${code}`) ? t(`receive.document.pageError.${code}`) : t('receive.document.pageError.failed')
+    emit('ready', c.id)
   } finally {
     if (my === token) busy.value = false
   }
@@ -86,7 +89,6 @@ const label = computed(() => t('receive.document.pageOf', { page: props.content.
       :data-busy="busy"
       class="h-full w-full object-contain"
     />
-    <div v-if="content.pages === 0" class="cd-hud"><p data-testid="document-loading" class="cd-centerline">{{ t('receive.document.loading', { name: content.name }) }}</p></div>
     <p data-testid="document-page" role="status" aria-live="polite" class="sr-only">{{ label }}</p>
     <!-- A page that cannot be drawn: its text centred in a name-tag-look box on the canvas (spec 4.5). No red. -->
     <div v-if="pageError" class="cd-hud" style="z-index: 26">

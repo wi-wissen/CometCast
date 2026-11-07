@@ -75,6 +75,9 @@ const settingsOpen = ref(false)
 const streamPlaying = ref(false)
 const presenting = computed(() => state.value.content !== null || (state.value.stream !== null && streamPlaying.value))
 const head = computed(() => state.value.requests[0] ?? null)
+// A dialog over the presentation (join request, link card): name tag, End, toolbar, badge and pill are under its scrim and inert (decision 13.68).
+const linkOpen = computed(() => state.value.content?.kind === 'link')
+const dialogOpen = computed(() => head.value !== null || linkOpen.value)
 const dom = computed(() => relay.current.value.host)
 const scheme = computed<'https' | 'http'>(() => (relay.current.value.insecure ? 'http' : 'https'))
 // Not drawn: a status line for screen readers (and for the automated tests). The spec's display shows
@@ -318,6 +321,7 @@ onBeforeUnmount(() => {
     :state="state"
     :render-page="renderPage"
     :controls-shown="controlsShown"
+    :request-open="head !== null"
     @close="clearContent"
     @input="controls.poke()"
     @playing="streamPlaying = $event"
@@ -327,11 +331,11 @@ onBeforeUnmount(() => {
 
   <div class="cd-hud" :style="{ zIndex: 30 }">
     <template v-if="presenting">
-      <div class="cd-pv cd-byline" :class="{ hid: !controlsShown }" data-testid="byline" :aria-hidden="!controlsShown">
+      <div class="cd-pv cd-byline" :class="{ hid: !controlsShown, under: linkOpen }" :inert="dialogOpen ? true : undefined" data-testid="byline" :aria-hidden="!controlsShown">
         <span data-testid="byline-name">{{ byline }}</span>
         <small v-if="state.sas" data-testid="sas-line">{{ sasParts.before }}<span class="mono" data-testid="sas-code">{{ state.sas }}</span>{{ sasParts.after }}</small>
       </div>
-      <div class="cd-pv cd-endbtn" :class="{ hid: !controlsShown }">
+      <div class="cd-pv cd-endbtn" :class="{ hid: !controlsShown, under: linkOpen }" :inert="dialogOpen ? true : undefined">
         <button
           ref="endBtn"
           type="button"
