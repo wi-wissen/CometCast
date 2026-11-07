@@ -145,6 +145,44 @@ class ServerTrust {
 
   ServerDecision decide(String server) =>
       trusts(server) ? ServerDecision.use : ServerDecision.confirm;
+
+  /// Is [server] one the app knows from its own sources: the built-in relay, a policy server or
+  /// a DNS-SRV server? The announcement of a screen never counts (spec 14.3, 14.4).
+  bool isKnownSource(String server) {
+    final s = canonicalServer(stripScheme(server));
+    if (s == null) return false;
+    if (builtIn.contains(s)) return true;
+    for (final x in suggestions) {
+      final known = switch (x.kind) {
+        ServerSourceKind.policy ||
+        ServerSourceKind.dns ||
+        ServerSourceKind.defaultList => true,
+        _ => false,
+      };
+      if (known && canonicalServer(x.address) == s) return true;
+    }
+    return false;
+  }
+
+  /// May the app join a screen found nearby on [server] without asking (spec 14.4)? The default
+  /// relay, a policy server, a DNS-SRV server, or a server this device was confirmed for. An
+  /// announced server is **not** trusted because it was announced.
+  bool trustsForNearby(String server) {
+    final s = canonicalServer(stripScheme(server));
+    return s != null && (confirmed.contains(s) || isKnownSource(server));
+  }
+}
+
+/// `host[:port]` of a server address that may carry a scheme (`ws://`, `wss://`, `http://`,
+/// `https://`) and a path.
+String stripScheme(String server) {
+  var v = server.trim().replaceFirst(
+    RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'),
+    '',
+  );
+  final slash = v.indexOf('/');
+  if (slash >= 0) v = v.substring(0, slash);
+  return v;
 }
 
 /// What the first-run page gets from a link, the referrer or a scan.

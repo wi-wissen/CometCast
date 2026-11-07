@@ -15,6 +15,7 @@ import '../core/ios_broadcast.dart';
 import '../core/launch_intake.dart';
 import '../core/link_target.dart';
 import '../core/miracast.dart';
+import '../core/nearby_platform.dart';
 import '../miracast_page.dart';
 import '../receiver_controller.dart' show UrlOpener;
 import '../settings.dart';
@@ -46,6 +47,7 @@ class AppShell extends StatefulWidget {
     this.linkStream,
     this.firstLaunch = false,
     this.canOpenLinks,
+    this.nearbyPlatform,
   });
 
   final CoreApi core;
@@ -74,6 +76,9 @@ class AppShell extends StatefulWidget {
   /// First launch after the install, and it brought no code (`app.scanAgainBody`).
   final bool firstLaunch;
   final CanOpenLinks? canOpenLinks;
+
+  /// The platform part of the list of screens on the network (spec 14); null = no list.
+  final NearbyPlatform? nearbyPlatform;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -142,6 +147,7 @@ class _AppShellState extends State<AppShell> {
           links: widget.links,
           linkStream: widget.linkStream,
           firstLaunch: widget.firstLaunch,
+          nearbyPlatform: widget.nearbyPlatform,
           initialCode: switch (widget.launch) {
             LinkUse(:final target) || LinkConfirm(:final target) => target.code,
             _ => widget.initialCode,

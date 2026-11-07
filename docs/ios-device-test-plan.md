@@ -137,6 +137,10 @@ Partner: a desktop sender (`cometcast-cli send --screen`, or the Linux app), the
 | D6 | Server over `ws://` on the local network (development) | Works (the Rust core uses its own sockets; App Transport Security should not apply, UNCERTAIN) | Same question as Android E4 |
 | D7 | VPN on | Record: works, blocked, or relay | |
 | D8 | iPad on a captive-portal or isolated guest Wi-Fi | A clear failure, no hang | |
+| D9 | (new) Fresh install, open the app start page (no code from a link) | The section "Screens on this network" shows only the button "Search this network" (state "Not asked yet"); nothing was asked yet. Tap it: the system shows "Comet Cast would like to find and connect to devices on your local network" with the text of `NSLocalNetworkUsageDescription`. Allow: the search runs at once and starts by itself on every later visit | The `UserDefaults` flag of the bridge; that `NWBrowser.start` is what triggers the prompt; the prompt text (en and de) |
+| D10 | (new) With a Comet Cast display (desktop app, Idle) on the same Wi-Fi after D9 | The display is listed (quoted room name, mode, its code); a tap joins; a code change, Locked and goodbye on the display update or remove the row (see Android E6) | NWBrowser delivers `.changed` for a changed TXT record? Does it keep a display that died without a goodbye longer than 30 s (the app restarts the browser every 10 s)? |
+| D11 | (new) Settings, Comet Cast, Local Network **off**, then open the start page | "Comet Cast may not search this network." with the link "Allow in Settings", which opens the app's page in the Settings app; after turning it on and coming back the search starts again | `kDNSServiceErr_PolicyDenied` reaches the bridge as `.waiting(.dns(...))` or `.failed`? Record which |
+| D12 | (new) Cellular only, then Wi-Fi on | "Join the room's Wi-Fi to find screens here." and no search; the search starts by itself when Wi-Fi comes | `NWPathMonitor` with `.wifi` / `.wiredEthernet` |
 
 ## E. App life cycle, interruptions, robustness
 

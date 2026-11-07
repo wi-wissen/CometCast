@@ -58,8 +58,10 @@
 	     the translations are in InfoPlist.strings. -->
 	<key>NSCameraUsageDescription</key>
 	<string>Comet Cast uses the camera only to scan the QR code on the screen.</string>
+	<!-- ios.localNetworkUsage (spec 14.10): shown when the first search starts (NearbyBridge) and by
+	     the display apps when they announce. NSBonjourServices above lists _cometcast._tcp. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Comet Cast looks for receivers and the Comet Cast server in your local network so you can share your screen with them.</string>
+	<string>Comet Cast looks for screens on the same Wi-Fi so you do not have to type a code.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

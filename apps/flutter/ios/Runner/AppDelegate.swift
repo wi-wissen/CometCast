@@ -8,6 +8,7 @@ import UIKit
   private var videoBridge: VideoBridge?
   private var linkBridge: LinkBridge?
   private var qrBridge: QrBridge?
+  private var nearbyBridge: NearbyBridge?
 
   override func application(
     _ application: UIApplication,
@@ -27,6 +28,8 @@ import UIKit
       // Universal Links and the system QR scanner (native-apps.md 20.4, section 8).
       linkBridge = LinkBridge(messenger: registrar.messenger())
       qrBridge = QrBridge(messenger: registrar.messenger())
+      // Screens on the same network (spec 14): NWBrowser, results go to the Rust core.
+      nearbyBridge = NearbyBridge(messenger: registrar.messenger())
     }
   }
 }

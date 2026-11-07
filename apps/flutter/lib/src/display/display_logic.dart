@@ -4,6 +4,7 @@
 // (displaySetup.ts, connectionView.ts, idleDim.ts, controlsReveal.ts, joinPrefs.ts).
 
 import 'dart:async';
+import 'dart:math' show Random;
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -203,9 +204,23 @@ abstract class DisplayStore {
   Future<Appearance> loadAppearance();
   Future<void> saveAppearance(Appearance a);
 
-  /// "Reset the app's data" (spec 10): forget setup and appearance.
+  /// The stable random instance id of this installation (spec 14.8, point 2): 16 lower-case hex
+  /// digits, created on first use and kept; a new one after [reset]. Not the host name, not a
+  /// hardware id.
+  Future<String> instanceId();
+
+  /// "Reset the app's data" (spec 10): forget setup, appearance and the instance id.
   Future<void> reset();
 }
+
+/// A new random instance id: 16 lower-case hex digits from a secure random source.
+String newInstanceId([Random? random]) {
+  final r = random ?? Random.secure();
+  return List.generate(16, (_) => r.nextInt(16).toRadixString(16)).join();
+}
+
+/// Is [id] an id that the core accepts (8 to 32 lower-case hex digits)?
+bool isInstanceId(String id) => RegExp(r'^[0-9a-f]{8,32}$').hasMatch(id);
 
 class MemoryDisplayStore implements DisplayStore {
   MemoryDisplayStore({this.setup, this.appearance = Appearance.dark});
@@ -220,10 +235,16 @@ class MemoryDisplayStore implements DisplayStore {
   Future<Appearance> loadAppearance() async => appearance;
   @override
   Future<void> saveAppearance(Appearance a) async => appearance = a;
+  String? _id;
+
+  @override
+  Future<String> instanceId() async => _id ??= newInstanceId();
+
   @override
   Future<void> reset() async {
     setup = null;
     appearance = Appearance.dark;
+    _id = null;
   }
 }
 
@@ -233,6 +254,7 @@ class PrefsDisplayStore implements DisplayStore {
   static const _mode = 'display.mode';
   static const _server = 'display.server';
   static const _look = 'display.appearance';
+  static const _id = 'display.instance_id';
 
   @override
   Future<DisplaySetup?> loadSetup() async {
@@ -293,11 +315,31 @@ class PrefsDisplayStore implements DisplayStore {
     }
   }
 
+  static String? _cached;
+
   @override
-  Future<void> reset() async {
+  Future<String> instanceId() async {
+    final cached = _cached;
+    if (cached != null) return cached;
     try {
       final p = await SharedPreferences.getInstance();
-      for (final k in [_room, _mode, _server, _look]) {
+      final saved = p.getString(_id);
+      if (saved != null && isInstanceId(saved)) return _cached = saved;
+      final fresh = newInstanceId();
+      await p.setString(_id, fresh);
+      return _cached = fresh;
+    } catch (_) {
+      // Not kept: a new id per run (the screen then shows up as a new one; nothing breaks).
+      return _cached = newInstanceId();
+    }
+  }
+
+  @override
+  Future<void> reset() async {
+    _cached = null;
+    try {
+      final p = await SharedPreferences.getInstance();
+      for (final k in [_room, _mode, _server, _look, _id]) {
         await p.remove(k);
       }
     } catch (_) {

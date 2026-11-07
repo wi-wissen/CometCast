@@ -29,6 +29,7 @@ import 'package:cometcast/src/presenter/pages.dart';
 import 'display_support.dart';
 import 'fake_core.dart';
 import 'fake_miracast.dart';
+import 'nearby_support.dart';
 import 'shot.dart';
 import 'solid_frame.dart';
 
@@ -793,6 +794,139 @@ void main() {
       });
     }
   }
+
+  // Screens on this network (spec 14): every state of the section on the app start page, phone
+  // and laptop, light and dark, English; the main states also in German (du).
+  final nearbyScreens = [
+    screen('a', name: 'Meeting room Elbe', code: 'K7QM2W'),
+    screen(
+      'b',
+      name: 'Room 204',
+      mode: NearbyMode.approval,
+      code: 'P4X9TR',
+      server: 'wss://cast.musterfirma.de:443',
+    ),
+    screen('c', name: 'Clubhouse', mode: NearbyMode.locked),
+    screen('d', name: '', code: 'R8M3VA'),
+  ];
+  for (final dev in {
+    'phone': (_phone, PresenterDevice.phone, false),
+    'laptop': (const Size(1100, 800), PresenterDevice.computer, true),
+  }.entries) {
+    for (final b in [Brightness.light, Brightness.dark]) {
+      final p = 'nearby-${dev.key}-${b.name}';
+      final (size, device, desktop) = dev.value;
+      Future<Nearby> open(
+        WidgetTester t, {
+        FakeNearbyPlatform? platform,
+        bool allowed = true,
+        String? code,
+        Locale locale = const Locale('en'),
+      }) => pumpNearby(
+        t,
+        size: size,
+        device: device,
+        desktop: desktop,
+        brightness: b,
+        platform:
+            platform ?? FakeNearbyPlatform(limited: !desktop, native: !desktop),
+        announcementsAllowed: allowed,
+        code: code,
+        locale: locale,
+      );
+      shotTest('$p: found, searching, none, paused', (t) async {
+        var n = await open(t);
+        await shot(t, '$p-searching');
+        await found(t, n, nearbyScreens);
+        await shot(t, '$p-found');
+        await t.tap(find.byKey(const Key('nearby-row-a')));
+        await t.pump(const Duration(milliseconds: 100));
+        await shot(t, '$p-connecting');
+        await done(t, n);
+
+        n = await open(t);
+        await t.pump(const Duration(seconds: 8));
+        await shot(t, '$p-none');
+        if (!desktop) {
+          await t.pump(const Duration(seconds: 52));
+          await shot(t, '$p-paused');
+        }
+        await done(t, n);
+      });
+      shotTest('$p: not asked, denied, no wifi, hidden', (t) async {
+        var n = await open(
+          t,
+          platform: FakeNearbyPlatform(
+            native: true,
+            perm: NearbyPermission.notAsked,
+          ),
+        );
+        await shot(t, '$p-not-asked');
+        await t.tap(find.byKey(const Key('nearby-search')));
+        await t.pump(const Duration(milliseconds: 100));
+        n.core.search.add(
+          const NearbyUiEvent.permission(state: NearbyPermission.denied),
+        );
+        await t.pump(const Duration(milliseconds: 100));
+        await shot(t, '$p-denied');
+        await done(t, n);
+
+        n = await open(t, platform: FakeNearbyPlatform(network: false));
+        await shot(t, '$p-no-wifi');
+        await done(t, n);
+
+        n = await open(t, allowed: false);
+        await shot(t, '$p-hidden-policy');
+        await done(t, n);
+
+        n = await open(t, code: 'K7QM2W');
+        await shot(t, '$p-hidden-chip');
+        await done(t, n);
+      });
+      shotTest('$p: gone line, relay confirmation', (t) async {
+        var n = await open(t);
+        await found(t, n, nearbyScreens);
+        await t.tap(find.byKey(const Key('nearby-row-a')));
+        await t.pump(const Duration(milliseconds: 100));
+        n.core.presenterEvents.add(
+          const PresenterUiEvent.error(code: 'room_not_found', message: 'x'),
+        );
+        await t.pump(const Duration(milliseconds: 100));
+        await shot(t, '$p-gone');
+        await done(t, n);
+
+        n = await open(t);
+        await found(t, n, nearbyScreens);
+        await t.tap(find.byKey(const Key('nearby-row-b')));
+        await t.pump(const Duration(milliseconds: 100));
+        await shot(t, '$p-relay');
+        await done(t, n);
+      });
+    }
+  }
+  shotTest('nearby phone-light-de: found and relay (du)', (t) async {
+    final n = await pumpNearby(
+      t,
+      locale: const Locale('de'),
+      platform: FakeNearbyPlatform(native: true),
+    );
+    await found(t, n, [
+      screen('a', name: 'Besprechungsraum Elbe', code: 'K7QM2W'),
+      screen(
+        'b',
+        name: 'Raum 204',
+        mode: NearbyMode.approval,
+        code: 'P4X9TR',
+        server: 'wss://cast.musterfirma.de:443',
+      ),
+      screen('c', name: 'Vereinsheim', mode: NearbyMode.locked),
+    ]);
+    await shot(t, 'nearby-phone-light-de-found');
+    await t.tap(find.byKey(const Key('nearby-row-b')));
+    await t.pump(const Duration(milliseconds: 100));
+    await shot(t, 'nearby-phone-light-de-relay');
+    await done(t, n);
+  });
 }
 
 /// A core whose pages cannot be taken: the page that cannot be drawn (spec 4.5).

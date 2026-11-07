@@ -2600,6 +2600,606 @@ String toString() {
 
 
 /// @nodoc
+mixin _$NearbyUiEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyUiEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $NearbyUiEventCopyWith<$Res>  {
+$NearbyUiEventCopyWith(NearbyUiEvent _, $Res Function(NearbyUiEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [NearbyUiEvent].
+extension NearbyUiEventPatterns on NearbyUiEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NearbyUiEvent_SearchStarted value)?  searchStarted,TResult Function( NearbyUiEvent_SearchStopped value)?  searchStopped,TResult Function( NearbyUiEvent_Added value)?  added,TResult Function( NearbyUiEvent_Updated value)?  updated,TResult Function( NearbyUiEvent_Removed value)?  removed,TResult Function( NearbyUiEvent_Permission value)?  permission,TResult Function( NearbyUiEvent_Unavailable value)?  unavailable,TResult Function( NearbyUiEvent_Forbidden value)?  forbidden,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case NearbyUiEvent_SearchStarted() when searchStarted != null:
+return searchStarted(_that);case NearbyUiEvent_SearchStopped() when searchStopped != null:
+return searchStopped(_that);case NearbyUiEvent_Added() when added != null:
+return added(_that);case NearbyUiEvent_Updated() when updated != null:
+return updated(_that);case NearbyUiEvent_Removed() when removed != null:
+return removed(_that);case NearbyUiEvent_Permission() when permission != null:
+return permission(_that);case NearbyUiEvent_Unavailable() when unavailable != null:
+return unavailable(_that);case NearbyUiEvent_Forbidden() when forbidden != null:
+return forbidden(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NearbyUiEvent_SearchStarted value)  searchStarted,required TResult Function( NearbyUiEvent_SearchStopped value)  searchStopped,required TResult Function( NearbyUiEvent_Added value)  added,required TResult Function( NearbyUiEvent_Updated value)  updated,required TResult Function( NearbyUiEvent_Removed value)  removed,required TResult Function( NearbyUiEvent_Permission value)  permission,required TResult Function( NearbyUiEvent_Unavailable value)  unavailable,required TResult Function( NearbyUiEvent_Forbidden value)  forbidden,}){
+final _that = this;
+switch (_that) {
+case NearbyUiEvent_SearchStarted():
+return searchStarted(_that);case NearbyUiEvent_SearchStopped():
+return searchStopped(_that);case NearbyUiEvent_Added():
+return added(_that);case NearbyUiEvent_Updated():
+return updated(_that);case NearbyUiEvent_Removed():
+return removed(_that);case NearbyUiEvent_Permission():
+return permission(_that);case NearbyUiEvent_Unavailable():
+return unavailable(_that);case NearbyUiEvent_Forbidden():
+return forbidden(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NearbyUiEvent_SearchStarted value)?  searchStarted,TResult? Function( NearbyUiEvent_SearchStopped value)?  searchStopped,TResult? Function( NearbyUiEvent_Added value)?  added,TResult? Function( NearbyUiEvent_Updated value)?  updated,TResult? Function( NearbyUiEvent_Removed value)?  removed,TResult? Function( NearbyUiEvent_Permission value)?  permission,TResult? Function( NearbyUiEvent_Unavailable value)?  unavailable,TResult? Function( NearbyUiEvent_Forbidden value)?  forbidden,}){
+final _that = this;
+switch (_that) {
+case NearbyUiEvent_SearchStarted() when searchStarted != null:
+return searchStarted(_that);case NearbyUiEvent_SearchStopped() when searchStopped != null:
+return searchStopped(_that);case NearbyUiEvent_Added() when added != null:
+return added(_that);case NearbyUiEvent_Updated() when updated != null:
+return updated(_that);case NearbyUiEvent_Removed() when removed != null:
+return removed(_that);case NearbyUiEvent_Permission() when permission != null:
+return permission(_that);case NearbyUiEvent_Unavailable() when unavailable != null:
+return unavailable(_that);case NearbyUiEvent_Forbidden() when forbidden != null:
+return forbidden(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  searchStarted,TResult Function()?  searchStopped,TResult Function( NearbyScreenInfo screen)?  added,TResult Function( NearbyScreenInfo screen)?  updated,TResult Function( String id)?  removed,TResult Function( NearbyPermission state)?  permission,TResult Function()?  unavailable,TResult Function()?  forbidden,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case NearbyUiEvent_SearchStarted() when searchStarted != null:
+return searchStarted();case NearbyUiEvent_SearchStopped() when searchStopped != null:
+return searchStopped();case NearbyUiEvent_Added() when added != null:
+return added(_that.screen);case NearbyUiEvent_Updated() when updated != null:
+return updated(_that.screen);case NearbyUiEvent_Removed() when removed != null:
+return removed(_that.id);case NearbyUiEvent_Permission() when permission != null:
+return permission(_that.state);case NearbyUiEvent_Unavailable() when unavailable != null:
+return unavailable();case NearbyUiEvent_Forbidden() when forbidden != null:
+return forbidden();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  searchStarted,required TResult Function()  searchStopped,required TResult Function( NearbyScreenInfo screen)  added,required TResult Function( NearbyScreenInfo screen)  updated,required TResult Function( String id)  removed,required TResult Function( NearbyPermission state)  permission,required TResult Function()  unavailable,required TResult Function()  forbidden,}) {final _that = this;
+switch (_that) {
+case NearbyUiEvent_SearchStarted():
+return searchStarted();case NearbyUiEvent_SearchStopped():
+return searchStopped();case NearbyUiEvent_Added():
+return added(_that.screen);case NearbyUiEvent_Updated():
+return updated(_that.screen);case NearbyUiEvent_Removed():
+return removed(_that.id);case NearbyUiEvent_Permission():
+return permission(_that.state);case NearbyUiEvent_Unavailable():
+return unavailable();case NearbyUiEvent_Forbidden():
+return forbidden();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  searchStarted,TResult? Function()?  searchStopped,TResult? Function( NearbyScreenInfo screen)?  added,TResult? Function( NearbyScreenInfo screen)?  updated,TResult? Function( String id)?  removed,TResult? Function( NearbyPermission state)?  permission,TResult? Function()?  unavailable,TResult? Function()?  forbidden,}) {final _that = this;
+switch (_that) {
+case NearbyUiEvent_SearchStarted() when searchStarted != null:
+return searchStarted();case NearbyUiEvent_SearchStopped() when searchStopped != null:
+return searchStopped();case NearbyUiEvent_Added() when added != null:
+return added(_that.screen);case NearbyUiEvent_Updated() when updated != null:
+return updated(_that.screen);case NearbyUiEvent_Removed() when removed != null:
+return removed(_that.id);case NearbyUiEvent_Permission() when permission != null:
+return permission(_that.state);case NearbyUiEvent_Unavailable() when unavailable != null:
+return unavailable();case NearbyUiEvent_Forbidden() when forbidden != null:
+return forbidden();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class NearbyUiEvent_SearchStarted extends NearbyUiEvent {
+  const NearbyUiEvent_SearchStarted(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_SearchStarted);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyUiEvent.searchStarted()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class NearbyUiEvent_SearchStopped extends NearbyUiEvent {
+  const NearbyUiEvent_SearchStopped(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_SearchStopped);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyUiEvent.searchStopped()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class NearbyUiEvent_Added extends NearbyUiEvent {
+  const NearbyUiEvent_Added({required this.screen}): super._();
+  
+
+/// The screen.
+ final  NearbyScreenInfo screen;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NearbyUiEvent_AddedCopyWith<NearbyUiEvent_Added> get copyWith => _$NearbyUiEvent_AddedCopyWithImpl<NearbyUiEvent_Added>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_Added&&(identical(other.screen, screen) || other.screen == screen));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,screen);
+}
+
+@override
+String toString() {
+    return 'NearbyUiEvent.added(screen: $screen)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NearbyUiEvent_AddedCopyWith<$Res> implements $NearbyUiEventCopyWith<$Res> {
+  factory $NearbyUiEvent_AddedCopyWith(NearbyUiEvent_Added value, $Res Function(NearbyUiEvent_Added) _then) = _$NearbyUiEvent_AddedCopyWithImpl;
+@useResult
+$Res call({
+ NearbyScreenInfo screen
+});
+
+
+
+
+}
+/// @nodoc
+class _$NearbyUiEvent_AddedCopyWithImpl<$Res>
+    implements $NearbyUiEvent_AddedCopyWith<$Res> {
+  _$NearbyUiEvent_AddedCopyWithImpl(this._self, this._then);
+
+  final NearbyUiEvent_Added _self;
+  final $Res Function(NearbyUiEvent_Added) _then;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? screen = null,}) {
+  return _then(NearbyUiEvent_Added(
+screen: null == screen ? _self.screen : screen // ignore: cast_nullable_to_non_nullable
+as NearbyScreenInfo,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NearbyUiEvent_Updated extends NearbyUiEvent {
+  const NearbyUiEvent_Updated({required this.screen}): super._();
+  
+
+/// The screen.
+ final  NearbyScreenInfo screen;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NearbyUiEvent_UpdatedCopyWith<NearbyUiEvent_Updated> get copyWith => _$NearbyUiEvent_UpdatedCopyWithImpl<NearbyUiEvent_Updated>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_Updated&&(identical(other.screen, screen) || other.screen == screen));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,screen);
+}
+
+@override
+String toString() {
+    return 'NearbyUiEvent.updated(screen: $screen)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NearbyUiEvent_UpdatedCopyWith<$Res> implements $NearbyUiEventCopyWith<$Res> {
+  factory $NearbyUiEvent_UpdatedCopyWith(NearbyUiEvent_Updated value, $Res Function(NearbyUiEvent_Updated) _then) = _$NearbyUiEvent_UpdatedCopyWithImpl;
+@useResult
+$Res call({
+ NearbyScreenInfo screen
+});
+
+
+
+
+}
+/// @nodoc
+class _$NearbyUiEvent_UpdatedCopyWithImpl<$Res>
+    implements $NearbyUiEvent_UpdatedCopyWith<$Res> {
+  _$NearbyUiEvent_UpdatedCopyWithImpl(this._self, this._then);
+
+  final NearbyUiEvent_Updated _self;
+  final $Res Function(NearbyUiEvent_Updated) _then;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? screen = null,}) {
+  return _then(NearbyUiEvent_Updated(
+screen: null == screen ? _self.screen : screen // ignore: cast_nullable_to_non_nullable
+as NearbyScreenInfo,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NearbyUiEvent_Removed extends NearbyUiEvent {
+  const NearbyUiEvent_Removed({required this.id}): super._();
+  
+
+/// The id of the screen.
+ final  String id;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NearbyUiEvent_RemovedCopyWith<NearbyUiEvent_Removed> get copyWith => _$NearbyUiEvent_RemovedCopyWithImpl<NearbyUiEvent_Removed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_Removed&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id);
+}
+
+@override
+String toString() {
+    return 'NearbyUiEvent.removed(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NearbyUiEvent_RemovedCopyWith<$Res> implements $NearbyUiEventCopyWith<$Res> {
+  factory $NearbyUiEvent_RemovedCopyWith(NearbyUiEvent_Removed value, $Res Function(NearbyUiEvent_Removed) _then) = _$NearbyUiEvent_RemovedCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$NearbyUiEvent_RemovedCopyWithImpl<$Res>
+    implements $NearbyUiEvent_RemovedCopyWith<$Res> {
+  _$NearbyUiEvent_RemovedCopyWithImpl(this._self, this._then);
+
+  final NearbyUiEvent_Removed _self;
+  final $Res Function(NearbyUiEvent_Removed) _then;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(NearbyUiEvent_Removed(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NearbyUiEvent_Permission extends NearbyUiEvent {
+  const NearbyUiEvent_Permission({required this.state}): super._();
+  
+
+/// The new state.
+ final  NearbyPermission state;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NearbyUiEvent_PermissionCopyWith<NearbyUiEvent_Permission> get copyWith => _$NearbyUiEvent_PermissionCopyWithImpl<NearbyUiEvent_Permission>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_Permission&&(identical(other.state, state) || other.state == state));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,state);
+}
+
+@override
+String toString() {
+    return 'NearbyUiEvent.permission(state: $state)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NearbyUiEvent_PermissionCopyWith<$Res> implements $NearbyUiEventCopyWith<$Res> {
+  factory $NearbyUiEvent_PermissionCopyWith(NearbyUiEvent_Permission value, $Res Function(NearbyUiEvent_Permission) _then) = _$NearbyUiEvent_PermissionCopyWithImpl;
+@useResult
+$Res call({
+ NearbyPermission state
+});
+
+
+
+
+}
+/// @nodoc
+class _$NearbyUiEvent_PermissionCopyWithImpl<$Res>
+    implements $NearbyUiEvent_PermissionCopyWith<$Res> {
+  _$NearbyUiEvent_PermissionCopyWithImpl(this._self, this._then);
+
+  final NearbyUiEvent_Permission _self;
+  final $Res Function(NearbyUiEvent_Permission) _then;
+
+/// Create a copy of NearbyUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? state = null,}) {
+  return _then(NearbyUiEvent_Permission(
+state: null == state ? _self.state : state // ignore: cast_nullable_to_non_nullable
+as NearbyPermission,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NearbyUiEvent_Unavailable extends NearbyUiEvent {
+  const NearbyUiEvent_Unavailable(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_Unavailable);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyUiEvent.unavailable()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class NearbyUiEvent_Forbidden extends NearbyUiEvent {
+  const NearbyUiEvent_Forbidden(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is NearbyUiEvent_Forbidden);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'NearbyUiEvent.forbidden()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$PresenterUiEvent {
 
 

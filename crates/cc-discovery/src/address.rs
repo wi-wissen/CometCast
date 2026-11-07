@@ -182,6 +182,14 @@ fn is_unique_local_v6(a: Ipv6Addr) -> bool {
     a.segments()[0] & 0xfe00 == 0xfc00
 }
 
+/// Is `ip` in a private range (RFC 1918, `100.64.0.0/10`, unique-local IPv6)?
+pub fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => is_private_v4(a),
+        IpAddr::V6(a) => is_unique_local_v6(a),
+    }
+}
+
 /// Check a DNS host name (letters, digits, hyphens; labels of 1 to 63 characters) and return
 /// it in lower case without a trailing dot. Underscores are refused.
 ///
@@ -270,6 +278,43 @@ pub fn clean_text(s: &str, max_chars: usize) -> String {
     s.chars()
         .filter(|c| !c.is_control() && !is_invisible_format(*c))
         .take(max_chars)
+        .collect::<String>()
+        .trim()
+        .to_owned()
+}
+
+/// Characters of the private-use areas (they have no agreed meaning and can be used to fake
+/// symbols).
+fn is_private_use(c: char) -> bool {
+    matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+}
+
+/// Longest room name in characters (spec 13.2, 14.3).
+pub const MAX_ROOM_NAME_CHARS: usize = 32;
+
+/// Clean a room name that came from the network like the display cleans `room_name`
+/// (spec 13.2): control, format (bidi, zero-width), invisible and private-use characters are
+/// removed, white space runs become one blank, the result is trimmed and cut at
+/// [`MAX_ROOM_NAME_CHARS`] characters. May be empty.
+pub fn clean_room_name(s: &str) -> String {
+    let mut out = String::new();
+    let mut pending_blank = false;
+    for c in s.chars() {
+        if c.is_whitespace() || matches!(c, '\t' | '\n' | '\r') {
+            pending_blank = !out.is_empty();
+            continue;
+        }
+        if c.is_control() || is_invisible_format(c) || is_private_use(c) {
+            continue;
+        }
+        if pending_blank {
+            out.push(' ');
+            pending_blank = false;
+        }
+        out.push(c);
+    }
+    out.chars()
+        .take(MAX_ROOM_NAME_CHARS)
         .collect::<String>()
         .trim()
         .to_owned()
@@ -474,5 +519,22 @@ mod tests {
     fn clean_text_strips_controls_and_cuts() {
         assert_eq!(clean_text("  a\u{7}b\nc  ", 10), "abc");
         assert_eq!(clean_text(&"x".repeat(500), 5), "xxxxx");
+    }
+
+    #[test]
+    fn room_names_are_cleaned_like_the_display_does() {
+        assert_eq!(clean_room_name("  Room \t 204\n "), "Room 204");
+        assert_eq!(
+            clean_room_name("A\u{202e}B\u{200b}C\u{e000}D\u{7}E"),
+            "ABCDE"
+        );
+        assert_eq!(clean_room_name("\u{200b}\u{7}"), "");
+        assert_eq!(clean_room_name(&"x".repeat(100)).chars().count(), 32);
+        assert_eq!(clean_room_name("a   b"), "a b");
+        // The cut never leaves a trailing blank.
+        assert_eq!(
+            clean_room_name(&format!("{} y", "x".repeat(31))),
+            "x".repeat(31)
+        );
     }
 }

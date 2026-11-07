@@ -15,6 +15,8 @@ workspace = true
 [dependencies]
 async-trait.workspace = true
 hickory-resolver.workspace = true
+# Interfaces of this machine ("is there a local network?"); already a dependency of mdns-sd.
+if-addrs = "0.15"
 mdns-sd.workspace = true
 # Reads the macOS managed-preferences file (a property list).
 plist = "1"
@@ -30,3 +32,4 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }

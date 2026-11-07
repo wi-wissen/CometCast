@@ -12,7 +12,10 @@
 //! | `tls` | `1`: the server speaks TLS (`wss://`), otherwise plain `ws://` |
 //! | `name` | friendly name shown to people |
 //!
-//! The room code is NOT announced.
+//! This is the older, small layout (`v`, `srv`, `tls`, `name`) that [`advertise_receiver`] still
+//! writes and that server discovery reads. The announcement of a display device with an id, a
+//! join mode and, for Open and With approval, the current room code is written by
+//! `crate::display` and read by `crate::nearby` (`docs/discovery.md`, section 3).
 //!
 //! Everything read from the network is untrusted: any device on the local network can send
 //! such a record. The announced server is checked with [`Trust::Network`] (host name, or a
@@ -28,7 +31,8 @@
 //! UNCERTAIN: never run on a real network with several devices. Multicast may be filtered by
 //! switches or access points, which is exactly the situation in which the receiver does not
 //! show up (docs/measurement-points.md, A8). Apple and Android backends (NWBrowser,
-//! NsdManager) are not implemented here; this is the `mdns-sd` backend for desktop.
+//! NsdManager) are bridges in the apps (`docs/discovery.md`); this is the `mdns-sd` backend for
+//! desktop.
 
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -39,6 +43,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::address::{Trust, clean_text, network_server, normalize_server};
+use crate::nearby::{RawRecord, RawSink};
 
 /// DNS-SD service type with domain, as `mdns-sd` wants it.
 pub const MDNS_SERVICE_TYPE: &str = "_cometcast._tcp.local.";
@@ -303,6 +308,99 @@ pub fn discover_receivers() -> Result<ReceiverBrowser, MdnsError> {
         }
     });
     Ok(ReceiverBrowser { rx, daemon, task })
+}
+
+/// Stops a raw `mdns-sd` browse (and its daemon) when dropped.
+pub struct MdnsBrowseGuard {
+    daemon: ServiceDaemon,
+    task: JoinHandle<()>,
+}
+
+impl Drop for MdnsBrowseGuard {
+    fn drop(&mut self) {
+        self.task.abort();
+        let _ = self.daemon.stop_browse(MDNS_SERVICE_TYPE);
+        let _ = self.daemon.shutdown();
+    }
+}
+
+/// Browse with `mdns-sd` and hand the raw records to `sink` (the checks happen in
+/// `crate::nearby`). Must be called inside a Tokio runtime.
+pub(crate) fn start_raw_mdns_browse(sink: RawSink) -> Result<MdnsBrowseGuard, MdnsError> {
+    let daemon = ServiceDaemon::new().map_err(|e| MdnsError(e.to_string()))?;
+    let mut events = daemon
+        .browse(MDNS_SERVICE_TYPE)
+        .map_err(|e| MdnsError(e.to_string()))?;
+    let browse_daemon = daemon.clone();
+    let task = tokio::spawn(async move {
+        // `mdns-sd` reports a record only when it is new or changed, but a display refreshes
+        // its record without changing it, and a row is dropped after 30 s without a refresh.
+        // So the browse is started again every `RE_BROWSE_EVERY`: the displays answer the new
+        // query and the answers are reported again.
+        let mut tick = tokio::time::interval_at(
+            tokio::time::Instant::now() + RE_BROWSE_EVERY,
+            RE_BROWSE_EVERY,
+        );
+        loop {
+            tokio::select! {
+                ev = events.recv_async() => {
+                    let Ok(ev) = ev else { break };
+                    forward_event(&sink, ev);
+                }
+                _ = tick.tick() => {
+                    let _ = browse_daemon.stop_browse(MDNS_SERVICE_TYPE);
+                    match browse_daemon.browse(MDNS_SERVICE_TYPE) {
+                        Ok(e) => events = e,
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+    });
+    Ok(MdnsBrowseGuard { daemon, task })
+}
+
+/// How often the raw browse is started again (see [`start_raw_mdns_browse`]).
+const RE_BROWSE_EVERY: Duration = Duration::from_secs(10);
+
+fn forward_event(sink: &RawSink, ev: ServiceEvent) {
+    match ev {
+        ServiceEvent::ServiceResolved(info) => {
+            let Some(instance) = info
+                .get_fullname()
+                .strip_suffix(MDNS_SERVICE_TYPE)
+                .and_then(|i| i.strip_suffix('.'))
+            else {
+                return;
+            };
+            let mut addresses: Vec<IpAddr> = info
+                .get_addresses()
+                .iter()
+                .map(mdns_sd::ScopedIp::to_ip_addr)
+                .collect();
+            addresses.sort();
+            addresses.truncate(MAX_ADDRESSES);
+            sink.seen(RawRecord {
+                instance: instance.to_owned(),
+                addresses,
+                txt: info
+                    .get_properties()
+                    .iter()
+                    .take(32)
+                    .map(|p| (p.key().to_owned(), p.val_str().to_owned()))
+                    .collect(),
+            });
+        }
+        ServiceEvent::ServiceRemoved(_, fullname) => {
+            if let Some(i) = fullname
+                .strip_suffix(MDNS_SERVICE_TYPE)
+                .and_then(|i| i.strip_suffix('.'))
+            {
+                sink.gone(i.to_owned());
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Remember `r` in `list` (at most [`MAX_RECEIVERS`] entries, one per instance name).

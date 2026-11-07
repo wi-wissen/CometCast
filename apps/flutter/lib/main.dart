@@ -17,6 +17,7 @@ import 'core/core_api.dart';
 import 'core/app_links.dart';
 import 'core/ios_broadcast.dart';
 import 'core/launch_intake.dart';
+import 'core/nearby_platform.dart';
 import 'core/link_target.dart' show LinkNothing;
 import 'core/link_target.dart' show LinkOutcome;
 import 'core/qr_scanner.dart';
@@ -91,6 +92,9 @@ Future<void> main() async {
       firstLaunch: firstLaunch && launch is LinkNothing,
       links: handler,
       scanQr: canScan ? scanner.scan : null,
+      // The list of screens on the network (spec 14): Android NsdManager and iOS NWBrowser
+      // through the bridge, mdns-sd in the core on computers. TVs never show it (no presenter).
+      nearbyPlatform: android.tv ? null : nearbyPlatformFor(core),
     ),
   );
 }
@@ -174,6 +178,7 @@ class CometCastApp extends StatelessWidget {
     this.links,
     this.scanQr,
     this.canOpenLinks,
+    this.nearbyPlatform,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
 
   /// What the display remembers (a memory store in tests).
@@ -201,6 +206,9 @@ class CometCastApp extends StatelessWidget {
 
   /// Can the system open web links? Null = ask the system (tests answer directly).
   final CanOpenLinks? canOpenLinks;
+
+  /// The platform part of the list of screens on the network (spec 14); null = no list (tests).
+  final NearbyPlatform? nearbyPlatform;
 
   final Locale? locale;
 
@@ -296,6 +304,7 @@ class CometCastApp extends StatelessWidget {
         links: links,
         scanQr: scanQr,
         canOpenLinks: canOpenLinks,
+        nearbyPlatform: nearbyPlatform,
       ),
     );
   }

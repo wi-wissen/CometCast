@@ -442,6 +442,63 @@ class FakeCoreApi implements CoreApi {
   @override
   Future<void> stopWatchingReceivers() async => stopWatchingCalls++;
 
+  // The display announcement (spec 14.8).
+  final announceCalls = <({bool active, String id})>[];
+  AnnounceStatus announceStatus = AnnounceStatus.announcing;
+
+  @override
+  Future<AnnounceStatus> setDisplayAnnouncing({
+    required bool active,
+    required String instanceId,
+  }) async {
+    announceCalls.add((active: active, id: instanceId));
+    return announceStatus;
+  }
+
+  // Screens on this network (spec 14): one stream per search, driven by the test.
+  final nearbySearches = <StreamController<NearbyUiEvent>>[];
+  final nearbyNativeFlags = <bool>[];
+  int nearbyStopCalls = 0;
+  bool hasLocalNetwork = true;
+  final nativeSeen = <({String instance, List<String> addresses})>[];
+  final nativeGone = <String>[];
+  int nativeResets = 0;
+  final nativePermissions = <NearbyPermission>[];
+
+  /// The controller of the newest search.
+  StreamController<NearbyUiEvent> get search => nearbySearches.last;
+
+  @override
+  Stream<NearbyUiEvent> watchNearbyScreens({required bool native}) {
+    nearbyNativeFlags.add(native);
+    final c = StreamController<NearbyUiEvent>();
+    nearbySearches.add(c);
+    return c.stream;
+  }
+
+  @override
+  Future<void> stopNearbyScreens() async => nearbyStopCalls++;
+
+  @override
+  void nearbyNativeSeen({
+    required String instance,
+    required List<String> addresses,
+    required List<(String, String)> txt,
+  }) => nativeSeen.add((instance: instance, addresses: addresses));
+
+  @override
+  void nearbyNativeGone(String instance) => nativeGone.add(instance);
+
+  @override
+  void nearbyNativeReset() => nativeResets++;
+
+  @override
+  void nearbyNativePermission(NearbyPermission state) =>
+      nativePermissions.add(state);
+
+  @override
+  bool localNetworkAvailable() => hasLocalNetwork;
+
   @override
   Stream<SenderUiEvent> startSender({
     required String code,

@@ -411,4 +411,100 @@ void main() {
       skip: skip,
     );
   });
+  group('screens on this network (the real core)', () {
+    test(
+      'a native bridge feeds the list; the core checks and cleans',
+      () async {
+        const core = RustCoreApi();
+        final events = <NearbyUiEvent>[];
+        final sub = core.watchNearbyScreens(native: true).listen(events.add);
+        addTearDown(sub.cancel);
+        Future<void> until(bool Function() ok) async {
+          for (var i = 0; i < 100 && !ok(); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
+        }
+
+        await until(() => events.isNotEmpty);
+        expect(events.first, isA<NearbyUiEvent_SearchStarted>());
+        const id = '0123456789abcdef';
+        core.nearbyNativeSeen(
+          instance: 'CometCast-01234567',
+          addresses: ['10.0.0.5'],
+          txt: [
+            ('v', '1'),
+            ('id', id),
+            ('srv', '10.0.0.5:8443'),
+            ('mode', 'approval'),
+            ('code', 'P4X9TR'),
+            ('name', '\u202e Room\t 204 '),
+          ],
+        );
+        // Hostile records leave no trace: wrong code alphabet, public IP, other layout version.
+        for (final txt in [
+          [
+            ('v', '1'),
+            ('id', 'fedcba9876543210'),
+            ('srv', '10.0.0.6:8443'),
+            ('mode', 'open'),
+            ('code', 'P4X9T0'),
+          ],
+          [
+            ('v', '1'),
+            ('id', 'fedcba9876543211'),
+            ('srv', '8.8.8.8:443'),
+            ('mode', 'open'),
+            ('code', 'P4X9TR'),
+          ],
+          [
+            ('v', '2'),
+            ('id', 'fedcba9876543212'),
+            ('srv', '10.0.0.6:8443'),
+            ('mode', 'open'),
+            ('code', 'P4X9TR'),
+          ],
+        ]) {
+          core.nearbyNativeSeen(
+            instance: 'evil',
+            addresses: ['10.0.0.66'],
+            txt: txt,
+          );
+        }
+        await until(() => events.any((e) => e is NearbyUiEvent_Added));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final added = events.whereType<NearbyUiEvent_Added>().toList();
+        expect(added, hasLength(1));
+        final s = added.single.screen;
+        expect(s.id, id);
+        expect(s.name, 'Room 204');
+        expect(s.server, 'ws://10.0.0.5:8443');
+        expect(s.mode, NearbyMode.approval);
+        expect(s.code, 'P4X9TR');
+        // A goodbye removes the row at once; Locked carries no code.
+        core.nearbyNativeGone('CometCast-01234567');
+        await until(() => events.any((e) => e is NearbyUiEvent_Removed));
+        expect(events.whereType<NearbyUiEvent_Removed>().single.id, id);
+        await core.stopNearbyScreens();
+        await until(() => events.any((e) => e is NearbyUiEvent_SearchStopped));
+        expect(events.last, isA<NearbyUiEvent_SearchStopped>());
+      },
+      skip: skip,
+    );
+
+    test('the display announcement needs a valid id', () async {
+      const core = RustCoreApi();
+      expect(
+        await core.setDisplayAnnouncing(active: true, instanceId: 'nope'),
+        AnnounceStatus.badId,
+      );
+      expect(
+        await core.setDisplayAnnouncing(
+          active: false,
+          instanceId: '0123456789abcdef',
+        ),
+        anyOf(AnnounceStatus.off, AnnounceStatus.forbiddenByPolicy),
+      );
+      expect(core.localNetworkAvailable(), isA<bool>());
+    }, skip: skip);
+  });
 }

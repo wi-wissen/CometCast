@@ -24,6 +24,7 @@ enum CcIconName {
   file,
   link,
   scan,
+  search,
 }
 
 sealed class _Shape {
@@ -93,6 +94,7 @@ const Map<CcIconName, List<_Shape>> _shapes = {
       'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3',
     ),
   ],
+  CcIconName.search: [_C(11, 11, 7), _P('M20 20l-4-4')],
 };
 
 /// Stroke weights: 2 by default; the tick is heavier.
