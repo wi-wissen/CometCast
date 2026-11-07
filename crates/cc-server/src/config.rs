@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use cc_proto::JoinMode;
 use ipnet::IpNet;
 use serde::Deserialize;
 
@@ -147,6 +148,14 @@ pub struct LimitsConfig {
     /// failures (a /48 has many more users than a /64). UNCERTAIN: the default is a
     /// placeholder.
     pub wide_failure_factor: u32,
+    /// Most senders that may wait for approval in one room at the same time.
+    pub max_pending_per_room: usize,
+    /// Most senders waiting for approval (in all rooms) that one client address may have.
+    pub max_pending_per_ip: usize,
+    /// A join request that the display device denied or let time out counts like this many
+    /// failures toward a temporary ban of the sender's address (0 = never). UNCERTAIN: a
+    /// whole school behind one address shares this budget.
+    pub denied_join_weight: u32,
 }
 
 /// UNCERTAIN: factor 10 is a placeholder (the first version used 4, which is probably too
@@ -185,6 +194,9 @@ impl LimitsConfig {
                 max_bad_messages: 20,
                 global_failed_joins_per_min: 300,
                 wide_failure_factor: DEFAULT_WIDE_FAILURE_FACTOR,
+                max_pending_per_room: 8,
+                max_pending_per_ip: 3,
+                denied_join_weight: 2,
             },
             Mode::Internal => Self {
                 connections_per_min: 300,
@@ -212,6 +224,9 @@ impl LimitsConfig {
                 max_bad_messages: 50,
                 global_failed_joins_per_min: 1000,
                 wide_failure_factor: DEFAULT_WIDE_FAILURE_FACTOR,
+                max_pending_per_room: 8,
+                max_pending_per_ip: 8,
+                denied_join_weight: 2,
             },
         }
     }
@@ -291,6 +306,12 @@ pub struct ServerConfig {
     /// check on `/ws`. Empty = same-origin only for HTTP and any `Origin` on `/ws`.
     /// `*` = any origin (internal mode only). See docs/server.md.
     pub allowed_origins: Vec<String>,
+    /// Join mode of rooms whose creator did not choose one. Never `locked`.
+    pub default_join_mode: JoinMode,
+    /// `false` = rooms with join mode `open` are refused (operators who want approval).
+    pub allow_open_rooms: bool,
+    /// How long a join request waits for the display device's decision.
+    pub join_approval_timeout: Duration,
     /// A room without a sender is removed after this time.
     pub idle_room_timeout: Duration,
     /// A connection must send a valid `hello` within this time.
@@ -321,6 +342,9 @@ pub const MIN_SECRET_LEN: usize = 16;
 /// UNCERTAIN: 30 minutes is a placeholder. A good value needs real usage data
 /// (how long people wait with a code on screen), measured later.
 pub const DEFAULT_IDLE_ROOM_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// UNCERTAIN: 60 seconds is a placeholder for how long a join request waits for the display
+/// device's decision.
+pub const DEFAULT_JOIN_APPROVAL_TIMEOUT: Duration = Duration::from_secs(60);
 /// UNCERTAIN: 5 seconds is a placeholder; to be checked on slow mobile networks.
 pub const DEFAULT_HELLO_TIMEOUT: Duration = Duration::from_secs(5);
 /// UNCERTAIN: 64 KiB is a placeholder; it must be checked against real SDP sizes
@@ -343,6 +367,9 @@ impl ServerConfig {
             mode,
             web_dir: None,
             allowed_origins: Vec::new(),
+            default_join_mode: JoinMode::Open,
+            allow_open_rooms: true,
+            join_approval_timeout: DEFAULT_JOIN_APPROVAL_TIMEOUT,
             idle_room_timeout: DEFAULT_IDLE_ROOM_TIMEOUT,
             hello_timeout: DEFAULT_HELLO_TIMEOUT,
             no_room_timeout: DEFAULT_NO_ROOM_TIMEOUT,
@@ -379,6 +406,8 @@ impl ServerConfig {
                 l.global_failed_joins_per_min,
             ),
             ("limits.wide_failure_factor", l.wide_failure_factor),
+            ("limits.max_pending_per_room", l.max_pending_per_room as u32),
+            ("limits.max_pending_per_ip", l.max_pending_per_ip as u32),
             ("altcha.cost", self.altcha.cost),
             ("altcha.base_counter", self.altcha.base_counter),
             (
@@ -397,6 +426,19 @@ impl ServerConfig {
                 "limits.global_failed_joins_per_min must be at most {} (the number of remembered events)",
                 crate::limits::EVENT_CAP
             )));
+        }
+        if self.default_join_mode == JoinMode::Locked {
+            return Err(ConfigError::new(
+                "default_join_mode must be \"open\" or \"confirm\" (a room that is locked from the start could never be joined)",
+            ));
+        }
+        if !self.allow_open_rooms && self.default_join_mode == JoinMode::Open {
+            return Err(ConfigError::new(
+                "allow_open_rooms = false needs default_join_mode = \"confirm\"",
+            ));
+        }
+        if self.join_approval_timeout.is_zero() {
+            return Err(ConfigError::new("join_approval_secs must be at least 1"));
         }
         if l.max_rooms == 0 || l.max_connections == 0 {
             return Err(ConfigError::new(

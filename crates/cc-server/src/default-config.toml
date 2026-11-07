@@ -22,6 +22,15 @@ listen = "127.0.0.1:8443"
 # "*" = any origin (internal mode only). Env: COMETCAST_ALLOWED_ORIGINS=a,b  CLI: --allowed-origins a,b
 allowed_origins = []
 
+# Join approval (see docs/protocol.md "Join approval"). Receivers that know the feature choose the
+# mode of their room themselves; this is the mode for rooms whose creator names none.
+# "open" = anyone with the code joins at once, "confirm" = the display device must allow every join.
+default_join_mode = "open"
+# false = refuse rooms in "open" join mode (operators who want approval everywhere; then
+# default_join_mode must be "confirm"). Older clients that know nothing of approval are refused.
+allow_open_rooms = true
+join_approval_secs = 60    # a join request waits this long for the display device
+
 # Time limits in seconds.
 idle_room_secs = 1800      # room without sender is removed after this
 hello_secs = 5             # a connection must say hello within this
@@ -73,6 +82,9 @@ bytes_burst = 1048576           # ... with this burst (at least max_message_byte
 max_room_relay_bytes = 67108864 # relayed through one room over its whole life
 max_bad_messages = 50           # garbage / wrong-role messages before the connection is closed
 global_failed_joins_per_min = 1000  # whole server: above this, joins are slowed for everybody (at most 10000)
+max_pending_per_room = 8        # senders waiting for approval in one room
+max_pending_per_ip = 8          # senders waiting for approval from one address (all rooms)
+denied_join_weight = 2          # a denied / timed-out join counts as this many failures toward a ban (0 = off)
 wide_failure_factor = 10        # an IPv6 /48 is banned after ban_after_failed_joins * this many failures
 
 # Proof-of-work (ALTCHA) for creating a room.

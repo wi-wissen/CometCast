@@ -91,8 +91,8 @@ where
 }
 
 async fn hello(ws: &mut Ws, role: &str) {
-    send(ws, json!({"type":"hello","proto_version":1,"role":role})).await;
-    assert_eq!(recv(ws).await, json!({"type":"hello","proto_version":1}));
+    send(ws, json!({"type":"hello","proto_version":2,"role":role})).await;
+    assert_eq!(recv(ws).await, json!({"type":"hello","proto_version":2}));
 }
 
 fn error_code(v: &Value) -> &str {
@@ -263,7 +263,7 @@ async fn good_joins_are_not_punished() {
         hello(&mut s, "sender").await;
         send(&mut s, json!({"type":"join_room","code":code})).await;
         assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
-        assert_eq!(recv(&mut r).await, json!({"type":"peer_joined"}));
+        assert_eq!(recv(&mut r).await["type"], "peer_joined");
         drop(s);
         assert_eq!(recv(&mut r).await, json!({"type":"peer_left"}));
     }
@@ -620,7 +620,7 @@ async fn wss_roundtrip(addr: SocketAddr, tls: Arc<rustls::ClientConfig>) {
     .expect("WSS connection with the trusted certificate");
     send(
         &mut ws,
-        json!({"type":"hello","proto_version":1,"role":"receiver"}),
+        json!({"type":"hello","proto_version":2,"role":"receiver"}),
     )
     .await;
     let m = tokio::time::timeout(Duration::from_secs(5), ws.next())
@@ -633,7 +633,7 @@ async fn wss_roundtrip(addr: SocketAddr, tls: Arc<rustls::ClientConfig>) {
     };
     assert_eq!(
         serde_json::from_str::<Value>(t.as_str()).unwrap(),
-        json!({"type":"hello","proto_version":1})
+        json!({"type":"hello","proto_version":2})
     );
     send(&mut ws, json!({"type":"create_room"})).await;
     let m = ws.next().await.unwrap().unwrap();
@@ -802,7 +802,7 @@ async fn paired(addr: SocketAddr) -> (Ws, Ws, String) {
     hello(&mut s, "sender").await;
     send(&mut s, json!({"type":"join_room","code":code})).await;
     assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
-    assert_eq!(recv(&mut r).await, json!({"type":"peer_joined"}));
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
     (r, s, code)
 }
 
@@ -1023,7 +1023,7 @@ async fn flooding_leads_to_a_ban_when_the_threshold_is_reached() {
     for _ in 0..6 {
         let _ = r
             .send(Message::text(
-                json!({"type":"hello","proto_version":1,"role":"receiver"}).to_string(),
+                json!({"type":"hello","proto_version":2,"role":"receiver"}).to_string(),
             ))
             .await;
     }

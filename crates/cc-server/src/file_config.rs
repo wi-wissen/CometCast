@@ -12,6 +12,7 @@ use ipnet::IpNet;
 use serde::Deserialize;
 
 use crate::config::{AltchaMode, ConfigError, Mode, Secret, ServerConfig, TurnConfig};
+use cc_proto::JoinMode;
 
 /// The commented default configuration printed by `--print-default-config`.
 /// A test checks that it describes exactly `ServerConfig::default()`.
@@ -120,6 +121,9 @@ struct FileLimits {
     max_bad_messages: Option<u32>,
     global_failed_joins_per_min: Option<u32>,
     wide_failure_factor: Option<u32>,
+    max_pending_per_room: Option<usize>,
+    max_pending_per_ip: Option<usize>,
+    denied_join_weight: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -152,6 +156,9 @@ struct FileConfig {
     listen: Option<SocketAddr>,
     web_dir: Option<PathBuf>,
     allowed_origins: Option<StringList>,
+    default_join_mode: Option<JoinMode>,
+    allow_open_rooms: Option<bool>,
+    join_approval_secs: Option<u64>,
     idle_room_secs: Option<u64>,
     hello_secs: Option<u64>,
     no_room_secs: Option<u64>,
@@ -206,6 +213,15 @@ impl FileConfig {
                 check_allowed_origins_text("allowed_origins", text)?;
             }
             c.allowed_origins = v.items();
+        }
+        if let Some(v) = self.default_join_mode {
+            c.default_join_mode = v;
+        }
+        if let Some(v) = self.allow_open_rooms {
+            c.allow_open_rooms = v;
+        }
+        if let Some(v) = self.join_approval_secs {
+            c.join_approval_timeout = secs(v);
         }
         if let Some(v) = self.idle_room_secs {
             c.idle_room_timeout = secs(v);
@@ -326,6 +342,15 @@ impl FileConfig {
             }
             if let Some(v) = l.wide_failure_factor {
                 d.wide_failure_factor = v;
+            }
+            if let Some(v) = l.max_pending_per_room {
+                d.max_pending_per_room = v;
+            }
+            if let Some(v) = l.max_pending_per_ip {
+                d.max_pending_per_ip = v;
+            }
+            if let Some(v) = l.denied_join_weight {
+                d.denied_join_weight = v;
             }
         }
         if let Some(a) = self.altcha {

@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 
-use cc_proto::{RoomCode, ServerMsg};
+use cc_proto::{JoinMode, RoomCode, ServerMsg, error_codes, sanitize_display_name};
 use rand::Rng;
 use std::sync::Arc;
 
@@ -57,7 +57,24 @@ impl Tx {
     }
 }
 
+/// A sender that waits for the owner's decision. Holds only what the server needs; the owner
+/// is told the sanitised `name` and the room-local `req` id, nothing else.
+struct Pending {
+    req: u64,
+    conn_id: u64,
+    tx: Tx,
+    /// Address the joiner is counted under (for the per-address pending limit).
+    ip: IpAddr,
+    name: String,
+}
+
 struct Room {
+    mode: JoinMode,
+    pending: Vec<Pending>,
+    /// Next request id (room-local, starts at 1).
+    next_req: u64,
+    /// Counter for "Guest N" names.
+    guests: u32,
     receiver_id: u64,
     receiver: Tx,
     sender: Option<(u64, Tx)>,
@@ -80,6 +97,8 @@ pub(crate) struct Rooms {
     map: HashMap<RoomCode, Room>,
     /// Rooms per owner address.
     per_owner: HashMap<IpAddr, usize>,
+    /// Waiting join requests per client address (all rooms).
+    pending_per_ip: HashMap<IpAddr, usize>,
 }
 
 /// Why a room could not be made.
@@ -92,9 +111,61 @@ pub(crate) enum CreateError {
 }
 
 /// Why a join failed.
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum JoinError {
     NotFound,
     Full,
+    /// Join mode `locked`.
+    Locked,
+    /// Too many requests wait in this room.
+    RoomPendingFull,
+    /// Too many requests wait from this address.
+    IpPendingFull,
+}
+
+/// A successful join.
+pub(crate) enum Joined {
+    /// The sender is in the room now.
+    Member { receiver: Tx, name: String },
+    /// The sender waits for the owner's decision.
+    Pending { owner: Tx, req: u64, name: String },
+}
+
+/// Where a connection stands in a room it tried to join.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Standing {
+    Member,
+    Pending,
+    Gone,
+}
+
+/// Why the owner's decision or mode change was refused.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum OwnerError {
+    /// The caller does not own this room (or is not in it).
+    NotOwner,
+    /// No such waiting request.
+    NoSuchRequest,
+}
+
+/// Result of `decide`.
+pub(crate) struct Decided {
+    /// The approved sender: (its channel, owner's channel, name).
+    pub(crate) approved: Option<(Tx, Tx, String)>,
+    /// Requests that ended without joining: (joiner's channel, request id, error code to the
+    /// joiner, reason for the owner).
+    pub(crate) dropped: Vec<(Tx, u64, &'static str, &'static str, IpAddr)>,
+}
+
+/// What a leaving connection leaves behind.
+#[derive(Default)]
+pub(crate) struct Left {
+    /// Remaining peer that gets `peer_left`.
+    pub(crate) peer: Option<Tx>,
+    /// A waiting request ended: tell the owner.
+    pub(crate) owner_cancel: Option<(Tx, u64)>,
+    /// Waiting joiners of a room that ended with its owner.
+    pub(crate) orphaned: Vec<Tx>,
 }
 
 impl Rooms {
@@ -106,6 +177,9 @@ impl Rooms {
     /// Remove a room and fix the per-owner count.
     fn remove(&mut self, code: &RoomCode) -> Option<Room> {
         let room = self.map.remove(code)?;
+        for p in &room.pending {
+            Self::dec(&mut self.pending_per_ip, p.ip);
+        }
         if let Some(n) = self.per_owner.get_mut(&room.owner) {
             *n = n.saturating_sub(1);
             if *n == 0 {
@@ -113,6 +187,15 @@ impl Rooms {
             }
         }
         Some(room)
+    }
+
+    fn dec(map: &mut HashMap<IpAddr, usize>, ip: IpAddr) {
+        if let Some(n) = map.get_mut(&ip) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                map.remove(&ip);
+            }
+        }
     }
 
     /// Create a room with a fresh random code (retry on collision).
@@ -125,6 +208,7 @@ impl Rooms {
         owner: IpAddr,
         max_rooms: usize,
         max_per_owner: usize,
+        mode: JoinMode,
     ) -> Result<(RoomCode, Arc<Notify>), CreateError> {
         if self.map.len() >= max_rooms {
             return Err(CreateError::ServerFull);
@@ -149,6 +233,10 @@ impl Rooms {
             self.map.insert(
                 code.clone(),
                 Room {
+                    mode,
+                    pending: Vec::new(),
+                    next_req: 1,
+                    guests: 0,
                     receiver_id,
                     receiver,
                     sender: None,
@@ -165,16 +253,185 @@ impl Rooms {
         }
     }
 
-    /// Put a sender into a room. On success returns the receiver's channel.
-    pub(crate) fn join(&mut self, code: &RoomCode, id: u64, tx: Tx) -> Result<Tx, JoinError> {
+    /// A sender wants into a room. In `open` mode it is in at once; in `confirm` mode (and
+    /// when it announced the feature) it waits. `raw_name` is untrusted and gets sanitised.
+    /// `ip` is the joiner's counting address; `max_*` are the pending limits.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn join(
+        &mut self,
+        code: &RoomCode,
+        id: u64,
+        tx: Tx,
+        raw_name: Option<&str>,
+        ip: IpAddr,
+        max_pending_room: usize,
+        max_pending_ip: usize,
+    ) -> Result<Joined, JoinError> {
         let room = self.map.get_mut(code).ok_or(JoinError::NotFound)?;
         if room.sender.is_some() {
             return Err(JoinError::Full);
         }
-        room.sender = Some((id, tx));
-        room.empty_since = None;
-        room.last_activity = Instant::now();
-        Ok(room.receiver.clone())
+        match room.mode {
+            JoinMode::Locked => return Err(JoinError::Locked),
+            JoinMode::Open => {
+                room.guests += 1;
+                let name = sanitize_display_name(raw_name, room.guests);
+                room.sender = Some((id, tx));
+                room.empty_since = None;
+                room.last_activity = Instant::now();
+                Ok(Joined::Member {
+                    receiver: room.receiver.clone(),
+                    name,
+                })
+            }
+            JoinMode::Confirm => {
+                if room.pending.len() >= max_pending_room {
+                    return Err(JoinError::RoomPendingFull);
+                }
+                if self.pending_per_ip.get(&ip).copied().unwrap_or(0) >= max_pending_ip {
+                    return Err(JoinError::IpPendingFull);
+                }
+                room.guests += 1;
+                let name = sanitize_display_name(raw_name, room.guests);
+                let req = room.next_req;
+                room.next_req += 1;
+                room.pending.push(Pending {
+                    req,
+                    conn_id: id,
+                    tx,
+                    ip,
+                    name: name.clone(),
+                });
+                *self.pending_per_ip.entry(ip).or_insert(0) += 1;
+                Ok(Joined::Pending {
+                    owner: room.receiver.clone(),
+                    req,
+                    name,
+                })
+            }
+        }
+    }
+
+    /// Is this connection a member, waiting, or neither?
+    pub(crate) fn standing(&self, code: &RoomCode, id: u64) -> Standing {
+        let Some(room) = self.map.get(code) else {
+            return Standing::Gone;
+        };
+        if room.sender.as_ref().is_some_and(|(sid, _)| *sid == id) {
+            Standing::Member
+        } else if room.pending.iter().any(|p| p.conn_id == id) {
+            Standing::Pending
+        } else {
+            Standing::Gone
+        }
+    }
+
+    /// The joiner stops waiting (cancel, timeout, disconnect). Returns the owner's channel and
+    /// the request id if it was still waiting.
+    pub(crate) fn cancel_pending(&mut self, code: &RoomCode, id: u64) -> Option<(Tx, u64)> {
+        let room = self.map.get_mut(code)?;
+        let at = room.pending.iter().position(|p| p.conn_id == id)?;
+        let p = room.pending.remove(at);
+        let owner = room.receiver.clone();
+        Self::dec(&mut self.pending_per_ip, p.ip);
+        Some((owner, p.req))
+    }
+
+    /// The owner decides. `req` `None` with `allow == false` denies everybody who waits.
+    pub(crate) fn decide(
+        &mut self,
+        code: &RoomCode,
+        owner_id: u64,
+        req: Option<u64>,
+        allow: bool,
+    ) -> Result<Decided, OwnerError> {
+        let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
+        if room.receiver_id != owner_id {
+            return Err(OwnerError::NotOwner);
+        }
+        let mut out = Decided {
+            approved: None,
+            dropped: Vec::new(),
+        };
+        let taken: Vec<Pending> = match (req, allow) {
+            (None, false) => std::mem::take(&mut room.pending),
+            (None, true) => return Err(OwnerError::NoSuchRequest),
+            (Some(r), _) => {
+                let at = room
+                    .pending
+                    .iter()
+                    .position(|p| p.req == r)
+                    .ok_or(OwnerError::NoSuchRequest)?;
+                vec![room.pending.remove(at)]
+            }
+        };
+        for p in &taken {
+            Self::dec(&mut self.pending_per_ip, p.ip);
+        }
+        let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
+        for p in taken {
+            if !allow {
+                out.dropped
+                    .push((p.tx, p.req, error_codes::JOIN_DENIED, "denied", p.ip));
+            } else if room.sender.is_some() {
+                out.dropped
+                    .push((p.tx, p.req, "room_full", "room_full", p.ip));
+            } else {
+                room.sender = Some((p.conn_id, p.tx.clone()));
+                room.empty_since = None;
+                room.last_activity = Instant::now();
+                out.approved = Some((p.tx, room.receiver.clone(), p.name));
+            }
+        }
+        if out.approved.is_some() {
+            // Only one sender per room: everybody else who waits cannot be let in any more.
+            let rest = std::mem::take(&mut room.pending);
+            for p in rest {
+                Self::dec(&mut self.pending_per_ip, p.ip);
+                out.dropped
+                    .push((p.tx, p.req, "room_full", "room_full", p.ip));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Owner changes the mode. Switching to `locked` drops every waiting request (returned).
+    pub(crate) fn set_mode(
+        &mut self,
+        code: &RoomCode,
+        owner_id: u64,
+        mode: JoinMode,
+    ) -> Result<Vec<(Tx, u64)>, OwnerError> {
+        let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
+        if room.receiver_id != owner_id {
+            return Err(OwnerError::NotOwner);
+        }
+        room.mode = mode;
+        let mut dropped = Vec::new();
+        if mode == JoinMode::Locked {
+            for p in std::mem::take(&mut room.pending) {
+                Self::dec(&mut self.pending_per_ip, p.ip);
+                dropped.push((p.tx, p.req));
+            }
+        }
+        Ok(dropped)
+    }
+
+    /// Owner removes the connected sender. Returns the sender's channel.
+    pub(crate) fn remove_peer(
+        &mut self,
+        code: &RoomCode,
+        owner_id: u64,
+    ) -> Result<Option<Tx>, OwnerError> {
+        let room = self.map.get_mut(code).ok_or(OwnerError::NotOwner)?;
+        if room.receiver_id != owner_id {
+            return Err(OwnerError::NotOwner);
+        }
+        let removed = room.sender.take().map(|(_, tx)| tx);
+        if removed.is_some() {
+            room.empty_since = Some(Instant::now());
+        }
+        Ok(removed)
     }
 
     /// When the room was made and when something was last relayed.
@@ -216,20 +473,34 @@ impl Rooms {
         }
     }
 
-    /// A connection went away. Returns the channel of the remaining peer, if any.
-    pub(crate) fn leave(&mut self, code: &RoomCode, id: u64) -> Option<Tx> {
-        let room = self.map.get_mut(code)?;
+    /// A connection went away (member, owner or waiting joiner).
+    pub(crate) fn leave(&mut self, code: &RoomCode, id: u64) -> Left {
+        let Some(room) = self.map.get_mut(code) else {
+            return Left::default();
+        };
         if room.receiver_id == id {
             // The room ends with its receiver.
-            let room = self.remove(code)?;
+            let Some(room) = self.remove(code) else {
+                return Left::default();
+            };
             room.cancel.notify_one();
-            room.sender.map(|(_, tx)| tx)
+            Left {
+                peer: room.sender.map(|(_, tx)| tx),
+                owner_cancel: None,
+                orphaned: room.pending.into_iter().map(|p| p.tx).collect(),
+            }
         } else if room.sender.as_ref().is_some_and(|(sid, _)| *sid == id) {
             room.sender = None;
             room.empty_since = Some(Instant::now());
-            Some(room.receiver.clone())
+            Left {
+                peer: Some(room.receiver.clone()),
+                ..Left::default()
+            }
         } else {
-            None
+            Left {
+                owner_cancel: self.cancel_pending(code, id),
+                ..Left::default()
+            }
         }
     }
 
@@ -248,6 +519,12 @@ impl Rooms {
         let remaining = (since + idle).saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             if let Some(room) = self.remove(code) {
+                for p in &room.pending {
+                    p.tx.send(Outgoing::Msg(ServerMsg::Error {
+                        code: "room_not_found".into(),
+                        message: "the room was closed".into(),
+                    }));
+                }
                 room.receiver.send(Outgoing::Close("room_expired"));
             }
             return Err(Gone);

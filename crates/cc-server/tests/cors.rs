@@ -76,7 +76,7 @@ async fn ws_connect(addr: SocketAddr, origin: Option<&str>) -> Result<(), u16> {
     match connect_async(req).await {
         Ok((mut ws, _)) => {
             ws.send(Message::text(
-                r#"{"type":"hello","proto_version":1,"role":"receiver"}"#,
+                r#"{"type":"hello","proto_version":2,"role":"receiver"}"#,
             ))
             .await
             .unwrap();

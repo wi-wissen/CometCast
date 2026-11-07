@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Version of the wire protocol. Sent in [`ClientMsg::Hello`].
-pub const PROTO_VERSION: u32 = 1;
+pub const PROTO_VERSION: u32 = 2;
 
 /// Which side of a transfer a client is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,6 +123,121 @@ pub mod error_codes {
     pub const RATE_LIMITED: &str = "rate_limited";
     /// This address is temporarily banned (too many failed joins). The connection is closed.
     pub const BANNED: &str = "banned";
+
+    // --- Join approval (see docs/protocol.md, "Join approval") ---
+
+    /// The sender is waiting for the display device to decide and tried to relay something.
+    pub const JOIN_PENDING: &str = "join_pending";
+    /// The display device refused this join.
+    pub const JOIN_DENIED: &str = "join_denied";
+    /// The room is locked: nobody can join right now.
+    pub const ROOM_LOCKED: &str = "room_locked";
+    /// Nobody decided on the join request in time.
+    pub const APPROVAL_TIMEOUT: &str = "approval_timeout";
+    /// The display device removed this sender from the room.
+    pub const REMOVED_BY_HOST: &str = "removed_by_host";
+    /// The server does not allow rooms with `join_mode` `open`.
+    pub const OPEN_ROOMS_DISABLED: &str = "open_rooms_disabled";
+    /// `join_decision` named a request that is not (or no longer) waiting.
+    pub const NO_SUCH_REQUEST: &str = "no_such_request";
+}
+
+/// Longest display name (in characters) that the server relays to the display device.
+pub const MAX_DISPLAY_NAME_CHARS: usize = 40;
+
+/// Who may join a room. Chosen by the receiver (display device) and changeable at any time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinMode {
+    /// Anyone who knows the room code joins at once (the behaviour before join approval).
+    Open,
+    /// Every join waits for an explicit allow/deny on the display device.
+    Confirm,
+    /// Nobody can join.
+    Locked,
+}
+
+impl JoinMode {
+    /// The wire text (`open`, `confirm`, `locked`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Confirm => "confirm",
+            Self::Locked => "locked",
+        }
+    }
+}
+
+impl fmt::Display for JoinMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for JoinMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "open" => Ok(Self::Open),
+            "confirm" => Ok(Self::Confirm),
+            "locked" => Ok(Self::Locked),
+            other => Err(format!(
+                "unknown join mode {other:?} (use open, confirm or locked)"
+            )),
+        }
+    }
+}
+
+/// True for characters that must never reach a display: control characters, bidi
+/// overrides/isolates, zero-width and invisible formatting characters, line/paragraph
+/// separators and the byte-order mark.
+fn is_unsafe_name_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061C}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{2028}'..='\u{202E}'
+                | '\u{2060}'..='\u{206F}'
+                | '\u{FEFF}'
+                | '\u{FFF9}'..='\u{FFFB}'
+                | '\u{E000}'..='\u{F8FF}'
+        )
+}
+
+/// Make a display name that a joiner chose safe to show on the display device.
+///
+/// The name is untrusted. Control, bidi and invisible characters are removed, runs of
+/// whitespace become one space, the result is trimmed and cut to
+/// [`MAX_DISPLAY_NAME_CHARS`] characters. If nothing is left, `Guest {guest_number}` is
+/// returned. Clients must still show the name as plain text, never as markup.
+pub fn sanitize_display_name(raw: Option<&str>, guest_number: u32) -> String {
+    let mut out = String::new();
+    let mut pending_space = false;
+    for c in raw.unwrap_or("").chars() {
+        if is_unsafe_name_char(c) {
+            continue;
+        }
+        if c.is_whitespace() {
+            pending_space = !out.is_empty();
+            continue;
+        }
+        if pending_space {
+            out.push(' ');
+            pending_space = false;
+        }
+        out.push(c);
+        if out.chars().count() >= MAX_DISPLAY_NAME_CHARS {
+            break;
+        }
+    }
+    let out: String = out.chars().take(MAX_DISPLAY_NAME_CHARS).collect();
+    let out = out.trim().to_string();
+    if out.is_empty() {
+        format!("Guest {guest_number}")
+    } else {
+        out
+    }
 }
 
 /// Messages from a client (sender or receiver) to the server.
@@ -144,12 +259,37 @@ pub enum ClientMsg {
         /// `altcha_required` without it. Not sent when `None`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         altcha: Option<String>,
+        /// Who may join the room. Omitted = the server's default (see docs/server.md).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        join_mode: Option<JoinMode>,
     },
     /// Sender only: join the room with this code.
     JoinRoom {
         /// Room code.
         code: RoomCode,
+        /// Name shown to the display device when it has to approve the join. Untrusted:
+        /// the server sanitises it ([`sanitize_display_name`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
+    /// Receiver (room owner) only: change who may join, at any time.
+    SetJoinMode {
+        /// The new mode.
+        join_mode: JoinMode,
+    },
+    /// Receiver (room owner) only: decide on waiting join requests.
+    JoinDecision {
+        /// Request id from `join_request`. Absent together with `allow: false` means
+        /// "deny all waiting requests"; absent with `allow: true` is invalid.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<u64>,
+        /// Allow or deny.
+        allow: bool,
+    },
+    /// Receiver (room owner) only: remove the connected sender from the room.
+    RemovePeer,
+    /// Sender only: stop waiting for approval.
+    CancelJoin,
     /// WebRTC offer (SDP text).
     Offer {
         /// SDP text.
@@ -186,11 +326,42 @@ pub enum ServerMsg {
     RoomCreated {
         /// The new room code.
         code: RoomCode,
+        /// The join mode the room really has.
+        join_mode: JoinMode,
     },
     /// Sent to the sender after a successful `JoinRoom`.
     Joined,
     /// Sent to the receiver when a sender has joined its room.
-    PeerJoined,
+    PeerJoined {
+        /// Sanitised display name of the sender (`Guest N` if it gave none).
+        name: String,
+    },
+    /// Sent to a sender whose join waits for the display device's decision.
+    JoinPending {
+        /// Seconds after which the server gives up (`approval_timeout`).
+        timeout_secs: u64,
+    },
+    /// Sent to the receiver: somebody wants to join (join mode `confirm`).
+    JoinRequest {
+        /// Id to answer with `join_decision`. Unique within the room.
+        id: u64,
+        /// Sanitised display name; nothing else about the joiner is passed on.
+        name: String,
+    },
+    /// Sent to the receiver: a waiting request is gone (joiner left, cancelled, timed out,
+    /// or the mode became `locked`).
+    JoinRequestCancelled {
+        /// The request id.
+        id: u64,
+        /// `left`, `cancelled`, `timeout` or `locked`.
+        reason: String,
+    },
+    /// Sent to the receiver: the join mode of the room (after `create_room` and after
+    /// every `set_join_mode`).
+    JoinModeChanged {
+        /// The mode now in force.
+        join_mode: JoinMode,
+    },
     /// Sent to the remaining peer when the other one disconnected.
     PeerLeft,
     /// WebRTC offer forwarded from the peer.
@@ -270,13 +441,31 @@ mod tests {
                 proto_version: PROTO_VERSION,
                 role: Role::Sender,
             },
-            ClientMsg::CreateRoom { altcha: None },
+            ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: None,
+            },
             ClientMsg::CreateRoom {
                 altcha: Some("eyJ9".into()),
+                join_mode: Some(JoinMode::Confirm),
             },
             ClientMsg::JoinRoom {
                 code: RoomCode::parse("k7m2qx").unwrap(),
+                name: Some("Ana".into()),
             },
+            ClientMsg::SetJoinMode {
+                join_mode: JoinMode::Locked,
+            },
+            ClientMsg::JoinDecision {
+                id: Some(3),
+                allow: true,
+            },
+            ClientMsg::JoinDecision {
+                id: None,
+                allow: false,
+            },
+            ClientMsg::RemovePeer,
+            ClientMsg::CancelJoin,
             ClientMsg::Offer { sdp: "v=0".into() },
             ClientMsg::Answer { sdp: "v=0".into() },
             ClientMsg::IceCandidate {
@@ -301,9 +490,22 @@ mod tests {
             },
             ServerMsg::RoomCreated {
                 code: RoomCode::parse("k7m2qx").unwrap(),
+                join_mode: JoinMode::Confirm,
             },
             ServerMsg::Joined,
-            ServerMsg::PeerJoined,
+            ServerMsg::PeerJoined { name: "Ana".into() },
+            ServerMsg::JoinPending { timeout_secs: 60 },
+            ServerMsg::JoinRequest {
+                id: 1,
+                name: "Ana".into(),
+            },
+            ServerMsg::JoinRequestCancelled {
+                id: 1,
+                reason: "timeout".into(),
+            },
+            ServerMsg::JoinModeChanged {
+                join_mode: JoinMode::Open,
+            },
             ServerMsg::PeerLeft,
             ServerMsg::Control {
                 cmd: ControlCmd::NextPage,
@@ -335,55 +537,176 @@ mod tests {
             r#"{"type":"hello","proto_version":1,"role":"receiver"}"#
         );
         let j = r#"{"type":"join_room","code":"k7m2qx"}"#;
-        let ClientMsg::JoinRoom { code } = serde_json::from_str(j).unwrap() else {
+        let ClientMsg::JoinRoom { code, name } = serde_json::from_str(j).unwrap() else {
             panic!("wrong variant");
         };
         assert_eq!(code.as_str(), "K7M2QX");
+        assert_eq!(name, None);
+    }
+
+    #[test]
+    fn join_approval_wire_format_is_stable() {
+        let j = |m: &ClientMsg| serde_json::to_string(m).unwrap();
+        assert_eq!(
+            j(&ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: Some(JoinMode::Confirm)
+            }),
+            r#"{"type":"create_room","join_mode":"confirm"}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::JoinRoom {
+                code: RoomCode::parse("K7M2QX").unwrap(),
+                name: Some("Ana".into())
+            }),
+            r#"{"type":"join_room","code":"K7M2QX","name":"Ana"}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::SetJoinMode {
+                join_mode: JoinMode::Locked
+            }),
+            r#"{"type":"set_join_mode","join_mode":"locked"}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::JoinDecision {
+                id: Some(2),
+                allow: true
+            }),
+            r#"{"type":"join_decision","id":2,"allow":true}"#
+        );
+        assert_eq!(
+            j(&ClientMsg::JoinDecision {
+                id: None,
+                allow: false
+            }),
+            r#"{"type":"join_decision","allow":false}"#
+        );
+        assert_eq!(j(&ClientMsg::RemovePeer), r#"{"type":"remove_peer"}"#);
+        assert_eq!(j(&ClientMsg::CancelJoin), r#"{"type":"cancel_join"}"#);
+        let s = |m: &ServerMsg| serde_json::to_string(m).unwrap();
+        assert_eq!(
+            s(&ServerMsg::JoinRequest {
+                id: 7,
+                name: "Ana".into()
+            }),
+            r#"{"type":"join_request","id":7,"name":"Ana"}"#
+        );
+        assert_eq!(
+            s(&ServerMsg::JoinPending { timeout_secs: 60 }),
+            r#"{"type":"join_pending","timeout_secs":60}"#
+        );
+        assert_eq!(
+            s(&ServerMsg::JoinModeChanged {
+                join_mode: JoinMode::Open
+            }),
+            r#"{"type":"join_mode_changed","join_mode":"open"}"#
+        );
+        assert_eq!(
+            s(&ServerMsg::PeerJoined { name: "Ana".into() }),
+            r#"{"type":"peer_joined","name":"Ana"}"#
+        );
+        assert!(
+            serde_json::from_str::<ClientMsg>(r#"{"type":"set_join_mode","join_mode":"x"}"#)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn join_mode_text() {
+        assert_eq!("Confirm".parse::<JoinMode>(), Ok(JoinMode::Confirm));
+        assert!("nope".parse::<JoinMode>().is_err());
+        assert_eq!(JoinMode::Locked.to_string(), "locked");
+    }
+
+    #[test]
+    fn display_names_are_sanitised() {
+        assert_eq!(
+            sanitize_display_name(Some("  Ana   Maria "), 1),
+            "Ana Maria"
+        );
+        assert_eq!(sanitize_display_name(None, 4), "Guest 4");
+        assert_eq!(sanitize_display_name(Some("   "), 2), "Guest 2");
+        // Control, bidi, zero-width, line separators: removed.
+        assert_eq!(
+            sanitize_display_name(Some("A\u{202E}b\u{200B}c\n\u{0}d\u{2066}e\u{FEFF}"), 1),
+            "Abcde"
+        );
+        assert_eq!(
+            sanitize_display_name(Some("\u{202E}\u{202D}"), 9),
+            "Guest 9"
+        );
+        // Length cut at 40 characters, also for multi-byte characters.
+        let long = "ä".repeat(100);
+        let n = sanitize_display_name(Some(&long), 1);
+        assert_eq!(n.chars().count(), MAX_DISPLAY_NAME_CHARS);
+        let spaced = format!("{} x", "a".repeat(39));
+        assert_eq!(sanitize_display_name(Some(&spaced), 1), "a".repeat(39));
+        // Markup is not interpreted here (clients must render as text), but stays harmless text.
+        assert_eq!(sanitize_display_name(Some("<b>Ana</b>"), 1), "<b>Ana</b>");
     }
 
     #[test]
     fn new_messages_wire_format() {
         assert_eq!(
-            serde_json::to_string(&ClientMsg::CreateRoom { altcha: None }).unwrap(),
+            serde_json::to_string(&ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: None
+            })
+            .unwrap(),
             r#"{"type":"create_room"}"#
         );
         assert_eq!(
             serde_json::to_string(&ClientMsg::CreateRoom {
-                altcha: Some("e30=".into())
+                altcha: Some("e30=".into()),
+                join_mode: None
             })
             .unwrap(),
             r#"{"type":"create_room","altcha":"e30="}"#
         );
         let created = ServerMsg::RoomCreated {
             code: RoomCode::parse("K7M2QX").unwrap(),
+            join_mode: JoinMode::Open,
         };
         assert_eq!(
             serde_json::to_string(&created).unwrap(),
-            r#"{"type":"room_created","code":"K7M2QX"}"#
+            r#"{"type":"room_created","code":"K7M2QX","join_mode":"open"}"#
         );
         assert_eq!(
             serde_json::to_string(&ServerMsg::Joined).unwrap(),
             r#"{"type":"joined"}"#
         );
         assert_eq!(
-            serde_json::to_string(&ServerMsg::PeerJoined).unwrap(),
-            r#"{"type":"peer_joined"}"#
+            serde_json::to_string(&ServerMsg::PeerJoined { name: "Ana".into() }).unwrap(),
+            r#"{"type":"peer_joined","name":"Ana"}"#
         );
         assert_eq!(
             serde_json::to_string(&ServerMsg::PeerLeft).unwrap(),
             r#"{"type":"peer_left"}"#
         );
         let m: ClientMsg = serde_json::from_str(r#"{"type":"create_room"}"#).unwrap();
-        assert_eq!(m, ClientMsg::CreateRoom { altcha: None });
+        assert_eq!(
+            m,
+            ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: None
+            }
+        );
         // Old clients send no `altcha` field; a null is accepted too.
         let m: ClientMsg = serde_json::from_str(r#"{"type":"create_room","altcha":null}"#).unwrap();
-        assert_eq!(m, ClientMsg::CreateRoom { altcha: None });
+        assert_eq!(
+            m,
+            ClientMsg::CreateRoom {
+                altcha: None,
+                join_mode: None
+            }
+        );
         let m: ClientMsg =
             serde_json::from_str(r#"{"type":"create_room","altcha":"e30="}"#).unwrap();
         assert_eq!(
             m,
             ClientMsg::CreateRoom {
-                altcha: Some("e30=".into())
+                altcha: Some("e30=".into()),
+                join_mode: None
             }
         );
     }
@@ -394,6 +717,10 @@ mod tests {
         assert_eq!(error_codes::ALTCHA_INVALID, "altcha_invalid");
         assert_eq!(error_codes::RATE_LIMITED, "rate_limited");
         assert_eq!(error_codes::BANNED, "banned");
+        assert_eq!(error_codes::JOIN_PENDING, "join_pending");
+        assert_eq!(error_codes::JOIN_DENIED, "join_denied");
+        assert_eq!(error_codes::ROOM_LOCKED, "room_locked");
+        assert_eq!(error_codes::APPROVAL_TIMEOUT, "approval_timeout");
     }
 
     #[test]

@@ -11,7 +11,7 @@ use axum::Extension;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::response::{IntoResponse, Response};
-use cc_proto::{ClientMsg, PROTO_VERSION, Role, RoomCode, ServerMsg, error_codes};
+use cc_proto::{ClientMsg, JoinMode, PROTO_VERSION, Role, RoomCode, ServerMsg, error_codes};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Notify;
@@ -21,7 +21,7 @@ use crate::AppState;
 use crate::limits::{ConnBudget, ConnSlot, Deny, limit_key};
 use crate::net::ClientIp;
 use crate::puzzle::PuzzleError;
-use crate::rooms::{CreateError, Gone, JoinError, Outgoing, Tx};
+use crate::rooms::{CreateError, Gone, JoinError, Joined, Outgoing, OwnerError, Standing, Tx};
 
 /// Source of unique connection numbers.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -56,10 +56,19 @@ struct Conn {
     tx: Tx,
     role: Option<Role>,
     room: Option<RoomCode>,
+    /// A join request of this connection that waits for the owner's decision.
+    pending: Option<PendingJoin>,
     /// Messages and bytes this connection may still send.
     budget: ConnBudget,
     /// Bad messages (garbage, wrong role) seen on this connection.
     bad: u32,
+}
+
+/// A join request that waits for a decision.
+struct PendingJoin {
+    code: RoomCode,
+    /// The server gives up at this time (`approval_timeout`).
+    deadline: Instant,
 }
 
 enum Step {
@@ -128,6 +137,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
         tx,
         role: None,
         room: None,
+        pending: None,
         budget: ConnBudget::new(state.guard.cfg(), StdInstant::now()),
         bad: 0,
     };
@@ -137,7 +147,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     // Deadlines are fixed at connect time, so pings cannot keep a silent client alive.
     let connected = Instant::now();
     let hello_deadline = connected + state.config.hello_timeout;
-    let no_room_deadline = connected + state.config.no_room_timeout;
+    let mut no_room_deadline = connected + state.config.no_room_timeout;
 
     // Liveness: a timer ticks about once a second. It sends pings, closes connections
     // that went silent, and closes rooms that are too old or have been quiet too long.
@@ -155,9 +165,15 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     let mut last_ping = connected;
 
     loop {
+        // An owner may have decided on our join request meanwhile.
+        if conn.pending.is_some() {
+            resolve_pending(&mut conn, &state, &mut no_room_deadline);
+        }
         let waiting_for_hello = conn.role.is_none();
         let deadline = if waiting_for_hello {
             Some(hello_deadline)
+        } else if let Some(p) = &conn.pending {
+            Some(p.deadline)
         } else if conn.room.is_none() {
             Some(no_room_deadline)
         } else {
@@ -193,6 +209,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             Err(()) => {
                 if waiting_for_hello {
                     conn.fail("bad_hello", "no hello received in time");
+                } else if conn.pending.is_some() {
+                    approval_timed_out(&mut conn, &state, &mut no_room_deadline);
+                    continue;
                 } else {
                     conn.tx.send(Outgoing::Close("no_room_timeout"));
                 }
@@ -232,7 +251,19 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             break;
         }
         let step = match msg {
-            Message::Text(text) => handle_text(&mut conn, &state, text.as_str()),
+            Message::Text(text) => {
+                if conn.pending.is_some() {
+                    resolve_pending(&mut conn, &state, &mut no_room_deadline);
+                }
+                let step = handle_text(&mut conn, &state, text.as_str());
+                if conn.role.is_some() && conn.room.is_none() && conn.pending.is_none() {
+                    // A join request ended in this message (cancel): the connection gets a
+                    // fresh time to join or create a room.
+                    no_room_deadline =
+                        no_room_deadline.max(Instant::now() + state.config.no_room_timeout);
+                }
+                step
+            }
             Message::Binary(_) => {
                 if conn.role.is_none() {
                     conn.fail("bad_hello", "first message must be a hello text message")
@@ -255,14 +286,26 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     }
 
     // Cleanup: tell the other side and free the room.
-    if let Some(code) = conn.room.take() {
-        let peer = state
-            .rooms
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .leave(&code, conn.id);
-        if let Some(peer) = peer {
+    let leaving = conn
+        .room
+        .take()
+        .or_else(|| conn.pending.take().map(|p| p.code));
+    if let Some(code) = leaving {
+        let left = lock(&state).leave(&code, conn.id);
+        if let Some(peer) = left.peer {
             peer.send(Outgoing::Msg(ServerMsg::PeerLeft));
+        }
+        if let Some((owner, id)) = left.owner_cancel {
+            owner.send(Outgoing::Msg(ServerMsg::JoinRequestCancelled {
+                id,
+                reason: "left".into(),
+            }));
+        }
+        for tx in left.orphaned {
+            tx.send(Outgoing::Msg(ServerMsg::Error {
+                code: "room_not_found".into(),
+                message: "the room was closed".into(),
+            }));
         }
     }
     if killed {
@@ -379,7 +422,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
         Err(_) => {
             // A join_room whose code is not even a valid code (wrong length or
             // characters) behaves like an unknown code. Valid messages are unaffected.
-            if is_join_with_string_code(text) {
+            if is_join_with_invalid_code(text) {
                 if role == Role::Sender {
                     // Guessing with malformed codes counts like any failed join.
                     if let Some(step) = join_precheck(conn, state) {
@@ -408,11 +451,28 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
         conn.room = None;
     }
 
+    // A sender that still waits for approval may relay nothing.
+    if conn.pending.is_some()
+        && matches!(
+            msg,
+            ClientMsg::Offer { .. }
+                | ClientMsg::Answer { .. }
+                | ClientMsg::IceCandidate { .. }
+                | ClientMsg::Control { .. }
+        )
+    {
+        conn.error(
+            error_codes::JOIN_PENDING,
+            "wait until the host has allowed you to join",
+        );
+        return Step::Continue;
+    }
+
     match msg {
         ClientMsg::Hello { .. } => {
             return strike(conn, state, "bad_message", "hello was already sent");
         }
-        ClientMsg::CreateRoom { altcha } => {
+        ClientMsg::CreateRoom { altcha, join_mode } => {
             if role != Role::Receiver {
                 return strike(
                     conn,
@@ -422,6 +482,9 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 );
             } else if conn.room.is_some() {
                 return strike(conn, state, "bad_message", "already in a room");
+            } else if let Err((code, text)) = check_mode(state, join_mode) {
+                conn.error(code, text);
+                return Step::Continue;
             } else if let Err(deny) = state.guard.check_create(conn.ip, StdInstant::now()) {
                 deny_error(conn, deny);
                 return after_deny(deny);
@@ -445,18 +508,23 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         return Step::Continue;
                     }
                 }
+                let mode = join_mode.unwrap_or(state.config.default_join_mode);
                 let created = lock(state).create(
                     conn.id,
                     conn.tx.clone(),
                     limit_key(conn.ip),
                     state.guard.max_rooms(),
                     state.guard.max_rooms_per_ip(),
+                    mode,
                 );
                 match created {
                     Ok((code, cancel)) => {
                         conn.room = Some(code.clone());
                         tokio::spawn(expire_when_idle(state.clone(), code.clone(), cancel));
-                        conn.send(ServerMsg::RoomCreated { code });
+                        conn.send(ServerMsg::RoomCreated {
+                            code,
+                            join_mode: mode,
+                        });
                     }
                     Err(CreateError::ServerFull) => {
                         conn.error(error_codes::RATE_LIMITED, "the server has too many rooms")
@@ -468,20 +536,40 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 }
             }
         }
-        ClientMsg::JoinRoom { code } => {
+        ClientMsg::JoinRoom { code, name } => {
             if role != Role::Sender {
                 return strike(conn, state, "wrong_role", "only a sender can join a room");
-            } else if conn.room.is_some() {
+            } else if conn.room.is_some() || conn.pending.is_some() {
                 return strike(conn, state, "bad_message", "already in a room");
             } else if let Some(step) = join_precheck(conn, state) {
                 return step;
             } else {
-                let result = lock(state).join(&code, conn.id, conn.tx.clone());
+                let l = state.guard.cfg();
+                let result = lock(state).join(
+                    &code,
+                    conn.id,
+                    conn.tx.clone(),
+                    name.as_deref(),
+                    limit_key(conn.ip),
+                    l.max_pending_per_room,
+                    l.max_pending_per_ip,
+                );
                 match result {
-                    Ok(receiver) => {
+                    Ok(Joined::Member { receiver, name }) => {
                         conn.room = Some(code);
                         conn.send(ServerMsg::Joined);
-                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined));
+                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
+                    }
+                    Ok(Joined::Pending { owner, req, name }) => {
+                        let wait = state.config.join_approval_timeout;
+                        conn.pending = Some(PendingJoin {
+                            code,
+                            deadline: Instant::now() + wait,
+                        });
+                        conn.send(ServerMsg::JoinPending {
+                            timeout_secs: wait.as_secs().max(1),
+                        });
+                        owner.send(Outgoing::Msg(ServerMsg::JoinRequest { id: req, name }));
                     }
                     Err(JoinError::NotFound) => {
                         return failed_join(
@@ -499,7 +587,153 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                             "this room already has a sender",
                         );
                     }
+                    Err(JoinError::Locked) => {
+                        conn.error(
+                            error_codes::ROOM_LOCKED,
+                            "this room is locked: nobody can join right now",
+                        );
+                    }
+                    Err(JoinError::RoomPendingFull | JoinError::IpPendingFull) => {
+                        conn.error(
+                            error_codes::RATE_LIMITED,
+                            "too many people are waiting to join; try again later",
+                        );
+                    }
                 }
+            }
+        }
+        ClientMsg::CancelJoin => {
+            if role != Role::Sender {
+                return strike(conn, state, "wrong_role", "only a sender can cancel a join");
+            }
+            if let Some(p) = conn.pending.take() {
+                if let Some((owner, id)) = lock(state).cancel_pending(&p.code, conn.id) {
+                    owner.send(Outgoing::Msg(ServerMsg::JoinRequestCancelled {
+                        id,
+                        reason: "cancelled".into(),
+                    }));
+                } else {
+                    // Decided at the same moment: the next resolve shows what happened.
+                    conn.pending = Some(p);
+                }
+            }
+        }
+        ClientMsg::SetJoinMode { join_mode } => {
+            if role != Role::Receiver {
+                return strike(
+                    conn,
+                    state,
+                    "wrong_role",
+                    "only the receiver can change the join mode",
+                );
+            }
+            let Some(code) = conn.room.clone() else {
+                conn.error("not_in_room", "you have no room");
+                return Step::Continue;
+            };
+            if join_mode == JoinMode::Open && !state.config.allow_open_rooms {
+                conn.error(
+                    error_codes::OPEN_ROOMS_DISABLED,
+                    "this server does not allow rooms that anybody can join",
+                );
+                return Step::Continue;
+            }
+            match lock(state).set_mode(&code, conn.id, join_mode) {
+                Ok(dropped) => {
+                    for (tx, id) in dropped {
+                        tx.send(Outgoing::Msg(ServerMsg::Error {
+                            code: error_codes::ROOM_LOCKED.into(),
+                            message: "this room was locked".into(),
+                        }));
+                        conn.send(ServerMsg::JoinRequestCancelled {
+                            id,
+                            reason: "locked".into(),
+                        });
+                    }
+                    conn.send(ServerMsg::JoinModeChanged { join_mode });
+                }
+                Err(_) => conn.error("not_in_room", "you do not own this room"),
+            }
+        }
+        ClientMsg::JoinDecision { id, allow } => {
+            if role != Role::Receiver {
+                return strike(
+                    conn,
+                    state,
+                    "wrong_role",
+                    "only the receiver can decide on joins",
+                );
+            }
+            let Some(code) = conn.room.clone() else {
+                conn.error("not_in_room", "you have no room");
+                return Step::Continue;
+            };
+            let decided = lock(state).decide(&code, conn.id, id, allow);
+            match decided {
+                Ok(d) => {
+                    if let Some((joiner, owner, name)) = d.approved {
+                        joiner.send(Outgoing::Msg(ServerMsg::Joined));
+                        owner.send(Outgoing::Msg(ServerMsg::PeerJoined { name }));
+                    }
+                    for (tx, req, code, reason, ip) in d.dropped {
+                        tx.send(Outgoing::Msg(ServerMsg::Error {
+                            code: code.into(),
+                            message: if code == error_codes::JOIN_DENIED {
+                                "the host denied your request".into()
+                            } else {
+                                "the room already has a sender".into()
+                            },
+                        }));
+                        if code == error_codes::JOIN_DENIED {
+                            // Counts toward a cooldown of the joiner's address; the
+                            // ban closes the joiner's connection, not the owner's.
+                            if let Some(len) = penalize(state, ip) {
+                                tx.send(Outgoing::Msg(ServerMsg::Error {
+                                    code: error_codes::BANNED.into(),
+                                    message: format!(
+                                        "too many refused joins; banned for {} s",
+                                        len.as_secs()
+                                    ),
+                                }));
+                                tx.send(Outgoing::Close("banned"));
+                            }
+                        } else {
+                            conn.send(ServerMsg::JoinRequestCancelled {
+                                id: req,
+                                reason: reason.into(),
+                            });
+                        }
+                    }
+                }
+                Err(OwnerError::NoSuchRequest) => {
+                    conn.error(error_codes::NO_SUCH_REQUEST, "no such waiting request");
+                }
+                Err(OwnerError::NotOwner) => conn.error("not_in_room", "you do not own this room"),
+            }
+        }
+        ClientMsg::RemovePeer => {
+            if role != Role::Receiver {
+                return strike(
+                    conn,
+                    state,
+                    "wrong_role",
+                    "only the receiver can remove a sender",
+                );
+            }
+            let Some(code) = conn.room.clone() else {
+                conn.error("not_in_room", "you have no room");
+                return Step::Continue;
+            };
+            match lock(state).remove_peer(&code, conn.id) {
+                Ok(Some(tx)) => {
+                    tx.send(Outgoing::Msg(ServerMsg::Error {
+                        code: error_codes::REMOVED_BY_HOST.into(),
+                        message: "the host removed you from the room".into(),
+                    }));
+                    conn.send(ServerMsg::PeerLeft);
+                }
+                Ok(None) => conn.error("not_in_room", "nobody is connected"),
+                Err(_) => conn.error("not_in_room", "you do not own this room"),
             }
         }
         // Everything below is relayed unchanged to the other side.
@@ -564,12 +798,81 @@ fn failed_join(conn: &Conn, state: &AppState, code: &str, message: &str) -> Step
     Step::Continue
 }
 
-/// True for `{"type":"join_room","code":"<any string>"}`.
-fn is_join_with_string_code(text: &str) -> bool {
+/// True for `{"type":"join_room","code":"<string that is no valid room code>"}`.
+fn is_join_with_invalid_code(text: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(text).is_ok_and(|v| {
         v.get("type").and_then(|t| t.as_str()) == Some("join_room")
-            && v.get("code").is_some_and(|c| c.is_string())
+            && v.get("code")
+                .and_then(|c| c.as_str())
+                .is_some_and(|c| RoomCode::parse(c).is_err())
     })
+}
+
+/// May this client create a room with this join mode (`None` = server default)?
+fn check_mode(
+    state: &AppState,
+    requested: Option<JoinMode>,
+) -> Result<(), (&'static str, &'static str)> {
+    let mode = requested.unwrap_or(state.config.default_join_mode);
+    if mode == JoinMode::Open && !state.config.allow_open_rooms {
+        return Err((
+            error_codes::OPEN_ROOMS_DISABLED,
+            "this server does not allow rooms that anybody can join",
+        ));
+    }
+    Ok(())
+}
+
+/// A denied or timed-out join counts toward a cooldown of the joiner's address.
+fn penalize(state: &AppState, ip: IpAddr) -> Option<Duration> {
+    let mut banned = None;
+    for _ in 0..state.guard.cfg().denied_join_weight {
+        banned = banned.or(state.guard.record_failure(ip, StdInstant::now()));
+    }
+    banned
+}
+
+/// Bring `conn.room` / `conn.pending` up to date with what the owner decided.
+fn resolve_pending(conn: &mut Conn, state: &AppState, no_room_deadline: &mut Instant) {
+    let Some(p) = &conn.pending else { return };
+    match lock(state).standing(&p.code, conn.id) {
+        Standing::Member => {
+            conn.room = conn.pending.take().map(|p| p.code);
+        }
+        Standing::Pending => {}
+        Standing::Gone => {
+            conn.pending = None;
+            *no_room_deadline = Instant::now() + state.config.no_room_timeout;
+        }
+    }
+}
+
+/// Nobody decided in time.
+fn approval_timed_out(conn: &mut Conn, state: &AppState, no_room_deadline: &mut Instant) {
+    let Some(p) = conn.pending.take() else { return };
+    let cancelled = lock(state).cancel_pending(&p.code, conn.id);
+    let Some((owner, id)) = cancelled else {
+        // Approved or removed at the same moment; resolve shows which.
+        conn.pending = Some(p);
+        resolve_pending(conn, state, no_room_deadline);
+        return;
+    };
+    owner.send(Outgoing::Msg(ServerMsg::JoinRequestCancelled {
+        id,
+        reason: "timeout".into(),
+    }));
+    conn.error(
+        error_codes::APPROVAL_TIMEOUT,
+        "nobody decided on your request in time",
+    );
+    *no_room_deadline = Instant::now() + state.config.no_room_timeout;
+    if let Some(len) = penalize(state, conn.ip) {
+        conn.error(
+            error_codes::BANNED,
+            &format!("too many unanswered joins; banned for {} s", len.as_secs()),
+        );
+        conn.tx.send(Outgoing::Close("banned"));
+    }
 }
 
 fn lock(state: &AppState) -> std::sync::MutexGuard<'_, crate::rooms::Rooms> {

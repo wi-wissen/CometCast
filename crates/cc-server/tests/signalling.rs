@@ -53,8 +53,8 @@ async fn expect_closed(ws: &mut Ws) {
 }
 
 async fn hello(ws: &mut Ws, role: &str) {
-    send(ws, json!({"type":"hello","proto_version":1,"role":role})).await;
-    assert_eq!(recv(ws).await, json!({"type":"hello","proto_version":1}));
+    send(ws, json!({"type":"hello","proto_version":2,"role":role})).await;
+    assert_eq!(recv(ws).await, json!({"type":"hello","proto_version":2}));
 }
 
 /// Receiver creates a room; sender joins. Returns (receiver, sender, code).
@@ -71,7 +71,7 @@ async fn paired(addr: std::net::SocketAddr) -> (Ws, Ws, String) {
     hello(&mut s, "sender").await;
     send(&mut s, json!({"type":"join_room","code":code})).await;
     assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
-    assert_eq!(recv(&mut r).await, json!({"type":"peer_joined"}));
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
     (r, s, code)
 }
 
@@ -260,7 +260,7 @@ async fn sender_leaving_tells_receiver_and_room_can_be_rejoined() {
     hello(&mut s2, "sender").await;
     send(&mut s2, json!({"type":"join_room","code":code})).await;
     assert_eq!(recv(&mut s2).await, json!({"type":"joined"}));
-    assert_eq!(recv(&mut r).await, json!({"type":"peer_joined"}));
+    assert_eq!(recv(&mut r).await["type"], "peer_joined");
 }
 
 #[tokio::test]
@@ -423,7 +423,7 @@ async fn sender_can_join_another_room_after_receiver_left() {
     let code = recv(&mut r2).await["code"].as_str().unwrap().to_string();
     send(&mut s, json!({"type":"join_room","code":code})).await;
     assert_eq!(recv(&mut s).await, json!({"type":"joined"}));
-    assert_eq!(recv(&mut r2).await, json!({"type":"peer_joined"}));
+    assert_eq!(recv(&mut r2).await["type"], "peer_joined");
 }
 
 #[tokio::test]

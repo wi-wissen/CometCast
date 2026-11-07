@@ -174,7 +174,7 @@ try {
       ws.onopen = res
       ws.onerror = () => rej(new Error('ws error'))
     })
-    ws.send(JSON.stringify({ type: 'hello', proto_version: 1, role: 'receiver' }))
+    ws.send(JSON.stringify({ type: 'hello', proto_version: 2, role: 'receiver' }))
     await waitFor(() => msgs.some((m) => m.type === 'hello'), 'hello')
     ws.send(JSON.stringify({ type: 'create_room' }))
     const err = await waitFor(() => msgs.find((m) => m.type === 'error'), 'error message')
