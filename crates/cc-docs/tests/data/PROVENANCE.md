@@ -16,12 +16,12 @@ are asserted in `../render.rs`; the layout numbers below match those tests.
 | `no_xref.pdf` | `minimal.pdf` cut before the `xref` table and trailer | damaged file: reader must rebuild the table |
 | `two_pages_one_rotated.pdf` | hand-written | page 1 yellow 200 x 100; page 2 `/Rotate 90` (displayed 100 x 200), green with a red box |
 | `rotated_pages.pdf` | hand-written | four pages, MediaBox 200 x 300, `/Rotate` 0, 90, 180, 270; red box in the unrotated top left corner |
-| `classroom.pdf` | reportlab | 3 A4 pages: (1) Helvetica-Bold and Times text, green rectangle, yellow circle, Bezier curve; (2) embedded 64 x 32 px JPEG (orange / teal halves, made with Pillow, quality 95) and text; (3) embedded TrueType font (subset of Bitstream Vera, which reportlab ships) and a linear gradient clipped to a rectangle |
+| `slides.pdf` | reportlab | 3 A4 pages: (1) Helvetica-Bold and Times text, green rectangle, yellow circle, Bezier curve; (2) embedded 64 x 32 px JPEG (orange / teal halves, made with Pillow, quality 95) and text; (3) embedded TrueType font (subset of Bitstream Vera, which reportlab ships) and a linear gradient clipped to a rectangle |
 | `encrypted_empty_user_password.pdf` | reportlab, RC4 128 bit, user password empty, owner password "owner" | must open and render |
 | `encrypted_password.pdf` | reportlab, RC4 128 bit, user password "secret" | must be refused with `PasswordProtected` |
 
 Not covered by files here: AES encryption, CJK text, non-embedded CID fonts, JPEG 2000,
-transparency groups, forms, scans, real classroom PDFs. Hostile inputs are built in memory
+transparency groups, forms, scans, real PDFs. Hostile inputs are built in memory
 by the tests (`../hostile.rs`, `../limits.rs`, `../sandbox.rs`, `../poison.rs`), not stored.
 
 ## Review generators

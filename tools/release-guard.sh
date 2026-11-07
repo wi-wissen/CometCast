@@ -5,6 +5,8 @@
 #   tools/release-guard.sh tag-free REPO TAG      fail when the tag or any release (draft too) for TAG exists
 #   tools/release-guard.sh image-free IMAGE VER   fail when ghcr.io/... IMAGE:VER already exists
 #   tools/release-guard.sh skip-valid LIST        fail when LIST has a job name that is not known
+#   tools/release-guard.sh licenses-fresh [ROOT]  fail when THIRD_PARTY_LICENSES.md is missing or was generated
+#                                                 from other lock files than the ones in ROOT (default: the repository)
 # Exit codes: 0 = free/valid, 1 = conflict or invalid, 2 = could not check (treated as a failure by
 # the workflow: a guard that cannot look must not wave the run through).
 # `tag-free` needs GH_TOKEN (a token that may list releases: drafts are only visible with
@@ -52,6 +54,24 @@ case "$cmd" in
       exit 0
     fi
     die "could not check whether $image:$ver exists: $out"; exit 2
+    ;;
+  licenses-fresh)
+    # THIRD_PARTY_LICENSES.md (tools/gen-third-party.mjs) records the SHA-256 of the lock files it was made
+    # from. A file timestamp would be useless here (a fresh checkout gives every file the same time), so the
+    # hashes decide: any change of Cargo.lock, package-lock.json or pubspec.lock needs a regenerated file.
+    root="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+    f="$root/THIRD_PARTY_LICENSES.md"
+    [ -f "$f" ] || { die "THIRD_PARTY_LICENSES.md is missing: run node tools/gen-third-party.mjs"; exit 1; }
+    stale=0
+    for pair in "Cargo.lock:Cargo.lock-sha256" "apps/web/package-lock.json:package-lock.json-sha256" "apps/flutter/pubspec.lock:pubspec.lock-sha256"; do
+      lock="${pair%%:*}"; key="${pair#*:}"
+      [ -f "$root/$lock" ] || { die "$lock not found in $root"; exit 2; }
+      want="$(sed -n "s/^$key: \([0-9a-f]\{64\}\)\$/\1/p" "$f" | head -n 1)"
+      have="$(sha256sum "$root/$lock" | cut -d' ' -f1)"
+      if [ -z "$want" ]; then die "THIRD_PARTY_LICENSES.md has no $key line"; stale=1
+      elif [ "$want" != "$have" ]; then die "THIRD_PARTY_LICENSES.md is older than $lock (checksum differs): run node tools/gen-third-party.mjs and commit"; stale=1; fi
+    done
+    [ "$stale" -eq 0 ] || exit 1
     ;;
   skip-valid)
     list="${2-}"

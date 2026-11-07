@@ -283,7 +283,7 @@ try {
   await deSender.locator('#room-code').fill(code2)
   await deSender.getByRole('button', { name: 'Verbinden' }).click()
   await deSender.locator('[data-testid=status][data-ready=true]').waitFor({ timeout: 20000 })
-  await deSender.getByTestId('pdf-input').setInputFiles({ name: 'unterricht.pdf', mimeType: 'application/pdf', buffer: pdf })
+  await deSender.getByTestId('pdf-input').setInputFiles({ name: 'folien.pdf', mimeType: 'application/pdf', buffer: pdf })
   await de.getByText('Seite 1 von 3').waitFor({ timeout: 30000 })
   await deSender.getByRole('button', { name: 'Nächste Seite' }).click()
   await de.getByText('Seite 2 von 3').waitFor({ timeout: 10000 })

@@ -11,7 +11,7 @@ body:
     id: problem
     attributes:
       label: What do you want to do?
-      description: Describe the situation (for example a classroom, an office, a club) and what is hard today.
+      description: Describe the situation (for example an office, a meeting room, a club, a workshop) and what is hard today.
     validations:
       required: true
   - type: textarea

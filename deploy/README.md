@@ -12,7 +12,7 @@ Deep reference and test notes: [docs/server.md](../docs/server.md).
 
 | You want | Use |
 | --- | --- |
-| One container, no internet needed (school, office) | Docker image alone: it bundles the web app. `mode = "internal"`. |
+| One container, no internet needed (office, meeting room) | Docker image alone: it bundles the web app. `mode = "internal"`. |
 | Calls across networks (media through TURN) | Docker compose with coturn. TURN credentials work in **internal** mode only. |
 | Your own public server | `mode = "open"` (ALTCHA always, no TURN). Behind a reverse proxy. |
 

@@ -101,7 +101,7 @@ def rl_canvas(name, **kw):
     return canvas.Canvas(os.path.join(HERE, name), invariant=1, **kw)
 
 
-def classroom():
+def slides():
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
@@ -109,7 +109,7 @@ def classroom():
 
     vera = os.path.join(os.path.dirname(reportlab.__file__), "fonts", "Vera.ttf")
     pdfmetrics.registerFont(TTFont("Vera", vera))
-    c = rl_canvas("classroom.pdf", pagesize=A4)  # 595.28 x 841.89 pt
+    c = rl_canvas("slides.pdf", pagesize=A4)  # 595.28 x 841.89 pt
     c.setTitle("Comet Cast test document")
     # Page 1: text in standard fonts and vector graphics.
     c.setFont("Helvetica-Bold", 28)
@@ -201,7 +201,7 @@ def main():
     w("two_pages_one_rotated.pdf", two_pages_one_rotated())
     w("rotated_pages.pdf", rotated_pages())
     try:
-        classroom()
+        slides()
         encrypted()
     except ImportError as e:
         print("reportlab/Pillow missing, richer files not regenerated:", e, file=sys.stderr)

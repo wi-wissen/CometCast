@@ -23,7 +23,7 @@ pub const MAX_NAME_LENGTH: usize = 255;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 /// Largest PDF a sender sends and a receiver accepts by default (64 MiB). The renderer of
 /// `cc-docs` accepts 100 MiB by default; a receiver can set its own limit.
-/// UNCERTAIN: a guess for classroom PDFs; scans of whole books can be larger.
+/// UNCERTAIN: a guess for typical PDFs; scans of whole books can be larger.
 pub const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
 /// Largest page number a `go_to_page` command may carry (as the web client).
 pub const MAX_PAGE_NUMBER: u32 = 1_000_000;

@@ -22,7 +22,7 @@ fn data(name: &str) -> Vec<u8> {
 }
 
 fn open_good(limits: Limits) -> Result<Document, DocError> {
-    Document::open_with_options(data("classroom.pdf"), limits, worker())
+    Document::open_with_options(data("slides.pdf"), limits, worker())
 }
 
 /// The child half: runs only when the parent test started this program for it.
@@ -206,7 +206,7 @@ fn require_os_sandbox_follows_what_is_available() {
 /// the generated files (a denied syscall would show as a failed render).
 #[test]
 fn all_test_files_still_render_under_the_sandbox() {
-    for name in ["minimal.pdf", "classroom.pdf", "rotated_pages.pdf"] {
+    for name in ["minimal.pdf", "slides.pdf", "rotated_pages.pdf"] {
         let d = Document::open_with_options(data(name), Limits::default(), worker())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         for i in 0..d.page_count() {

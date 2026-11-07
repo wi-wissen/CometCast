@@ -155,7 +155,7 @@ void main() {
           )
           ..discovery = _found([
             ('wss://mdm.example:443', 'mdm'),
-            ('srv.school.example:8443', 'dns-srv'),
+            ('srv.example.org:8443', 'dns-srv'),
             ('10.0.0.7:8443', 'display-announcement'),
             ('relay.cometcast.de:443', 'default-list'),
           ]);
@@ -165,7 +165,7 @@ void main() {
         expect(fieldText(tester), 'wss://mdm.example:443');
         expect(settings.serverSuggestions.map((s) => s.address), [
           'wss://mdm.example:443',
-          'srv.school.example:8443',
+          'srv.example.org:8443',
           '10.0.0.7:8443',
           'relay.cometcast.de:443',
           '127.0.0.1:8443',
@@ -175,7 +175,7 @@ void main() {
           'Set by your administrator',
         );
         expect(
-          chipSource(tester, 'srv.school.example:8443'),
+          chipSource(tester, 'srv.example.org:8443'),
           'Found in the network (DNS)',
         );
         expect(chipSource(tester, '10.0.0.7:8443'), announcedLabel);
@@ -192,14 +192,14 @@ void main() {
       (tester) async {
         final core = FakeCoreApi()
           ..discovery = _found([
-            ('srv.school.example:8443', 'dns-srv'),
+            ('srv.example.org:8443', 'dns-srv'),
             ('relay.cometcast.de:443', 'default-list'),
           ]);
         final settings = AppSettings.fromDefaults(core.serverDefaults());
         // Before the answer: the offline list.
         expect(settings.serverAddress, 'relay.cometcast.de:443');
         await openReceive(tester, core, settings);
-        expect(fieldText(tester), 'srv.school.example:8443');
+        expect(fieldText(tester), 'srv.example.org:8443');
         await tester.tap(
           find.byKey(const Key('serverSuggestion:relay.cometcast.de:443')),
         );
@@ -506,7 +506,7 @@ void main() {
         final gate = Completer<void>();
         final core = FakeCoreApi()
           ..discoveryGate = gate
-          ..discovery = _found([('srv.school.example:8443', 'dns-srv')]);
+          ..discovery = _found([('srv.example.org:8443', 'dns-srv')]);
         final settings = AppSettings.fromDefaults(core.serverDefaults());
         await openPage(
           tester,
@@ -532,7 +532,7 @@ void main() {
         expect(settings.discovering, isFalse);
         expect(
           settings.serverSuggestions.map((s) => s.address),
-          contains('srv.school.example:8443'),
+          contains('srv.example.org:8443'),
         );
       },
     );
@@ -543,7 +543,7 @@ void main() {
       final gate = Completer<void>();
       final core = FakeCoreApi()
         ..discoveryGate = gate
-        ..discovery = _found([('srv.school.example:8443', 'dns-srv')]);
+        ..discovery = _found([('srv.example.org:8443', 'dns-srv')]);
       final settings = AppSettings.fromDefaults(core.serverDefaults());
       await openReceive(tester, core, settings);
       await tester.enterText(
@@ -556,7 +556,7 @@ void main() {
       expect(fieldText(tester), 'mine.example:9');
       expect(
         settings.serverSuggestions.map((s) => s.address),
-        contains('srv.school.example:8443'),
+        contains('srv.example.org:8443'),
       );
     });
 
@@ -567,7 +567,7 @@ void main() {
       final core = FakeCoreApi()
         ..discoveryGate = gate
         ..discovery = _found([
-          ('srv.school.example:8443', 'dns-srv'),
+          ('srv.example.org:8443', 'dns-srv'),
         ], locked: true);
       final settings = AppSettings.fromDefaults(core.serverDefaults());
       await openReceive(tester, core, settings);
@@ -946,7 +946,7 @@ void main() {
     ) async {
       final core = FakeCoreApi()
         ..discovery = _found([
-          ('srv.school.example:8443', 'dns-srv'),
+          ('srv.example.org:8443', 'dns-srv'),
           ('10.0.0.7:8443', 'display-announcement'),
           ('relay.cometcast.de:443', 'default-list'),
         ]);
@@ -960,7 +960,7 @@ void main() {
         'Source of this address: $announcedLabel',
       );
       await tester.tap(
-        find.byKey(const Key('serverSuggestion:srv.school.example:8443')),
+        find.byKey(const Key('serverSuggestion:srv.example.org:8443')),
       );
       await tester.pump();
       expect(
@@ -1030,7 +1030,7 @@ void main() {
       tester,
     ) async {
       final core = FakeCoreApi()
-        ..discovery = _found([('srv.school.example:8443', 'dns-srv')]);
+        ..discovery = _found([('srv.example.org:8443', 'dns-srv')]);
       final store = MemorySettingsStore();
       final settings = AppSettings.fromDefaults(
         core.serverDefaults(),
@@ -1038,12 +1038,12 @@ void main() {
       );
       await openSend(tester, core, settings);
       await tester.tap(
-        find.byKey(const Key('serverSuggestion:srv.school.example:8443')),
+        find.byKey(const Key('serverSuggestion:srv.example.org:8443')),
       );
       await tester.enterText(find.byKey(const Key('codeField')), 'K7M2QX');
       await tester.tap(find.byKey(const Key('startButton')));
       await tester.pumpAndSettle();
-      expect(store.server, 'srv.school.example:8443');
+      expect(store.server, 'srv.example.org:8443');
     });
 
     testWidgets('the server is trimmed before it is sent', (tester) async {

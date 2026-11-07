@@ -72,3 +72,7 @@ jobs:
         working-directory: apps/web
       - run: npm run e2e:pdf
         working-directory: apps/web
+      - run: npm run e2e:join
+        working-directory: apps/web
+      - run: npm run e2e:media
+        working-directory: apps/web

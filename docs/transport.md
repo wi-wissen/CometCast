@@ -216,7 +216,7 @@ first seconds (the Rust receiver sends a picture-loss request at the start).
 
 - **Direct route only as a route.** `Route::ServerRelay` and `Route::ReceiverWifi` are not implemented; `Session::new`
   rejects them. STUN/TURN servers from the signalling server are passed to the library (see above), but no relay path
-  was tested. UNCERTAIN: how often direct works in school or office networks is measurement point 1 / milestone M8.
+  was tested. UNCERTAIN: how often direct works in office or campus networks is measurement point 1 / milestone M8.
 - **Same-machine or same-LAN tests only.** Everything was run on one machine (loopback and the machine's own interface
   address). Nothing was measured across NAT, on lossy Wi-Fi, or with a second device. Latency, CPU and quality (measurement point 2) are **not measured**.
 - Chromium was started with `--disable-features=WebRtcHideLocalIpsWithMdns`; the Rust side cannot resolve `.local`

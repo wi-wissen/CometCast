@@ -10,15 +10,23 @@ JavaScript at all.
 | `site/assets/style.css` | Styles (tokens from the web app, system fonts, dark mode through `prefers-color-scheme`) |
 | `site/assets/*.svg`, `favicon.svg`, `apple-touch-icon.png` | Copies of the logo files in `assets/logo/` |
 | `site/CNAME`, `.nojekyll`, `404.html`, `sitemap.xml`, `robots.txt` | Pages plumbing |
-| `tools/check-site-links.mjs` | Dependency-free link and metadata check; runs in the workflow before deploy |
-| `.github/workflows/pages.yml` | Deploy on push to `main` touching `site/**`, and on manual start |
+| `tools/check-site-links.mjs` | Dependency-free link and metadata check; runs in the workflow before deploy (`--without-app` for `site/` alone, without flag on the staged artifact that contains `/app/`) |
+| `.github/workflows/pages.yml` | Builds the web app (`VITE_BASE=/app/`, WASM PDF renderer, `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws`), stages it under `/app/` next to `site/`, and deploys on push to `main` touching `site/**` or the web sources, and on manual start |
 
-Local preview: `node tools/build-site.mjs && node tools/check-site-links.mjs && (cd site && python3 -m http.server 8000)`.
+Local preview: `node tools/build-site.mjs && node tools/check-site-links.mjs site --without-app && (cd site && python3 -m http.server 8000)`.
 
 The imprint (`/impressum/`, `/en/imprint/`) is a **placeholder with TODO fields**. It must be filled in
 by the responsible party before the site goes public; no company data was invented. Likewise the
 privacy page needs a proper privacy notice (TODO there). The downloads page copies its status table
 from [architecture.md](architecture.md); update both together.
+
+## Before enabling Pages: fill the imprint
+
+- [ ] Fill in the imprint (`/impressum/`, `/en/imprint/`; source: `content.imprint` in `tools/build-site.mjs`). It is a placeholder
+      with TODO fields, set to `noindex` and left out of `sitemap.xml`; no data was invented. Remove the placeholder wording and
+      the `noindex` only when the real data is in.
+- [ ] Fill in the privacy notice (`/datenschutz/`, TODO there).
+- [ ] Regenerate (`node tools/build-site.mjs`), run `node tools/check-site-links.mjs site --without-app`, commit.
 
 ## What the owner must do once
 
@@ -45,11 +53,11 @@ from [architecture.md](architecture.md); update both together.
 ## Website, web app and relay
 
 - **The site (`cometcast.de`)** is static files on Pages.
-- **The web app** (Vue + Rust WASM) is also plain static files, so it **can be published on Pages** as well (planned at
-  `/app/`; the links on the site already point there and are placeholders, **UNCERTAIN until that work lands**). The source is the
-  web build of `apps/web` (`npm run build`, plus `npm run build:wasm` for PDF), which the release workflow's web build zip
-  is meant to provide (UNCERTAIN: no release workflow exists in this repository yet). It is **not** deployed by the current `pages.yml`; extending
-  it means adding the built files into the uploaded artifact (and the link checker's `ALLOWED_MISSING` entry for `/app/` can then go).
+- **The web app** (Vue + Rust WASM) is plain static files and is **published on Pages under `/app/`** by `pages.yml`: it
+  runs `npm run build:wasm` and `npm run build` in `apps/web` with `VITE_BASE=/app/` and
+  `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws`, copies `dist/` to `/app/` next to `site/`, asserts that
+  `app/index.html` and the PDF renderer exist, and runs the link checker on the staged directory. (This workflow has not been run on
+  GitHub yet.) The app can talk to the relay only once `relay.cometcast.de` exists (see the next point).
 - **The relay server** (`cometcast-server`, Docker image, self-hosted or run by the project at `relay.cometcast.de`) is the only thing that
   needs a running process: it does signalling. A web app on `cometcast.de` talks to it **cross-origin over `wss://`**. Cross-origin means the
   server's `/altcha/challenge` and `/ice-servers` calls need CORS: the relay has a configurable `allowed_origins` list

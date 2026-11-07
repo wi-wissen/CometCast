@@ -151,11 +151,11 @@ fn four_rotations_put_the_red_box_in_four_corners() {
 }
 
 #[test]
-fn classroom_page1_text_and_vector_graphics() {
-    let d = open("classroom.pdf");
+fn slides_page1_text_and_vector_graphics() {
+    let d = open("slides.pdf");
     assert_eq!(d.page_count(), 3);
     let img = d.render_page(0, 595).unwrap();
-    dump("classroom", 0, &img);
+    dump("slides", 0, &img);
     assert_eq!(img.height, 842);
     // Page height is 841.89 pt; y of a PDF point is counted from the bottom.
     assert_color(&img, 150, 467, [0, 153, 0], 3); // green box
@@ -165,10 +165,10 @@ fn classroom_page1_text_and_vector_graphics() {
 }
 
 #[test]
-fn classroom_page2_embedded_jpeg() {
-    let d = open("classroom.pdf");
+fn slides_page2_embedded_jpeg() {
+    let d = open("slides.pdf");
     let img = d.render_page(1, 595).unwrap();
-    dump("classroom", 1, &img);
+    dump("slides", 1, &img);
     // JPEG at x 100..420, y 500..660 pt: left half orange, right half teal (JPEG tolerance).
     assert_color(&img, 200, 262, [255, 128, 0], 14);
     assert_color(&img, 320, 262, [0, 128, 128], 14);
@@ -176,10 +176,10 @@ fn classroom_page2_embedded_jpeg() {
 }
 
 #[test]
-fn classroom_page3_embedded_font_and_gradient() {
-    let d = open("classroom.pdf");
+fn slides_page3_embedded_font_and_gradient() {
+    let d = open("slides.pdf");
     let img = d.render_page(2, 595).unwrap();
-    dump("classroom", 2, &img);
+    dump("slides", 2, &img);
     // Gradient from red (left) to blue (right) inside x 50..450, y 400..500 pt.
     let left = img.pixel(60, 392).unwrap();
     let right = img.pixel(440, 392).unwrap();
@@ -209,7 +209,7 @@ fn password_protected_file_is_refused_with_a_clear_error() {
 
 #[test]
 fn thumbnails_fit_the_box() {
-    let d = open("classroom.pdf");
+    let d = open("slides.pdf");
     let t = d.thumbnail(0, 160).unwrap();
     assert_eq!((t.width, t.height), (113, 160));
     let m = open("minimal.pdf").thumbnail(0, 160).unwrap();
@@ -321,7 +321,7 @@ fn output_limits_are_enforced_before_rendering() {
 
 #[test]
 fn encoders_round_trip() {
-    let d = open("classroom.pdf");
+    let d = open("slides.pdf");
     let img = d.render_page(0, 300).unwrap();
     let png_bytes = encode_png(&img).unwrap();
     assert_eq!(&png_bytes[..8], b"\x89PNG\r\n\x1a\n");
@@ -368,7 +368,7 @@ fn webp_validation_rejects_bad_input() {
 
 #[test]
 fn session_drives_a_real_document() {
-    let d = open("classroom.pdf");
+    let d = open("slides.pdf");
     let mut s = DocumentSession::new(u32::try_from(d.page_count()).unwrap()).unwrap();
     assert_eq!(
         s.apply(&ControlCmd::GoToPage { page: 99 }),

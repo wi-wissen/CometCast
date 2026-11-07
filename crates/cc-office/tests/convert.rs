@@ -36,7 +36,7 @@ fn assert_pdf(c: &cc_office::Converted) {
 
 fn fixtures() -> Vec<(OfficeFormat, Vec<u8>)> {
     vec![
-        (OfficeFormat::Docx, zw::docx("Hello classroom")),
+        (OfficeFormat::Docx, zw::docx("Hello world")),
         (OfficeFormat::Xlsx, zw::xlsx("Hello sheet")),
         (OfficeFormat::Pptx, zw::pptx("Hello slide")),
     ]
@@ -71,7 +71,7 @@ fn rust_engine_converts_the_generated_fixtures() {
 fn convert_file_reads_from_disk_and_checks_the_extension() {
     let dir = std::env::temp_dir().join(format!("cc-office-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let p: PathBuf = dir.join("Klassenarbeit with spaces.DOCX");
+    let p: PathBuf = dir.join("Quarterly report with spaces.DOCX");
     std::fs::write(&p, zw::docx("x")).unwrap();
     // A .docx that is really an xlsx is refused before any engine runs.
     let wrong = dir.join("wrong.docx");
@@ -299,4 +299,65 @@ fn opendocument_and_legacy_files_are_refused_by_type() {
         );
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The Office fonts without a free licence are replaced by the bundled metric-compatible ones:
+/// Calibri by Carlito, Cambria by Caladea, Arial by Liberation Sans, Times New Roman by Liberation
+/// Serif, Courier New by Liberation Mono. The check reads the font list of the PDF with `pdffonts`
+/// (poppler); without it the test says so loudly and passes without checking. Note: this proves
+/// the substitution, not that the bundled copy was used (a machine with the same families installed
+/// would also pass); `fonts::tests` and `fonts/FONTS.md` cover the bundled files themselves.
+#[cfg(feature = "engine-rust")]
+#[test]
+fn office_fonts_are_replaced_by_the_metric_compatible_ones() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let doc = zw::docx_fonts(&[
+        ("Calibri", "Calibri paragraph"),
+        ("Cambria", "Cambria paragraph"),
+        ("Arial", "Arial paragraph"),
+        ("Times New Roman", "Times paragraph"),
+        ("Courier New", "Courier paragraph"),
+    ]);
+    let c = convert_bytes(&doc, OfficeFormat::Docx, &opts()).expect("conversion");
+    assert_pdf(&c);
+    let dir = std::env::temp_dir().join(format!("cc-office-fonts-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pdf = dir.join("fonts.pdf");
+    std::fs::File::create(&pdf)
+        .unwrap()
+        .write_all(&c.pdf)
+        .unwrap();
+    let out = Command::new("pdffonts")
+        .arg(&pdf)
+        .stdin(Stdio::null())
+        .output();
+    let out = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => {
+            eprintln!(
+                "SKIPPED (pdffonts from poppler-utils is not available): the font substitution was NOT checked"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let _ = std::fs::remove_dir_all(&dir);
+    eprintln!("{out}");
+    for want in [
+        "Carlito",
+        "Caladea",
+        "LiberationSans",
+        "LiberationSerif",
+        "LiberationMono",
+    ] {
+        assert!(out.contains(want), "{want} not embedded in the PDF:\n{out}");
+    }
+    for unwanted in ["Calibri", "Cambria", "Arial", "TimesNewRoman", "CourierNew"] {
+        assert!(
+            !out.contains(unwanted),
+            "{unwanted} must not be named in the PDF:\n{out}"
+        );
+    }
 }

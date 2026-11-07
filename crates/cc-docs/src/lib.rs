@@ -25,7 +25,7 @@
 //! `ControlCmd::GoToPage` use 1-based page **numbers** (the first page is 1).
 //!
 //! UNCERTAIN: hayro describes itself as experimental. It was tried here only on the small
-//! generated PDFs in `tests/data`, not on the 20 real classroom PDFs the plan asks for
+//! generated PDFs in `tests/data`, not on the 20 real PDFs the plan asks for
 //! (measurement point 7). See `docs/documents.md` for what was and was not checked.
 //!
 //! Not in this crate (later steps): Office conversion, the WASM build for the web app,

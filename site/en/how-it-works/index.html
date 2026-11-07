@@ -33,7 +33,7 @@
 <li><strong>Through a server.</strong> If direct fails: an organisation's server with a TURN relay (and optionally an SFU).</li>
 <li><strong>Own Wi-Fi.</strong> If that fails too: the receiver's own Wi-Fi.</li>
 </ol>
-<div class="note"><p>The order is the plan. Little is measured so far: connections on a local network and a TURN test on a single machine. Across real networks, through NAT, or between two devices over TURN it is <span class="st">UNCERTAIN</span>.</p></div>
+<div class="note"><p>The order is the plan. Little is measured so far: connections on a local network and a TURN test on a single machine. Across real networks, through NAT, or between two devices over TURN it has not been tested yet whether and how well it works.</p></div>
 <h2>How the app finds the server</h2>
 <ol class="steps"><li>MDM policy</li><li>DNS-SRV record <code>_cometcast._tcp</code></li><li>Announcement from the display device</li><li>Built-in default list</li></ol>
 <p>mDNS runs in parallel for local discovery. Parts of the server discovery in the apps are not built yet.</p>

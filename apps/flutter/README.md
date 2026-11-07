@@ -148,7 +148,7 @@ integration_test/run_content_e2e.sh
 It starts a real `cometcast-server` and runs `integration_test/content_e2e_test.dart` under `xvfb-run`
 (`flutter test -d linux` builds the app, so the bundle contains the worker; the script unsets
 `COMETCAST_DOCS_WORKER`). Tests: the worker sits next to the executable and the core names it; **A1** the app is the
-receiver and `cometcast-cli send-file <CODE> classroom.pdf --then next,go:3,prev,stop` drives it: the page
+receiver and `cometcast-cli send-file <CODE> slides.pdf --then next,go:3,prev,stop` drives it: the page
 indicator must read 1, 2, 3, 2 of 3, the pixels of each page (read back from the page view) differ, the page is drawn at the
 width of the view, and `stop` removes it; **A2** an image is shown and closing it goes back to waiting; **A3** `send-link`
 shows a card with the punycode host and nothing is opened until Open is clicked; **B** the app is the sender of the PDF
@@ -240,7 +240,7 @@ Notes for a Vue developer: `pubspec.yaml` is like `package.json`;
 - Server address: pre-filled with the first entry of `cc-discovery`'s offline list: an MDM policy file
   if present, otherwise the built-in `relay.cometcast.de:443`, **a host that does not exist yet**
   (UNCERTAIN: planned name). The DNS SRV / display-announcement steps are used through
-  `discover_servers()` but were never tried on a real school network (docs/discovery.md).
+  `discover_servers()` but were never tried on a real managed office network (docs/discovery.md).
   `127.0.0.1:8443` is offered as a chip for development. The last used server is saved with
   `shared_preferences`; UNCERTAIN: only its Linux behaviour (a JSON file `shared_preferences.json` in the
   application support folder, normally `~/.local/share/<application id>/`) was read about in the package, not looked at on disk.

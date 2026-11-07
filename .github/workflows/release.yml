@@ -123,6 +123,9 @@ jobs:
           node tools/check-i18n.mjs
           bash -n tools/release-stage.sh
           bash tools/release-guard.test.sh
+          node tools/check-fonts.mjs
+      - name: THIRD_PARTY_LICENSES.md must be present and made from the current lock files
+        run: tools/release-guard.sh licenses-fresh
 
   # ---------------------------------------------------------------------------------------
   # Duplicate guards. Needs a token that can LIST DRAFT RELEASES (contents: write; with read
@@ -242,14 +245,14 @@ jobs:
           mkdir -p "$pkg/opt/cometcast" "$pkg/usr/bin" "$pkg/usr/share/applications" "$pkg/usr/share/doc/cometcast" "$pkg/DEBIAN"
           cp -a "$BUNDLE/." "$pkg/opt/cometcast/"
           ln -s /opt/cometcast/cometcast "$pkg/usr/bin/cometcast"
-          cp LICENSE THIRD_PARTY_NOTICES.md "$pkg/usr/share/doc/cometcast/"
+          cp LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md "$pkg/usr/share/doc/cometcast/"
           cat > "$pkg/usr/share/applications/cometcast.desktop" <<'DESKTOP'
           [Desktop Entry]
           Type=Application
           Name=Comet Cast
           Exec=/usr/bin/cometcast
           Terminal=false
-          Categories=Network;Education;
+          Categories=Network;Office;
           DESKTOP
           cat > "$pkg/DEBIAN/control" <<CONTROL
           Package: cometcast
@@ -259,7 +262,7 @@ jobs:
           Architecture: amd64
           Depends: libc6 (>= 2.35), libgtk-3-0 (>= 3.24.33), libglib2.0-0 (>= 2.72), libstdc++6 (>= 12), libgcc-s1 (>= 12)
           Maintainer: Comet Cast contributors <noreply@users.noreply.github.com>
-          Description: Comet Cast, screen, document and file sharing for classrooms
+          Description: Comet Cast, share your screen, documents, links, media and files with displays in a room
            Sender and receiver app. See https://github.com/wi-wissen/CometCast
           CONTROL
           chmod -R u=rwX,go=rX "$pkg"
@@ -445,7 +448,7 @@ jobs:
           mkdir -p "$app/Contents/Frameworks"
           cp rust-universal/libcc_ffi.dylib "$app/Contents/Frameworks/libcc_ffi.dylib"
           cp rust-universal/cc-docs-worker rust-universal/cc-office-worker "$app/Contents/MacOS/"
-          cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+          cp LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md "$app/Contents/Resources/"
           echo "app=$app" >> "$GITHUB_OUTPUT"
       - name: Import the signing certificate (only when the secrets exist)
         if: ${{ env.HAVE_SIGNING == 'true' }}
@@ -1249,7 +1252,7 @@ jobs:
           tools/release-stage.sh "stage/$name" "$VERSION"
           tar -C stage -czf "dist/$name.tar.gz" "$name"
           cp LICENSE dist/LICENSE
-          cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
+          cp THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md dist/
           ls -l dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
