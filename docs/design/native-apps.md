@@ -56,6 +56,7 @@ Engineers must not change these per platform. A difference is a bug.
 | 4.3 settings | Opened by focus on the Settings button, or Menu key; close label `settings.closeRemote` | Play/Pause = Menu; `settings.closeRemote` | Tap; `settings.close` | Click, `M` key; `settings.close` |
 | 4.4 join request | Same; Back does nothing while open | Menu (Back) does nothing while open | Same | Same; Escape does nothing while open |
 | 4.5 presenting | Same; no toolbar | Same; no toolbar | Same; no toolbar this round (section 9) | Same; no toolbar this round (section 9) |
+| 4.5 content states | Same: transfer pill one line, max 340, name shortened in the middle, then `receive.document.loading` in the same pill (spec 3.5); the display sends the page message `{"kind":"page","page":n,"pages":m}` (spec 5.6, decision 13.58) | Same | Same | Same |
 | 4.5 link card | Open only if the system can open web links (Flutter `canLaunchUrl`); otherwise the no-browser variant (`receive.link.hintTv`, [Dismiss]) | Always the no-browser variant (tvOS has no browser) | Open opens the system browser | Open opens the default browser |
 | 4.5 media in link card | Same player rules (`card`, `loading`, `playing`, `error`); formats the platform cannot play show `receive.media.error.unsupported` | AVPlayer; same rules (see `docs/appletv.md`) | Same | Same |
 | 4.6 toasts | Same | Same | Same | Same |

@@ -310,32 +310,47 @@ decisions; each item says what was found, the options, and what the code does **
 - **Found:** spec 4.5: the black screen shows `toolbar.blackHint` as 15, `--mut` on `#000000`. In Light, `--mut` is `#343C51`, which is almost invisible on black (see `display-*-light-black`). The same holds for `receive.document.loading` (the "Opening ..." line while a PDF is opened), which has no spec value and uses `--mut` 15 on black as well.
 - **Options:** (a) keep as specified; (b) a fixed light grey for this line on black in every theme; (c) `--fg` in Light.
 - **Meanwhile:** (a).
+- **Answered:** (b), with a new token. `--onblack` = `#A1A9BA` in **every** theme (the OLED `--mut`; 8.6:1 on `#000000`) for text that sits directly on the black picture area. `toolbar.blackHint`: 15/400 `--onblack`, centred, no box. `receive.document.loading` is **not** a line on black any more: it is shown in the transfer pill (spec 3.5), which goes from `receive.transfer` straight to `receive.document.loading` in the same place until the first page is drawn. Copy: no key change; DE `receive.document.loading` gets the space before the ellipsis like `receive.transfer`: EN `Opening {name}…`, DE du `{name} wird geöffnet …`, DE Sie `{name} wird geöffnet …`. Spec 3.2, 3.5, 4.5, decision 13.57.
 
 ### F2. Name and shape of the display-to-presenter message (`page`, `pages`)
 - **Found:** decision 13.31 names the fields `page` and `pages` but not the message. The control channel messages have a `kind`.
 - **Options:** (a) `{"kind":"page","page":n,"pages":m}`; (b) another kind name; (c) a `cmd`-like object.
 - **Meanwhile:** (a), sent by the web receiver only once the page count is known (not while the document is being opened) and on every change of either value; the presenter ignores malformed or out-of-range values (`page` > `pages`). Documented in `docs/web-m2.md`. The Rust and Swift cores do not send or read it yet; there is no `docs/protocol.md` content section (the content messages live in `docs/web-m2.md`).
+- **Answered:** (a) as built: `{"kind":"page","page":n,"pages":m}`, display → presenter, `page` 1-based, `1 ≤ page ≤ pages`, sent once the count is known and on every change; the presenter ignores anything else (and then behaves as "page unknown": no line, both buttons enabled). Its home is the content-message description (`docs/web-m2.md` today, the content section of `docs/protocol.md` when it exists); the Rust and Swift cores send and read it when they implement the content channel (native-apps.md 3). No copy change. Spec 5.6, decision 13.58.
 
 ### F3. Does the first failure of a display that never had a code start the reconnect schedule?
 - **Found:** spec 4.2 says "after a loss"; a display that cannot connect at page load has had no code to lose.
 - **Options:** (a) the first failed attempt counts as the loss (retries at 1 s, 2 s, 3 s after it, box after the attempt at 3 s); (b) a different schedule at start (8 s of "connecting" as before).
 - **Meanwhile:** (a). Without any failure and without a code, the box still comes after 8 s of silence (unchanged).
+- **Answered:** (a) as built. The first failed attempt counts as the loss; the 8 s rule stays for silence without a failure. No copy change. Spec 4.2, decision 13.59.
 
 ### F4. Outdated page (`proto_mismatch`, `bad_hello`): when does the box appear?
 - **Found:** spec 4.2 says "box at once" only for the busy refusals. An outdated page has no retry, so "after the attempt at 3 s fails" would never come.
 - **Options:** (a) at once, like the busy refusals; (b) after 3 s.
 - **Meanwhile:** (a).
+- **Answered:** (a) as built: box with `idle.offline.bodyOutdated` at once, no retry. No copy change. Spec 4.2, decision 13.59.
 
 ### F5. A refused STUN/TURN list and the 60 s busy memory
 - **Found:** decision 13.45 maps a failed connection after a refused list to `error.busy`; decision 13.44 remembers `rate_limited`, `banned`, `server_full` refusals for 60 s. Nothing says whether the refused list also starts the 60 s memory.
 - **Options:** (a) no; (b) yes.
 - **Meanwhile:** (a). Only the three server refusals are remembered.
+- **Answered:** (a) as built. A refused list does not close the signalling connection, so there is nothing for the memory to explain; it already maps its own failure to `error.busy` (13.45). Spec 6, decision 13.59.
 
 ### F6. Relay confirmation: initial focus on the display after "Use this relay" is shown by an arrow key
 - **Found:** nothing to decide; noted because in `display-*-relay-confirm` (taken after one arrow key press, as the new rule asks) the focus ring has moved from Cancel to "Use this relay". Cancel has the initial focus; a shot without a key press shows it on Cancel.
 - **Meanwhile:** unchanged.
+- **Answered:** the product is right (Cancel has the initial focus; Right moves to "Use this relay"). The screenshot rule changes: a display shot is taken after one press of **Shift** (shows the focus ring, moves nothing) instead of an arrow key; the arrow key stays only where a shot is meant to show focus that has moved (`*-setup-1-name-emptied`, `*-focus-setup-name-field`, `*-presenting-controls`). Product rule made explicit: any key press, a modifier alone included, shows the ring (13.50). Spec 7.2, decision 13.62.
 
 ### F7. Transfer pill and the name tag / End on a narrow canvas
 - **Found:** the transfer pill (bottom 12, centred, up to 880 wide) can overlap the name tag or End when the file name is long. The spec gives no maximum width or truncation.
 - **Options:** (a) cut the name with an ellipsis; (b) leave it (the pill wraps); (c) a maximum width that clears both neighbours.
 - **Meanwhile:** (b), with a maximum width of 880 reference px.
+- **Answered:** (a) + (c): the pill is **one line, at most 340 ref wide** (it then clears a name tag with the longest allowed name and End). The file name is shortened **in the middle** with `…`, keeping its start and its extension (`holiday-pho…2026.png`); the percentage and the rest of the sentence are never cut. The same pill and rule carry `receive.document.loading` (F1). No copy change. Spec 3.5, decision 13.63.
+
+### F8. Things decided in the third review that were not asked
+The engineer's list of visible differences, and the review of `/tmp/shots3`, also led to these (decisions 13.60, 13.61 and 13.64–13.68, work in [fix-list-web-3.md](fix-list-web-3.md)):
+- **Straight quotes in `receive.media.hint` (EN):** a copy bug: `“Play”`. Together with the next item.
+- **Play button label:** `receive.media.play` becomes **Play** / **Abspielen** / **Abspielen** (no host): the hint already says "click “Play”", the host is in the address line and in the player header, and the long label wrapped Dismiss onto a second row (`display-*-linkcard-media`).
+- **Link address colour:** it was correctly `--mut`; it becomes **`--fg`** (18 mono), like the relay host in 7.2: the address is what the host has to judge.
+- **Wizard step 1 card 12 px above the edge when chips wrap:** the card top for steps 1–4 moves from 64 to **40 ref**; every step keeps ≥ 24 ref below the card in EN and DE.
+- **Frozen badge under the toolbar:** while the toolbar is visible the frozen badge is hidden; the Freeze button's selected border shows the state.
