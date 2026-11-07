@@ -244,7 +244,7 @@ void main() {
         await page(
           'what',
           WhatPage(
-            laptop: size.key == 'tablet',
+            device: size.key == 'tablet' ? PresenterDevice.computer : PresenterDevice.phone,
             onScreen: nop,
             onFile: nop,
             onLink: nop,

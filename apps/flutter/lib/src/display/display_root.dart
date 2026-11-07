@@ -15,13 +15,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../codec_controller.dart';
-import '../../codec_notice.dart';
 import '../../core/android_platform.dart';
 import '../../core/core_api.dart';
 import '../../discovery.dart';
 import '../../receiver_controller.dart';
 import '../../settings.dart';
 import '../design/tokens.dart';
+import 'codec_dialog.dart';
 import 'display_logic.dart';
 import 'kit.dart';
 import 'picture_stage.dart';
@@ -165,12 +165,27 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       widget.wakeLock ??
       PlatformWakeLock(android: DeviceProfile.peek(context).platform);
 
+  /// An H.264 presentation waits for the decoder: it is Presenting (black stage, the controls
+  /// under the consent dialog, spec 4.7).
+  bool get _codecWaiting =>
+      _codec != null &&
+      _codec!.needed &&
+      !_codec!.ready &&
+      _c.senderJoined &&
+      _c.codec == 'h264';
+
+  /// "Not now" was chosen for this presentation (spec 4.7: at most once per presentation).
+  bool _codecLater = false;
+
   bool get _presenting {
     final shown = _c.shown;
     return _c.hasLiveVideo ||
         shown is ReceivedImage ||
-        shown is ReceivedDocument;
+        shown is ReceivedDocument ||
+        _codecWaiting;
   }
+
+  bool get _codecDialog => _codecWaiting && !_codecLater;
 
   @override
   void initState() {
@@ -191,6 +206,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
           profile.videoDecoder == null ||
           ReceiverController.hardwareBrokenReason != null,
     );
+    _codec!.addListener(_onController);
     widget.settings.discover(widget.core);
     widget.settings.addListener(_onSettings);
     _tick = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -234,6 +250,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     widget.settings.cancelDiscovery();
     _c.removeListener(_onController);
     _c.dispose();
+    _codec?.removeListener(_onController);
     _codec?.dispose();
     _wizard?.dispose();
     _ring.dispose();
@@ -294,6 +311,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       _hadCode = false;
       _lostAt = _t;
     }
+    if (!c.senderJoined)
+      _codecLater = false; // the next presentation asks again
     // Activity: a request, a joiner or a mode change counts as activity (spec 8.6).
     _dim.activity();
     // A join request closes Settings: one dialog at a time (spec 4.3).
@@ -335,7 +354,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   List<AddressOption> _addressOptions() {
     final s = widget.settings;
     AddressSource source(ServerSourceKind k) => switch (k) {
-      ServerSourceKind.dns || ServerSourceKind.policy => AddressSource.own,
+      ServerSourceKind.dns => AddressSource.own,
+      ServerSourceKind.policy => AddressSource.policy,
       ServerSourceKind.announced => AddressSource.box,
       _ => AddressSource.defaultServer,
     };
@@ -454,6 +474,14 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       // A decision is required: Back and Menu do nothing.
       return (back || menu) ? KeyEventResult.handled : KeyEventResult.ignored;
     }
+    if (_codecDialog && c.shown is! ReceivedLink) {
+      // The consent dialog: Back and Menu mean Not now; the other keys are the dialog's.
+      if (back || menu) {
+        setState(() => _codecLater = true);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     if (_presenting) {
       if (!_controlsShown) {
         // First input only reveals; arrows also focus End (spec 7.1).
@@ -508,6 +536,10 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     }
     final c = _c;
     if (c.requests.isNotEmpty) return true;
+    if (_codecDialog && c.shown is! ReceivedLink) {
+      setState(() => _codecLater = true); // Back = Not now (spec 4.7)
+      return true;
+    }
     final shown = c.shown;
     if (shown is ReceivedLink) {
       c.closeContent();
@@ -672,6 +704,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       cause: _cause,
                       dimmed: _dimmed,
                       settingsFocus: _settingsNode,
+                      ringSuppressed:
+                          _settingsOpen || head != null || link != null,
                       settingsAutofocus:
                           !_settingsOpen && head == null && link == null,
                       onSettings: () => setState(() => _settingsOpen = true),
@@ -679,7 +713,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                   if (presenting)
                     PresentingControls(
                       name: c.peerName ?? '',
-                      shown: _controlsShown,
+                      sas: c.connectionCode,
+                      inert: _codecDialog,
+                      shown: _controlsShown || _codecDialog,
                       endFocus: _endNode,
                       onEnd: () {
                         _c.endRoom();
@@ -718,7 +754,12 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       onDeny: () => _decide(head, allow: false),
                       onBlock: () => _decide(head, allow: false, block: true),
                     ),
-                  if (_codecAttention(c)) _CodecLayer(controller: _codec!),
+                  if (_codecDialog && head == null && link == null)
+                    CodecDialog(
+                      controller: _codec!,
+                      guard: widget.guard,
+                      onLater: () => setState(() => _codecLater = true),
+                    ),
                   if (_toast != null) DToast(text: _toast!),
                 ],
               ),
@@ -754,13 +795,6 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     );
   }
 
-  bool _codecAttention(ReceiverController c) =>
-      _codec != null &&
-      _codec!.needed &&
-      !_codec!.ready &&
-      c.senderJoined &&
-      (c.codec == 'h264');
-
   Widget _setupLayer() {
     final t = AppLocalizations.of(context);
     _wizard ??= SetupController(
@@ -776,28 +810,5 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       onFinish: _finishSetup,
     );
     return SetupWizardView(controller: _wizard!, remote: _tv);
-  }
-}
-
-/// The existing neutral codec card (consent, download, failure) while an H.264 picture cannot
-/// be decoded yet. No designed place yet: docs/design/implementation-questions-flutter.md.
-class _CodecLayer extends StatelessWidget {
-  const _CodecLayer({required this.controller});
-  final CodecController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: SizedBox(
-        width: 560,
-        child: Theme(
-          data: ThemeData(useMaterial3: true),
-          child: Material(
-            type: MaterialType.transparency,
-            child: CodecNotice(controller: controller),
-          ),
-        ),
-      ),
-    );
   }
 }

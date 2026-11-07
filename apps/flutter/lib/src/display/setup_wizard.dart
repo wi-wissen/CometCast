@@ -12,7 +12,7 @@ import 'fields.dart';
 import 'kit.dart';
 
 /// Where an address in step 3 comes from (the source lines of spec 11.3).
-enum AddressSource { defaultServer, own, box, typed }
+enum AddressSource { defaultServer, own, policy, box, typed }
 
 class AddressOption {
   const AddressOption(this.address, this.source);
@@ -200,12 +200,12 @@ class _SetupWizardViewState extends State<SetupWizardView> {
           width: 780,
           children: [_top(s, t, w.step), ..._body(context, s, t, w)],
         );
-        // Step 0 is centred vertically; steps 1 to 4 have their top edge at 64 so that the logo
+        // Step 0 is centred vertically; steps 1 to 4 have their top edge at 40 so that the logo
         // and the dots do not jump (decision 13.46).
         return Align(
           alignment: w.step == 0 ? Alignment.center : Alignment.topCenter,
           child: Padding(
-            padding: EdgeInsets.only(top: w.step == 0 ? 0 : 64),
+            padding: EdgeInsets.only(top: w.step == 0 ? 0 : 40),
             // Keyed by step: initial focus follows the step.
             child: KeyedSubtree(key: ValueKey('step${w.step}'), child: card),
           ),
@@ -321,34 +321,37 @@ class _SetupWizardViewState extends State<SetupWizardView> {
       case 2:
         return [
           _h(s, t.setupModeTitle),
-          Row(
-            children: [
-              Expanded(
-                child: _ModeCard(
-                  key: const Key('wz-mode-open'),
-                  eyebrow: t.setupModeFewPeople,
-                  icon: CcIconName.open,
-                  title: t.modeOpen,
-                  text: t.setupModeOpenText,
-                  selected: w.mode == DefaultMode.open,
-                  col: 0,
-                  onPressed: () => c.mode(DefaultMode.open),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _ModeCard(
+                    key: const Key('wz-mode-open'),
+                    eyebrow: t.setupModeFewPeople,
+                    icon: CcIconName.open,
+                    title: t.modeOpen,
+                    text: t.setupModeOpenText,
+                    selected: w.mode == DefaultMode.open,
+                    col: 0,
+                    onPressed: () => c.mode(DefaultMode.open),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _ModeCard(
-                  key: const Key('wz-mode-confirm'),
-                  eyebrow: t.setupModeManyPeople,
-                  icon: CcIconName.approval,
-                  title: t.modeApproval,
-                  text: t.setupModeApprovalText,
-                  selected: w.mode == DefaultMode.confirm,
-                  col: 1,
-                  onPressed: () => c.mode(DefaultMode.confirm),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _ModeCard(
+                    key: const Key('wz-mode-confirm'),
+                    eyebrow: t.setupModeManyPeople,
+                    icon: CcIconName.approval,
+                    title: t.modeApproval,
+                    text: t.setupModeApprovalText,
+                    selected: w.mode == DefaultMode.confirm,
+                    col: 1,
+                    onPressed: () => c.mode(DefaultMode.confirm),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           _p(s, t.setupModeLater),
           _actions([
@@ -420,7 +423,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          a?.address ?? '',
+                          a == null ? '' : displayHost(a.address),
                           key: const Key('wz-domain'),
                           style: s.type.cardAddress,
                         ),
@@ -502,6 +505,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
   String _sourceText(AppLocalizations t, AddressSource s) => switch (s) {
     AddressSource.defaultServer => t.setupAddressSourceDefault,
     AddressSource.own => t.setupAddressSourceOwn,
+    AddressSource.policy => t.setupAddressSourcePolicy,
     AddressSource.box => t.setupAddressSourceBox,
     AddressSource.typed => t.setupAddressSourceTyped,
   };
@@ -601,7 +605,7 @@ class _ModeCard extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 120),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: t.panel2,
+          color: selected ? t.selectedTileFill : t.panel2,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(width: 2, color: selected ? t.acc : t.line),
         ),

@@ -4,11 +4,19 @@
 // in presenter_root.dart.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:cometcast/l10n/app_localizations.dart';
 
+import '../../codec_controller.dart';
+import '../../core/core_api.dart';
 import '../design/icons.dart';
+import '../design/spans.dart';
 import 'kit.dart';
+
+/// What kind of device the presenter runs on (spec 5.5, decision N15: by device kind, not by
+/// layout width).
+enum PresenterDevice { phone, tablet, computer }
 
 // --- first run (5.3) --------------------------------------------------------------------
 
@@ -21,7 +29,10 @@ class FirstRunPage extends StatelessWidget {
     this.codeChip,
     this.chipFromLink = true,
     this.onScan,
+    this.scanWrong = false,
+    this.scanAgainBody = false,
     this.onBeDisplay,
+    this.onMiracast,
     this.codeEmpty = false,
     this.canConnect = true,
   });
@@ -33,11 +44,20 @@ class FirstRunPage extends StatelessWidget {
   final String? codeChip;
   final bool chipFromLink;
 
-  /// The system scanner; null where there is none (the code field is shown instead).
+  /// The system scanner; null where there is none (the code field is shown alone).
   final VoidCallback? onScan;
+
+  /// The last scan found no code of ours (`app.scanWrong` under the scan button).
+  final bool scanWrong;
+
+  /// First launch after an install that brought no code (`app.scanAgainBody`).
+  final bool scanAgainBody;
 
   /// Tablets and computers: the text link that starts the display setup.
   final VoidCallback? onBeDisplay;
+
+  /// Windows: the text link to the Miracast receiver.
+  final VoidCallback? onMiracast;
   final VoidCallback onConnect;
   final bool codeEmpty;
   final bool canConnect;
@@ -47,15 +67,49 @@ class FirstRunPage extends StatelessWidget {
     final s = PresenterScope.of(context);
     final p = s.tokens;
     final t = AppLocalizations.of(context);
+    Widget link(String label, Key key, VoidCallback onTap) => PTap(
+      onPressed: onTap,
+      radius: 4,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          label,
+          key: key,
+          style: s.type.body.copyWith(
+            fontSize: 15,
+            color: p.primary,
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      ),
+    );
     return PPage(
       actions: [
         PPrimaryButton(
           label: t.appConnect,
           onPressed: canConnect ? onConnect : null,
         ),
+        if (onBeDisplay != null)
+          Align(
+            alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
+            child: link(t.appBeDisplay, const Key('be-display'), onBeDisplay!),
+          ),
+        if (onMiracast != null)
+          Align(
+            alignment: s.laptop ? Alignment.centerLeft : Alignment.center,
+            child: link(t.appMiracast, const Key('miracast-link'), onMiracast!),
+          ),
       ],
       children: [
+        const PBrand(),
         Text(t.appWelcome, style: s.type.heading),
+        PField(
+          fieldKey: const Key('name-field'),
+          label: t.startNameLabel,
+          controller: nameController,
+          maxLength: 40,
+          textInputAction: TextInputAction.next,
+        ),
         if (codeChip != null)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -85,14 +139,30 @@ class FirstRunPage extends StatelessWidget {
               ],
             ),
           )
-        else if (onScan != null) ...[
-          Text(t.appScanAgainBody, style: s.type.body),
-          PSecondaryButton(
-            label: t.appScanQr,
-            icon: CcIconName.scan,
-            onPressed: onScan,
-          ),
-        ] else
+        else ...[
+          if (onScan != null) ...[
+            if (scanAgainBody)
+              Text(
+                t.appScanAgainBody,
+                key: const Key('scan-again-body'),
+                style: s.type.body,
+              ),
+            PSecondaryButton(
+              key: const Key('scan-button'),
+              label: t.appScanQr,
+              icon: CcIconName.scan,
+              onPressed: onScan,
+            ),
+            if (scanWrong)
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  t.appScanWrong,
+                  key: const Key('scan-wrong'),
+                  style: s.type.errorText,
+                ),
+              ),
+          ],
           PField(
             fieldKey: const Key('code-field'),
             label: t.startCodeLabel,
@@ -102,33 +172,39 @@ class FirstRunPage extends StatelessWidget {
             hint: 'XXX XXX',
             error: codeEmpty,
             errorText: codeEmpty ? t.startCodeEmpty : null,
+            textInputAction: TextInputAction.done,
             onSubmitted: (_) => onConnect(),
           ),
-        PField(
-          fieldKey: const Key('name-field'),
-          label: t.startNameLabel,
-          controller: nameController,
-          maxLength: 40,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => onConnect(),
-        ),
-        if (onBeDisplay != null)
-          PTap(
-            onPressed: onBeDisplay,
-            radius: 4,
-            builder: (_) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                t.appBeDisplay,
-                key: const Key('be-display'),
-                style: s.type.body.copyWith(
-                  fontSize: 15,
-                  color: p.primary,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Brand row: logo 28 + "Comet Cast" (spec 5.2), the logo file that fits the device's
+/// light or dark setting.
+class PBrand extends StatelessWidget {
+  const PBrand({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = PresenterScope.of(context);
+    final t = AppLocalizations.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      key: const Key('brand'),
+      children: [
+        ExcludeSemantics(
+          child: SvgPicture.asset(
+            dark
+                ? 'assets/logo/cometcast-logo-dark.svg'
+                : 'assets/logo/cometcast-logo-light.svg',
+            width: 28,
+            height: 28,
           ),
+        ),
+        const SizedBox(width: 10),
+        Text(t.appTitle, style: s.type.brand),
       ],
     );
   }
@@ -215,7 +291,7 @@ class WhatPage extends StatelessWidget {
     required this.onFile,
     required this.onLink,
     required this.onDisconnect,
-    required this.laptop,
+    required this.device,
     this.room,
   });
   final VoidCallback onScreen;
@@ -223,8 +299,11 @@ class WhatPage extends StatelessWidget {
   final VoidCallback onLink;
   final VoidCallback onDisconnect;
 
-  /// Screen subtitle: `what.screenLaptop` (computers) or `what.screenApp` (phones, tablets).
-  final bool laptop;
+  /// Screen subtitle by device kind: `what.screenApp` (phone), `what.screenTablet`,
+  /// `what.screenLaptop` (computer).
+  final PresenterDevice device;
+
+  /// The room name from `joined.room_name`; without one the header says only "Connected".
   final String? room;
 
   @override
@@ -236,6 +315,19 @@ class WhatPage extends StatelessWidget {
         PSecondaryButton(label: t.whatDisconnect, onPressed: onDisconnect),
       ],
       children: [
+        Row(
+          children: [
+            const PIconDisc(icon: CcIconName.check, tone: PTone.ok, size: 40),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                room == null ? t.whatConnected : t.whatConnectedTo(room!),
+                key: const Key('connected-to'),
+                style: s.type.label,
+              ),
+            ),
+          ],
+        ),
         Text(t.whatTitle, style: s.type.heading),
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -244,7 +336,11 @@ class WhatPage extends StatelessWidget {
               key: const Key('what-screen'),
               icon: CcIconName.screen,
               title: t.whatScreen,
-              subtitle: laptop ? t.whatScreenLaptop : t.whatScreenApp,
+              subtitle: switch (device) {
+                PresenterDevice.phone => t.whatScreenApp,
+                PresenterDevice.tablet => t.whatScreenTablet,
+                PresenterDevice.computer => t.whatScreenLaptop,
+              },
               onPressed: onScreen,
             ),
             const SizedBox(height: 8),
@@ -279,12 +375,20 @@ class FilePage extends StatelessWidget {
     required this.onBack,
     this.progressName,
     this.progressPercent,
+    this.convertingName,
+    this.office = false,
     this.error,
   });
   final VoidCallback onPick;
   final VoidCallback onBack;
   final String? progressName;
   final int? progressPercent;
+
+  /// An Office file is being converted: `file.converting` as small print, no bar.
+  final String? convertingName;
+
+  /// The conversion component exists (desktops): the body names Office files.
+  final bool office;
   final String? error;
 
   @override
@@ -295,13 +399,22 @@ class FilePage extends StatelessWidget {
       actions: [PSecondaryButton(label: t.commonBack, onPressed: onBack)],
       children: [
         Text(t.whatFile, style: s.type.heading),
-        // Desktops have no "recent" list we may read: the browser variant of the page.
-        Text(t.fileBodyWeb, style: s.type.body),
+        // The browser variant on every app platform; `file.bodyApp` where Office files are
+        // converted (decision N16).
+        Text(office ? t.fileBodyApp : t.fileBodyWeb, style: s.type.body),
         PPrimaryButton(
           label: t.filePick,
-          onPressed: progressName == null ? onPick : null,
+          onPressed: progressName == null && convertingName == null
+              ? onPick
+              : null,
         ),
-        if (progressName != null)
+        if (convertingName != null)
+          Text(
+            t.fileConverting(convertingName!),
+            key: const Key('file-converting'),
+            style: s.type.small,
+          )
+        else if (progressName != null)
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -381,6 +494,8 @@ class PresentingPage extends StatelessWidget {
     this.onNext,
     this.room,
     this.sas,
+    this.page,
+    this.pages,
   });
   final PresentingKind kind;
   final VoidCallback onStop;
@@ -389,8 +504,13 @@ class PresentingPage extends StatelessWidget {
   final VoidCallback? onNext;
   final String? room;
 
-  /// The security code, when known (not reported by the core yet).
+  /// The security code (`123 456`), when the core reported it.
   final String? sas;
+
+  /// The page the display shows and the page count; null until the display reported them
+  /// (both buttons stay enabled meanwhile, no "Page n of m" line).
+  final int? page;
+  final int? pages;
 
   @override
   Widget build(BuildContext context) {
@@ -406,30 +526,41 @@ class PresentingPage extends StatelessWidget {
       PresentingKind.file => CcIconName.file,
       PresentingKind.link => CcIconName.link,
     };
+    final known = page != null && pages != null;
+    final prevOk = !known || page! > 1;
+    final nextOk = !known || page! < pages!;
+    final prev = PSecondaryButton(
+      key: const Key('prev-page'),
+      label: t.presentingPrevPage,
+      fullWidth: !s.laptop,
+      onPressed: prevOk ? onPrev : null,
+    );
+    final next = PSecondaryButton(
+      key: const Key('next-page'),
+      label: t.presentingNextPage,
+      fullWidth: !s.laptop,
+      onPressed: nextOk ? onNext : null,
+    );
     return PPage(
       actions: [
-        if (pdf)
-          // Previous and Next side by side directly above Stop; the page count is not known
-          // (decision 13.31: the display does not report it yet), so no "Page n of m" line.
-          Row(
-            children: [
-              Expanded(
-                child: PSecondaryButton(
-                  label: t.presentingPrevPage,
-                  fullWidth: true,
-                  onPressed: onPrev,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: PSecondaryButton(
-                  label: t.presentingNextPage,
-                  fullWidth: true,
-                  onPressed: onNext,
-                ),
-              ),
-            ],
+        if (pdf && known)
+          Text(
+            t.presentingPageOf('$page', '$pages'),
+            key: const Key('page-of'),
+            style: s.type.small,
           ),
+        if (pdf)
+          // Previous and Next side by side directly above Stop (8 between them): half width
+          // each on the phone, content width (min 160) and left-aligned on the laptop.
+          s.laptop
+              ? Row(children: [prev, const SizedBox(width: 8), next])
+              : Row(
+                  children: [
+                    Expanded(child: prev),
+                    const SizedBox(width: 8),
+                    Expanded(child: next),
+                  ],
+                ),
         PPrimaryButton(label: t.presentingStop, onPressed: onStop),
       ],
       children: [
@@ -438,8 +569,24 @@ class PresentingPage extends StatelessWidget {
           child: PIconDisc(icon: icon, tone: PTone.acc),
         ),
         Text(title, key: const Key('presenting-title'), style: s.type.heading),
-        if (room != null) Text(t.presentingWhere(room!), style: s.type.body),
-        if (sas != null) Text(t.presentingSas(sas!), style: s.type.small),
+        if (room != null)
+          Text(
+            t.presentingWhere(room!),
+            key: const Key('presenting-where'),
+            style: s.type.body,
+          ),
+        if (sas != null)
+          Text.rich(
+            TextSpan(
+              children: valueSpans(
+                t.presentingSas(spanMarker),
+                sas!,
+                s.type.smallDigits,
+              ),
+            ),
+            key: const Key('presenting-sas'),
+            style: s.type.small,
+          ),
       ],
     );
   }
@@ -487,7 +634,7 @@ enum ErrorKind {
   other,
 }
 
-enum ErrorAction { retype, rescan, retry, showFile, showLink, ask, reload }
+enum ErrorAction { retype, rescan, retry, showFile, showLink, ask }
 
 class ErrorPage extends StatelessWidget {
   const ErrorPage({
@@ -583,10 +730,11 @@ class ErrorPage extends StatelessWidget {
         t.errorOccupiedNow,
       ),
       ErrorKind.busy => (t.errorBusyTitle, t.errorBusyWhy, t.errorBusyNow),
+      // The apps say "app", never "page" (decision N14).
       ErrorKind.outdated => (
-        t.errorOutdatedTitle,
+        t.errorOutdatedTitleApp,
         t.errorOutdatedWhy,
-        t.errorOutdatedNow,
+        t.errorOutdatedNowApp,
       ),
       ErrorKind.other => (
         t.errorOtherTitle,
@@ -607,11 +755,6 @@ class ErrorPage extends StatelessWidget {
           key: const Key('error-retype'),
           label: t.errorActionRetype,
           onPressed: () => onAction(ErrorAction.retype),
-        ),
-        ErrorKind.outdated => PPrimaryButton(
-          key: const Key('error-reload'),
-          label: t.errorActionReload,
-          onPressed: () => onAction(ErrorAction.reload),
         ),
         ErrorKind.noScreen => PPrimaryButton(
           key: const Key('error-showFile'),
@@ -725,7 +868,7 @@ class RelayConfirmPage extends StatelessWidget {
           child: PIconDisc(icon: CcIconName.info, tone: PTone.warn),
         ),
         Text(t.relayConfirmTitle, style: s.type.heading),
-        Text(t.relayConfirmBody(host), style: s.type.body),
+        Text(t.relayConfirmBodyApp(host), style: s.type.body),
         Text(host, key: const Key('relay-host'), style: s.type.host),
         Text(t.relayConfirmRisk, style: s.type.small),
       ],
@@ -745,4 +888,129 @@ class PTapAutofocus extends StatelessWidget {
     descendantsAreFocusable: true,
     child: child,
   );
+}
+
+// --- video codec (5.8) --------------------------------------------------------------------
+
+/// The page before the system picker on desktops without the H.264 encoder: layout of the relay
+/// page, [Download, Back]; when the encoder is ready the primary opens the picker.
+class CodecPage extends StatelessWidget {
+  const CodecPage({
+    super.key,
+    required this.controller,
+    required this.onBack,
+    required this.onScreen,
+  });
+
+  final CodecController controller;
+  final VoidCallback onBack;
+
+  /// Ready: the primary reads `what.screen` and starts the screen share.
+  final VoidCallback onScreen;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final s = PresenterScope.of(context);
+        final t = AppLocalizations.of(context);
+        final info = controller.info;
+        final state = controller.state;
+        if (state is UiCodecState_Unsupported) {
+          // `error.other` with the codec text as its "why" (spec 5.8).
+          return ErrorPage(
+            kind: ErrorKind.other,
+            otherWhy: t.codecUnsupported(state.reason),
+            onAction: (_) => onBack(),
+          );
+        }
+        final back = PSecondaryButton(
+          key: const Key('codec-back'),
+          label: t.commonBack,
+          onPressed: onBack,
+        );
+        final primary = switch (state) {
+          UiCodecState_Ready() => PPrimaryButton(
+            key: const Key('codec-screen'),
+            label: t.whatScreen,
+            autofocus: true,
+            onPressed: onScreen,
+          ),
+          UiCodecState_Downloading() => PPrimaryButton(
+            key: const Key('codec-download'),
+            label: t.codecDownloading,
+            onPressed: null,
+          ),
+          UiCodecState_Failed() => PPrimaryButton(
+            key: const Key('codec-retry'),
+            label: t.codecRetry,
+            autofocus: true,
+            onPressed: controller.download,
+          ),
+          _ => PPrimaryButton(
+            key: const Key('codec-download'),
+            label: t.codecDownload,
+            autofocus: true,
+            onPressed: controller.download,
+          ),
+        };
+        final small = <Widget>[
+          if (info != null)
+            Text(
+              t.codecSource(
+                info.host,
+                info.fileName,
+                codecSizeText(info.downloadBytes),
+              ),
+              key: const Key('codec-source'),
+              style: s.type.small,
+            ),
+          if (state is! UiCodecState_Ready)
+            Text(
+              info?.adminDir != null
+                  ? t.codecOffline(info!.fileName, info.adminDir!)
+                  : t.codecOfflineNoDir(info?.fileName ?? 'libopenh264'),
+              key: const Key('codec-offline'),
+              style: s.type.small,
+            ),
+        ];
+        return PPage(
+          actionsRow: true,
+          actions: [primary, back],
+          children: [
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: PIconDisc(icon: CcIconName.download, tone: PTone.acc),
+            ),
+            Text(t.codecTitle, style: s.type.heading),
+            Text(t.codecExplain, style: s.type.body),
+            if (state is UiCodecState_Downloading)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    t.codecProgress((state.progress * 100).round().toString()),
+                    key: const Key('codec-progress-text'),
+                    style: s.type.small,
+                  ),
+                  const SizedBox(height: 5),
+                  PProgressBar(fraction: state.progress),
+                ],
+              ),
+            if (state is UiCodecState_Failed)
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  t.codecFailed(state.reason),
+                  key: const Key('codec-failed'),
+                  style: s.type.errorText,
+                ),
+              ),
+            ...small,
+          ],
+        );
+      },
+    );
+  }
 }

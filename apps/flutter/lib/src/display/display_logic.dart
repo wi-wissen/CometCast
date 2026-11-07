@@ -69,9 +69,20 @@ String formatCode(String code) {
   return '${c.substring(0, half)} ${c.substring(half)}';
 }
 
-/// What the QR code encodes: `https://{dom}/{CODE}` (spec 4.2).
+/// The server address as shown and encoded: `host[:port]` without the default port 443
+/// (decision N12; the glossary `{dom}`).
+String displayHost(String server) {
+  var v = server.trim().replaceFirst(
+    RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'),
+    '',
+  );
+  v = v.replaceFirst(RegExp(r'/+$'), '');
+  return v.endsWith(':443') ? v.substring(0, v.length - 4) : v;
+}
+
+/// What the QR code encodes: `https://{dom}/{CODE}` (spec 4.2), `{dom}` without port 443.
 String joinUrl(String dom, String code) =>
-    'https://$dom/${code.replaceAll(RegExp(r'\s+'), '')}';
+    'https://${displayHost(dom)}/${code.replaceAll(RegExp(r'\s+'), '')}';
 
 // --- setup (spec 4.1) --------------------------------------------------------------------
 

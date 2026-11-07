@@ -3,6 +3,8 @@
 // controls (docs/design/first-run-and-display.md 3.1, 3.5, 7.1, 7.2; native-apps.md 6, 10).
 // Every number is in reference px of the canvas.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -174,6 +176,7 @@ class DisplayControl extends StatefulWidget {
     this.selected,
     this.scale = true,
     this.externalFocus = false,
+    this.suppressRing = false,
   });
 
   final int row;
@@ -198,6 +201,10 @@ class DisplayControl extends StatefulWidget {
   /// The child owns [focusNode] (a text field): this control only draws the ring.
   final bool externalFocus;
 
+  /// A layer above (a dialog, its scrim) owns the ring: this control draws none (spec 7.1:
+  /// exactly one ring, also in the first frame of the dialog).
+  final bool suppressRing;
+
   @override
   State<DisplayControl> createState() => _DisplayControlState();
 }
@@ -211,14 +218,30 @@ class _DisplayControlState extends State<DisplayControl> {
   FocusNode get _node => widget.focusNode ?? _own;
   bool _focused = false;
 
+  /// The control that takes the initial focus draws its ring in the very first frame, before the
+  /// focus manager has moved the focus (decision N24); cleared as soon as the focus is settled.
+  bool _assumed = false;
+
   @override
   void initState() {
     super.initState();
     // The initial focus of a screen or dialog is taken explicitly: Flutter's own autofocus
     // does nothing while another control (the one under the dialog) still has the focus.
-    if (widget.autofocus) {
+    if (widget.autofocus && widget.onPressed != null) {
+      _assumed = true;
+      _focused = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.onPressed != null) _node.requestFocus();
+        if (!mounted) return;
+        _node.requestFocus();
+        // The focus manager applies the request in a microtask: after it, drop a wrong guess.
+        scheduleMicrotask(() {
+          if (mounted && _assumed) {
+            setState(() {
+              _assumed = false;
+              _focused = _node.hasFocus;
+            });
+          }
+        });
       });
     }
   }
@@ -264,7 +287,7 @@ class _DisplayControlState extends State<DisplayControl> {
             child: ValueListenableBuilder<bool>(
               valueListenable: scope.ringVisible,
               builder: (context, visible, child) {
-                final ring = _focused && visible;
+                final ring = _focused && visible && !widget.suppressRing;
                 final grow = ring && widget.scale && !scope.reduceMotion;
                 return AnimatedScale(
                   scale: grow ? 1.03 : 1.0,
@@ -274,6 +297,8 @@ class _DisplayControlState extends State<DisplayControl> {
                   curve: Curves.ease,
                   child: Stack(
                     clipBehavior: Clip.none,
+                    // Tight constraints reach the child (cards of equal height).
+                    fit: StackFit.passthrough,
                     children: [
                       child!,
                       if (ring) ...[
@@ -332,7 +357,7 @@ class _DisplayControlState extends State<DisplayControl> {
       return ListenableBuilder(
         listenable: _node,
         builder: (context, _) {
-          _focused = _node.hasFocus;
+          _focused = _node.hasFocus || _assumed;
           return child;
         },
       );
@@ -342,7 +367,10 @@ class _DisplayControlState extends State<DisplayControl> {
       autofocus: widget.autofocus,
       canRequestFocus: widget.onPressed != null,
       onKeyEvent: _onKey,
-      onFocusChange: (v) => setState(() => _focused = v),
+      onFocusChange: (v) => setState(() {
+        _focused = v;
+        _assumed = false;
+      }),
       child: child,
     );
   }

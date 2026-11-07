@@ -11,6 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../design/icons.dart';
+import '../design/spans.dart';
 import '../design/tokens.dart';
 import 'display_logic.dart';
 import 'kit.dart';
@@ -48,6 +49,7 @@ class IdleScreen extends StatelessWidget {
     this.appLineStores = false,
     this.settingsFocus,
     this.settingsAutofocus = true,
+    this.ringSuppressed = false,
   });
 
   final String room;
@@ -72,6 +74,9 @@ class IdleScreen extends StatelessWidget {
   final FocusNode? settingsFocus;
   final bool settingsAutofocus;
 
+  /// A dialog is over the screen: the Settings button draws no ring (spec 7.1: one ring).
+  final bool ringSuppressed;
+
   @override
   Widget build(BuildContext context) {
     final s = DisplayScope.of(context);
@@ -83,6 +88,7 @@ class IdleScreen extends StatelessWidget {
     // Empty QR box while connecting or offline: an old code must never be scannable.
     final qrEmpty = !online;
     final url = online ? joinUrl(dom, code!) : '';
+    final host = displayHost(dom);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -111,9 +117,11 @@ class IdleScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       child: offline
-                          ? _OfflineBox(dom: dom, cause: cause)
+                          ? Center(
+                              child: _OfflineBox(dom: host, cause: cause),
+                            )
                           : _Steps(
-                              dom: dom,
+                              dom: host,
                               code: online ? code! : null,
                               locked: locked,
                               altAddress: altAddress,
@@ -154,7 +162,7 @@ class IdleScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      appLineStores ? t.idleAppLine(dom) : t.idleAppLineWeb,
+                      appLineStores ? t.idleAppLine(host) : t.idleAppLineWeb,
                       key: const Key('idle-foot'),
                       style: s.type.footer,
                     ),
@@ -165,6 +173,7 @@ class IdleScreen extends StatelessWidget {
                     col: 0,
                     radius: 10,
                     autofocus: settingsAutofocus,
+                    suppressRing: ringSuppressed,
                     focusNode: settingsFocus,
                     onPressed: onSettings,
                     child: Container(
@@ -345,14 +354,15 @@ class _OfflineBox extends StatelessWidget {
     final t = AppLocalizations.of(context);
     final body = switch (cause) {
       OfflineCause.busy => t.idleOfflineBodyBusy,
-      OfflineCause.outdated => t.idleOfflineBodyOutdated,
+      OfflineCause.outdated => t.idleOfflineBodyOutdatedApp,
       OfflineCause.network => t.idleOfflineBody,
     };
+    // A box of its content height; the dashes are drawn over the fill (foregroundPainter).
     return CustomPaint(
-      painter: _DashedRRect(s.tokens.line, 16),
+      foregroundPainter: _DashedRRect(s.tokens.line, 16),
       child: Container(
         key: const Key('offline'),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
           color: s.tokens.panel,
           borderRadius: BorderRadius.circular(16),
@@ -364,6 +374,7 @@ class _OfflineBox extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(t.idleOfflineTitle(dom), style: s.type.offlineTitle),
@@ -947,7 +958,7 @@ class LinkCard extends StatelessWidget {
                   style: s.type.linkAddress,
                 ),
                 Text(
-                  canOpen ? t.receiveLinkHint : t.receiveLinkHintTv,
+                  canOpen ? t.receiveLinkHintApp : t.receiveLinkHintTv,
                   style: s.type.cardText,
                 ),
                 Row(
@@ -995,6 +1006,7 @@ class PresentingControls extends StatelessWidget {
     required this.onEnd,
     this.sas,
     this.endFocus,
+    this.inert = false,
   });
 
   /// The presenter's cleaned name (already shortened as the name tag shows it).
@@ -1002,10 +1014,12 @@ class PresentingControls extends StatelessWidget {
   final bool shown;
   final VoidCallback onEnd;
 
-  /// The security code as `123 456`, or null while it is not known (the core of the apps does
-  /// not report it yet, docs/design/implementation-questions-flutter.md).
+  /// The security code as `123 456`, or null while it is not known.
   final String? sas;
   final FocusNode? endFocus;
+
+  /// A dialog is over the controls (the codec dialog, decision 68): visible but inert.
+  final bool inert;
 
   @override
   Widget build(BuildContext context) {
@@ -1024,7 +1038,7 @@ class PresentingControls extends StatelessWidget {
           left: 12,
           bottom: 12,
           child: IgnorePointer(
-            ignoring: !shown,
+            ignoring: !shown || inert,
             child: AnimatedOpacity(
               opacity: shown ? 1 : 0,
               duration: dur,
@@ -1044,8 +1058,18 @@ class PresentingControls extends StatelessWidget {
                   children: [
                     Text(t.presentByline(label), style: s.type.nameTag),
                     if (sas != null)
-                      Text(
-                        t.presentSas(sas!),
+                      Text.rich(
+                        TextSpan(
+                          children: valueSpans(
+                            t.presentSas(spanMarker),
+                            sas!,
+                            s.type.nameTagSub.copyWith(
+                              fontFamily: fontMono,
+                              fontWeight: FontWeight.w700,
+                              color: s.tokens.fg,
+                            ),
+                          ),
+                        ),
                         key: const Key('sas-line'),
                         style: s.type.nameTagSub,
                       ),
@@ -1059,9 +1083,9 @@ class PresentingControls extends StatelessWidget {
           right: 12,
           bottom: 12,
           child: ExcludeFocus(
-            excluding: !shown,
+            excluding: !shown || inert,
             child: IgnorePointer(
-              ignoring: !shown,
+              ignoring: !shown || inert,
               child: AnimatedOpacity(
                 opacity: shown ? 1 : 0,
                 duration: dur,

@@ -17,6 +17,7 @@ import 'core/core_api.dart';
 import 'core/app_links.dart';
 import 'core/ios_broadcast.dart';
 import 'core/launch_intake.dart';
+import 'core/link_target.dart' show LinkNothing;
 import 'core/link_target.dart' show LinkOutcome;
 import 'core/qr_scanner.dart';
 import 'core/miracast.dart';
@@ -51,9 +52,14 @@ Future<void> main() async {
   // Links, the install referrer and the QR scanner exist on phones and tablets only.
   final mobile = Platform.isAndroid || Platform.isIOS;
   final handler = LinkHandler(core: core, settings: settings);
+  final appLinks = mobile ? ChannelAppLinks() : null;
+  // The referrer exists on the first launch only: no referrer read yet = first launch.
+  final firstLaunch =
+      mobile &&
+      !(await (settings.store?.loadReferrerRead() ?? Future.value(true)));
   final launch = mobile
       ? await resolveLaunch(
-          links: ChannelAppLinks(),
+          links: appLinks!,
           handler: handler,
           store: settings.store,
         )
@@ -80,6 +86,8 @@ Future<void> main() async {
       // Windows only: the DLL is loaded when the Miracast screen is first used.
       miracast: miracastSupportedHere() ? FfiMiracastCore() : null,
       launch: launch,
+      linkStream: appLinks?.links,
+      firstLaunch: firstLaunch && launch is LinkNothing,
       links: handler,
       scanQr: canScan ? scanner.scan : null,
     ),
@@ -160,6 +168,8 @@ class CometCastApp extends StatelessWidget {
     this.forceDisplayCapable,
     this.initialCode,
     this.launch,
+    this.linkStream,
+    this.firstLaunch = false,
     this.links,
     this.scanQr,
   }) : settings = settings ?? AppSettings.fromDefaults(core.serverDefaults());
@@ -178,6 +188,8 @@ class CometCastApp extends StatelessWidget {
 
   /// What started the app: a link or the install referrer (null on computers and in most tests).
   final LinkOutcome? launch;
+  final Stream<String>? linkStream;
+  final bool firstLaunch;
 
   /// Turns scanned codes and links into chips and relay confirmations.
   final LinkHandler? links;
@@ -207,6 +219,7 @@ class CometCastApp extends StatelessWidget {
 
   /// No software video decoder exists (iOS): see [DeviceProfile.hardwareDecoderOnly].
   final bool hardwareDecoderOnly;
+
   /// The Windows Miracast receiver (a fake in tests); null on other platforms, which hides
   /// the "Receive via Miracast (Windows)" row.
   final MiracastCore? miracast;
@@ -273,6 +286,8 @@ class CometCastApp extends StatelessWidget {
         forceDisplayCapable: forceDisplayCapable,
         initialCode: initialCode,
         launch: launch,
+        linkStream: linkStream,
+        firstLaunch: firstLaunch,
         links: links,
         scanQr: scanQr,
       ),

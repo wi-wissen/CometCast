@@ -1,21 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Which error page of the presenter belongs to a failure (spec 6). The presenter session of the
 // core reports a structured `code` (native-apps.md 20.1, decision N9): `errorKindForCode` maps
-// it. The old sender controllers still report English messages; `errorKindFor` reads the code
-// out of them until the pages use the session controller.
+// it. Message text is never parsed.
 
 import 'dart:ui' show VoidCallback;
 
 import '../../join_state.dart';
 import 'pages.dart';
-
-/// The server code inside a core message, or null.
-String? serverCodeOf(String message) {
-  final m = RegExp(r'server error ([a-z_]+)').firstMatch(message);
-  if (m != null) return m.group(1);
-  // A bare code (tests, other callers).
-  return RegExp(r'^[a-z_]+$').hasMatch(message) ? message : null;
-}
 
 /// The page for [code], the structured code of the core (native-apps.md 20.1, spec 6).
 /// [wasWaiting]: the code had been accepted before. [recentBusy]: a `rate_limited`, `banned` or
@@ -69,30 +60,6 @@ String? serverCodeOf(String message) {
 /// Whether the "why" of [ErrorKind.displayOff] names the relay (`error.displayOff.whyRelay`):
 /// the list of STUN/TURN servers failed for this connection (`ice_failed`).
 bool displayOffWhyRelay(String code) => code == 'ice_failed';
-
-/// The page for [message], an English core message of the **old** sender controllers
-/// (`server error <code>: ...`). The presenter session reports codes: use [errorKindForCode].
-/// Kept until the pages read the session controller; then it goes (decision N9).
-(ErrorKind, String?)? errorKindFor(
-  String message, {
-  bool wasWaiting = false,
-  bool recentBusy = false,
-}) {
-  final code = serverCodeOf(message);
-  if (code != null) {
-    return errorKindForCode(
-      code,
-      wasWaiting: wasWaiting,
-      recentBusy: recentBusy,
-    );
-  }
-  if (message.startsWith('signalling connection') ||
-      message.startsWith('timeout')) {
-    return (recentBusy ? ErrorKind.busy : ErrorKind.noInternet, null);
-  }
-  if (message.startsWith('webrtc error')) return (ErrorKind.displayOff, null);
-  return (ErrorKind.other, 'unknown');
-}
 
 /// The page for a refused join.
 (ErrorKind, bool) refusalPage(JoinRefusal r) => switch (r) {

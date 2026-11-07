@@ -64,7 +64,7 @@
   "codecExplain": "Um einen geteilten Bildschirm anzuzeigen oder zu senden, benötigt Comet Cast den H.264-Video-Codec von Cisco (OpenH264). Er gehört nicht zur App. Er wird einmalig direkt von Cisco heruntergeladen und vor der Verwendung anhand einer festen Prüfsumme kontrolliert.",
   "codecSource": "Quelle: {host}, Datei {file}, etwa {size}.",
   "codecDownload": "Herunterladen",
-  "codecDownloading": "Der Video-Codec wird heruntergeladen ...",
+  "codecDownloading": "Der Video-Codec wird heruntergeladen …",
   "codecProgress": "{percent} %",
   "codecRetry": "Erneut versuchen",
   "codecFailed": "Der Video-Codec konnte nicht heruntergeladen werden: {reason}",
@@ -369,5 +369,18 @@
   "whatScreenLaptop": "Ganzer Bildschirm oder ein Fenster, live",
   "whatScreenPhoneBrowser": "Geht auf dem Handy nur mit der App",
   "whatScreenPhoneBrowserNoApp": "Geht im Handy-Browser nicht",
-  "whatTitle": "Was möchten Sie zeigen?"
+  "whatTitle": "Was möchten Sie zeigen?",
+  "receiveLinkHintApp": "Der Absender bittet Sie, diesen Link zu öffnen. Öffnen Sie ihn nur, wenn Sie ihn erwarten. Er öffnet sich im Browser, und nur wenn Sie „Öffnen“ wählen.",
+  "setupAddressSourcePolicy": "Vom Administrator dieses Geräts vorgegeben.",
+  "idleOfflineBodyOutdatedApp": "Diese App ist veraltet. Aktualisieren Sie sie, um einen Code zu bekommen.",
+  "errorOutdatedTitleApp": "Diese App ist veraltet",
+  "errorOutdatedNowApp": "Aktualisieren Sie die App und versuchen Sie es dann noch einmal.",
+  "whatScreenTablet": "Ihr ganzes Tablet-Display, live",
+  "fileBodyApp": "Ein PDF, ein Bild oder eine Office-Datei von diesem Gerät. Die Datei erscheint auf dem Bildschirm, sobald Sie sie auswählen.",
+  "fileConverting": "{name} wird umgewandelt …",
+  "relayConfirmBodyApp": "Ein Link fordert diese App auf, das Relay {host} statt des Standards zu verwenden. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen.",
+  "appScanWrong": "Dieser QR-Code stammt nicht von einem Comet-Cast-Bildschirm.",
+  "appMiracast": "Miracast auf diesem PC empfangen",
+  "iosCameraUsage": "Comet Cast nutzt die Kamera nur, um den QR-Code auf dem Bildschirm zu scannen.",
+  "codecLater": "Nicht jetzt"
 }

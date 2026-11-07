@@ -278,7 +278,7 @@ class DisplayType {
   TextStyle get offlineBody => _ui(18, regular, t.fg, height: 1.35);
 
   /// Link address in the link card: 18 mono `--mut`.
-  TextStyle get linkAddress => _mono(18, medium, t.mut, height: 1.3);
+  TextStyle get linkAddress => _mono(18, medium, t.fg, height: 1.3);
 
   /// Card text of the link card: 16 / 1.4 `--mut`.
   TextStyle get cardText => _ui(16, regular, t.mut, height: 1.4);

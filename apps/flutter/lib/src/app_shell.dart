@@ -43,6 +43,8 @@ class AppShell extends StatefulWidget {
     this.scanQr,
     this.launch,
     this.links,
+    this.linkStream,
+    this.firstLaunch = false,
   });
 
   final CoreApi core;
@@ -64,6 +66,12 @@ class AppShell extends StatefulWidget {
   /// gives the first-run page its code chip; an unknown server first shows the relay page.
   final LinkOutcome? launch;
   final LinkHandler? links;
+
+  /// Links that arrive while the app runs.
+  final Stream<String>? linkStream;
+
+  /// First launch after the install, and it brought no code (`app.scanAgainBody`).
+  final bool firstLaunch;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -120,7 +128,8 @@ class _AppShellState extends State<AppShell> {
         );
       case AppRole.presenter:
         _chrome(false);
-        final root = PresenterRoot(
+        final m = widget.miracast;
+        return PresenterRoot(
           core: widget.core,
           settings: widget.settings,
           pickFile: widget.pickFile,
@@ -128,6 +137,8 @@ class _AppShellState extends State<AppShell> {
           iosBroadcast: widget.iosBroadcast,
           scanQr: widget.scanQr,
           links: widget.links,
+          linkStream: widget.linkStream,
+          firstLaunch: widget.firstLaunch,
           initialCode: switch (widget.launch) {
             LinkUse(:final target) || LinkConfirm(:final target) => target.code,
             _ => widget.initialCode,
@@ -139,28 +150,14 @@ class _AppShellState extends State<AppShell> {
           onBeDisplay: _capable(context)
               ? () => setState(() => _role = AppRole.display)
               : null,
-        );
-        final m = widget.miracast;
-        if (m == null) return root;
-        // No designed place yet for the Windows Miracast receiver: the old page stays reachable
-        // through one neutral link (docs/design/implementation-questions-flutter.md, M1).
-        return Stack(
-          children: [
-            root,
-            Positioned(
-              right: 8,
-              bottom: 8,
-              child: TextButton(
-                key: const Key('miracastLink'),
-                onPressed: () => Navigator.of(context).push(
+          // Windows only: the text link below `app.beDisplay` (decision N18).
+          onMiracast: m == null
+              ? null
+              : () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => MiracastPage(core: m),
                   ),
                 ),
-                child: const Text('Miracast'),
-              ),
-            ),
-          ],
         );
     }
   }

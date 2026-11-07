@@ -385,13 +385,5 @@ void main() {
       expect(errorKindForCode('forbidden')!.$2, 'forbidden');
       expect(errorKindForCode('capture_denied'), isNull);
     });
-
-    test('the old text path still reaches the same pages', () {
-      expect(errorKindFor('server error room_full: x')!.$1, ErrorKind.occupied);
-      expect(
-        errorKindFor('signalling connection closed')!.$1,
-        ErrorKind.noInternet,
-      );
-    });
   });
 }

@@ -343,9 +343,12 @@ class PSecondaryButton extends StatelessWidget {
           horizontal: s.laptop && !fullWidth ? 24 : 14,
         ),
 
+        // Disabled: `p-disabled` fill, no border, `p-ondisabled` text (decision N23).
         decoration: BoxDecoration(
-          color: p.surface,
-          border: Border.all(width: 1, color: p.borderInput),
+          color: enabled ? p.surface : p.disabled,
+          border: enabled
+              ? Border.all(width: 1, color: p.borderInput)
+              : Border.all(width: 1, color: Colors.transparent),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Center(
@@ -354,7 +357,7 @@ class PSecondaryButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                CcIcon(icon!, color: enabled ? p.fg : p.fg3),
+                CcIcon(icon!, color: enabled ? p.fg : p.onDisabled),
                 const SizedBox(width: 8),
               ],
               Flexible(
@@ -362,7 +365,7 @@ class PSecondaryButton extends StatelessWidget {
                   label,
                   textAlign: TextAlign.center,
                   style: s.type.secondaryButton.copyWith(
-                    color: enabled ? p.fg : p.fg3,
+                    color: enabled ? p.fg : p.onDisabled,
                   ),
                 ),
               ),
@@ -592,29 +595,25 @@ class _PFieldState extends State<PField> {
                   : p.borderInput,
             ),
           ),
-          child: EditableText(
-            key: widget.fieldKey,
-            controller: widget.controller,
-            focusNode: _node,
-            autofocus: widget.autofocus,
-            style: style,
-            cursorColor: p.primary,
-            backgroundCursorColor: p.borderInput,
-            maxLines: 1,
-            keyboardType: widget.keyboardType ?? TextInputType.text,
-            textInputAction: widget.textInputAction,
-            textCapitalization: widget.code
-                ? TextCapitalization.characters
-                : TextCapitalization.none,
-            autocorrect: false,
-            enableSuggestions: !widget.code,
-            inputFormatters: [
-              if (widget.maxLength != null)
-                LengthLimitingTextInputFormatter(widget.maxLength),
-              if (widget.code) _UpperCase(),
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              if (widget.hint != null)
+                // EditableText has no hint: drawn while the field is empty.
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: widget.controller,
+                  builder: (context, v, _) => v.text.isEmpty
+                      ? IgnorePointer(
+                          child: Text(
+                            widget.hint!,
+                            key: const Key('field-hint'),
+                            style: style.copyWith(color: p.fg3),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              _editable(style, p),
             ],
-            onChanged: widget.onChanged,
-            onSubmitted: widget.onSubmitted,
           ),
         ),
         if (widget.helper != null) ...[
@@ -629,6 +628,33 @@ class _PFieldState extends State<PField> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _editable(TextStyle style, PresenterTokens p) {
+    return EditableText(
+      key: widget.fieldKey,
+      controller: widget.controller,
+      focusNode: _node,
+      autofocus: widget.autofocus,
+      style: style,
+      cursorColor: p.primary,
+      backgroundCursorColor: p.borderInput,
+      maxLines: 1,
+      keyboardType: widget.keyboardType ?? TextInputType.text,
+      textInputAction: widget.textInputAction,
+      textCapitalization: widget.code
+          ? TextCapitalization.characters
+          : TextCapitalization.none,
+      autocorrect: false,
+      enableSuggestions: !widget.code,
+      inputFormatters: [
+        if (widget.maxLength != null)
+          LengthLimitingTextInputFormatter(widget.maxLength),
+        if (widget.code) _UpperCase(),
+      ],
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
     );
   }
 }

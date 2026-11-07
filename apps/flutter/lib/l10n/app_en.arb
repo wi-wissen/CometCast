@@ -277,7 +277,7 @@
   "@codecDownload": {
     "description": "Button: consent to the download."
   },
-  "codecDownloading": "Downloading the video codec ...",
+  "codecDownloading": "Downloading the video codec …",
   "@codecDownloading": {
     "description": "Shown while the codec downloads."
   },
@@ -1715,5 +1715,67 @@
   "whatTitle": "What would you like to show?",
   "@whatTitle": {
     "description": "Spec key what.title"
+  },
+  "receiveLinkHintApp": "The sender asks you to open this link. Open it only if you expect it. It opens in the browser, and only if you choose “Open”.",
+  "@receiveLinkHintApp": {
+    "description": "Spec key receive.link.hintApp"
+  },
+  "setupAddressSourcePolicy": "Set by the administrator of this device.",
+  "@setupAddressSourcePolicy": {
+    "description": "Spec key setup.address.sourcePolicy"
+  },
+  "idleOfflineBodyOutdatedApp": "This app is out of date. Update it to get a code.",
+  "@idleOfflineBodyOutdatedApp": {
+    "description": "Spec key idle.offline.bodyOutdatedApp"
+  },
+  "errorOutdatedTitleApp": "This app is out of date",
+  "@errorOutdatedTitleApp": {
+    "description": "Spec key error.outdated.titleApp"
+  },
+  "errorOutdatedNowApp": "Update the app, then try again.",
+  "@errorOutdatedNowApp": {
+    "description": "Spec key error.outdated.nowApp"
+  },
+  "whatScreenTablet": "Your whole tablet display, live",
+  "@whatScreenTablet": {
+    "description": "Spec key what.screenTablet"
+  },
+  "fileBodyApp": "A PDF, an image or an Office file from this device. It appears on the screen as soon as you pick it.",
+  "@fileBodyApp": {
+    "description": "Spec key file.bodyApp"
+  },
+  "fileConverting": "Converting {name} …",
+  "@fileConverting": {
+    "description": "Spec key file.converting",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "relayConfirmBodyApp": "A link asks this app to use the relay {host} instead of the default. Only continue if you know and trust its operator.",
+  "@relayConfirmBodyApp": {
+    "description": "Spec key relay.confirm.bodyApp",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "appScanWrong": "This QR code is not from a Comet Cast screen.",
+  "@appScanWrong": {
+    "description": "Spec key app.scanWrong"
+  },
+  "appMiracast": "Receive Miracast on this PC",
+  "@appMiracast": {
+    "description": "Spec key app.miracast"
+  },
+  "iosCameraUsage": "Comet Cast uses the camera only to scan the QR code on the screen.",
+  "@iosCameraUsage": {
+    "description": "Spec key ios.cameraUsage"
+  },
+  "codecLater": "Not now",
+  "@codecLater": {
+    "description": "Spec key codec.later"
   }
 }

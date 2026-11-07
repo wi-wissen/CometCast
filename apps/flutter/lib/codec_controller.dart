@@ -13,6 +13,14 @@ import 'package:flutter/foundation.dart';
 import 'core/core_api.dart';
 import 'settings.dart';
 
+/// "620 KB" / "1.2 MB" for a size in bytes.
+String codecSizeText(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / 1024).round()} KB';
+}
+
 class CodecController extends ChangeNotifier {
   CodecController({
     required this.core,

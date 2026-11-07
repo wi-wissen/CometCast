@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The presenter (sender) as a whole: first run, what to show, waiting, presenting, ended and the
-// error pages (spec 5 and 6, native-apps.md 4 and 5). The sending itself stays in
-// SenderController and ContentSenderController.
-//
-// UNCERTAIN / design gap: the core joins a room only when it starts sending, so "What to show"
-// comes before the join here (docs/design/implementation-questions-flutter.md, P1).
+// The presenter (sender) as a whole: first run, waiting, what to show, presenting, ended and the
+// error pages (spec 5 and 6, native-apps.md 4, 5 and 20.1). The room is joined once, on Connect,
+// by PresenterSessionController; Stop keeps the join, Disconnect leaves. Pages are chosen by the
+// structured codes of the core (errors.dart), never by message text. The only other sender is the
+// iOS broadcast extension, which makes its own connection (SenderController, see _startIos).
 
 import 'dart:async';
 import 'dart:io' show Platform;
@@ -14,14 +13,14 @@ import 'package:flutter/material.dart';
 import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../codec_controller.dart';
-import '../../codec_notice.dart';
-import '../../content_sender_controller.dart';
+import '../../capture_feeder.dart';
 import '../../core/android_capture.dart';
 import '../../core/core_api.dart';
 import '../../core/ios_broadcast.dart';
 import '../../core/launch_intake.dart';
 import '../../core/link_target.dart';
 import '../../join_state.dart';
+import '../../presenter_session_controller.dart';
 import '../../sender_controller.dart';
 import '../../settings.dart';
 import 'errors.dart';
@@ -89,12 +88,16 @@ class PresenterRoot extends StatefulWidget {
     this.iosBroadcast,
     this.scanQr,
     this.onBeDisplay,
+    this.onMiracast,
     this.initialCode,
     this.codeFromLink = true,
     this.relayToConfirm,
     this.links,
+    this.linkStream,
     this.desktop,
+    this.device,
     this.codec,
+    this.firstLaunch = false,
   });
 
   final CoreApi core;
@@ -107,6 +110,9 @@ class PresenterRoot extends StatefulWidget {
   /// Tablets and computers: starts the display setup (`app.beDisplay`).
   final VoidCallback? onBeDisplay;
 
+  /// Windows: opens the Miracast receiver (`app.miracast`).
+  final VoidCallback? onMiracast;
+
   /// A code that came from a link, the install referrer or a scan.
   final String? initialCode;
   final bool codeFromLink;
@@ -118,11 +124,20 @@ class PresenterRoot extends StatefulWidget {
   /// a confirmed relay (native-apps.md 20.4). Null in tests that do not scan.
   final LinkHandler? links;
 
-  /// Computers (subtitle `what.screenLaptop`); null = decide by platform.
+  /// Links that arrive while the app runs (App Links, Universal Links).
+  final Stream<String>? linkStream;
+
+  /// Computers (subtitle `what.screenLaptop`, no scan button); null = decide by platform.
   final bool? desktop;
+
+  /// Phone, tablet or computer (decision N15); null = by platform and window size.
+  final PresenterDevice? device;
 
   /// The H.264 codec state for desktop screen sharing (a fake in tests).
   final CodecController? codec;
+
+  /// First launch after the install and it brought no code: `app.scanAgainBody` is shown.
+  final bool firstLaunch;
 
   @override
   State<PresenterRoot> createState() => PresenterRootState();
@@ -141,32 +156,43 @@ class PresenterRootState extends State<PresenterRoot> {
   String? _fileError;
   ErrorKind _error = ErrorKind.other;
   String? _errorCode;
+  bool _errorKeepsSession = false;
   bool _lockedWhile = false;
   bool _relayWhy = false;
   PresentingKind _kind = PresentingKind.screen;
-  bool _pdf = false;
   DateTime? _busyAt;
-  bool _wasWaiting = false;
+  bool _waited = false;
   Timer? _tick;
   DateTime _waitStart = DateTime.now();
   DateTime _refusedAt = DateTime.now();
-  void Function()? _lastStart;
   CodecController? _codecCtl;
+  PresenterSessionPhase _lastPhase = PresenterSessionPhase.idle;
+  String? _lastStartFailure;
+  UiSendRejection? _lastRejection;
+  StreamSubscription<String>? _linkSub;
 
-  late final SenderController _screen = SenderController(
-    core: widget.core,
-    udpBind: widget.settings.udpBind,
-    capture: widget.androidCapture,
-    iosBroadcast: widget.iosBroadcast,
-  );
-  late final ContentSenderController _content = ContentSenderController(
+  late final PresenterSessionController _session = PresenterSessionController(
     core: widget.core,
     udpBind: widget.settings.udpBind,
   );
-  bool _useContent = false;
+
+  /// Android: the capture service and the encoder that feed the session.
+  CaptureFeeder? _feeder;
+
+  /// iOS only: the broadcast extension joins on its own, outside the session.
+  SenderController? _ios;
 
   bool get _desktop =>
       widget.desktop ?? !(Platform.isAndroid || Platform.isIOS);
+
+  PresenterDevice _deviceKind(BuildContext context) {
+    final d = widget.device;
+    if (d != null) return d;
+    if (_desktop) return PresenterDevice.computer;
+    return MediaQuery.sizeOf(context).shortestSide >= 600
+        ? PresenterDevice.tablet
+        : PresenterDevice.phone;
+  }
 
   @override
   void initState() {
@@ -178,18 +204,19 @@ class PresenterRootState extends State<PresenterRoot> {
       _roomCode = widget.initialCode;
     }
     if (widget.relayToConfirm != null) _page = PresenterPage.relay;
-    _screen.addListener(_sync);
-    _content.addListener(_sync);
+    _session.addListener(_onSession);
+    _linkSub = widget.linkStream?.listen(_onLink);
     widget.settings.discover(widget.core);
   }
 
   @override
   void dispose() {
     _tick?.cancel();
-    _screen.removeListener(_sync);
-    _content.removeListener(_sync);
-    _screen.dispose();
-    _content.dispose();
+    _linkSub?.cancel();
+    _session.removeListener(_onSession);
+    _session.dispose();
+    _releaseCapture();
+    _ios?.dispose();
     _codecCtl?.dispose();
     widget.settings.cancelDiscovery();
     _code.dispose();
@@ -228,7 +255,12 @@ class PresenterRootState extends State<PresenterRoot> {
     );
     if (check is! RoomCodeCheck_Valid) {
       // Wrong characters or length: the error page, without asking the server.
-      _fail(ErrorKind.code);
+      _error = ErrorKind.code;
+      _errorCode = null;
+      _lockedWhile = false;
+      _relayWhy = false;
+      _errorKeepsSession = false;
+      _go(PresenterPage.error);
       return;
     }
     widget.settings.setDisplayName(_name.text);
@@ -236,262 +268,100 @@ class PresenterRootState extends State<PresenterRoot> {
       _roomCode = check.code;
       _codeEmpty = false;
     });
-    _go(PresenterPage.what);
+    _beginSession();
+  }
+
+  /// Join once: the host is asked here, not again for what is shown next (native-apps.md 20.1).
+  void _beginSession() {
+    _waited = false;
+    _lastPhase = PresenterSessionPhase.idle;
+    _lastStartFailure = null;
+    _session.connect(code: _roomCode!, server: _server, name: _myName);
+    setState(() {});
   }
 
   /// The scan found something that is not a code of ours (shown as `app.scanWrong` by the
   /// first-run page, spec 5.3); cleared by the next scan.
   bool scanWrong = false;
 
-  /// The server of a scanned code that waits for the relay confirmation page.
+  /// The server of a scanned code or link that waits for the relay confirmation page.
   String? _scannedRelay;
 
   Future<void> _scan() async {
     final scanned = await widget.scanQr?.call();
     if (scanned == null || !mounted) return; // cancelled: nothing changes
     final outcome = widget.links?.fromUrl(scanned);
+    if (outcome == null || outcome is LinkNothing) {
+      setState(() => scanWrong = true);
+      return;
+    }
+    scanWrong = false;
+    _takeOutcome(outcome, fromLink: false);
+  }
+
+  /// A link that arrives while the app runs: the same rules as the one that started the app.
+  void _onLink(String link) {
+    if (!mounted) return;
+    if (_page != PresenterPage.firstRun &&
+        _page != PresenterPage.error &&
+        _page != PresenterPage.bye) {
+      return; // somebody is connected: a link changes nothing
+    }
+    final outcome = widget.links?.fromUrl(link);
+    if (outcome == null || outcome is LinkNothing) return;
+    _takeOutcome(outcome, fromLink: true);
+  }
+
+  void _takeOutcome(LinkOutcome outcome, {required bool fromLink}) {
     setState(() {
-      scanWrong = false;
       switch (outcome) {
         case LinkUse(:final target):
           _chip = target.code;
-          _chipFromLink = false;
+          _chipFromLink = fromLink;
           _roomCode = target.code;
           widget.links?.useServer(target.server);
+          if (_page != PresenterPage.firstRun) _page = PresenterPage.firstRun;
         case LinkConfirm(:final target):
           // Nothing connects before the person decided; the chip keeps the code.
           _chip = target.code;
-          _chipFromLink = false;
+          _chipFromLink = fromLink;
           _roomCode = target.code;
           _scannedRelay = target.server;
           _page = PresenterPage.relay;
-        case LinkNothing() || null:
-          scanWrong = true;
+        case LinkNothing():
+          break;
       }
     });
   }
 
-  void _fail(ErrorKind k, {String? code, bool lockedWhile = false}) {
-    _error = k;
-    _errorCode = code;
-    _lockedWhile = lockedWhile;
+  // --- errors ----------------------------------------------------------------------------
+
+  /// The error page for [code] (`errorKindForCode`). [keepsSession]: the presenter is still in
+  /// the room (a presentation that could not start): Try again goes back to "What to show".
+  void _showError(String code, {bool keepsSession = false}) {
+    if (code == 'rate_limited' || code == 'banned' || code == 'server_full') {
+      _busyAt = DateTime.now();
+    }
+    final recent =
+        _busyAt != null &&
+        DateTime.now().difference(_busyAt!) < const Duration(seconds: 60);
+    final r = errorKindForCode(
+      code,
+      wasWaiting: _waited || _session.wasJoined,
+      recentBusy: recent,
+    );
+    if (r == null) {
+      // `capture_denied`: no page, back to "What to show".
+      if (_session.isJoined) _go(PresenterPage.what);
+      return;
+    }
+    _relayWhy = displayOffWhyRelay(code);
+    _lockedWhile = code == 'room_locked_waiting';
+    if (r.$1 == ErrorKind.denied) _refusedAt = joinClock();
+    _error = r.$1;
+    _errorCode = r.$2;
+    _errorKeepsSession = keepsSession;
     _go(PresenterPage.error);
-  }
-
-  // --- starting what to show -------------------------------------------------------------
-
-  Future<void> _stopAll() async {
-    await _screen.stop();
-    await _content.stop();
-  }
-
-  void _startScreen() {
-    _useContent = false;
-    _kind = PresentingKind.screen;
-    final code = _roomCode!;
-    final t = AppLocalizations.of(context);
-    void go() {
-      widget.settings.rememberServer();
-      if (widget.iosBroadcast != null) {
-        _screen.startBroadcast(code: code, server: _server);
-      } else if (widget.androidCapture != null) {
-        _screen.startCapture(
-          code: code,
-          server: _server,
-          notification: CaptureNotificationTexts(
-            title: t.captureNotificationTitle,
-            text: t.captureNotificationText,
-            stopLabel: t.captureNotificationStop,
-          ),
-          name: _myName,
-        );
-      } else {
-        _screen.start(
-          code: code,
-          server: _server,
-          name: _myName,
-          screen: ScreenRequest(
-            display: widget.settings.captureDisplay,
-            fps: 15,
-            bitrateKbps: 2000,
-          ),
-        );
-      }
-    }
-
-    _lastStart = _startScreen;
-    if (_desktop) {
-      // Desktop capture is encoded with OpenH264, which release builds download first. No
-      // designed place for the consent yet: the existing card, on its own page.
-      final codec =
-          widget.codec ??
-          (_codecCtl ??= CodecController(
-            core: widget.core,
-            settings: widget.settings,
-          )..init());
-      if (!codec.ready) {
-        _codecCtl = codec;
-        _go(PresenterPage.codec);
-        return;
-      }
-    }
-    go();
-    _wasWaiting = false;
-  }
-
-  void _pickFile() async {
-    final t = AppLocalizations.of(context);
-    final path = await widget.pickFile(t.sendContentPickerTypes);
-    if (path == null || !mounted) return; // cancelling changes nothing
-    _useContent = true;
-    _fileError = null;
-    _lastStart = _pickFile;
-    widget.settings.rememberServer();
-    _content.start(
-      code: _roomCode!,
-      server: _server,
-      source: ContentSource.file(path: path),
-      name: _myName,
-    );
-    _wasWaiting = false;
-  }
-
-  void _sendLink() {
-    final t = AppLocalizations.of(context);
-    final check = widget.core.validateLink(_url.text.trim());
-    if (check is! LinkCheck_Valid) {
-      setState(() => _linkError = t.sendContentLinkInvalid);
-      return;
-    }
-    _useContent = true;
-    _linkError = null;
-    _kind = PresentingKind.link;
-    _lastStart = _sendLink;
-    widget.settings.rememberServer();
-    _content.start(
-      code: _roomCode!,
-      server: _server,
-      source: ContentSource.link(url: check.url),
-      name: _myName,
-    );
-    _wasWaiting = false;
-  }
-
-  // --- reacting to the controllers -------------------------------------------------------
-
-  void _sync() {
-    if (!mounted) return;
-    final t = AppLocalizations.of(context);
-    if (_useContent) {
-      final c = _content;
-      if (c.kind == UiContentKind.pdf || c.kind == UiContentKind.image) {
-        _kind = PresentingKind.file;
-      }
-      _pdf = c.kind == UiContentKind.pdf;
-      if (c.rejection != null) {
-        _fileError = sendRejectionText(t, c.rejection!);
-        if (_page == PresenterPage.link) {
-          _linkError = _fileError;
-        }
-        setState(() {});
-        return;
-      }
-      switch (c.phase) {
-        case ContentSendPhase.waitingApproval:
-          _enterWaiting(c.approval!);
-        case ContentSendPhase.sending || ContentSendPhase.ready:
-          if (_page != PresenterPage.presenting) {
-            _go(PresenterPage.presenting);
-          }
-        case ContentSendPhase.stopped:
-          _go(PresenterPage.what);
-        case ContentSendPhase.ended:
-          _ended(
-            refusal: c.refusal,
-            receiverLeft: c.receiverLeft,
-            error: c.error,
-          );
-        default:
-          break;
-      }
-    } else {
-      final c = _screen;
-      switch (c.phase) {
-        case SenderPhase.waitingApproval:
-          _enterWaiting(c.approval!);
-        case SenderPhase.running:
-          if (_page != PresenterPage.presenting) {
-            _go(PresenterPage.presenting);
-          }
-        case SenderPhase.ended || SenderPhase.finished:
-          if (c.captureDenied && c.error == null && c.refusal == null) {
-            // Cancelling the system dialog goes back without an error (spec 5.5).
-            _go(PresenterPage.what);
-          } else {
-            _ended(
-              refusal: c.refusal,
-              receiverLeft: c.receiverLeft || c.phase == SenderPhase.finished,
-              error: c.error,
-            );
-          }
-        case SenderPhase.idle:
-          if ((c.captureDenied || c.broadcastNotStarted) &&
-              _page != PresenterPage.what) {
-            _go(PresenterPage.what);
-          }
-        default:
-          break;
-      }
-    }
-    setState(() {});
-  }
-
-  void _enterWaiting(ApprovalWait w) {
-    if (_page != PresenterPage.waiting) {
-      _waitStart = DateTime.now();
-      _wasWaiting = true;
-      _go(PresenterPage.waiting);
-    }
-  }
-
-  void _ended({
-    JoinRefusal? refusal,
-    bool receiverLeft = false,
-    String? error,
-  }) {
-    if (_page == PresenterPage.error || _page == PresenterPage.bye) return;
-    if (refusal != null) {
-      final (k, w) = refusalPage(refusal);
-      _refusedAt = joinClock();
-      _fail(k, lockedWhile: w);
-      return;
-    }
-    if (error != null) {
-      final code = serverCodeOf(error);
-      if (code == 'rate_limited' || code == 'banned' || code == 'server_full') {
-        _busyAt = DateTime.now();
-      }
-      final recent =
-          _busyAt != null &&
-          DateTime.now().difference(_busyAt!) < const Duration(seconds: 60);
-      final r = errorKindFor(
-        error,
-        wasWaiting: _wasWaiting,
-        recentBusy: recent,
-      );
-      if (r == null) {
-        _go(PresenterPage.what);
-        return;
-      }
-      _relayWhy = false;
-      _fail(r.$1, code: r.$2);
-      return;
-    }
-    if (receiverLeft) {
-      _fail(ErrorKind.ended);
-      return;
-    }
-    _go(PresenterPage.what);
   }
 
   int get _cooldown {
@@ -504,16 +374,18 @@ class PresenterRootState extends State<PresenterRoot> {
     switch (a) {
       case ErrorAction.retype:
       case ErrorAction.rescan:
+        unawaited(_session.disconnect());
         _chip = null;
         _code.clear();
         _roomCode = null;
         _go(PresenterPage.firstRun);
         if (a == ErrorAction.rescan) unawaited(_scan());
       case ErrorAction.retry || ErrorAction.ask:
-        final again = _lastStart;
-        if (again != null && _roomCode != null) {
-          _page = PresenterPage.what;
-          again();
+        if (_errorKeepsSession && _session.isJoined) {
+          _go(PresenterPage.what);
+        } else if (_roomCode != null) {
+          _go(PresenterPage.firstRun);
+          _beginSession();
         } else {
           _go(PresenterPage.firstRun);
         }
@@ -521,9 +393,230 @@ class PresenterRootState extends State<PresenterRoot> {
         _go(PresenterPage.file);
       case ErrorAction.showLink:
         _go(PresenterPage.link);
-      case ErrorAction.reload:
-        _go(PresenterPage.firstRun);
     }
+  }
+
+  // --- reacting to the session -----------------------------------------------------------
+
+  void _onSession() {
+    if (!mounted) return;
+    final c = _session;
+    final t = AppLocalizations.of(context);
+    final phase = c.phase;
+    final changed = phase != _lastPhase;
+    final from = _lastPhase;
+    _lastPhase = phase;
+    if (changed) {
+      switch (phase) {
+        case PresenterSessionPhase.waiting:
+          _waited = true;
+          _waitStart = DateTime.now();
+          _go(PresenterPage.waiting);
+        case PresenterSessionPhase.joined:
+          widget.settings.rememberServer();
+          if (from == PresenterSessionPhase.presenting) _releaseCapture();
+          if (_page == PresenterPage.firstRun ||
+              _page == PresenterPage.waiting ||
+              _page == PresenterPage.presenting) {
+            _go(PresenterPage.what);
+          }
+        case PresenterSessionPhase.presenting:
+          _kind = switch (c.contentKind) {
+            UiContentKind.pdf || UiContentKind.image => PresentingKind.file,
+            UiContentKind.link => PresentingKind.link,
+            _ when c.contentPhase != PresenterContentPhase.none =>
+              PresentingKind.file,
+            _ => _kind,
+          };
+          _go(PresenterPage.presenting);
+        case PresenterSessionPhase.ended:
+          _releaseCapture();
+          _showError(c.endedCode ?? 'removed_by_host');
+        case PresenterSessionPhase.failed:
+          _releaseCapture();
+          _showError(c.errorCode ?? 'unknown');
+        case PresenterSessionPhase.idle || PresenterSessionPhase.connecting:
+          break;
+      }
+    }
+    final sf = c.startFailure;
+    if (sf != _lastStartFailure) {
+      _lastStartFailure = sf;
+      if (sf != null) {
+        _releaseCapture();
+        _showError(sf, keepsSession: true);
+      }
+    }
+    if (c.rejection != _lastRejection) {
+      _lastRejection = c.rejection;
+      if (c.rejection != null) {
+        _fileError = sendRejectionText(t, c.rejection!);
+        if (_page == PresenterPage.link) _linkError = _fileError;
+      }
+    }
+    setState(() {});
+  }
+
+  // --- starting what to show -------------------------------------------------------------
+
+  Future<void> _startScreen() async {
+    _kind = PresentingKind.screen;
+    if (widget.iosBroadcast != null) return _startIos();
+    if (widget.androidCapture != null) return _startAndroid();
+    if (_desktop) {
+      // Desktop capture is encoded with OpenH264, which release builds download first (5.8).
+      final codec =
+          widget.codec ??
+          (_codecCtl ??= CodecController(
+            core: widget.core,
+            settings: widget.settings,
+          )..init());
+      if (!codec.ready) {
+        _codecCtl = codec;
+        _go(PresenterPage.codec);
+        return;
+      }
+    }
+    _session.presentScreen(
+      ScreenRequest(
+        display: widget.settings.captureDisplay,
+        fps: 15,
+        bitrateKbps: 2000,
+      ),
+    );
+  }
+
+  Future<void> _startAndroid() async {
+    final t = AppLocalizations.of(context);
+    _releaseCapture();
+    late final CaptureFeeder feeder;
+    feeder = CaptureFeeder(
+      core: widget.core,
+      capture: widget.androidCapture!,
+      // The system or the person ended the projection: the same as Stop (no error page).
+      onStopped: (_) {
+        if (_feeder != feeder) return;
+        _feeder = null;
+        _session.stopPresenting();
+        if (mounted && _page == PresenterPage.presenting) {
+          _go(PresenterPage.what);
+        }
+      },
+      onError: (message) {
+        if (_feeder != feeder) return;
+        _feeder = null;
+        _session.stopPresenting();
+        if (mounted) _showError('capture_failed', keepsSession: true);
+      },
+    );
+    _feeder = feeder;
+    final CaptureStartResult result;
+    try {
+      result = await feeder.start(
+        CaptureNotificationTexts(
+          title: t.captureNotificationTitle,
+          text: t.captureNotificationText,
+          stopLabel: t.captureNotificationStop,
+        ),
+      );
+    } catch (_) {
+      if (_feeder == feeder) _feeder = null;
+      if (mounted) _showError('capture_failed', keepsSession: true);
+      return;
+    }
+    if (!mounted || _feeder != feeder) return;
+    if (result != CaptureStartResult.started) {
+      // Cancelling the system dialog goes back without an error (spec 5.5).
+      _feeder = null;
+      return;
+    }
+    if (!_session.presentEncoded()) _releaseCapture();
+  }
+
+  /// iOS: the broadcast extension joins on its own connection, so the session is left first and
+  /// the extension is asked in the system sheet (docs/design/implementation-questions-flutter.md,
+  /// F2). When it ends the person is back at the first page with the same code.
+  Future<void> _startIos() async {
+    final code = _roomCode;
+    if (code == null) return;
+    await _session.disconnect();
+    if (!mounted) return;
+    final ios = (_ios ??= SenderController(
+      core: widget.core,
+      udpBind: widget.settings.udpBind,
+      iosBroadcast: widget.iosBroadcast,
+    )..addListener(_onIos));
+    widget.settings.rememberServer();
+    _go(PresenterPage.firstRun);
+    await ios.startBroadcast(code: code, server: _server);
+  }
+
+  void _onIos() {
+    final c = _ios;
+    if (c == null || !mounted) return;
+    switch (c.phase) {
+      case SenderPhase.waitingApproval:
+        final w = c.approval;
+        if (w != null && _page != PresenterPage.waiting) {
+          _waited = true;
+          _waitStart = DateTime.now();
+          _go(PresenterPage.waiting);
+        }
+      case SenderPhase.running:
+        if (_page != PresenterPage.presenting) {
+          _kind = PresentingKind.screen;
+          _go(PresenterPage.presenting);
+        }
+      case SenderPhase.ended || SenderPhase.finished:
+        if (c.refusal != null) {
+          _refusedAt = joinClock();
+          final (k, w) = refusalPage(c.refusal!);
+          _error = k;
+          _errorCode = null;
+          _lockedWhile = w;
+          _errorKeepsSession = false;
+          _go(PresenterPage.error);
+        } else if (c.broadcastError != null || c.error != null) {
+          _showError('capture_failed');
+        } else if (_page != PresenterPage.error) {
+          _go(PresenterPage.firstRun);
+        }
+      case SenderPhase.idle:
+        if (c.broadcastNotStarted && _page != PresenterPage.firstRun) {
+          _go(PresenterPage.firstRun);
+        }
+      case SenderPhase.starting:
+        break;
+    }
+  }
+
+  void _pickFile() async {
+    final t = AppLocalizations.of(context);
+    final path = await widget.pickFile(t.sendContentPickerTypes);
+    if (path == null || !mounted) return; // cancelling changes nothing
+    _fileError = null;
+    _kind = PresentingKind.file;
+    _session.presentFile(path);
+    setState(() {});
+  }
+
+  void _sendLink() {
+    final t = AppLocalizations.of(context);
+    final check = widget.core.validateLink(_url.text.trim());
+    if (check is! LinkCheck_Valid) {
+      setState(() => _linkError = t.sendContentLinkInvalid);
+      return;
+    }
+    _linkError = null;
+    _kind = PresentingKind.link;
+    _session.presentLink(check.url);
+    setState(() {});
+  }
+
+  Future<void> _releaseCapture() async {
+    final f = _feeder;
+    _feeder = null;
+    if (f != null) await f.stop();
   }
 
   // --- back (native-apps.md 5) -----------------------------------------------------------
@@ -547,19 +640,30 @@ class PresenterRootState extends State<PresenterRoot> {
   }
 
   Future<void> _withdraw() async {
-    await _stopAll();
+    await _releaseCapture();
+    await _ios?.stop();
+    await _session.disconnect();
     _go(PresenterPage.firstRun);
   }
 
+  /// Leaves the room (the display shows `toast.left`).
   Future<void> _disconnect() async {
-    await _stopAll();
+    await _releaseCapture();
+    await _session.disconnect();
     _roomCode = null;
     _chip = null;
     _go(PresenterPage.bye);
   }
 
+  /// Ends the presentation only: the presenter stays joined (decision N5).
   Future<void> _stop() async {
-    await _stopAll();
+    if (_ios != null && _ios!.isActive) {
+      await _ios!.stop();
+      _go(PresenterPage.firstRun);
+      return;
+    }
+    _session.stopPresenting();
+    await _releaseCapture();
     _go(PresenterPage.what);
   }
 
@@ -580,12 +684,7 @@ class PresenterRootState extends State<PresenterRoot> {
   }
 
   Widget _buildPage(AppLocalizations t) {
-    final left = () {
-      final w = _screen.approval ?? _content.approval;
-      final total = w?.timeoutSecs ?? 60;
-      final used = DateTime.now().difference(_waitStart).inSeconds;
-      return (total, (total - used).clamp(0, total));
-    }();
+    final c = _session;
     switch (_page) {
       case PresenterPage.firstRun:
         return FirstRunPage(
@@ -594,31 +693,35 @@ class PresenterRootState extends State<PresenterRoot> {
           codeChip: _chip == null ? null : _spaced(_chip!),
           chipFromLink: _chipFromLink,
           onScan: widget.scanQr == null || _desktop ? null : _scan,
+          scanWrong: scanWrong,
+          scanAgainBody: widget.firstLaunch && _chip == null,
           onBeDisplay: widget.onBeDisplay,
+          onMiracast: widget.onMiracast,
           codeEmpty: _codeEmpty,
+          canConnect: c.phase != PresenterSessionPhase.connecting,
           onConnect: _connect,
         );
       case PresenterPage.what:
         return WhatPage(
-          laptop: _desktop,
+          device: _deviceKind(context),
+          room: c.roomName,
           onScreen: _startScreen,
           onFile: () => _go(PresenterPage.file),
           onLink: () => _go(PresenterPage.link),
           onDisconnect: _disconnect,
         );
       case PresenterPage.file:
-        final c = _content;
         final busy =
-            _useContent &&
-            (c.phase == ContentSendPhase.preparing ||
-                c.phase == ContentSendPhase.converting ||
-                c.phase == ContentSendPhase.connecting ||
-                c.phase == ContentSendPhase.sending);
+            c.contentPhase == PresenterContentPhase.prepared ||
+            c.contentPhase == PresenterContentPhase.sending;
+        final converting = c.contentPhase == PresenterContentPhase.converting;
         return FilePage(
           onPick: _pickFile,
           onBack: () => _go(PresenterPage.what),
-          progressName: busy ? (c.name ?? '') : null,
-          progressPercent: busy ? c.percent : null,
+          office: _desktop,
+          convertingName: converting ? (c.contentName ?? '') : null,
+          progressName: busy ? (c.contentName ?? '') : null,
+          progressPercent: busy ? c.progress : null,
           error: _fileError,
         );
       case PresenterPage.link:
@@ -629,34 +732,31 @@ class PresenterRootState extends State<PresenterRoot> {
           error: _linkError,
         );
       case PresenterPage.codec:
-        return PPage(
-          actions: [
-            PSecondaryButton(
-              label: t.commonBack,
-              onPressed: () => _go(PresenterPage.what),
-            ),
-          ],
-          children: [
-            Theme(
-              data: ThemeData(useMaterial3: true),
-              child: CodecNotice(controller: _codecCtl!),
-            ),
-          ],
+        return CodecPage(
+          controller: _codecCtl!,
+          onBack: () => _go(PresenterPage.what),
+          onScreen: _startScreen,
         );
       case PresenterPage.waiting:
-        final w = _screen.approval ?? _content.approval;
+        final total = c.timeoutSecs ?? _ios?.approval?.timeoutSecs ?? 60;
+        final used = DateTime.now().difference(_waitStart).inSeconds;
         return WaitingPage(
-          check: w?.check ?? 0,
-          totalSeconds: left.$1,
-          secondsLeft: left.$2,
+          check: c.check ?? _ios?.approval?.check ?? 0,
+          totalSeconds: total,
+          secondsLeft: (total - used).clamp(0, total),
+          room: c.roomName,
           onWithdraw: _withdraw,
         );
       case PresenterPage.presenting:
         return PresentingPage(
           kind: _kind,
-          pdf: _pdf && _useContent,
-          onPrev: () => _content.prevPage(),
-          onNext: () => _content.nextPage(),
+          pdf: c.contentKind == UiContentKind.pdf,
+          room: c.roomName,
+          sas: c.connectionCode,
+          page: c.page,
+          pages: c.pages,
+          onPrev: () => c.sendCommand(const UiContentCmd.prevPage()),
+          onNext: () => c.sendCommand(const UiContentCmd.nextPage()),
           onStop: _stop,
         );
       case PresenterPage.bye:
