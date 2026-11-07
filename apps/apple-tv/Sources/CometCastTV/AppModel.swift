@@ -8,6 +8,7 @@
 import AVFoundation
 import CometCastCore
 import LiveKitWebRTC
+import os
 import SwiftUI
 
 @MainActor
@@ -24,6 +25,8 @@ final class AppModel: ObservableObject {
     @Published var pendingConfirmation: Relay?
     @Published var showStopConfirm = false
     @Published private(set) var iceServerCount = 0
+    @Published var showStats = false { didSet { showStats ? startStats() : stopStats() } }
+    @Published private(set) var statsText: [String] = []
     let discovery = Discovery()
 
     // MARK: private
@@ -44,6 +47,10 @@ final class AppModel: ObservableObject {
     private var userTouchedRelay = false
     private var wasRunning = false
     private var policy: PolicyState = .absent
+    private var statsTask: Task<Void, Never>?
+    /// Diagnostics for the device test plan: phase changes, error codes, statistics. Never the room code, SDP,
+    /// ALTCHA payload or addresses of other devices.
+    private let log = Logger(subsystem: "de.cometcast.tv", category: "receiver")
 
     init() {
         refreshRelays()
@@ -112,6 +119,7 @@ final class AppModel: ObservableObject {
     }
 
     func stop() {
+        showStats = false
         wasRunning = false
         generation += 1
         perform(machine.handle(.stop))
@@ -237,9 +245,47 @@ final class AppModel: ObservableObject {
     }
 
     private func publish() {
+        if state.phase != machine.state.phase || state.errorCode != machine.state.errorCode {
+            log.info("phase \(self.machine.state.phase.rawValue, privacy: .public) error \(self.machine.state.errorCode ?? "-", privacy: .public) ice \(self.iceServerCount)")
+        }
         state = machine.state
         UIApplication.shared.isIdleTimerDisabled = isRunning
         if !isRunning { discovery.start(browseAnnouncements: !choice.locked) }
+    }
+
+    // MARK: statistics (toggled with Play/Pause on the receive screen)
+
+    private func startStats() {
+        statsTask?.cancel()
+        statsTask = Task { [weak self] in
+            var lastBytes: Double?
+            var lastTime = Date()
+            while !Task.isCancelled {
+                guard let self else { return }
+                let list = await self.peer?.statistics() ?? []
+                let s = summarizeStats(list)
+                let now = Date()
+                let kbps = lastBytes.flatMap { bitrateKbps(previousBytes: $0, currentBytes: s.bytesReceived, seconds: now.timeIntervalSince(lastTime)) }
+                lastBytes = s.bytesReceived; lastTime = now
+                self.statsText = Self.lines(s, kbps: kbps)
+                self.log.info("stats \(self.statsText.joined(separator: " | "), privacy: .public)")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    private func stopStats() { statsTask?.cancel(); statsTask = nil; statsText = [] }
+
+    private static func lines(_ s: StatsSummary, kbps: Double?) -> [String] {
+        func f(_ d: Double?) -> String { d.map { String(format: "%.1f", $0) } ?? "-" }
+        return [
+            L.f("stats.video", s.codec ?? "-", s.width, s.height, f(s.framesPerSecond)),
+            L.f("stats.decoder", s.decoder ?? "-"),
+            L.f("stats.frames", s.framesDecoded, s.framesDropped, s.keyFramesDecoded),
+            L.f("stats.rate", f(kbps), f(s.jitterMs), s.packetsLost),
+            L.f("stats.route", L.s("stats.route." + s.route.rawValue), s.transport ?? "-"),
+            L.f("stats.rtt", f(s.roundTripMs)),
+        ]
     }
 
     // MARK: content

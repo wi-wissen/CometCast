@@ -449,13 +449,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Press Menu to stop receiving."
+            "value": "Press Menu to stop receiving. Play/Pause shows statistics."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Drücken Sie „Menü“, um den Empfang zu beenden."
+            "value": "Drücken Sie „Menü“, um den Empfang zu beenden. „Wiedergabe/Pause“ zeigt die Statistik."
           }
         }
       }
@@ -2122,6 +2122,193 @@
           "stringUnit": {
             "state": "translated",
             "value": "Empfang, %lld Prozent"
+          }
+        }
+      }
+    },
+    "stats.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Statistics"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Statistik"
+          }
+        }
+      }
+    },
+    "stats.video": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video: %@ %lld x %lld, %@ fps"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video: %@ %lld x %lld, %@ Bilder/s"
+          }
+        }
+      }
+    },
+    "stats.decoder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decoder: %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decoder: %@"
+          }
+        }
+      }
+    },
+    "stats.frames": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frames: %lld decoded, %lld dropped, %lld key frames"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder: %lld dekodiert, %lld verworfen, %lld Schlüsselbilder"
+          }
+        }
+      }
+    },
+    "stats.rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Received: %@ kbit/s, jitter %@ ms, %lld packets lost"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empfangen: %@ kbit/s, Jitter %@ ms, %lld Pakete verloren"
+          }
+        }
+      }
+    },
+    "stats.route": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route: %@ (%@)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route: %@ (%@)"
+          }
+        }
+      }
+    },
+    "stats.route.host": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "direct, same network"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "direkt, gleiches Netzwerk"
+          }
+        }
+      }
+    },
+    "stats.route.srflx": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "direct, through NAT"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "direkt, über NAT"
+          }
+        }
+      }
+    },
+    "stats.route.relay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "through a relay (TURN)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "über ein Relay (TURN)"
+          }
+        }
+      }
+    },
+    "stats.route.unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unknown"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unbekannt"
+          }
+        }
+      }
+    },
+    "stats.rtt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Round trip time: %@ ms"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laufzeit hin und zurück: %@ ms"
           }
         }
       }

@@ -559,3 +559,43 @@ final class MediaTests: XCTestCase {
         XCTAssertEqual(displayRoomCode("AB"), "AB")
     }
 }
+
+final class StatsTests: XCTestCase {
+    func stat(_ id: String, _ type: String, _ v: [String: JSONValue]) -> RtcStat { RtcStat(id: id, type: type, values: v) }
+
+    func sample(local: String, remote: String) -> [RtcStat] {
+        [
+            stat("RTCInboundRTPVideoStream_1", "inbound-rtp", ["kind": .string("video"), "frameWidth": .number(1920), "frameHeight": .number(1080), "framesPerSecond": .number(29),
+                                                              "framesDecoded": .number(900), "framesDropped": .number(3), "keyFramesDecoded": .number(4), "bytesReceived": .number(2_500_000),
+                                                              "packetsLost": .number(2), "jitter": .number(0.004), "decoderImplementation": .string("VideoToolbox"), "codecId": .string("C1")]),
+            stat("C1", "codec", ["mimeType": .string("video/H264")]),
+            stat("P1", "candidate-pair", ["state": .string("succeeded"), "nominated": .bool(true), "localCandidateId": .string("L1"), "remoteCandidateId": .string("R1"), "currentRoundTripTime": .number(0.012)]),
+            stat("P0", "candidate-pair", ["state": .string("failed"), "nominated": .bool(false)]),
+            stat("L1", "local-candidate", ["candidateType": .string(local), "protocol": .string("udp")]),
+            stat("R1", "remote-candidate", ["candidateType": .string(remote)]),
+        ]
+    }
+
+    func testSummary() {
+        let s = summarizeStats(sample(local: "host", remote: "host"))
+        XCTAssertEqual(s.width, 1920); XCTAssertEqual(s.height, 1080)
+        XCTAssertEqual(s.framesPerSecond, 29)
+        XCTAssertEqual(s.framesDecoded, 900); XCTAssertEqual(s.framesDropped, 3); XCTAssertEqual(s.keyFramesDecoded, 4)
+        XCTAssertEqual(s.codec, "video/H264"); XCTAssertEqual(s.decoder, "VideoToolbox")
+        XCTAssertEqual(s.route, .host); XCTAssertEqual(s.transport, "udp")
+        XCTAssertEqual(s.roundTripMs ?? 0, 12, accuracy: 0.001)
+        XCTAssertEqual(s.jitterMs ?? 0, 4, accuracy: 0.001)
+    }
+    func testRoutes() {
+        XCTAssertEqual(summarizeStats(sample(local: "srflx", remote: "host")).route, .srflx)
+        XCTAssertEqual(summarizeStats(sample(local: "host", remote: "prflx")).route, .srflx)
+        XCTAssertEqual(summarizeStats(sample(local: "host", remote: "relay")).route, .relay)
+        XCTAssertEqual(summarizeStats(sample(local: "relay", remote: "host")).route, .relay)
+        XCTAssertEqual(summarizeStats([]).route, .unknown)
+    }
+    func testBitrate() {
+        XCTAssertEqual(bitrateKbps(previousBytes: 0, currentBytes: 125_000, seconds: 1), 1000)
+        XCTAssertNil(bitrateKbps(previousBytes: 10, currentBytes: 5, seconds: 1))
+        XCTAssertNil(bitrateKbps(previousBytes: 0, currentBytes: 5, seconds: 0))
+    }
+}

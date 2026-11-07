@@ -68,6 +68,21 @@ final class PeerSession: NSObject {
         }
     }
 
+    /// The library's statistics report as `RtcStat` values (W3C names). UNCERTAIN: `statistics()` as an async method
+    /// and the `LKRTCStatistics` property names are taken from the headers by the usual import rules.
+    func statistics() async -> [RtcStat] {
+        guard let pc else { return [] }
+        let report = await pc.statistics()
+        return report.statistics.values.map { st in
+            var v: [String: JSONValue] = [:]
+            for (k, any) in st.values {
+                if let n = any as? NSNumber { v[k] = CFGetTypeID(n) == CFBooleanGetTypeID() ? .bool(n.boolValue) : .number(n.doubleValue) }
+                else if let str = any as? String { v[k] = .string(str) }
+            }
+            return RtcStat(id: st.id, type: st.type, values: v)
+        }
+    }
+
     func add(candidateJson: String) {
         guard let c = IceCandidateInit.parse(candidateJson), let pc else { return }
         let cand = LKRTCIceCandidate(sdp: c.candidate, sdpMLineIndex: Int32(c.sdpMLineIndex), sdpMid: c.sdpMid)

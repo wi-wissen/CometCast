@@ -1,22 +1,30 @@
 # Comet Cast - Apple TV receiver (native SwiftUI, tvOS 17+)
 
-> **UNVERIFIED: written without a Flutter/Xcode toolchain; first build may need fixes.**
+> **UNVERIFIED: written without Xcode, a Mac or an Apple TV.** The platform independent part
+> (`CometCastCore`) is tested on Linux; the app target has never been compiled. Read
+> [docs/appletv.md](../../docs/appletv.md) first and test with
+> [docs/appletv-device-test-plan.md](../../docs/appletv-device-test-plan.md).
 
-No Flutter on Apple TV. This is a small native SwiftUI app that will be a
-**receiver only**. License: GPL-3.0-or-later.
+A **receiver only** app (License: GPL-3.0-or-later). The Rust core is not used on tvOS: signalling, the content
+channel, ALTCHA and the relay rules are implemented in Swift and checked against the web client with shared vectors
+(`tests/fixtures`).
 
-## Current state
+## Layout
 
-A waiting screen: logo placeholder text, room code placeholder (`000 000`) and
-"Waiting for a sender", translated to English and German through
-`Sources/CometCastTV/Localizable.xcstrings` (language follows the system).
+| Path | What |
+| --- | --- |
+| `CometCastCore/` | Swift package: protocol messages, content parser and limits, ALTCHA, connection check code, relay and server-list rules, state machines. No Apple-only imports; `swift test` runs on Linux |
+| `Sources/CometCastTV/` | SwiftUI app: `AppModel`, `Services/` (socket, HTTP, WebRTC, discovery, decoders, configuration), `Views/` |
+| `Sources/CometCastTV/Localizable.xcstrings`, `InfoPlist.xcstrings` | English and German (formal "Sie") |
+| `Resources/Info.plist` | `NSLocalNetworkUsageDescription`, `NSBonjourServices`, local networking exception, `CCDefaultRelay` |
+| `Assets.xcassets/` | tvOS layered app icon (placeholders from `assets/logo`; see docs/appletv.md) |
+| `project.yml` | XcodeGen spec (app and unit-test targets, scheme `CometCastTV`, packages) |
 
-## Planned (not built)
+## Tests
 
-- Decode video with VideoToolbox.
-- Bonjour advertising + TLS server via `NWListener` (Network framework).
-- No background operation on tvOS. Long-running use only in the foreground with
-  Single App Mode (AppLock via MDM). This is assumption A13.
+```sh
+cd CometCastCore && swift test        # Linux or macOS; 62 tests, the same fixtures as the web client
+```
 
 ## Open it on a Mac (Xcode 15+ and Homebrew)
 
@@ -27,24 +35,19 @@ xcodegen generate          # creates CometCastTV.xcodeproj from project.yml
 open CometCastTV.xcodeproj
 ```
 
-In Xcode: select the CometCastTV target, Signing & Capabilities, choose your
-Team, pick an Apple TV simulator as destination, press Run (Cmd+R).
-For a real Apple TV: pair it via Xcode > Window > Devices and Simulators.
+In Xcode: select the CometCastTV target, Signing & Capabilities, choose your Team, pick an Apple TV simulator
+(or the paired Apple TV) as destination, press Run (Cmd+R). The first build downloads the 686 MB WebRTC package.
+Expect to fix compile errors in the app target on the first build and write them down (the test plan, part A,
+lists the likely places).
 
-Without XcodeGen: Xcode > File > New > Project > tvOS > App (SwiftUI), name
-`CometCastTV`, delete the generated Swift files and drag in everything from
-`Sources/CometCastTV/`.
+## Settings you may want
 
-## Manual steps (not automated)
-
-- Asset catalog: create `Assets.xcassets` in Xcode with an App Icon & Top Shelf
-  Image set. Source artwork: `assets/logo/cometcast-app-icon.svg` and
-  `cometcast-app-icon-1024.png` (tvOS needs layered icons; make them in Xcode).
-- Optional: show the logo in `ContentView.swift` via `Image("Logo")` once added.
+- `CC_DEFAULT_RELAY` in `project.yml` (build setting, empty by default): the server used when nothing else is
+  configured, the counterpart of the web app's `VITE_DEFAULT_RELAY`. The built-in default `relay.cometcast.de` does
+  not exist yet.
+- Managed app configuration (MDM): `servers`, `forbid_default_list`, `forbid_user_override`, `forbid_announcement`
+  (see docs/appletv.md, "Servers").
 
 ## UNCERTAIN
 
-- `Localizable.xcstrings` follows the documented string catalog format
-  (`sourceLanguage`, `strings` > key > `localizations` > language > `stringUnit`
-  with `state` and `value`, `version` "1.0"). Xcode may reformat it on first open.
-- `project.yml` settings (e.g. `INFOPLIST_KEY_UILaunchScreen_Generation`) are untested.
+Everything in `Sources/CometCastTV` and `project.yml`; see "Not verified" in docs/appletv.md.

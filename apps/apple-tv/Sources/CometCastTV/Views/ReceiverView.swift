@@ -23,9 +23,11 @@ struct ReceiverView: View {
             ContentOverlay()
             if let t = model.transfer { TransferBadge(transfer: t) }
             if model.state.hasVideo, let sas = model.state.sas { SasBadge(sas: sas) }
+            if model.showStats { StatsBadge(lines: model.statsText) }
         }
         .focusable(model.content == nil)
         .onExitCommand { if model.content != nil { model.dismissContent() } else { model.showStopConfirm = true } }
+        .onPlayPauseCommand { model.showStats.toggle() } // statistics for the device test plan
         .onMoveCommand { dir in
             guard case .document? = model.content else { return }
             if dir == .left { model.turnPage(.prevPage) } else if dir == .right { model.turnPage(.nextPage) }
@@ -106,5 +108,25 @@ struct TransferBadge: View {
                 .accessibilityLabel(L.f("a11y.progress", percent))
         }
         .padding(60)
+    }
+}
+
+/// Statistics (Play/Pause toggles them): picture, decoder, frames, rate, route, round trip time.
+struct StatsBadge: View {
+    let lines: [String]
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("stats.title").font(.caption.bold())
+                    ForEach(lines, id: \.self) { Text($0).font(.system(.callout, design: .monospaced)) }
+                }
+                .padding(16).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .combine)
+                Spacer()
+            }
+        }
+        .padding(40)
     }
 }
