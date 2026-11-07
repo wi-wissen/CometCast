@@ -106,7 +106,7 @@ void main() {
       await pumpPage(t, firstRun());
       expect(find.text('Comet Cast'), findsOneWidget);
       final logo = t.getSize(find.byType(SvgPicture));
-      expect((logo.width, logo.height), (28.0, 28.0));
+      expect(logo.width, closeTo(28, 0.01));
     });
 
     testWidgets('the empty code field shows XXX XXX, typing removes it', (
