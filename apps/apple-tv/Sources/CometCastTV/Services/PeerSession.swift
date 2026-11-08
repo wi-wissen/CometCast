@@ -18,6 +18,8 @@ final class PeerSession: NSObject {
         var onVideoTrack: (LKRTCVideoTrack) -> Void
         var onControlText: (String) -> Void
         var onControlBinary: ([UInt8]) -> Void
+        /// The control channel is open: the display tells the presenter its pause flags (docs/design/pause.md).
+        var onControlOpen: () -> Void
         var onConnected: () -> Void
         var onFailed: () -> Void
     }
@@ -147,13 +149,20 @@ extension PeerSession: LKRTCPeerConnectionDelegate {
                 guard let self, !self.closed else { return }
                 self.channel = dataChannel
                 dataChannel.delegate = self
+                // The remote's channel arrives open as a rule; `dataChannelDidChangeState` covers the other case.
+                if dataChannel.readyState == .open { self.h.onControlOpen() }
             }
         }
     }
 }
 
 extension PeerSession: LKRTCDataChannelDelegate {
-    nonisolated func dataChannelDidChangeState(_ dataChannel: LKRTCDataChannel) {}
+    nonisolated func dataChannelDidChangeState(_ dataChannel: LKRTCDataChannel) {
+        guard dataChannel.readyState == .open else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { if let self, !self.closed, self.channel === dataChannel { self.h.onControlOpen() } }
+        }
+    }
 
     nonisolated func dataChannel(_ dataChannel: LKRTCDataChannel, didReceiveMessageWith buffer: LKRTCDataBuffer) {
         // DispatchQueue.main keeps the order of messages (separate Tasks would not).

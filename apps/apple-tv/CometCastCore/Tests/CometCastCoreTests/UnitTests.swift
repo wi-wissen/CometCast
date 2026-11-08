@@ -540,6 +540,80 @@ final class ContentControllerTests: XCTestCase {
     }
 }
 
+/// Pause from either side (docs/design/pause.md): the same rules as `PauseState` in crates/cc-files and the web client.
+final class PauseTests: XCTestCase {
+    func testEitherFlagFreezesAndEachSideClearsOnlyItsOwn() {
+        var s = PauseState()
+        XCTAssertFalse(s.isFrozen)
+        XCTAssertTrue(s.setPresenter(true))
+        XCTAssertFalse(s.setPresenter(true)) // idempotent
+        XCTAssertTrue(s.setDisplay(true))
+        XCTAssertTrue(s.setPresenter(false))
+        XCTAssertTrue(s.isFrozen) // the display flag keeps the picture frozen
+        XCTAssertTrue(s.setDisplay(false))
+        XCTAssertFalse(s.isFrozen)
+    }
+
+    func testClearResetsBothAndReportsTheChange() {
+        var s = PauseState(presenter: true, display: true)
+        XCTAssertTrue(s.clear())
+        XCTAssertEqual(s, PauseState())
+        XCTAssertFalse(s.clear())
+    }
+
+    func testTheMessageIsTheWireFormat() {
+        XCTAssertEqual(pauseStateMessageJSON(PauseState(presenter: true, display: false)),
+                       "{\"display\":false,\"kind\":\"pause_state\",\"presenter\":true}")
+        // what the display sends parses back, like the presenter's parser reads it
+        XCTAssertEqual(parseControlMessage(pauseStateMessageJSON(PauseState(presenter: false, display: true))),
+                       .pauseState(presenter: false, display: true))
+    }
+
+    func testPauseCommandsParseAndDoNotTouchTheContent() {
+        XCTAssertEqual(parseControlMessage("{\"kind\":\"cmd\",\"cmd\":\"pause\"}"), .cmd(.pause))
+        XCTAssertEqual(parseControlMessage("{\"kind\":\"cmd\",\"cmd\":\"resume\"}"), .cmd(.resume))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"cmd\",\"cmd\":\"Pause\"}"))
+        let c = ContentController()
+        let id = c.openDocument(name: "d.pdf")
+        c.documentOpened(id: id, pages: 3)
+        c.onCmd(.pause)
+        c.onCmd(.resume)
+        XCTAssertEqual(c.content, .document(id: id, name: "d.pdf", pages: 3, page: 1))
+    }
+
+    func testPauseStateNeedsTwoBooleans() {
+        XCTAssertNil(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":true}"))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":1,\"display\":0}"))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":null,\"display\":false}"))
+        XCTAssertEqual(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":false,\"display\":true,\"x\":1}"),
+                       .pauseState(presenter: false, display: true))
+    }
+
+    func testTheBadgeSaysWhoPausedAndThePresenterWinsWhenBothDid() {
+        XCTAssertNil(frozenBadge(PauseState()))
+        XCTAssertEqual(frozenBadge(PauseState(presenter: true, display: false)), .byPresenter)
+        XCTAssertEqual(frozenBadge(PauseState(presenter: false, display: true)), .frozenHere)
+        XCTAssertEqual(frozenBadge(PauseState(presenter: true, display: true)), .byPresenter)
+    }
+
+    func testAReceiverIgnoresPauseStateWithoutAnError() {
+        final class R: ControlReceiverHandlers {
+            var events: [String] = []
+            func onCmd(_ cmd: ControlCmd) { events.append("cmd:" + JSON.serialize(cmd.json)) }
+            func onProgress(_ p: (name: String, received: Int, size: Int)?) {}
+            func onImage(bytes: [UInt8], mime: String, name: String) {}
+            func onDocument(bytes: [UInt8], name: String) {}
+            func onLink(url: String) {}
+            func onError(_ code: TransferErrorCode) { events.append("error:" + code.rawValue) }
+        }
+        let r = R()
+        let rx = ControlReceiver(handlers: r)
+        rx.handleText("{\"kind\":\"pause_state\",\"presenter\":true,\"display\":false}", nowMs: 0)
+        rx.handleText("{\"kind\":\"cmd\",\"cmd\":\"pause\"}", nowMs: 1)
+        XCTAssertEqual(r.events, ["cmd:\"pause\""])
+    }
+}
+
 final class MediaTests: XCTestCase {
     func testPlayerNeverStartsByItself() {
         var s = PlayerState.card

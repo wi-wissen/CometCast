@@ -43,6 +43,8 @@ public enum BackIntent: Equatable, Sendable {
     case wizardBack
     case showControls
     case hideControls
+    /// Play/Pause while a live screen is shown: toggles the display's own pause flag (docs/design/pause.md).
+    case togglePause
 }
 
 /// Menu / Back (`onExitCommand`).
@@ -68,6 +70,13 @@ public func intentForMenu(_ c: DisplayContext) -> BackIntent {
     case .joinRequest: return .consume
     case .about, .licences, .linkCard, .setup: return .consume
     }
+}
+
+/// The Play/Pause button of the Siri Remote. While a live screen is shown it toggles the display's own pause flag
+/// (docs/design/pause.md) and nothing else; in every other case it stands for the spec's Menu key as before.
+public func intentForPlayPause(_ c: DisplayContext, canPause: Bool) -> BackIntent {
+    if case .presenting = c, canPause { return .togglePause }
+    return intentForMenu(c)
 }
 
 // MARK: presenting: name tag and End (spec 4.5, 8.1, 7.1)

@@ -104,6 +104,8 @@ public final class ContentController {
         case .nextPage: goToPage(current + 1)
         case .prevPage: goToPage(current - 1)
         case .goToPage(let p): goToPage(p)
+        // Pause and resume concern the live screen, not the content: the app holds the flags (`PauseState`).
+        case .pause, .resume: break
         }
     }
 }
@@ -114,4 +116,59 @@ public final class ContentController {
 public func pageMessageJSON(page: Int, pages: Int) -> String? {
     guard pages >= 1, page >= 1, page <= pages else { return nil }
     return JSON.serialize(.object(["kind": .string("page"), "page": .number(Double(page)), "pages": .number(Double(pages))]))
+}
+
+/// The two pause flags of the live screen (docs/design/pause.md), as the display holds them. `presenter` is set only by
+/// the presenter (`cmd pause` / `cmd resume`), `display` only by the display (its Pause control, the Play/Pause key).
+/// The picture is frozen while either is set; each side clears only its own flag. The same rules as `PauseState` in
+/// crates/cc-files/src/pause.rs and `ReceiverSession` of the web client.
+public struct PauseState: Equatable, Sendable {
+    public var presenter = false
+    public var display = false
+    public init(presenter: Bool = false, display: Bool = false) { self.presenter = presenter; self.display = display }
+
+    public var isFrozen: Bool { presenter || display }
+
+    /// `cmd pause` / `cmd resume`. Returns whether the state changed (both are idempotent).
+    @discardableResult
+    public mutating func setPresenter(_ paused: Bool) -> Bool {
+        let changed = presenter != paused
+        presenter = paused
+        return changed
+    }
+
+    /// The display's own flag. Returns whether the state changed.
+    @discardableResult
+    public mutating func setDisplay(_ paused: Bool) -> Bool {
+        let changed = display != paused
+        display = paused
+        return changed
+    }
+
+    /// The screen stopped (stop, presentation ended, peer left, new session): both flags go. Returns whether it changed.
+    @discardableResult
+    public mutating func clear() -> Bool {
+        let changed = isFrozen
+        self = PauseState()
+        return changed
+    }
+}
+
+/// The `pause_state` message, display to presenter: `{"kind":"pause_state","presenter":p,"display":d}`. Sent whenever
+/// either flag changes and once when the control channel opens.
+public func pauseStateMessageJSON(_ s: PauseState) -> String {
+    JSON.serialize(ControlMessage.pauseState(presenter: s.presenter, display: s.display).json)
+}
+
+/// Which text the badge on a frozen picture shows (docs/design/pause.md, rule 5): the presenter's text wins when both
+/// flags are set; nil while the picture is live.
+public enum FrozenBadge: Equatable, Sendable {
+    /// `pause.display.byPresenter`
+    case byPresenter
+    /// `toolbar.frozenHint` (the display's own freeze)
+    case frozenHere
+}
+
+public func frozenBadge(_ s: PauseState) -> FrozenBadge? {
+    s.presenter ? .byPresenter : (s.display ? .frozenHere : nil)
 }
