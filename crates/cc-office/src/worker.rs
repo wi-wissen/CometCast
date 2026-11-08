@@ -19,6 +19,8 @@ use crate::format::OfficeFormat;
 /// Name of the file the engines write in `DIR/out/`.
 pub(crate) const OUTPUT_NAME: &str = "input.pdf";
 
+// Without the engine the worker only parses its arguments and refuses to convert.
+#[cfg_attr(not(feature = "engine-rust"), allow(dead_code))]
 struct Args {
     format: OfficeFormat,
     work: PathBuf,
