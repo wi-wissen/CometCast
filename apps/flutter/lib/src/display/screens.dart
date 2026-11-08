@@ -46,6 +46,7 @@ class IdleScreen extends StatelessWidget {
     required this.dimmed,
     required this.onSettings,
     this.altAddress,
+    this.idTag,
     this.alsoVia,
     this.appLineStores = false,
     this.settingsFocus,
@@ -68,6 +69,10 @@ class IdleScreen extends StatelessWidget {
 
   /// The IP address of an in-house box (`idle.altAddress`), or null.
   final String? altAddress;
+
+  /// The short tag of this display's id (`display.tag`), shown small in the footer next to the
+  /// server line (not next to the code); null while the key is not loaded.
+  final String? idTag;
 
   /// The first footer line when AirPlay and/or Miracast run (`idle.alsoVia.*`), already
   /// translated; null when no receiver runs or the mode is Locked (spec 15.4).
@@ -189,6 +194,16 @@ class IdleScreen extends StatelessWidget {
                           key: const Key('idle-foot'),
                           style: s.type.footer,
                         ),
+                        if (idTag != null) ...[
+                          const SizedBox(height: 2),
+                          // Small, in the secondary text colour (the footer style), next to
+                          // the server line; not near the room code.
+                          Text(
+                            t.displayTag(idTag!),
+                            key: const Key('idle-tag'),
+                            style: s.type.footer.copyWith(fontSize: 13),
+                          ),
+                        ],
                       ],
                     ),
                   ),

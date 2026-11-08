@@ -3,6 +3,7 @@
 // Needs the library: `cargo build -p cc-ffi` (default path target/debug/libcc_ffi.so) or
 // COMETCAST_FFI_LIB=/path/to/libcc_ffi.so. Without the library the tests are skipped.
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -192,13 +193,21 @@ void main() {
 
   test('announcing and listing receivers can be started and stopped', () async {
     const core = RustCoreApi();
-    // A loopback server is refused by the checks of cc-discovery; the name alone is fine.
+    // A loopback server is refused by the checks of cc-discovery; so is no server at all: the
+    // announced record is signed and names a server.
     final refused = await core.startAdvertising(
       name: 'Test receiver',
       preferredServer: '127.0.0.1:8443',
     );
     expect(refused, AdvertiseOutcome.refused);
-    final outcome = await core.startAdvertising(name: 'Test receiver');
+    expect(
+      await core.startAdvertising(name: 'Test receiver'),
+      AdvertiseOutcome.refused,
+    );
+    final outcome = await core.startAdvertising(
+      name: 'Test receiver',
+      preferredServer: '10.0.0.5:8443',
+    );
     // No multicast in a sandbox is possible: then it fails, but never throws.
     expect(outcome, anyOf(AdvertiseOutcome.started, AdvertiseOutcome.failed));
     await core.stopAdvertising();
@@ -463,63 +472,85 @@ void main() {
 
         await until(() => events.isNotEmpty);
         expect(events.first, isA<NearbyUiEvent_SearchStarted>());
-        const id = '0123456789abcdef';
-        core.nearbyNativeSeen(
-          instance: 'CometCast-01234567',
-          addresses: ['10.0.0.5'],
-          txt: [
-            ('v', '1'),
-            ('id', id),
-            ('srv', '10.0.0.5:8443'),
-            ('mode', 'approval'),
-            ('code', 'P4X9TR'),
-            ('name', '\u202e Room\t 204 '),
-          ],
-        );
-        // Hostile records leave no trace: wrong code alphabet, public IP, other layout version.
-        for (final txt in [
-          [
-            ('v', '1'),
-            ('id', 'fedcba9876543210'),
-            ('srv', '10.0.0.6:8443'),
-            ('mode', 'open'),
-            ('code', 'P4X9T0'),
-          ],
-          [
-            ('v', '1'),
-            ('id', 'fedcba9876543211'),
-            ('srv', '8.8.8.8:443'),
-            ('mode', 'open'),
-            ('code', 'P4X9TR'),
-          ],
-          [
-            ('v', '2'),
-            ('id', 'fedcba9876543212'),
-            ('srv', '10.0.0.6:8443'),
-            ('mode', 'open'),
-            ('code', 'P4X9TR'),
-          ],
-        ]) {
+        // The shared vectors (tests/fixtures/announce-v2.json): real signed records.
+        final fx = jsonDecode(
+          File('../../tests/fixtures/announce-v2.json').readAsStringSync(),
+        ) as Map<String, dynamic>;
+        List<(String, String)> txtOf(dynamic pairs) => [
+          for (final p in pairs as List<dynamic>)
+            ((p as List<dynamic>)[0] as String, p[1] as String),
+        ];
+        Map<String, dynamic> valid(String name) =>
+            (fx['valid'] as List<dynamic>)
+                .cast<Map<String, dynamic>>()
+                .firstWhere((v) => v['name'] == name);
+        final keyB = (fx['keys'] as List<dynamic>)
+            .cast<Map<String, dynamic>>()
+            .firstWhere((k) => k['name'] == 'B');
+        final id = keyB['id'] as String;
+        final instance = 'CometCast-${id.substring(0, 8)}';
+        // Hostile records leave no trace: every refused vector (bad signature, wrong id, wrong key
+        // order, removed code, version 1 ...), whatever instance name they come under.
+        for (final r in (fx['refused'] as List<dynamic>)) {
           core.nearbyNativeSeen(
-            instance: 'evil',
+            instance: instance,
             addresses: ['10.0.0.66'],
-            txt: txt,
+            txt: txtOf((r as Map<String, dynamic>)['txt']),
           );
         }
+        core.nearbyNativeSeen(
+          instance: instance,
+          addresses: ['10.0.0.5'],
+          txt: txtOf(valid('approval_tls_unicode')['txt']),
+        );
         await until(() => events.any((e) => e is NearbyUiEvent_Added));
         await Future<void>.delayed(const Duration(milliseconds: 100));
         final added = events.whereType<NearbyUiEvent_Added>().toList();
         expect(added, hasLength(1));
         final s = added.single.screen;
         expect(s.id, id);
-        expect(s.name, 'Room 204');
-        expect(s.server, 'ws://10.0.0.5:8443');
+        expect(s.tag, keyB['tag']);
+        expect(s.name, 'Raum S\u00fcd 3');
+        expect(s.server, 'wss://relay.example.org:443');
         expect(s.mode, NearbyMode.approval);
-        expect(s.code, 'P4X9TR');
-        // A goodbye removes the row at once; Locked carries no code.
-        core.nearbyNativeGone('CometCast-01234567');
+        expect(s.code, 'K7Q2MW');
+        expect(s.sameName, isFalse);
+        expect(s.newDevice, isFalse);
+        // A goodbye of the network changes nothing.
+        core.nearbyNativeGone(instance);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(events.whereType<NearbyUiEvent_Removed>(), isEmpty);
+        // The remembered pairs of the app reach the running search: the name is known under
+        // another id, so the row is marked.
+        core.setRememberedScreens([
+          RememberedScreen(name: 'raum s\u00fcd 3', id: 'a' * 32),
+        ]);
+        await until(
+          () => events.any(
+            (e) => e is NearbyUiEvent_Updated && e.screen.newDevice,
+          ),
+        );
+        expect(
+          events.whereType<NearbyUiEvent_Updated>().last.screen.newDevice,
+          isTrue,
+        );
+        core.setRememberedScreens([]);
+        // The signed goodbye (a higher seq) removes the row; a replay of the old record does not
+        // bring it back.
+        core.nearbyNativeSeen(
+          instance: instance,
+          addresses: ['10.0.0.5'],
+          txt: txtOf(valid('gone_locked')['txt']),
+        );
         await until(() => events.any((e) => e is NearbyUiEvent_Removed));
         expect(events.whereType<NearbyUiEvent_Removed>().single.id, id);
+        core.nearbyNativeSeen(
+          instance: instance,
+          addresses: ['10.0.0.5'],
+          txt: txtOf(valid('approval_tls_unicode')['txt']),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(events.whereType<NearbyUiEvent_Added>(), hasLength(1));
         await core.stopNearbyScreens();
         await until(() => events.any((e) => e is NearbyUiEvent_SearchStopped));
         expect(events.last, isA<NearbyUiEvent_SearchStopped>());
@@ -527,16 +558,28 @@ void main() {
       skip: skip,
     );
 
-    test('the display announcement needs a valid id', () async {
+    test('the display announcement needs a 32-byte key', () async {
       const core = RustCoreApi();
       expect(
-        await core.setDisplayAnnouncing(active: true, instanceId: 'nope'),
-        AnnounceStatus.badId,
+        await core.setDisplayAnnouncing(
+          active: true,
+          secretKey: Uint8List(5),
+          seqFloor: 0,
+        ),
+        AnnounceStatus.badKey,
       );
+      final secret = core.newDisplaySecret();
+      expect(secret, hasLength(32));
+      expect(core.newDisplaySecret(), isNot(secret));
+      final ident = core.displayIdentity(secret)!;
+      expect(ident.id, hasLength(32));
+      expect(ident.tag, ident.id.substring(0, 4).toUpperCase());
+      expect(core.displayIdentity(Uint8List(31)), isNull);
       expect(
         await core.setDisplayAnnouncing(
           active: false,
-          instanceId: '0123456789abcdef',
+          secretKey: secret,
+          seqFloor: 0,
         ),
         anyOf(AnnounceStatus.off, AnnounceStatus.forbiddenByPolicy),
       );

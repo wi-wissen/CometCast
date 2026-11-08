@@ -154,7 +154,12 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   final FocusNode _endNode = RowNode(row: 0, col: 0, debugLabel: 'end');
 
   bool _ready = false;
-  String? _instanceId;
+  Uint8List? _secret;
+  int _seqFloor = 0;
+
+  /// The identity of this display's key (id and the short tag), once the key is loaded.
+  DisplayIdentity? _identity;
+  Timer? _seqTimer;
   bool? _announcing;
   DisplaySetup? _setup;
   Appearance _appearance = Appearance.dark;
@@ -294,12 +299,14 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   Future<void> _load() async {
     final setup = await widget.store.loadSetup();
     final look = await widget.store.loadAppearance();
-    final id = await widget.store.instanceId();
+    final key = await widget.store.key(widget.core.newDisplaySecret);
     // Not awaited: with a consent on file `init` downloads the codec (or follows a running
     // download), which can take minutes, and the display must not stay blank meanwhile.
     unawaited(_codec?.init());
     if (!mounted) return;
-    _instanceId = id;
+    _secret = key.secret;
+    _seqFloor = key.seqFloor;
+    _identity = widget.core.displayIdentity(key.secret);
     setState(() {
       _setup = setup;
       _appearance = look;
@@ -338,6 +345,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _codec?.dispose();
     _rx?.removeListener(_onController);
     if (widget.receive == null) _rx?.dispose();
+    _seqTimer?.cancel();
     _aboutNode.dispose();
     _wizard?.dispose();
     _ring.dispose();
@@ -459,8 +467,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
   /// point 1). What is announced comes from the running room in the core, so the code is the one
   /// on the screen; the core also checks the administrator's policy.
   void _syncAnnounce({bool? force}) {
-    final id = _instanceId;
-    if (id == null) return;
+    final secret = _secret;
+    if (secret == null) return;
     final active =
         force ??
         (_ready &&
@@ -473,14 +481,37 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     if (active) unawaited(widget.announceLock(true).catchError((Object _) {}));
     unawaited(
       widget.core
-          .setDisplayAnnouncing(active: active, instanceId: id)
+          .setDisplayAnnouncing(
+            active: active,
+            secretKey: secret,
+            seqFloor: _seqFloor,
+          )
           .then<void>((_) {}, onError: (Object _) {})
           .then<void>((_) {
+            _persistSeq();
+            if (active) {
+              // The core's `seq` moves on with every record: keep the stored floor current.
+              _seqTimer ??= Timer.periodic(
+                const Duration(seconds: 60),
+                (_) => _persistSeq(),
+              );
+            } else {
+              _seqTimer?.cancel();
+              _seqTimer = null;
+            }
             if (!active) {
               return widget.announceLock(false).catchError((Object _) {});
             }
           }),
     );
+  }
+
+  /// Remember what the core says it may have used of the `seq` numbers, so a clock that goes
+  /// back after a restart cannot reuse them (the core never writes a file).
+  void _persistSeq() {
+    final seq = widget.core.displaySeqToPersist();
+    if (seq > _seqFloor) _seqFloor = seq;
+    unawaited(widget.store.saveSeq(seq).catchError((Object _) {}));
   }
 
   void _scheduleRetry() {
@@ -1012,6 +1043,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       code: c.roomCode,
                       dom: widget.core.joinAddress(_server),
                       altAddress: _boxIp,
+                      idTag: _identity?.tag,
                       alsoVia: _alsoVia(t),
                       view: _view,
                       cause: _cause,
@@ -1095,6 +1127,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       !dialogOver)
                     AboutDialogView(
                       version: widget.core.appVersion(),
+                      idTag: _identity?.tag,
                       remote: _tv,
                       onLicences: () => setState(() => _licencesOpen = true),
                       onClose: _closeAbout,

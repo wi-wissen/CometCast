@@ -282,6 +282,9 @@ class PresenterRootState extends State<PresenterRoot>
   /// The screen waiting for the relay confirmation page (spec 14.4).
   NearbyScreenInfo? _nearbyRelay;
 
+  /// The row a join was started from; remembered (name and id) once the join succeeded.
+  NearbyScreenInfo? _joiningScreen;
+
   late final PresenterSessionController _session = PresenterSessionController(
     core: widget.core,
     udpBind: widget.settings.udpBind,
@@ -343,6 +346,14 @@ class PresenterRootState extends State<PresenterRoot>
               ));
     _ownsNearby = widget.nearbyController == null && _nearby != null;
     _nearby?.addListener(_onNearby);
+    // The screens joined before: the core marks a row with a known name and a new id.
+    unawaited(
+      widget.settings.loadRememberedScreens().then((_) {
+        if (mounted) {
+          _nearby?.setRemembered(widget.settings.rememberedScreens);
+        }
+      }),
+    );
     _tvCtl =
         widget.tvController ??
         (_desktop ? TvController(core: widget.core) : null);
@@ -601,6 +612,7 @@ class PresenterRootState extends State<PresenterRoot>
   void _connectNearby(NearbyScreenInfo s) {
     widget.settings.setDisplayName(_name.text);
     _nearbyConnectId = s.id;
+    _joiningScreen = s;
     _nearby?.beginConnect(s.id);
     _sessionServer = s.server;
     _roomCode = s.code;
@@ -613,6 +625,7 @@ class PresenterRootState extends State<PresenterRoot>
   void _nearbyGone() {
     final id = _nearbyConnectId;
     _nearbyConnectId = null;
+    _joiningScreen = null;
     _roomCode = null;
     _sessionServer = null;
     if (id != null) _nearby?.markGone(id);
@@ -686,6 +699,7 @@ class PresenterRootState extends State<PresenterRoot>
   /// The error page for [code] (`errorKindForCode`). [keepsSession]: the presenter is still in
   /// the room (a presentation that could not start): Try again goes back to "What to show".
   void _showError(String code, {bool keepsSession = false}) {
+    _joiningScreen = null;
     final tv = _tvRow;
     if (tv != null &&
         const {
@@ -797,6 +811,16 @@ class PresenterRootState extends State<PresenterRoot>
           _waitStart = DateTime.now();
           _go(PresenterPage.waiting);
         case PresenterSessionPhase.joined:
+          final joined = _joiningScreen;
+          if (joined != null) {
+            // Trust on first use: this name now belongs to this id for this person.
+            _joiningScreen = null;
+            unawaited(
+              widget.settings.rememberScreen(joined.name, joined.id).then((_) {
+                _nearby?.setRemembered(widget.settings.rememberedScreens);
+              }),
+            );
+          }
           if (_tvRow == null) {
             widget.settings.rememberServer().then((_) => _syncShareSettings());
           }

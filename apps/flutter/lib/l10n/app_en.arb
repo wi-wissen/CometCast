@@ -1759,6 +1759,32 @@
   "@nearbyGone": {
     "description": "Spec key nearby.gone"
   },
+  "nearbyTag": "ID {tag}",
+  "@nearbyTag": {
+    "description": "Spec key nearby.tag: the short tag of a screen, shown only on rows that carry a note",
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "nearbySameName": "Two screens use this name. Compare the ID with the screen.",
+  "@nearbySameName": {
+    "description": "Spec key nearby.sameName"
+  },
+  "nearbyNewDevice": "New device with a known name. Compare the ID with the screen.",
+  "@nearbyNewDevice": {
+    "description": "Spec key nearby.newDevice"
+  },
+  "displayTag": "ID {tag}",
+  "@displayTag": {
+    "description": "Spec key display.tag: the short tag of this display (idle screen footer and About)",
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
   "nearbyAria": "{name}, code {code}, {mode}",
   "@nearbyAria": {
     "description": "Spec key nearby.aria",

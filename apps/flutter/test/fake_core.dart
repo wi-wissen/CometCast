@@ -464,17 +464,62 @@ class FakeCoreApi implements CoreApi {
   Future<void> stopWatchingReceivers() async => stopWatchingCalls++;
 
   // The display announcement (spec 14.8).
-  final announceCalls = <({bool active, String id})>[];
+  final announceCalls =
+      <({bool active, String id, Uint8List key, int seqFloor})>[];
   AnnounceStatus announceStatus = AnnounceStatus.announcing;
+  int seqToPersist = 1000;
+  int _secrets = 0;
+
+  /// Every secret made by [newDisplaySecret], in order.
+  final madeSecrets = <Uint8List>[];
+
+  @override
+  Uint8List newDisplaySecret() {
+    // Deterministic, different per call; the 32 bytes are all `n`.
+    final s = Uint8List.fromList(List.filled(32, ++_secrets));
+    madeSecrets.add(s);
+    return s;
+  }
+
+  /// A fake identity: the id is the key bytes in hex (32 digits from the first 16 bytes).
+  @override
+  DisplayIdentity? displayIdentity(Uint8List secretKey) {
+    if (secretKey.length != 32) return null;
+    final id = secretKey
+        .take(16)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return DisplayIdentity(
+      id: id,
+      tag: id.substring(0, 4).toUpperCase(),
+      publicKey: 'pk$id',
+    );
+  }
+
+  @override
+  int displaySeqToPersist() => seqToPersist;
 
   @override
   Future<AnnounceStatus> setDisplayAnnouncing({
     required bool active,
-    required String instanceId,
+    required Uint8List secretKey,
+    required int seqFloor,
   }) async {
-    announceCalls.add((active: active, id: instanceId));
+    announceCalls.add((
+      active: active,
+      id: displayIdentity(secretKey)?.id ?? '',
+      key: secretKey,
+      seqFloor: seqFloor,
+    ));
     return announceStatus;
   }
+
+  /// What the app last passed to [setRememberedScreens].
+  List<RememberedScreen> remembered = [];
+
+  @override
+  void setRememberedScreens(List<RememberedScreen> screens) =>
+      remembered = List.of(screens);
 
   // Screens on this network (spec 14): one stream per search, driven by the test.
   final nearbySearches = <StreamController<NearbyUiEvent>>[];

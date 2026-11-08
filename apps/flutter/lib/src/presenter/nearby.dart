@@ -412,9 +412,55 @@ class _NearbyRowTileState extends State<NearbyRowTile> {
         ? '$mode · ${t.nearbyVia(widget.via!)}'
         : mode;
     final code = screen.code;
-    final label = locked || code == null
+    final baseLabel = locked || code == null
         ? '$title, $mode'
         : t.nearbyAria(title, formatCode(code), mode);
+    // Notes (docs/design/signed-announcements.md): two screens with one name, or a new device
+    // with a name the person knows. The short tag is shown only on rows that carry a note.
+    final notes = <String>[
+      if (screen.sameName) t.nearbySameName,
+      if (screen.newDevice) t.nearbyNewDevice,
+    ];
+    final label = notes.isEmpty
+        ? baseLabel
+        : '$baseLabel. ${notes.join(' ')} ${t.nearbyTag(screen.tag)}';
+    Widget withNotes(Widget content, {double top = 4}) {
+      if (notes.isEmpty) return content;
+      final style = s.type.small.copyWith(color: p.fg2);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          content,
+          Padding(
+            padding: EdgeInsets.fromLTRB(14, top, 14, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (screen.sameName)
+                  Text(
+                    t.nearbySameName,
+                    key: Key('nearby-same-name-${row.id}'),
+                    style: style,
+                  ),
+                if (screen.newDevice)
+                  Text(
+                    t.nearbyNewDevice,
+                    key: Key('nearby-new-device-${row.id}'),
+                    style: style,
+                  ),
+                Text(
+                  t.nearbyTag(screen.tag),
+                  key: Key('nearby-tag-${row.id}'),
+                  style: style.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     final titleStyle = empty
         ? s.type.optionTitle.copyWith(
             fontWeight: FontWeight.w500,
@@ -498,9 +544,11 @@ class _NearbyRowTileState extends State<NearbyRowTile> {
         enabled: false,
         container: true,
         child: ExcludeSemantics(
-          child: CustomPaint(
-            foregroundPainter: _DashedBorder(p.borderInput, 12),
-            child: content,
+          child: withNotes(
+            CustomPaint(
+              foregroundPainter: _DashedBorder(p.borderInput, 12),
+              child: content,
+            ),
           ),
         ),
       );
@@ -516,7 +564,7 @@ class _NearbyRowTileState extends State<NearbyRowTile> {
           onPressed: enabled ? widget.onPressed : null,
           radius: 12,
           label: label,
-          builder: (_) => content,
+          builder: (_) => withNotes(content),
         ),
       ),
     );
