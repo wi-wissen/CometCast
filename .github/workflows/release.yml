@@ -277,7 +277,7 @@ jobs:
           chmod -R u=rwX,go=rX "$pkg"
           dpkg-deb --root-owner-group --build "$pkg" "dist/cometcast_${VERSION}_amd64.deb"
           dpkg-deb --info "dist/cometcast_${VERSION}_amd64.deb"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-linux
           path: dist/*
@@ -374,7 +374,7 @@ jobs:
           mkdir -p dist
           (cd "$out" && 7z a -tzip -mx=9 "$GITHUB_WORKSPACE/dist/cometcast-windows-x86_64-$VERSION.zip" . > /dev/null)
           ls -l dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-windows
           path: dist/*
@@ -566,7 +566,7 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
           rm -f "$RUNNER_TEMP/App.entitlements" "$RUNNER_TEMP/notary.json" "$RUNNER_TEMP/notarize.zip"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-macos
           path: dist/*
@@ -681,7 +681,7 @@ jobs:
       - name: Remove the keystore
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/release.jks"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-android
           path: dist/*
@@ -820,7 +820,7 @@ jobs:
           rm -f "$RUNNER_TEMP"/*.mobileprovision "$RUNNER_TEMP"/app.plist "$RUNNER_TEMP"/ext.plist
           rm -f apps/flutter/ios/Config/Local.xcconfig
           rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-ios
           path: dist/*
@@ -952,7 +952,7 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/tvos.keychain-db" || true
           rm -f "$RUNNER_TEMP/tvos.mobileprovision" "$RUNNER_TEMP/tvos-profile.plist" "$RUNNER_TEMP/tvos-cert.p12"
           rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-tvos
           path: dist/*
@@ -1012,7 +1012,7 @@ jobs:
           tools/release-stage.sh "stage/$name" "$VERSION"
           (cd stage && zip -qr "../dist/$name.zip" "$name")
           ls -l dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-web
           path: dist/*
@@ -1085,7 +1085,7 @@ jobs:
             tar -C stage -czf "dist/$name.tar.gz" "$name"
           fi
           ls -l dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-server-${{ matrix.target }}
           path: dist/*
@@ -1167,7 +1167,7 @@ jobs:
           printf '%s' "$DIGEST" > "digests/$ARCH"
       - name: Upload the digest
         if: ${{ !inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docker-digest-${{ matrix.arch }}
           path: digests/*
@@ -1297,7 +1297,7 @@ jobs:
           cp LICENSE dist/LICENSE
           cp THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md dist/
           ls -l dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-meta
           path: dist/*
@@ -1354,7 +1354,7 @@ jobs:
           { echo; echo '### SHA256SUMS'; echo; echo '```'; cat assets/SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Dry run result (no release created)
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dry-run-bundle
           path: |
