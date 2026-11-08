@@ -10,7 +10,7 @@
 // Web presenter: the key pair is made with WebCrypto `Ed25519`, NON-EXTRACTABLE, and kept as a CryptoKeyPair in
 // IndexedDB. Where WebCrypto has no Ed25519, or IndexedDB is missing or throws (private windows, blocked site
 // data), no proof is sent and the join works as before. UNCERTAIN: support (Chrome 137+, Firefox 129+, Safari 17+)
-// is to be checked in the e2e browsers (see docs/measurement-points.md, row "Presenter identity").
+// is to be checked in the e2e browsers (see docs/measurement-points.md, A25).
 //
 // Vectors shared with Rust and Swift: tests/fixtures/join-proof.json.
 

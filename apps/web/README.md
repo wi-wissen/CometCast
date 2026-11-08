@@ -208,6 +208,16 @@ German texts (du) on both pages; the default mode is kept on the display. Not co
 the controls: "End presentation" and the block list with Unblock, "Later", the join menu and its notice. Their logic
 (`ReceiverSession.removePeer`, `unblock`, `denyAll`) stays and is covered by `tests/joinApproval.test.ts`.
 
+### Presenter identity
+
+The web presenter proves which browser it is ([design/presenter-identity.md](../../docs/design/presenter-identity.md)): on the first
+join it makes an Ed25519 key pair with WebCrypto (non-extractable, kept in IndexedDB, `src/core/deviceIdentity.ts`) and sends the
+proof in `join_room.device`; browsers without WebCrypto Ed25519 send none. The web display verifies proofs the same way and keeps
+the pairs (name, device id) of allowed presenters in `localStorage` (`src/core/deviceMemory.ts`, key `cometcast.deviceMemory`) for
+the note "This name was used here before by a different device." Tests: `tests/joinProof.test.ts` (shared vectors
+`tests/fixtures/join-proof.json`, Node's WebCrypto) and `tests/presenterIdentity.test.ts`. The e2e suites were not extended: no
+real-browser run of the new code has been made (A25 in [measurement-points.md](../../docs/measurement-points.md)).
+
 ## Display and presenter tests
 
 `npm run build && E2E_CHROME=/usr/bin/google-chrome npm run e2e:display` (real server, real Chrome) covers: the setup wizard
