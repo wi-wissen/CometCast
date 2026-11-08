@@ -79,9 +79,9 @@ UNCERTAIN: every number is a placeholder.
 | `allowed_origins` | | `[]` | Web origins (`https://host[:port]`, exact) whose pages may use this relay from another site: CORS for `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`. Empty = same-origin only for HTTP, any browser origin on `/ws`. `*` = any origin, internal mode only. See [Web app on another origin](#web-app-on-another-origin). Env `COMETCAST_ALLOWED_ORIGINS`, CLI `--allowed-origins`. |
 | `default_join_mode` | `open` | `open` | Join mode of rooms whose creator names none (`open` or `confirm`; never `locked`). Web, Flutter and CLI clients send `open` themselves unless the person chose another mode. |
 | `allow_open_rooms` | `true` | `true` | `false` = rooms in join mode `open` are refused (`open_rooms_disabled`), also when a receiver switches an existing room to `open`. Needs `default_join_mode = "confirm"`. For operators who want approval everywhere. |
-| `join_approval_secs` | 60 | 60 | A join request waits this long for the display device (`approval_timeout`). |
-| `idle_room_secs` | 1800 | 1800 | Room without sender expires. |
-| `hello_secs` / `no_room_secs` | 5 / 60 | 5 / 60 | Handshake and "must be in a room" deadlines. |
+| `join_approval_secs` | 60 | 60 | A join request waits this long for the display device (`approval_timeout`). 1 to 86400. |
+| `idle_room_secs` | 1800 | 1800 | Room without sender expires. 1 to 86400. |
+| `hello_secs` / `no_room_secs` | 5 / 60 | 5 / 60 | Handshake and "must be in a room" deadlines. Each 1 to 86400. |
 | `max_message_bytes` | 65536 | 65536 | Largest WebSocket message. |
 | `outgoing_queue_len` | 256 | 256 | Queue per slow client. |
 | `tls.cert_file`, `tls.key_file` | | none | PEM files; HTTPS/WSS is on when set. |
@@ -111,8 +111,8 @@ UNCERTAIN: every number is a placeholder.
 | `limits.bytes_per_sec` / `bytes_burst` | 65536 / 262144 | 262144 / 1048576 | Per connection: bytes per second and burst (burst must be at least `max_message_bytes`). |
 | `limits.max_room_relay_bytes` | 8388608 | 67108864 | Total bytes relayed through one room. |
 | `limits.max_bad_messages` | 20 | 50 | Garbage or wrong-role messages before the connection is closed. |
-| `limits.global_failed_joins_per_min` | 300 | 1000 | Emergency brake: more failures than this in a minute (whole server) slow down every `join_room`. At most 10000 (the server remembers only that many events; a higher value is refused at start because the brake could never trigger). |
-| `limits.max_pending_per_room` | 8 | 8 | Senders that may wait for approval in one room at the same time; more get `rate_limited`. |
+| `limits.global_failed_joins_per_min` | 300 | 1000 | Emergency brake: more failed joins than this in a minute (whole server) slow down every `join_room`. Only failed joins count (unknown, malformed or full room code); bad messages, floods and denied or timed-out join requests count toward the address ban only. At most 10000 (the server remembers only that many events; a higher value is refused at start because the brake could never trigger). |
+| `limits.max_pending_per_room` | 8 | 8 | Senders that may wait for approval in one room at the same time; more get `rate_limited`. At most 90 (each waiting sender gets its own two-digit check number). |
 | `limits.max_pending_per_ip` | 3 | 8 | Senders waiting for approval from one client address (all rooms); more get `rate_limited`. |
 | `limits.denied_join_weight` | 2 | 2 | A denied or timed-out join request counts as this many failures toward the address ban (0 = never). UNCERTAIN: placeholder; everybody behind one NAT address shares the budget. |
 | `limits.wide_failure_factor` | 10 | 10 | An IPv6 /48 is banned after `ban_after_failed_joins` times this many failures. UNCERTAIN: placeholder (the first version used 4, which is probably too low for a large company or campus network that owns a /48). |
@@ -121,7 +121,7 @@ UNCERTAIN: every number is a placeholder.
 | `altcha.cost` | 1000 | 1000 | PBKDF2 iterations per attempt. |
 | `altcha.base_counter` | 1000 | 1000 | Size of the search; doubles per pressure level. |
 | `altcha.max_difficulty_factor` | 8 | 8 | Upper limit of the multiplier. |
-| `altcha.ttl_secs` | 300 | 300 | Puzzle lifetime. |
+| `altcha.ttl_secs` | 300 | 300 | Puzzle lifetime. 1 to 86400. |
 | `stun.urls` | `[]` | `[]` | Public STUN servers listed at `/ice-servers`, **allowed in both modes**. At most 4, only `stun:` / `stuns:` URLs (lowercase) as `host[:port]` (port 1-65535, IPv6 as `[addr]`), no credentials (`@`), path or query; checked at start. Env `COMETCAST__STUN__URLS=stun:a:3478,stun:b:3478` (comma-separated), CLI `--set stun.urls=...`. |
 | `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. `turn.stun_urls` follows the same rules as `stun.urls`; both are listed (without duplicates) in one STUN entry. |
 | `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |
@@ -134,7 +134,7 @@ The display device (the receiver that created the room) chooses a join mode: `op
 - Settings: `default_join_mode`, `allow_open_rooms`, `join_approval_secs`, `limits.max_pending_per_room`, `limits.max_pending_per_ip`, `limits.denied_join_weight` (table above; all overridable by environment variable or `--set`, for example `--set allow_open_rooms=false --set default_join_mode=confirm`).
 - The server default stays `open`, like every client's default, so nothing changes for existing set-ups. An operator who wants approval everywhere sets `allow_open_rooms = false` and `default_join_mode = "confirm"`: clients that ask for `open` are told `open_rooms_disabled`; the web app and the Flutter app then create a room that asks first and say so.
 - The host can also block a sender for the rest of a room session ("No and block", or "End and block"), end the connected sender's presentation, and end the whole room session; a blocked sender hears the same `join_denied` as any denied sender. The block list is per room, held in memory, capped at 32 entries and keyed by network address (IPv4 address or IPv6 /64), so it also blocks other people behind the same address. See [protocol.md](protocol.md#join-approval).
-- Waiting senders count against the per-room and per-address limits above and against the connection limits (a waiting sender is an open connection). A denied or timed-out request counts toward the usual temporary ban (`limits.denied_join_weight`), so a client that keeps asking is slowed down by the same machinery as failed joins. The ban applies to new connections and joins of that address, not to connections that are open.
+- Waiting senders count against the per-room and per-address limits above and against the connection limits (a waiting sender is an open connection). A denied or timed-out request counts toward the usual temporary ban (`limits.denied_join_weight`), so a client that keeps asking is slowed down by the same machinery as failed joins. When a denial or timeout starts the ban, the joiner's connection gets `banned` and is closed (as in protocol.md). The ban then refuses new connections, joins and HTTP requests of that address; its other connections that are already open stay.
 - Not covered: AirPlay, Google Cast and Miracast receivers have their own mechanisms (UxPlay PIN, Miracast consent); join approval concerns Comet Cast protocol connections only.
 - Tests: `crates/cc-server/tests/join_approval.rs` (all modes, spoofing attempts, limits, timeouts, name cleaning, check numbers, operator options).
 
@@ -311,6 +311,13 @@ Control frames are not free: every ping and pong frame a client sends uses the s
 per-connection message budget as a text message, so a flood of them is cut off like any other
 flood (`rate_limited`, closed, counted as a failure).
 
+**Slow HTTP clients:** a new connection must send a complete request head within 15 s
+(before that, nothing is answered and the connection is closed), and on a kept-alive
+connection each further request head must arrive within 15 s too. Plain HTTP and HTTPS
+behave the same; with HTTPS the TLS handshake has its own 10 s limit first. An upgraded
+WebSocket is not affected (liveness above applies). UNCERTAIN: 15 s is a placeholder and not
+configurable.
+
 **Per-address caps:** open connections (`max_connections_per_ip`) and rooms
 (`max_rooms_per_ip`) per client address.
 
@@ -350,9 +357,15 @@ Flow:
    standard base64 of the JSON `{"challenge": <the challenge>, "solution": <the solution>}`.
 4. The server checks signature, expiry and solution, and remembers the puzzle so it can be
    used **once** (a [moka](https://crates.io/crates/moka) cache with a time-to-live, so replays fail).
+   The list of used puzzles holds at most 200 000 entries; when it is full, new solutions are
+   refused (`altcha_invalid`) rather than forgetting a used puzzle early. Limits: the list is
+   in the memory of one process. After a restart it is empty, so with a fixed `altcha.secret` a
+   solution from before the restart can be used once more until it expires (`altcha.ttl_secs`).
+   Several instances that share the secret each keep their own list, so one solution can create
+   one room on each instance (there is no shared store).
 
-Errors: `altcha_required` (missing), `altcha_invalid` (wrong, expired, replayed, or signed by
-another server). Without a configured `altcha.secret` the server uses a random secret made at
+Errors: `altcha_required` (missing), `altcha_invalid` (wrong, expired, replayed, signed by
+another server, or the list of used puzzles is full). Without a configured `altcha.secret` the server uses a random secret made at
 start, so puzzles from before a restart, or from another server instance, are refused.
 Behind several instances, set the same `altcha.secret` on all of them.
 

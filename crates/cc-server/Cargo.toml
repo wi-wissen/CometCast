@@ -33,7 +33,9 @@ base64.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 axum-server.workspace = true
+hyper-util.workspace = true
 rcgen.workspace = true
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }

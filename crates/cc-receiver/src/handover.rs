@@ -17,7 +17,10 @@
 //!   text),
 //! * is held at most once per presenter name and at most [`MAX_TOKENS`] in all, so a flood of
 //!   `handover` messages cannot grow the store: a newer token of the same presenter replaces
-//!   the older one, and a full store refuses the rest (no `handover_ok`).
+//!   the older one, and a full store refuses the rest (no `handover_ok`),
+//! * is withdrawn when the host turns against the presenter: removing it (with or without a
+//!   block) drops its tokens, and a deny-and-block or switching the room to `locked` drops all
+//!   of them. An ordinary leave keeps them (that is the hand-over itself).
 
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -126,9 +129,21 @@ impl HandoverStore {
         before - e.len()
     }
 
-    /// Forget everything.
-    pub fn clear(&self) {
-        self.lock().clear();
+    /// Withdraw the tokens of the presenter `name` (the host removed that presenter: the token
+    /// must not let it straight back in). Returns how many were held.
+    pub fn remove_for(&self, name: &str) -> usize {
+        let mut e = self.lock();
+        let before = e.len();
+        e.retain(|x| !same_person(&x.name, name));
+        before - e.len()
+    }
+
+    /// Forget everything. Returns how many tokens were held.
+    pub fn clear(&self) -> usize {
+        let mut e = self.lock();
+        let n = e.len();
+        e.clear();
+        n
     }
 }
 
@@ -186,7 +201,7 @@ mod tests {
             assert!(s.insert(&format!("t{i}"), n, t0));
         }
         assert!(!s.insert("tx", "E", t0), "full");
-        s.clear();
+        assert_eq!(s.clear(), 4);
         assert!(s.insert("tx", "E", t0));
     }
 
@@ -198,6 +213,20 @@ mod tests {
         assert!(!s.take("tok1", "Guest", t0));
         assert!(!s.take("tok1", "Guest x", t0));
         assert!(s.take("tok1", "Guest 2", t0));
+    }
+
+    #[test]
+    fn a_removed_presenter_loses_its_token_and_only_its_own() {
+        let (s, t0) = store();
+        assert!(s.insert("tok1", "Ana", t0));
+        assert!(s.insert("tok2", "Ben", t0));
+        assert_eq!(s.remove_for("Ana"), 1);
+        assert!(!s.take("tok1", "Ana", t0), "withdrawn");
+        assert_eq!(s.remove_for("Ana"), 0);
+        assert!(
+            s.take("tok2", "Ben", t0),
+            "another presenter keeps its token"
+        );
     }
 
     #[test]

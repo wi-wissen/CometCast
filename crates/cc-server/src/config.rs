@@ -323,7 +323,8 @@ pub struct ServerConfig {
     /// A connection must send a valid `hello` within this time.
     pub hello_timeout: Duration,
     /// A connection that said hello but is in no room is closed after this time
-    /// (counted from the moment it connected).
+    /// (counted from the moment it connected, and again from the moment its room or
+    /// join request ended).
     pub no_room_timeout: Duration,
     /// Largest accepted WebSocket message in bytes.
     pub max_message_bytes: usize,
@@ -436,6 +437,11 @@ pub const DEFAULT_MAX_MESSAGE_BYTES: usize = 64 * 1024;
 /// UNCERTAIN: 60 seconds is a placeholder for how long a connection may stay
 /// without creating or joining a room; to be measured with real clients.
 pub const DEFAULT_NO_ROOM_TIMEOUT: Duration = Duration::from_secs(60);
+/// Longest accepted value of the connection and room timeouts (`hello_secs`, `no_room_secs`,
+/// `idle_room_secs`, `join_approval_secs`, `altcha.ttl_secs`). UNCERTAIN: one day is a
+/// placeholder; the defaults are minutes, and the bound mainly keeps deadlines far from an
+/// overflow.
+pub const MAX_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 /// UNCERTAIN: 256 queued messages is a placeholder; the right size depends on
 /// how bursty ICE candidates and control messages are in practice.
 pub const DEFAULT_OUTGOING_QUEUE_LEN: usize = 256;
@@ -526,6 +532,13 @@ impl ServerConfig {
                 crate::limits::EVENT_CAP
             )));
         }
+        if l.max_pending_per_room > crate::rooms::MAX_CHECK_NUMBERS {
+            // Each waiting request needs its own two-digit check number (10..=99).
+            return Err(ConfigError::new(format!(
+                "limits.max_pending_per_room must be at most {}",
+                crate::rooms::MAX_CHECK_NUMBERS
+            )));
+        }
         if self.default_join_mode == JoinMode::Locked {
             return Err(ConfigError::new(
                 "default_join_mode must be \"open\" or \"confirm\" (a room that is locked from the start could never be joined)",
@@ -536,8 +549,24 @@ impl ServerConfig {
                 "allow_open_rooms = false needs default_join_mode = \"confirm\"",
             ));
         }
-        if self.join_approval_timeout.is_zero() {
-            return Err(ConfigError::new("join_approval_secs must be at least 1"));
+        // Zero would close or expire at once; a huge value overflows `Instant + Duration`
+        // (a panic in the connection task).
+        for (name, d) in [
+            ("join_approval_secs", self.join_approval_timeout),
+            ("idle_room_secs", self.idle_room_timeout),
+            ("hello_secs", self.hello_timeout),
+            ("no_room_secs", self.no_room_timeout),
+            ("altcha.ttl_secs", self.altcha.ttl),
+        ] {
+            if d.is_zero() {
+                return Err(ConfigError::new(format!("{name} must be at least 1")));
+            }
+            if d > MAX_TIMEOUT {
+                return Err(ConfigError::new(format!(
+                    "{name} must be at most {} (one day)",
+                    MAX_TIMEOUT.as_secs()
+                )));
+            }
         }
         if l.max_rooms == 0 || l.max_connections == 0 {
             return Err(ConfigError::new(

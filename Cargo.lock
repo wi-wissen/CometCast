@@ -1111,6 +1111,7 @@ dependencies = [
  "futures-util",
  "governor",
  "hmac 0.13.0",
+ "hyper-util",
  "ipnet",
  "moka",
  "rand 0.9.5",

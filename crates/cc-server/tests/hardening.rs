@@ -440,6 +440,21 @@ async fn open_mode_requires_a_solved_puzzle_once() {
 }
 
 #[tokio::test]
+async fn altcha_required_answer_costs_no_create_token() {
+    let mut config = open_config();
+    config.limits.create_room_per_min = 1;
+    let addr = start(config).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    // The documented two steps: ask without a payload, then retry with one.
+    send(&mut r, json!({"type":"create_room"})).await;
+    assert_eq!(error_code(&recv(&mut r).await), "altcha_required");
+    let payload = solved_payload(addr).await;
+    send(&mut r, json!({"type":"create_room","altcha":payload})).await;
+    assert_eq!(recv(&mut r).await["type"], "room_created");
+}
+
+#[tokio::test]
 async fn open_mode_rejects_puzzle_from_another_server() {
     let other = start(open_config()).await;
     let addr = start(open_config()).await;
@@ -1180,4 +1195,32 @@ async fn healthz_bypass_needs_no_forwarded_header_even_with_an_allow_list() {
     assert_eq!(http_get(addr, "/healthz", &outsider).await.status, 403);
     let insider = [("X-Forwarded-For", "10.1.2.3")];
     assert_eq!(http_get(addr, "/healthz", &insider).await.status, 200);
+}
+
+// ---------- slow HTTP clients ----------
+
+/// Connect, send `bytes`, then nothing; returns how long until the server closed.
+async fn time_until_closed(addr: SocketAddr, bytes: &[u8]) -> Duration {
+    let mut tcp = TcpStream::connect(addr).await.unwrap();
+    tcp.write_all(bytes).await.unwrap();
+    let t0 = std::time::Instant::now();
+    let mut raw = Vec::new();
+    tokio::time::timeout(Duration::from_secs(30), tcp.read_to_end(&mut raw))
+        .await
+        .expect("connection still open after 30 s")
+        .ok();
+    t0.elapsed()
+}
+
+#[tokio::test]
+async fn silent_and_slow_http_clients_are_closed() {
+    // The limit is 15 s (UNCERTAIN placeholder in http_deadline.rs); both checks run together.
+    let addr = start(ServerConfig::default()).await;
+    let (silent, partial) = tokio::join!(
+        time_until_closed(addr, b""),
+        time_until_closed(addr, b"GET /healthz HTTP/1.1\r\nHost: x\r\n"),
+    );
+    for d in [silent, partial] {
+        assert!(d >= Duration::from_secs(10), "closed too early: {d:?}");
+    }
 }

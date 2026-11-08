@@ -195,7 +195,21 @@ struct Sdps {
 /// The incoming video track and its SSRC, once it exists.
 type RemoteVideo = Arc<Mutex<Option<(Arc<dyn TrackRemote>, u32)>>>;
 
-/// Remote candidates may arrive before the remote description; they wait here.
+/// Most remote candidates that wait for the remote description (more are dropped). A real
+/// peer gathers a handful per network interface; the queue only has to bridge the short time
+/// until the offer or answer is applied.
+const MAX_PENDING_CANDIDATES: usize = 64;
+
+/// Longest `candidate` line accepted. The fields of RFC 8839 (section 5.1) add up to a few
+/// hundred characters even with two 253-character host names; browsers send about 100 to 200.
+const MAX_CANDIDATE_LEN: usize = 1024;
+
+/// Longest `RTCIceCandidateInit` JSON text accepted (the candidate plus `sdpMid`,
+/// `sdpMLineIndex`, `usernameFragment` and the JSON around them).
+const MAX_CANDIDATE_JSON_LEN: usize = 2 * MAX_CANDIDATE_LEN;
+
+/// Remote candidates may arrive before the remote description; they wait here (at most
+/// [`MAX_PENDING_CANDIDATES`]).
 #[derive(Default)]
 struct IceQueue {
     remote_set: bool,
@@ -373,19 +387,31 @@ impl Session {
     }
 
     /// Add a remote ICE candidate given as the JSON text of an `RTCIceCandidateInit`.
-    /// Candidates that arrive before the remote description are queued.
+    /// Candidates that arrive before the remote description are queued, at most
+    /// [`MAX_PENDING_CANDIDATES`] of them; over-long candidates and candidates beyond that
+    /// are refused (the peer is not trusted to keep within reason).
     pub async fn add_remote_candidate(&self, json: &str) -> Result<(), TransportError> {
+        if json.len() > MAX_CANDIDATE_JSON_LEN {
+            return Err(TransportError::Invalid("ICE candidate too long".into()));
+        }
         let init: RTCIceCandidateInit =
             serde_json::from_str(json).map_err(|e| TransportError::Invalid(e.to_string()))?;
         if init.candidate.is_empty() {
             return Ok(()); // end-of-candidates marker
         }
+        if init.candidate.len() > MAX_CANDIDATE_LEN {
+            return Err(TransportError::Invalid("ICE candidate too long".into()));
+        }
         let mut q = self.ice.lock().await;
         if q.remote_set {
             drop(q);
             self.pc.add_ice_candidate(init).await?;
-        } else {
+        } else if q.pending.len() < MAX_PENDING_CANDIDATES {
             q.pending.push(init);
+        } else {
+            return Err(TransportError::Invalid(
+                "too many ICE candidates before the remote description".into(),
+            ));
         }
         Ok(())
     }
@@ -725,6 +751,40 @@ mod tests {
         assert_eq!(out[1].username, "u");
         assert_eq!(out[1].credential, "c");
         assert_eq!(out[0].username, "");
+    }
+
+    #[tokio::test]
+    async fn early_candidates_are_bounded_in_number_and_length() {
+        let config = SessionConfig {
+            udp_bind: vec!["127.0.0.1:0".into()],
+            ..SessionConfig::default()
+        };
+        let (session, _events) = Session::new(config).await.unwrap();
+        let json = |c: &str| {
+            serde_json::json!({ "candidate": c, "sdpMid": null, "sdpMLineIndex": 0 }).to_string()
+        };
+        let good = "candidate:1 1 udp 2122260223 192.0.2.1 54321 typ host generation 0";
+        for _ in 0..MAX_PENDING_CANDIDATES {
+            session.add_remote_candidate(&json(good)).await.unwrap();
+        }
+        assert!(
+            session.add_remote_candidate(&json(good)).await.is_err(),
+            "the queue is full"
+        );
+        assert_eq!(
+            session.ice.lock().await.pending.len(),
+            MAX_PENDING_CANDIDATES
+        );
+        let long = format!("{good} {}", "x".repeat(MAX_CANDIDATE_LEN));
+        assert!(session.add_remote_candidate(&json(&long)).await.is_err());
+        let padded = format!(
+            r#"{{"candidate":"{good}","sdpMid":"{}","sdpMLineIndex":0}}"#,
+            "m".repeat(MAX_CANDIDATE_JSON_LEN)
+        );
+        assert!(session.add_remote_candidate(&padded).await.is_err());
+        // The end-of-candidates marker is still fine.
+        session.add_remote_candidate(&json("")).await.unwrap();
+        session.close().await.unwrap();
     }
 
     #[tokio::test]

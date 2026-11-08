@@ -501,3 +501,44 @@ async fn slow_reader_is_disconnected() {
     assert!(got_peer_left, "slow sender was not disconnected");
     drop(s);
 }
+
+#[tokio::test]
+async fn repeated_cancel_join_does_not_extend_the_no_room_time() {
+    let config = ServerConfig {
+        no_room_timeout: Duration::from_millis(600),
+        ..ServerConfig::default()
+    };
+    let addr = start(config).await;
+    let mut c = connect(addr).await;
+    hello(&mut c, "sender").await;
+    let t0 = std::time::Instant::now();
+    // A cancel_join without a waiting request every 100 ms must not keep the
+    // connection alive past the no-room time.
+    loop {
+        assert!(t0.elapsed() < Duration::from_secs(3), "never closed");
+        if c.send(Message::text(json!({"type":"cancel_join"}).to_string()))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        match tokio::time::timeout(Duration::from_millis(100), c.next()).await {
+            Ok(None) | Ok(Some(Err(_))) | Ok(Some(Ok(Message::Close(_)))) => return,
+            _ => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn sender_whose_receiver_left_gets_the_no_room_time() {
+    let config = ServerConfig {
+        no_room_timeout: Duration::from_millis(1500),
+        ..ServerConfig::default()
+    };
+    let addr = start(config).await;
+    let (mut r, mut s, _) = paired(addr).await;
+    r.close(None).await.unwrap();
+    assert_eq!(recv(&mut s).await, json!({"type":"peer_left"}));
+    // The sender says nothing more; it is closed once the no-room time has passed.
+    expect_closed(&mut s).await;
+}

@@ -13,6 +13,7 @@ mod config;
 mod cors;
 mod file_config;
 mod health;
+mod http_deadline;
 mod limits;
 mod net;
 mod puzzle;
@@ -181,33 +182,33 @@ pub async fn run(
         shutdown.await;
         let _ = stop_tx.send(true);
     });
-    let mut for_http = stop_rx.clone();
-    let mut for_timeout = stop_rx;
+    let mut for_http = stop_rx;
     // Both paths give open connections SHUTDOWN_GRACE after the signal, then stop anyway.
-    let grace = async move {
-        wait_shutdown(&mut for_timeout).await;
-        tokio::time::sleep(SHUTDOWN_GRACE).await;
-    };
+    let handle = axum_server::Handle::new();
+    let for_shutdown = handle.clone();
+    tokio::spawn(async move {
+        wait_shutdown(&mut for_http).await;
+        for_shutdown.graceful_shutdown(Some(SHUTDOWN_GRACE));
+    });
+    // axum-server for plain HTTP too (not `axum::serve`): it lets us give hyper a timer, so
+    // the header read timeout works, and wrap each stream (see http_deadline.rs).
+    let listener = listener.into_std()?;
     match tls {
         None => {
-            let serve = axum::serve(listener, app)
-                .with_graceful_shutdown(async move { wait_shutdown(&mut for_http).await });
-            tokio::select! {
-                r = serve => r,
-                () = grace => Ok(()),
-            }
+            let mut server = axum_server::from_tcp(listener)?
+                .acceptor(http_deadline::FirstRequestDeadline::new(
+                    axum_server::accept::DefaultAcceptor::new(),
+                ))
+                .handle(handle);
+            http_deadline::tune(&mut server);
+            server.serve(app).await
         }
         Some(tls) => {
-            let handle = axum_server::Handle::new();
-            let for_shutdown = handle.clone();
-            tokio::spawn(async move {
-                wait_shutdown(&mut for_http).await;
-                for_shutdown.graceful_shutdown(Some(SHUTDOWN_GRACE));
-            });
-            axum_server::from_tcp_rustls(listener.into_std()?, tls)?
-                .handle(handle)
-                .serve(app)
-                .await
+            let mut server = axum_server::from_tcp_rustls(listener, tls)?
+                .map(http_deadline::FirstRequestDeadline::new)
+                .handle(handle);
+            http_deadline::tune(&mut server);
+            server.serve(app).await
         }
     }
 }

@@ -438,12 +438,14 @@ impl Rooms {
                     Ok(b) => out.blocked = b,
                     Err(e) => {
                         // Not decided: put the request back so the host can decide again.
+                        // Only the taken requests were uncounted above, so only they are
+                        // counted again.
+                        for q in &taken {
+                            *self.pending_per_ip.entry(q.ip).or_insert(0) += 1;
+                        }
                         let mut back = taken;
                         back.append(&mut room.pending);
                         room.pending = back;
-                        for q in &room.pending {
-                            *self.pending_per_ip.entry(q.ip).or_insert(0) += 1;
-                        }
                         return Err(e);
                     }
                 }
@@ -684,13 +686,88 @@ impl Rooms {
 /// The room is gone (removed or expired).
 pub(crate) struct Gone;
 
-/// A two-digit number (10..=99) that no waiting request of the room uses yet.
+/// Most requests that can wait in one room with different check numbers (10..=99).
+pub(crate) const MAX_CHECK_NUMBERS: usize = 90;
+
+/// A two-digit number (10..=99) that no waiting request of the room uses yet. Picks from
+/// the free numbers, so it never loops. If all 90 are in use (not possible while
+/// `max_pending_per_room` is at most 90), any number is returned.
 fn fresh_check(pending: &[Pending]) -> u8 {
     let mut rng = rand::rng();
-    loop {
-        let n: u8 = rng.random_range(10..=99);
-        if pending.iter().all(|p| p.check != n) {
-            return n;
+    let free: Vec<u8> = (10..=99u8)
+        .filter(|n| pending.iter().all(|p| p.check != *n))
+        .collect();
+    if free.is_empty() {
+        return rng.random_range(10..=99);
+    }
+    free[rng.random_range(0..free.len())]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    fn ip(n: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(10, 0, 0, n))
+    }
+
+    #[tokio::test]
+    async fn block_list_full_keeps_the_pending_counts() {
+        let mut rooms = Rooms::default();
+        let (owner, _orx, _) = Tx::new(8);
+        let (code, _) = rooms
+            .create(1, owner, ip(1), 10, 10, JoinMode::Confirm, None)
+            .unwrap();
+        let mut rxs = Vec::new();
+        let mut reqs = Vec::new();
+        for (id, n) in [(2, 2), (3, 3), (4, 3)] {
+            let (tx, rx, _) = Tx::new(8);
+            rxs.push(rx);
+            match rooms.join(&code, id, tx, None, ip(n), 8, 8).unwrap() {
+                Joined::Pending { req, .. } => reqs.push(req),
+                Joined::Member { .. } => panic!("confirm room let a sender in"),
+            }
         }
+        let room = rooms.map.get_mut(&code).unwrap();
+        for n in 0..MAX_BLOCKS {
+            Rooms::add_block(room, IpAddr::V4(Ipv4Addr::new(192, 0, 2, n as u8)), "x").unwrap();
+        }
+        assert_eq!(
+            rooms.decide(&code, 1, Some(reqs[0]), false, true).err(),
+            Some(OwnerError::BlockFull)
+        );
+        assert_eq!(rooms.pending_per_ip.get(&ip(2)), Some(&1));
+        assert_eq!(rooms.pending_per_ip.get(&ip(3)), Some(&2));
+        assert_eq!(rooms.map[&code].pending.len(), 3);
+    }
+
+    #[test]
+    fn check_numbers_are_unique_and_never_hang() {
+        let mut rooms = Rooms::default();
+        let (owner, _orx, _) = Tx::new(8);
+        let (code, _) = rooms
+            .create(1, owner, ip(1), 10, 10, JoinMode::Confirm, None)
+            .unwrap();
+        let mut rxs = Vec::new();
+        // 95 waiting requests: the first 90 get distinct numbers, the rest still return.
+        for id in 0..95u64 {
+            let (tx, rx, _) = Tx::new(1);
+            rxs.push(rx);
+            rooms
+                .join(&code, id + 2, tx, None, ip(2), 1000, 1000)
+                .unwrap();
+        }
+        let checks: std::collections::HashSet<u8> = rooms.map[&code].pending[..MAX_CHECK_NUMBERS]
+            .iter()
+            .map(|p| p.check)
+            .collect();
+        assert_eq!(checks.len(), MAX_CHECK_NUMBERS);
+        assert!(
+            rooms.map[&code]
+                .pending
+                .iter()
+                .all(|p| (10..=99).contains(&p.check))
+        );
     }
 }

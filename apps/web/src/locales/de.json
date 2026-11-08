@@ -218,6 +218,7 @@
         "empty": "Diese Datei ist leer.",
         "not_open": "Nicht mit dem Empfänger verbunden.",
         "channel_closed": "Die Verbindung wurde beim Senden geschlossen.",
+        "busy": "Eine andere Datei wird noch gesendet. Bitte warten, bis sie angekommen ist.",
         "failed": "Das Bild konnte nicht gesendet werden."
       }
     },
@@ -252,6 +253,7 @@
         "empty": "Diese Datei ist leer.",
         "not_open": "Nicht mit dem Empfänger verbunden.",
         "channel_closed": "Die Verbindung wurde beim Senden geschlossen.",
+        "busy": "Eine andere Datei wird noch gesendet. Bitte warten, bis sie angekommen ist.",
         "failed": "Das PDF konnte nicht gesendet werden."
       }
     }

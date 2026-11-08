@@ -190,6 +190,7 @@ describe('presenter: screen on a connected session', () => {
     const x = sender()
     await connected(x)
     await x.s.shareScreen()
+    x.sock.recv({ type: 'answer', sdp: 'ANSWER2' })
     await x.s.stopScreen()
     expect(x.peers[0].removed).toEqual([x.stream])
     expect(x.stopped.length).toBe(1)
@@ -197,7 +198,22 @@ describe('presenter: screen on a connected session', () => {
     expect(x.s.snapshot.screen).toBeUndefined()
     expect(x.sock.sent.at(-1)).toEqual({ type: 'offer', sdp: 'OFFER3' })
     // and the screen can be shown again
+    x.sock.recv({ type: 'answer', sdp: 'ANSWER3' })
     expect(await x.s.shareScreen()).toBe('ok')
+  })
+  it('a second offer waits for the answer to the first (no glare)', async () => {
+    const x = sender()
+    await connected(x)
+    await x.s.shareScreen()
+    const offers = () => x.sock.sent.filter((m) => (m as { type?: string }).type === 'offer').length
+    const before = offers()
+    const stopping = x.s.stopScreen()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(offers()).toBe(before) // the answer to OFFER2 is still missing
+    x.sock.recv({ type: 'answer', sdp: 'ANSWER2' })
+    await stopping
+    expect(offers()).toBe(before + 1)
+    expect(x.sock.sent.at(-1)).toEqual({ type: 'offer', sdp: 'OFFER3' })
   })
   it('cancelling the system dialog is not an error', async () => {
     const x = sender()

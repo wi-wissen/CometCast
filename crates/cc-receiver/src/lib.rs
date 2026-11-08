@@ -18,8 +18,11 @@
 //! WebRTC session and the content task, makes a fresh session and waits for the next sender in
 //! the same room. Code, join mode, block list and request queue stay. A sender that only stops
 //! presenting (it closes its control channel, or starts a new offer, but stays in the room) is
-//! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well.
-//! The core stops on [`ReceiverEvent::RoomEnded`], an error or [`ReceiverCore::stop`].
+//! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well. So
+//! is a presenter whose connection fails (an offer that cannot be answered, WebRTC `failed`,
+//! no connection in time): a joiner must not be able to end the room.
+//! The core stops on [`ReceiverEvent::RoomEnded`], an error (signalling or server) or
+//! [`ReceiverCore::stop`].
 //!
 //! Use: [`ReceiverCore::start`] -> show [`ReceiverCore::room_code`] -> loop on
 //! [`ReceiverCore::next_event`].
@@ -135,7 +138,8 @@ pub enum ReceiverEvent {
         /// The presenter's name.
         name: String,
     },
-    /// A hand-over token ran out unused (60 s).
+    /// A hand-over token ran out unused (60 s), or was withdrawn because the host removed the
+    /// presenter, denied and blocked a request or locked the room.
     HandoverExpired,
     /// Join mode `confirm`: somebody waits for a decision. Answer with
     /// [`ReceiverCore::decide_join`]. The name is untrusted text (cleaned by the server):
@@ -186,21 +190,27 @@ pub enum ReceiverEvent {
     /// The sender left (or was removed). The room stays: the core is ready for the next sender
     /// with the same code, join mode, block list and queue.
     PeerLeft,
-    /// The sender stopped its presentation but is still in the room (it closed its control
-    /// channel, or began a new offer). Whatever is shown should go; the next presentation
-    /// of the same sender needs no new approval.
+    /// The sender's presentation ended but the sender is still in the room: it closed its
+    /// control channel or began a new offer, or its connection could not be made (an offer
+    /// that cannot be answered, WebRTC `failed`, no connection 30 s after the offer).
+    /// Whatever is shown should go; the next presentation of the same sender needs no new
+    /// approval. The room stays.
     PresentationStopped,
     /// The connection check code (`"123 456"`) of the sender's connection, once per connection,
     /// as soon as it is connected. Identical to the one the sender shows (`cc_transport::sas`).
     ConnectionCode(String),
-    /// Something failed. The core stops after this event.
+    /// Something failed that ends the room (the signalling connection, a server error, no
+    /// new session). The core stops after this event. A failure of the presenter's own
+    /// connection is not an error: it is [`ReceiverEvent::PresentationStopped`].
     Error(String),
 }
 
 /// The code of a [`ReceiverEvent::Error`] message, for the apps (native-apps.md 20.2): the
 /// protocol code of a `server error <code>: ...`, `connection_lost` when the signalling
-/// connection ended, `peer_failed` when WebRTC failed, `unknown` otherwise. The messages are
-/// the ones made in this file; the text itself is for logs only.
+/// connection ended, `peer_failed` when no WebRTC session could be made, `unknown` otherwise.
+/// The messages are the ones made in this file; the text itself is for logs only. (A failed
+/// connection of a presenter is no error any more but [`ReceiverEvent::PresentationStopped`];
+/// its old messages still map to `peer_failed`.)
 pub fn error_code(message: &str) -> String {
     if let Some(rest) = message.strip_prefix("server error ")
         && let Some((code, _)) = rest.split_once(':')
@@ -385,7 +395,8 @@ impl ReceiverCore {
     }
 
     /// Deny a waiting request and block the sender's address bucket for the rest of this room
-    /// session (it then gets `join_denied` at once, and the host is not asked again).
+    /// session (it then gets `join_denied` at once, and the host is not asked again). All
+    /// hand-over tokens are withdrawn as well: after a block, every join asks the host.
     pub fn deny_and_block_join(&self, id: u64) {
         let _ = self.commands.send(ClientMsg::JoinDecision {
             id: Some(id),
@@ -416,7 +427,8 @@ impl ReceiverCore {
 
     /// Remove the connected sender (end its presentation); with `block` also block its address
     /// bucket for the rest of this room session. The core reports [`ReceiverEvent::PeerLeft`]
-    /// and waits for the next sender in the same room.
+    /// and waits for the next sender in the same room. A hand-over token the sender left with
+    /// is withdrawn ([`ReceiverEvent::HandoverExpired`]): its next join asks the host again.
     pub fn remove_peer(&self, block: bool) {
         let _ = self.commands.send(ClientMsg::RemovePeer { block });
     }
@@ -489,6 +501,41 @@ struct Conn {
     offer_at: Option<tokio::time::Instant>,
 }
 
+/// A join that was let in with a hand-over token and whose `peer_joined` is still to come:
+/// the request id and the name. The server answers an allowed request with `peer_joined`, or
+/// with `join_request_cancelled` for the same id (the joiner left, the room was full); only
+/// that join is reported as a hand-over, never a later ordinary join of the same name.
+#[derive(Default)]
+struct TokenAdmission(Option<(u64, String)>);
+
+impl TokenAdmission {
+    fn admitted(&mut self, id: u64, name: String) {
+        self.0 = Some((id, name));
+    }
+
+    fn cancelled(&mut self, id: u64) {
+        if self.0.as_ref().is_some_and(|(i, _)| *i == id) {
+            self.0 = None;
+        }
+    }
+
+    /// Was the join of `name` that just arrived the one let in with a token?
+    fn joined(&mut self, name: &str) -> bool {
+        self.0.take().is_some_and(|(_, n)| n == name)
+    }
+}
+
+/// End the content task of a presentation that is over (the presenter stays in the room).
+fn stop_presentation(
+    content_task: &mut Option<JoinHandle<()>>,
+    task_widths: &mut Option<mpsc::UnboundedSender<u32>>,
+) {
+    if let Some(t) = content_task.take() {
+        t.abort();
+    }
+    *task_widths = None;
+}
+
 /// Close the session of a sender that is gone and make a fresh one for the next sender.
 /// The new session is also published for [`ReceiverCore::stats`] and the key frame requests.
 async fn fresh_session(
@@ -528,9 +575,11 @@ async fn run(
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut conn = Conn::default();
     // The name of the connected presenter (the content task needs it for hand-over tokens) and
-    // the name of a join that was let in with a token and whose `peer_joined` is still to come.
+    // the join that was let in with a token and whose `peer_joined` is still to come.
     let mut peer_name: Option<String> = None;
-    let mut admitted_by_token: Option<String> = None;
+    let mut admitted_by_token = TokenAdmission::default();
+    // The presenter the host asked to remove, until its `peer_left` arrives.
+    let mut removed_peer: Option<String> = None;
     let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<ReceiverEvent>();
     // Why the loop ended: stop, a fatal error or the end of the room all close the session below.
     loop {
@@ -542,6 +591,21 @@ async fn run(
             cmd = commands.recv() => {
                 // The core itself holds the sender of this channel, so `None` cannot happen
                 // before it is dropped (which stops the loop too).
+                if let Some(cmd) = &cmd {
+                    // The host turned against somebody: hand-over tokens must not let them
+                    // straight back in (an ordinary leave keeps them, see `PeerLeft`).
+                    let withdrawn = match cmd {
+                        ClientMsg::RemovePeer { .. } => {
+                            removed_peer = peer_name.clone();
+                            peer_name.as_deref().map_or(0, |n| handover.remove_for(n))
+                        }
+                        ClientMsg::JoinDecision { block: true, .. } => handover.clear(),
+                        _ => 0,
+                    };
+                    if withdrawn > 0 {
+                        emit(ReceiverEvent::HandoverExpired);
+                    }
+                }
                 if let Some(cmd) = cmd
                     && sig.send(cmd).await.is_err()
                 {
@@ -586,7 +650,7 @@ async fn run(
                 Some(ServerMsg::PeerJoined { name, handover: token }) => {
                     // A join that needed no decision (join mode open) carries its token here;
                     // one that was allowed by us below was checked when the request came.
-                    let by_token = admitted_by_token.take().is_some_and(|n| n == name)
+                    let by_token = admitted_by_token.joined(&name)
                         || token.is_some_and(|t| handover.take(&t, &name, Instant::now()));
                     peer_name = Some(name.clone());
                     emit(ReceiverEvent::PeerJoined { name, handover: by_token });
@@ -596,7 +660,7 @@ async fn run(
                     // Anything else (no token, expired, used, another name, another room) is
                     // an ordinary request for the host.
                     if token.is_some_and(|t| handover.take(&t, &name, Instant::now())) {
-                        admitted_by_token = Some(name);
+                        admitted_by_token.admitted(id, name);
                         let _ = sig
                             .send(ClientMsg::JoinDecision { id: Some(id), allow: true, block: false })
                             .await;
@@ -605,10 +669,16 @@ async fn run(
                     }
                 }
                 Some(ServerMsg::JoinRequestCancelled { id, reason }) => {
+                    admitted_by_token.cancelled(id);
                     emit(ReceiverEvent::JoinRequestCancelled { id, reason })
                 }
                 Some(ServerMsg::JoinModeChanged { join_mode }) => {
-                    emit(ReceiverEvent::JoinModeChanged(join_mode))
+                    emit(ReceiverEvent::JoinModeChanged(join_mode));
+                    // Nobody may join a locked room, a hand-over join included. (`confirm`
+                    // keeps the tokens: they stand for an approval the host already gave.)
+                    if join_mode == JoinMode::Locked && handover.clear() > 0 {
+                        emit(ReceiverEvent::HandoverExpired);
+                    }
                 }
                 Some(ServerMsg::Blocked { id, name }) => emit(ReceiverEvent::Blocked { id, name }),
                 Some(ServerMsg::Unblocked { id }) => emit(ReceiverEvent::Unblocked { id }),
@@ -620,10 +690,7 @@ async fn run(
                     if conn.offer_at.is_some() {
                         // A second offer in a connection that had one: the sender begins a
                         // new presentation. The old one is over; start on a fresh session.
-                        if let Some(t) = content_task.take() {
-                            t.abort();
-                        }
-                        task_widths = None;
+                        stop_presentation(&mut content_task, &mut task_widths);
                         emit(ReceiverEvent::PresentationStopped);
                         match fresh_session(&session, &session_config, &shared_session).await {
                             Ok((s, ev)) => {
@@ -638,16 +705,20 @@ async fn run(
                         }
                     }
                     conn.offer_at.get_or_insert_with(tokio::time::Instant::now);
-                    let answer = match session.accept_offer(sdp).await {
-                        Ok(a) => a,
-                        Err(e) => {
-                            emit(ReceiverEvent::Error(format!("cannot answer offer: {e}")));
-                            break;
+                    match session.accept_offer(sdp).await {
+                        Ok(answer) => {
+                            if sig.send(ClientMsg::Answer { sdp: answer }).await.is_err() {
+                                emit(ReceiverEvent::Error("signalling connection closed".into()));
+                                break;
+                            }
                         }
-                    };
-                    if sig.send(ClientMsg::Answer { sdp: answer }).await.is_err() {
-                        emit(ReceiverEvent::Error("signalling connection closed".into()));
-                        break;
+                        // An offer we cannot answer is the presenter's: it ends this
+                        // presentation, not the room (any joiner could send one).
+                        Err(_) => {
+                            stop_presentation(&mut content_task, &mut task_widths);
+                            emit(ReceiverEvent::PresentationStopped);
+                            reset = true;
+                        }
                     }
                 }
                 Some(ServerMsg::IceCandidate { candidate }) => {
@@ -663,6 +734,13 @@ async fn run(
                     }
                     task_widths = None;
                     peer_name = None;
+                    // A presenter the host removed: a token its content task stored after
+                    // `remove_peer` was sent is withdrawn too (the task has ended above).
+                    if let Some(n) = removed_peer.take()
+                        && handover.remove_for(&n) > 0
+                    {
+                        emit(ReceiverEvent::HandoverExpired);
+                    }
                     emit(ReceiverEvent::PeerLeft);
                     reset = true;
                 }
@@ -687,8 +765,11 @@ async fn run(
                         }
                     }
                     if s == ConnectionState::Failed {
-                        emit(ReceiverEvent::Error("WebRTC connection failed".into()));
-                        break;
+                        // The presenter's connection failed: its presentation is over, the
+                        // room stays (the presenter may offer again, or the next one comes).
+                        stop_presentation(&mut content_task, &mut task_widths);
+                        emit(ReceiverEvent::PresentationStopped);
+                        reset = true;
                     }
                 }
                 Some(SessionEvent::ControlChannel(channel)) => match content.as_ref() {
@@ -724,13 +805,11 @@ async fn run(
                     emit(ReceiverEvent::HandoverExpired);
                 }
                 if !conn.connected && conn.offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
-                    emit(ReceiverEvent::Error(format!(
-                        "no WebRTC connection {} s after the offer arrived",
-                        CONNECT_TIMEOUT.as_secs()
-                    )));
-                    break;
-                }
-                if conn.have_track {
+                    // No connection after the presenter's offer: as a failed connection.
+                    stop_presentation(&mut content_task, &mut task_widths);
+                    emit(ReceiverEvent::PresentationStopped);
+                    reset = true;
+                } else if conn.have_track {
                     emit(ReceiverEvent::Stats(session.stats()));
                 }
             }
@@ -776,5 +855,23 @@ mod tests {
         );
         assert_eq!(error_code("cannot answer offer: x"), "peer_failed");
         assert_eq!(error_code("something else"), "unknown");
+    }
+
+    #[test]
+    fn a_cancelled_token_join_does_not_mark_a_later_join_as_a_handover() {
+        let mut a = TokenAdmission::default();
+        a.admitted(7, "Ada".into());
+        // Another request going away does not matter.
+        a.cancelled(8);
+        assert!(a.joined("Ada"), "the admitted join itself");
+        assert!(!a.joined("Ada"), "used once");
+
+        a.admitted(9, "Ada".into());
+        a.cancelled(9);
+        assert!(!a.joined("Ada"), "a later ordinary join is no hand-over");
+
+        a.admitted(10, "Ada".into());
+        assert!(!a.joined("Ben"));
+        assert!(!a.joined("Ada"), "cleared by the join that did arrive");
     }
 }

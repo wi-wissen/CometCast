@@ -493,3 +493,40 @@ async fn a_video_presentation_stops_and_a_file_follows_in_the_same_session() {
     p.leave().await;
     d.core.stop().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_presenter_with_a_broken_offer_does_not_end_the_room() {
+    let server = start_server().await;
+    let mut d = Display::start(&server, JoinMode::Open, None).await;
+
+    // A joiner (open mode: anybody with the code) sends an offer that cannot be answered.
+    let sig = cc_transport::SignalingClient::connect(&server, cc_proto::Role::Sender)
+        .await
+        .unwrap();
+    sig.send(cc_proto::ClientMsg::JoinRoom {
+        code: d.code(),
+        name: Some("Mallory".into()),
+        handover: None,
+    })
+    .await
+    .unwrap();
+    d.event(|e| matches!(e, ReceiverEvent::PeerJoined { .. }).then_some(()))
+        .await;
+    sig.send(cc_proto::ClientMsg::Offer {
+        sdp: "this is no SDP".into(),
+    })
+    .await
+    .unwrap();
+    // Only the presentation ends (an error would end the room: `event` panics on one).
+    d.event(|e| matches!(e, ReceiverEvent::PresentationStopped).then_some(()))
+        .await;
+    drop(sig);
+    d.event(|e| matches!(e, ReceiverEvent::PeerLeft).then_some(()))
+        .await;
+
+    // The room and its code are still there for the next presenter.
+    let _p = join(&server, &d, "Ada").await;
+    d.event(|e| matches!(e, ReceiverEvent::PeerJoined { name, .. } if name == "Ada").then_some(()))
+        .await;
+    d.core.stop().await;
+}

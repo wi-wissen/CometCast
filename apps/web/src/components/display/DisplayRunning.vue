@@ -63,9 +63,10 @@ const { state, start, setJoinMode, decide, endRoom, clearContent, renderPage } =
 })
 
 // A file or link that could not be shown is told as a toast (the idle screen has no other place for it).
+// Watched together with its counter: the same problem twice in a row (two broken PDFs) is told twice.
 watch(
-  () => state.value.contentError,
-  (c) => {
+  () => [state.value.contentError, state.value.contentErrorSeq] as const,
+  ([c]) => {
     if (c) showToast(te(`receive.transferError.${c}`) ? t(`receive.transferError.${c}`) : t('receive.transferError.bad_message'))
   },
 )

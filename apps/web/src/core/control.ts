@@ -417,7 +417,7 @@ export interface ImageSource {
   slice(start: number, end: number): { arrayBuffer(): Promise<ArrayBuffer> }
 }
 
-export type SendErrorCode = 'not_open' | 'bad_type' | 'too_large' | 'empty' | 'channel_closed' | 'not_pdf'
+export type SendErrorCode = 'not_open' | 'bad_type' | 'too_large' | 'empty' | 'channel_closed' | 'not_pdf' | 'busy'
 export class SendError extends Error {
   constructor(readonly code: SendErrorCode) {
     super(code)
@@ -486,8 +486,29 @@ export class ControlSender {
     })
   }
 
+  /**
+   * True while an image or document is being sent. The wire protocol has one transfer at a time:
+   * chunks of a second transfer would mix with the first and the receiver would drop both.
+   */
+  private transferring = false
+
+  /** Runs one transfer at a time; a second one is refused with `busy` while the first runs. */
+  private async exclusive(job: () => Promise<void>): Promise<void> {
+    if (this.transferring) throw new SendError('busy')
+    this.transferring = true
+    try {
+      await job()
+    } finally {
+      this.transferring = false
+    }
+  }
+
   /** Sends an image in 16 KiB chunks with back-pressure. `onProgress` gets bytes sent so far. */
-  async sendImage(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+  sendImage(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    return this.exclusive(() => this.sendImageNow(file, onProgress))
+  }
+
+  private async sendImageNow(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
     if (!isImageMime(file.type)) throw new SendError('bad_type')
     if (file.size <= 0) throw new SendError('empty')
     if (file.size > MAX_IMAGE_BYTES) throw new SendError('too_large')
@@ -504,7 +525,11 @@ export class ControlSender {
    * `%PDF-` marker within its first 1024 bytes (like the renderer requires); nothing else is checked here,
    * the receiver treats the file as hostile whatever the sender says.
    */
-  async sendDocument(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+  sendDocument(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    return this.exclusive(() => this.sendDocumentNow(file, onProgress))
+  }
+
+  private async sendDocumentNow(file: ImageSource, onProgress?: (sent: number, total: number) => void): Promise<void> {
     // Some systems give no MIME type for a PDF; the marker check below is what counts.
     if (file.type !== 'application/pdf' && file.type !== '') throw new SendError('bad_type')
     if (file.size <= 0) throw new SendError('empty')

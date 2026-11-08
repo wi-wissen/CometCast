@@ -124,7 +124,7 @@ The same scheme as the web client and the Rust cores (PoW v2, PBKDF2 with SHA-25
 
 ## Connection check code
 
-Identical to `sas.ts`: SHA-256 over `cometcast/connection-check/v1\n<fp1>\n<fp2>` with the two lower-case DTLS fingerprints sorted, first four bytes as a number modulo 1 000 000, shown as `123 456`. Computed from the answer's SDP and the offer's SDP when the peer connects; shown on the code screen and as a small badge over the video; the explanation text is the web app's (the app does not enforce a comparison). Known-answer vectors are in `tests/fixtures/sas.json` and were produced by the web implementation.
+Identical to `sas.ts`: SHA-256 over `cometcast/connection-check/v1\n<fp1>\n<fp2>` with the two lower-case DTLS fingerprints sorted, first four bytes as a number modulo 1 000 000, shown as `123 456`. Computed from the answer's SDP and the offer's SDP when the peer connects; shown on the code screen and as a small badge over the video; the explanation text is the web app's (the app does not enforce a comparison). The fingerprint is read as the DTLS stack reads the SDP: lines end at LF (one CR before it is part of the line end); an SDP with any other CR, U+2028 or U+2029, or with `sha-256` fingerprint lines that disagree or are malformed, gives no code (the same rule in `sas.ts`, `crates/cc-transport/src/sas.rs` and `Sas.swift`). Known-answer vectors are in `tests/fixtures/sas.json` and were produced by the web implementation; the refusal cases were added with the Rust implementation. **The Swift version of the stricter rule was written without a Swift compiler and has not been run.**
 
 ## Join approval (protocol version 2)
 

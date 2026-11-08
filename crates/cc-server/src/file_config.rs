@@ -705,6 +705,22 @@ mod tests {
         assert!(bad("limits.max_rooms", "0"));
         assert!(bad("mode", "sideways"));
         assert!(bad("tls.cert_file", "/x/cert.pem"), "cert without key");
+        // Each waiting request needs its own check number (10..=99).
+        assert!(bad("limits.max_pending_per_room", "91"));
+        assert!(!bad("limits.max_pending_per_room", "90"));
+        // Timeouts: at least 1 s, at most one day (no Instant overflow).
+        for key in [
+            "hello_secs",
+            "no_room_secs",
+            "idle_room_secs",
+            "join_approval_secs",
+            "altcha.ttl_secs",
+        ] {
+            assert!(bad(key, "0"), "{key} = 0");
+            assert!(bad(key, "86401"), "{key} too big");
+            assert!(bad(key, "18446744073709551615"), "{key} = u64::MAX");
+            assert!(!bad(key, "86400"), "{key} = one day");
+        }
     }
 
     #[test]

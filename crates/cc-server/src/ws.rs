@@ -198,6 +198,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
                 break;
             }
             _ = ticker.tick() => {
+                forget_lost_room(&mut conn, &state, &mut no_room_deadline);
                 if let Some(reason) = tick_check(&conn, &state, last_seen, last_pong, &mut last_ping) {
                     conn.tx.send(Outgoing::Close(reason));
                     break;
@@ -255,12 +256,15 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
                 if conn.pending.is_some() {
                     resolve_pending(&mut conn, &state, &mut no_room_deadline);
                 }
+                // Was this connection in a room or waiting before this message?
+                let had_place = conn.room.is_some() || conn.pending.is_some();
                 let step = handle_text(&mut conn, &state, text.as_str());
-                if conn.role.is_some() && conn.room.is_none() && conn.pending.is_none() {
-                    // A join request ended in this message (cancel): the connection gets a
-                    // fresh time to join or create a room.
-                    no_room_deadline =
-                        no_room_deadline.max(Instant::now() + state.config.no_room_timeout);
+                if had_place && conn.room.is_none() && conn.pending.is_none() {
+                    // The room or the join request ended in this message (cancel_join,
+                    // end_room, room gone): a fresh time to join or create a room. Only on
+                    // that change, so plain messages without a room cannot keep the
+                    // connection alive.
+                    no_room_deadline = Instant::now() + state.config.no_room_timeout;
                 }
                 step
             }
@@ -315,6 +319,17 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
         conn.tx.send(Outgoing::Close("bye"));
         let _ = tokio::time::timeout(Duration::from_secs(2), &mut writer).await;
         writer.abort();
+    }
+}
+
+/// The room of this connection ended or it was removed from it (the peer left, the host
+/// removed it): forget the room and start the time to join or create another one.
+fn forget_lost_room(conn: &mut Conn, state: &AppState, no_room_deadline: &mut Instant) {
+    if let Some(code) = &conn.room
+        && !lock(state).is_member(code, conn.id)
+    {
+        conn.room = None;
+        *no_room_deadline = Instant::now() + state.config.no_room_timeout;
     }
 }
 
@@ -488,6 +503,14 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                 return strike(conn, state, "bad_message", "already in a room");
             } else if let Err((code, text)) = check_mode(state, join_mode) {
                 conn.error(code, text);
+                return Step::Continue;
+            } else if altcha.is_none() && state.puzzle.check(None) == Err(PuzzleError::Missing) {
+                // Answered before the rate limit: the documented first step (create_room
+                // without a payload, then retry with one) costs only one token.
+                conn.error(
+                    error_codes::ALTCHA_REQUIRED,
+                    "solve the ALTCHA puzzle from /altcha/challenge first",
+                );
                 return Step::Continue;
             } else if let Err(deny) = state.guard.check_create(conn.ip, StdInstant::now()) {
                 deny_error(conn, deny);
