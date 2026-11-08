@@ -8,7 +8,7 @@ This file is the single list of those assumptions, the beta observations that wi
 
 ## How to use and extend this file
 
-- Keep the numbering. Assumptions are `A1` to `A24`; new ones get the next free number. Never renumber, so links stay valid.
+- Keep the numbering. Assumptions are `A1` to `A25`; new ones get the next free number. Never renumber, so links stay valid.
 - To add an assumption, add one row to the table in section 1 with all columns filled: assumption, basis, what we observe in the beta, fallback, status.
 - **Status** uses only these words:
   - **sourced**: backed by a source (documentation, source code, vendor statement) that was read.
@@ -18,7 +18,7 @@ This file is the single list of those assumptions, the beta observations that wi
 - Effort figures are estimates in person-weeks (PW). Thresholds in the spikes are proposals, not measurements.
 - A row with status "no label in source" had no certainty label in the planning document; treat it as an assumption until someone adds a source.
 
-## 1. Beta assumptions A1 to A24
+## 1. Beta assumptions A1 to A25
 
 | # | Assumption | Basis | What we observe in the beta | Fallback if it does not work | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -46,6 +46,7 @@ This file is the single list of those assumptions, the beta observations that wi
 | A22 | After `RTCRtpSender.replaceTrack(track)` (resume of a paused web presenter, docs/design/pause.md) the browser's encoder sends a key frame, or the display decodes the next delta frames because the encoder's reference chain was not broken while nothing was sent | `replaceTrack(null)` stops encoding and sending; the display's last decoded frame is the encoder's last reference. No browser was tried, nothing read about the key frame behaviour | The picture is garbled or stays frozen for a moment after Resume, `keyFramesDecoded` does not rise at resume | The web display asks for a key frame when its decoder reports a loss (the browser does this itself on a decode failure); then a forced key frame by `RTCRtpSender.generateKeyFrame` where it exists, or a short renegotiation on resume | assumption |
 | A23 | A native or web display that stops updating its picture keeps showing the last picture: the Apple TV Metal view keeps its last frame after it is removed as a renderer of the track (`VideoSurface`); the Flutter hardware path keeps the last texture frame when no units are queued; a `<video>` without frames keeps its last frame (the web display paints it on a canvas anyway) | Behaviour of `MTKView`, `MediaCodec` output surfaces and `HTMLVideoElement` as known; nothing tried on a device | The Apple TV or Android TV picture goes black or blinks when paused (device test plans) | Apple TV: draw the last frame into an image and show that; Android: keep the last decoded frame in the app and show it over the texture | assumption |
 | A24 | A web presenter that stops its screen while paused: a native display does not learn it (there is no track-ended event in `cc-transport`), so the display's own flag stays set until the next presentation, the presenter leaving or the display's own Resume | The web sender sends `resume` before it removes the track, which clears the presenter flag; the display flag is the display's own | A native display shows "Frozen" over an idle room after a web presenter stopped its screen while the display had frozen the picture | A track-ended event from `cc-transport` (the receiver loop clears both flags) | assumption |
+| A25 | Presenter device identity ([design/presenter-identity.md](design/presenter-identity.md)): WebCrypto `Ed25519` with a non-extractable key pair kept in IndexedDB works in the browsers people use (Chrome 137+, Firefox 129+, Safari 17+ as stated by the vendors) and the key survives for as long as the site data does; CryptoKit and swift-crypto verify an Ed25519 signature like `verify_strict` (the Swift code also refuses small-order keys and non-reduced S itself, so only the `isValidSignature` result for ordinary signatures is relied on); a key in the app preferences of the phone or computer apps is acceptable (as for the display key); the iOS broadcast extension can read the key from `config.json` in the App Group; a name that two devices use is common enough that the neutral note is useful and rare enough that it is not noise | Browser and OS version tables of the vendors, not checked in the e2e browsers; the Rust and web code ran against the shared vectors (Node's WebCrypto), Swift never ran | A browser that has no Ed25519 in WebCrypto or loses the key (the host then sees no note, or a note for the same person once); hosts who ignore or misread the note; companies where every device is called "iPhone" and the note appears all the time; `isValidSignature` accepting a vector the other implementations refuse | Fall back to no proof (already built); a keystore for the key; for the note: a switch in the display settings, or showing it only after a second sighting | assumption |
 
 ## 2. The ten measurement points
 
