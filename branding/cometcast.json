@@ -1,8 +1,8 @@
 {
   "publisher_name": "Schulverwalter GmbH",
   "publisher_url": "",
-  "privacy_url": { "de": "https://cometcast.de/datenschutz/", "en": "https://cometcast.de/en/privacy/" },
-  "imprint_url": { "de": "https://cometcast.de/impressum/", "en": "https://cometcast.de/en/imprint/" },
+  "privacy_url": { "de": "https://cometcast.de/de/datenschutz/", "en": "https://cometcast.de/privacy/" },
+  "imprint_url": { "de": "https://cometcast.de/de/impressum/", "en": "https://cometcast.de/imprint/" },
   "source_url": "https://github.com/wi-wissen/CometCast",
   "contact": "",
   "imprint": {
