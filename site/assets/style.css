@@ -264,13 +264,18 @@ code { font: 500 .9em var(--mono); }
 }
 @media (max-width: 560px) {
   body { font-size: 16px; }
-  .picks, .picks.five, .picks.seven { grid-template-columns: repeat(2, 1fr); }
-  .picks.five .pick:last-child, .picks.seven .pick:last-child { grid-column: span 2; }
-  .nets { grid-template-columns: 1fr; }
-  .net { grid-template-columns: auto; }
-  .way { grid-template-columns: 1fr; }
-  .way .side.right { justify-items: start; text-align: left; }
-  .arrow { transform: rotate(90deg); width: 40px; margin: 10px 0 10px 6px; }
+  /* Phones: the three questions as compact pills, so all of them and the answer fit on about one screen. */
+  .finder { gap: 14px; }
+  .ask { gap: 6px; }
+  .picks, .picks.five, .picks.seven, .nets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pick, .net { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font-size: 14px; line-height: 1.2; }
+  .pick svg { width: 22px; height: 18px; flex: none; }
+  .pick small, .net small { display: none; }
+  /* A way reads as two short lines: your device, then the screen. */
+  .way { grid-template-columns: 1fr; gap: 6px; padding: 12px; }
+  .way .side, .way .side.right { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; justify-items: start; text-align: left; }
+  .way .who { font-size: 11px; }
+  .arrow { display: none; }
   .answer { padding: 16px; }
   .verdict { font-size: 21px; }
   .hero .lead { font-size: 18px; }
