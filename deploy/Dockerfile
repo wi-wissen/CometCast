@@ -21,7 +21,7 @@
 
 # ---- Stage 1: web app (Vue, built to plain files) ----
 # Tag node:22-bookworm-slim exists and `npm ci` + `npm run build` worked (run 2026-11-07).
-FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS web
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS web
 WORKDIR /src/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 # Optional extra CA bundle (only for builds behind a TLS-intercepting proxy):
