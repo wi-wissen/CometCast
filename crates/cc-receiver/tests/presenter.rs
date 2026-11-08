@@ -500,7 +500,7 @@ async fn a_presenter_with_a_broken_offer_does_not_end_the_room() {
     let mut d = Display::start(&server, JoinMode::Open, None).await;
 
     // A joiner (open mode: anybody with the code) sends an offer that cannot be answered.
-    let mut sig = cc_transport::SignalingClient::connect(&server, cc_proto::Role::Sender)
+    let sig = cc_transport::SignalingClient::connect(&server, cc_proto::Role::Sender)
         .await
         .unwrap();
     sig.send(cc_proto::ClientMsg::JoinRoom {
@@ -526,9 +526,7 @@ async fn a_presenter_with_a_broken_offer_does_not_end_the_room() {
 
     // The room and its code are still there for the next presenter.
     let _p = join(&server, &d, "Ada").await;
-    d.event(|e| {
-        matches!(e, ReceiverEvent::PeerJoined { name, .. } if name == "Ada").then_some(())
-    })
-    .await;
+    d.event(|e| matches!(e, ReceiverEvent::PeerJoined { name, .. } if name == "Ada").then_some(()))
+        .await;
     d.core.stop().await;
 }

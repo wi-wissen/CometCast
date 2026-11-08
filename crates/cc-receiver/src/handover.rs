@@ -223,7 +223,10 @@ mod tests {
         assert_eq!(s.remove_for("Ana"), 1);
         assert!(!s.take("tok1", "Ana", t0), "withdrawn");
         assert_eq!(s.remove_for("Ana"), 0);
-        assert!(s.take("tok2", "Ben", t0), "another presenter keeps its token");
+        assert!(
+            s.take("tok2", "Ben", t0),
+            "another presenter keeps its token"
+        );
     }
 
     #[test]

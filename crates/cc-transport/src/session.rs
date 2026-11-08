@@ -771,7 +771,10 @@ mod tests {
             session.add_remote_candidate(&json(good)).await.is_err(),
             "the queue is full"
         );
-        assert_eq!(session.ice.lock().await.pending.len(), MAX_PENDING_CANDIDATES);
+        assert_eq!(
+            session.ice.lock().await.pending.len(),
+            MAX_PENDING_CANDIDATES
+        );
         let long = format!("{good} {}", "x".repeat(MAX_CANDIDATE_LEN));
         assert!(session.add_remote_candidate(&json(&long)).await.is_err());
         let padded = format!(
