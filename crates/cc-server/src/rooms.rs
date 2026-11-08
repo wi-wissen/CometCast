@@ -438,12 +438,14 @@ impl Rooms {
                     Ok(b) => out.blocked = b,
                     Err(e) => {
                         // Not decided: put the request back so the host can decide again.
+                        // Only the taken requests were uncounted above, so only they are
+                        // counted again.
+                        for q in &taken {
+                            *self.pending_per_ip.entry(q.ip).or_insert(0) += 1;
+                        }
                         let mut back = taken;
                         back.append(&mut room.pending);
                         room.pending = back;
-                        for q in &room.pending {
-                            *self.pending_per_ip.entry(q.ip).or_insert(0) += 1;
-                        }
                         return Err(e);
                     }
                 }
@@ -692,5 +694,45 @@ fn fresh_check(pending: &[Pending]) -> u8 {
         if pending.iter().all(|p| p.check != n) {
             return n;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    fn ip(n: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(10, 0, 0, n))
+    }
+
+    #[tokio::test]
+    async fn block_list_full_keeps_the_pending_counts() {
+        let mut rooms = Rooms::default();
+        let (owner, _orx, _) = Tx::new(8);
+        let (code, _) = rooms
+            .create(1, owner, ip(1), 10, 10, JoinMode::Confirm, None)
+            .unwrap();
+        let mut rxs = Vec::new();
+        let mut reqs = Vec::new();
+        for (id, n) in [(2, 2), (3, 3), (4, 3)] {
+            let (tx, rx, _) = Tx::new(8);
+            rxs.push(rx);
+            match rooms.join(&code, id, tx, None, ip(n), 8, 8).unwrap() {
+                Joined::Pending { req, .. } => reqs.push(req),
+                Joined::Member { .. } => panic!("confirm room let a sender in"),
+            }
+        }
+        let room = rooms.map.get_mut(&code).unwrap();
+        for n in 0..MAX_BLOCKS {
+            Rooms::add_block(room, IpAddr::V4(Ipv4Addr::new(192, 0, 2, n as u8)), "x").unwrap();
+        }
+        assert_eq!(
+            rooms.decide(&code, 1, Some(reqs[0]), false, true).err(),
+            Some(OwnerError::BlockFull)
+        );
+        assert_eq!(rooms.pending_per_ip.get(&ip(2)), Some(&1));
+        assert_eq!(rooms.pending_per_ip.get(&ip(3)), Some(&2));
+        assert_eq!(rooms.map[&code].pending.len(), 3);
     }
 }
