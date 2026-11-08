@@ -32,8 +32,11 @@ itself with "first content wins" and a 15 s change hold, but:
   the **verified id only**; the instance name is never used to match or remove a row (a name
   conflict, renamed by mDNS to `... (2)`, does not matter).
 * The **short tag** of a display is the first 4 characters of the id in upper case, shown as
-  `ID 3F7A`. The display shows it small on its idle screen next to the code and in its About /
-  Settings; the presenter list shows it under the room name of every row.
+  `ID 3F7A`. It must not confuse ordinary users, so it stays discreet:
+  * the display shows it small and in the secondary text colour in the footer of its idle
+    screen (next to the server line, not next to the code) and in About / Settings;
+  * the presenter list shows it **only on rows that carry a note** (same name, or new device
+    with a known name, see below); rows without a note show no tag.
 
 ### Record (TXT, v=2)
 
@@ -85,7 +88,7 @@ the first record" is dropped too: a signed newer record may change it.
 ### Same name, different id
 
 * When two rows have the same room name (after cleaning, case-insensitive), both rows show the
-  tag prominently and a note "Two screens use this name. Compare the ID with the screen."
+  tag and a note "Two screens use this name. Compare the ID with the screen."
 * **Remembered screens (trust on first use):** when a presenter joins a room from a row, the app
   stores `(room name, id)` locally (at most 50 entries, oldest dropped). A later row with a stored
   name but a different id is marked "New device with a known name. Compare the ID with the
