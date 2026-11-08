@@ -6,7 +6,8 @@
 use std::sync::Mutex;
 
 use cc_discovery::{
-    AnnounceBackend, DisplayAnnouncement, DisplayState, MdnsError, RawRecord, RawSink, ScreenMode,
+    AnnounceBackend, DisplayAnnouncement, DisplayKey, DisplayState, MdnsError, RawRecord, RawSink,
+    ScreenMode,
 };
 use cc_proto::JoinMode;
 
@@ -44,8 +45,10 @@ struct ReceiverFacts {
 struct AnnounceCtl {
     /// The UI says the display shows Idle or Presenting in the foreground.
     enabled: bool,
-    /// The stable id of this installation (checked by `cc-discovery`).
-    id: Option<String>,
+    /// The key of this installation (the app stores the 32 secret bytes; the id derives from it).
+    key: Option<DisplayKey>,
+    /// The highest `seq` that may have been used with the key (persisted by the app).
+    seq_floor: u64,
     receiver: Option<ReceiverFacts>,
     announcement: Option<DisplayAnnouncement>,
 }
@@ -59,7 +62,7 @@ pub(crate) enum Wanted {
     NotEnabled,
     NoReceiver,
     Forbidden,
-    BadId,
+    BadKey,
 }
 
 fn policy_allows() -> bool {
@@ -73,12 +76,8 @@ impl AnnounceCtl {
             Wanted::NotEnabled
         } else if !policy_ok {
             Wanted::Forbidden
-        } else if self
-            .id
-            .as_deref()
-            .is_none_or(|i| !cc_discovery::nearby::is_valid_id(i))
-        {
-            Wanted::BadId
+        } else if self.key.is_none() {
+            Wanted::BadKey
         } else if self.receiver.is_none() {
             Wanted::NoReceiver
         } else {
@@ -89,9 +88,8 @@ impl AnnounceCtl {
     /// Bring the announcement in line with the facts. Must run inside a Tokio runtime.
     /// What is to be announced now, if anything.
     fn state(&self, policy_ok: bool) -> Option<DisplayState> {
-        match (self.wanted(policy_ok), &self.receiver, &self.id) {
-            (Wanted::Yes, Some(r), Some(id)) => Some(DisplayState {
-                id: id.clone(),
+        match (self.wanted(policy_ok), &self.receiver) {
+            (Wanted::Yes, Some(r)) => Some(DisplayState {
                 room_name: r.room_name.clone(),
                 server: r.server.clone(),
                 mode: r.mode,
@@ -101,17 +99,33 @@ impl AnnounceCtl {
         }
     }
 
+    /// Drop the running announcement: the signed `gone` record and the goodbye go out and the
+    /// sockets are freed. Its `seq` is kept as the floor of the next one, so a new announcement
+    /// always has a higher `seq` than the `gone` record of this one.
+    fn stop_announcement(&mut self) {
+        if let Some(a) = self.announcement.take() {
+            self.seq_floor = self.seq_floor.max(a.seq_to_persist());
+        }
+    }
+
     fn apply(&mut self, policy_ok: bool) -> Wanted {
         let w = self.wanted(policy_ok);
-        match self.state(policy_ok) {
-            Some(s) => self
-                .announcement
-                .get_or_insert_with(start_announcement)
-                .set(Some(s)),
-            None => {
-                // Drop it: the record is withdrawn (goodbye) and the sockets are freed.
-                self.announcement = None;
+        // Another key (a data reset) is another display: the old one says goodbye first.
+        if let (Some(a), Some(k)) = (&self.announcement, &self.key)
+            && a.id() != k.id()
+        {
+            self.stop_announcement();
+        }
+        match (self.state(policy_ok), &self.key) {
+            (Some(s), Some(key)) => {
+                if self.announcement.is_none() {
+                    self.announcement = Some(start_announcement(key.clone(), self.seq_floor));
+                }
+                if let Some(a) = &self.announcement {
+                    a.set(Some(s));
+                }
             }
+            _ => self.stop_announcement(),
         }
         w
     }
@@ -139,10 +153,10 @@ impl AnnounceBackend for NativeBackend {
     }
 }
 
-fn start_announcement() -> DisplayAnnouncement {
+fn start_announcement(key: DisplayKey, seq_floor: u64) -> DisplayAnnouncement {
     match lock(&NATIVE_ANNOUNCE).clone() {
-        Some(sink) => DisplayAnnouncement::start(NativeBackend(sink)),
-        None => DisplayAnnouncement::start_mdns(),
+        Some(sink) => DisplayAnnouncement::start(NativeBackend(sink), key, seq_floor),
+        None => DisplayAnnouncement::start_mdns(key, seq_floor),
     }
 }
 
@@ -158,14 +172,46 @@ fn with_ctl<R>(f: impl FnOnce(&mut AnnounceCtl) -> R) -> R {
     f(g.get_or_insert_with(AnnounceCtl::default))
 }
 
-/// The UI says whether the display may announce (Idle or Presenting, in the foreground).
-pub(crate) fn set_enabled(enabled: bool, id: String) -> Wanted {
+/// The UI says whether the display may announce (Idle or Presenting, in the foreground), with
+/// the 32 secret bytes of its key and the persisted `seq`. A key that is not 32 bytes is
+/// [`Wanted::BadKey`] and nothing is announced.
+pub(crate) fn set_enabled(enabled: bool, secret: &[u8], seq_floor: u64) -> Wanted {
     let policy_ok = policy_allows();
+    let key = DisplayKey::from_secret(secret).ok();
     with_ctl(|c| {
         c.enabled = enabled;
-        c.id = Some(id);
+        c.seq_floor = c.seq_floor.max(seq_floor);
+        c.key = key;
         c.apply(policy_ok)
     })
+}
+
+/// What the app should persist with the key now (0 while nothing is known).
+pub(crate) fn seq_to_persist() -> u64 {
+    with_ctl(|c| {
+        c.announcement
+            .as_ref()
+            .map_or(c.seq_floor, |a| c.seq_floor.max(a.seq_to_persist()))
+    })
+}
+
+fn remembered_slot() -> &'static Mutex<Vec<(String, String)>> {
+    static REMEMBERED: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+    &REMEMBERED
+}
+
+/// The app's remembered `(room name, id)` pairs: kept for searches that start later and
+/// passed to the one that runs.
+pub(crate) fn set_remembered(pairs: Vec<(String, String)>) {
+    *lock(remembered_slot()) = pairs.clone();
+    if let Some(f) = lock(&FEED).as_ref() {
+        f.sink.remembered(pairs);
+    }
+}
+
+/// The pairs a search that starts now begins with.
+pub(crate) fn remembered() -> Vec<(String, String)> {
+    lock(remembered_slot()).clone()
 }
 
 /// A receiver got its room: from now on its code is announced (if allowed).
@@ -242,6 +288,7 @@ struct Feed {
 static FEED: Mutex<Option<Feed>> = Mutex::new(None);
 
 pub(crate) fn set_feed(generation: u64, sink: RawSink, events: StreamSink<NearbyUiEvent>) {
+    sink.remembered(remembered());
     *lock(&FEED) = Some(Feed {
         generation,
         sink,
@@ -293,12 +340,20 @@ pub(crate) fn native_event(ev: NearbyUiEvent) {
 mod tests {
     use super::*;
 
-    const ID: &str = "0123456789abcdef";
+    fn key() -> Option<DisplayKey> {
+        Some(DisplayKey::from_secret(&[3; 32]).unwrap())
+    }
 
-    fn ctl(enabled: bool, id: Option<&str>, receiver: bool, mode: ScreenMode) -> AnnounceCtl {
+    fn ctl(
+        enabled: bool,
+        key: Option<DisplayKey>,
+        receiver: bool,
+        mode: ScreenMode,
+    ) -> AnnounceCtl {
         AnnounceCtl {
             enabled,
-            id: id.map(str::to_owned),
+            key,
+            seq_floor: 0,
             receiver: receiver.then(|| ReceiverFacts {
                 generation: 1,
                 server: "10.0.0.5:8443".into(),
@@ -312,14 +367,14 @@ mod tests {
 
     #[test]
     fn announces_only_when_everything_allows_it() {
-        let ok = ctl(true, Some(ID), true, ScreenMode::Open);
+        let ok = ctl(true, key(), true, ScreenMode::Open);
         assert_eq!(ok.wanted(true), Wanted::Yes);
         let s = ok.state(true).unwrap();
-        assert_eq!((s.id.as_str(), s.room_name.as_str()), (ID, "Elbe"));
+        assert_eq!(s.room_name.as_str(), "Elbe");
         assert_eq!(s.code.as_deref(), Some("P4X9TR"));
         // Setup, offline and background (the UI says no).
         assert_eq!(
-            ctl(false, Some(ID), true, ScreenMode::Open).wanted(true),
+            ctl(false, key(), true, ScreenMode::Open).wanted(true),
             Wanted::NotEnabled
         );
         // The administrator's policy wins over everything.
@@ -327,16 +382,14 @@ mod tests {
         assert!(ok.state(false).is_none());
         // No room yet (offline: no valid code).
         assert_eq!(
-            ctl(true, Some(ID), false, ScreenMode::Open).wanted(true),
+            ctl(true, key(), false, ScreenMode::Open).wanted(true),
             Wanted::NoReceiver
         );
-        // A bad or missing id is never announced.
-        for id in [None, Some(""), Some("ABC"), Some("0123456789ABCDEF")] {
-            assert_eq!(
-                ctl(true, id, true, ScreenMode::Open).wanted(true),
-                Wanted::BadId
-            );
-        }
+        // A missing key is never announced.
+        assert_eq!(
+            ctl(true, None, true, ScreenMode::Open).wanted(true),
+            Wanted::BadKey
+        );
     }
 
     #[test]
@@ -348,9 +401,15 @@ mod tests {
 
     #[test]
     fn locked_state_has_no_code_in_the_record() {
-        let c = ctl(true, Some(ID), true, ScreenMode::Locked);
+        let c = ctl(true, key(), true, ScreenMode::Locked);
         let s = c.state(true).unwrap();
-        let txt = cc_discovery::display::txt_records(&s).unwrap();
+        let txt = cc_discovery::display::txt_records(
+            &s,
+            &key().unwrap(),
+            1,
+            cc_discovery::AnnounceState::Live,
+        )
+        .unwrap();
         assert!(txt.iter().all(|(k, v)| k != "code" && v != "P4X9TR"));
     }
 
@@ -361,5 +420,13 @@ mod tests {
             cc_proto::RoomCode::ALPHABET
         );
         assert_eq!(cc_discovery::nearby::CODE_LEN, cc_proto::RoomCode::LEN);
+    }
+
+    #[test]
+    fn remembered_pairs_are_kept_for_the_next_search() {
+        set_remembered(vec![("Elbe".into(), "ab".repeat(16))]);
+        assert_eq!(remembered(), [("Elbe".to_owned(), "ab".repeat(16))]);
+        set_remembered(Vec::new());
+        assert!(remembered().is_empty());
     }
 }

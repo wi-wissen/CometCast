@@ -91,6 +91,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ContentSource dco_decode_box_autoadd_content_source(dynamic raw);
 
   @protected
+  DisplayIdentity dco_decode_box_autoadd_display_identity(dynamic raw);
+
+  @protected
   NearbyScreenInfo dco_decode_box_autoadd_nearby_screen_info(dynamic raw);
 
   @protected
@@ -133,6 +136,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DiscoveryWarning dco_decode_discovery_warning(dynamic raw);
 
   @protected
+  DisplayIdentity dco_decode_display_identity(dynamic raw);
+
+  @protected
   EncodedVideoUnit dco_decode_encoded_video_unit(dynamic raw);
 
   @protected
@@ -169,6 +175,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
 
   @protected
+  List<RememberedScreen> dco_decode_list_remembered_screen(dynamic raw);
+
+  @protected
   List<ServerCandidate> dco_decode_list_server_candidate(dynamic raw);
 
   @protected
@@ -194,6 +203,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ContentFrame? dco_decode_opt_box_autoadd_content_frame(dynamic raw);
+
+  @protected
+  DisplayIdentity? dco_decode_opt_box_autoadd_display_identity(dynamic raw);
 
   @protected
   ScreenRequest? dco_decode_opt_box_autoadd_screen_request(dynamic raw);
@@ -224,6 +236,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   (String, String) dco_decode_record_string_string(dynamic raw);
+
+  @protected
+  RememberedScreen dco_decode_remembered_screen(dynamic raw);
 
   @protected
   RoomCodeCheck dco_decode_room_code_check(dynamic raw);
@@ -364,6 +379,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  DisplayIdentity sse_decode_box_autoadd_display_identity(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   NearbyScreenInfo sse_decode_box_autoadd_nearby_screen_info(
     SseDeserializer deserializer,
   );
@@ -416,6 +436,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DiscoveryWarning sse_decode_discovery_warning(SseDeserializer deserializer);
 
   @protected
+  DisplayIdentity sse_decode_display_identity(SseDeserializer deserializer);
+
+  @protected
   EncodedVideoUnit sse_decode_encoded_video_unit(SseDeserializer deserializer);
 
   @protected
@@ -460,6 +483,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<RememberedScreen> sse_decode_list_remembered_screen(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<ServerCandidate> sse_decode_list_server_candidate(
     SseDeserializer deserializer,
   );
@@ -491,6 +519,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ContentFrame? sse_decode_opt_box_autoadd_content_frame(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DisplayIdentity? sse_decode_opt_box_autoadd_display_identity(
     SseDeserializer deserializer,
   );
 
@@ -531,6 +564,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   (String, String) sse_decode_record_string_string(
     SseDeserializer deserializer,
   );
+
+  @protected
+  RememberedScreen sse_decode_remembered_screen(SseDeserializer deserializer);
 
   @protected
   RoomCodeCheck sse_decode_room_code_check(SseDeserializer deserializer);
@@ -697,6 +733,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_display_identity(
+    DisplayIdentity self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_nearby_screen_info(
     NearbyScreenInfo self,
     SseSerializer serializer,
@@ -766,6 +808,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_display_identity(
+    DisplayIdentity self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_encoded_video_unit(
     EncodedVideoUnit self,
     SseSerializer serializer,
@@ -820,6 +868,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_remembered_screen(
+    List<RememberedScreen> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_server_candidate(
     List<ServerCandidate> self,
     SseSerializer serializer,
@@ -861,6 +915,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_content_frame(
     ContentFrame? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_display_identity(
+    DisplayIdentity? self,
     SseSerializer serializer,
   );
 
@@ -909,6 +969,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_record_string_string(
     (String, String) self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_remembered_screen(
+    RememberedScreen self,
     SseSerializer serializer,
   );
 
