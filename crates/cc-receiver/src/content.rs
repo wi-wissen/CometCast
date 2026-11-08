@@ -403,9 +403,11 @@ pub(crate) fn spawn(
                         && h.store.insert(token, &h.name, Instant::now())
                     {
                         let _ = channel.send_text(&handover_ok_message()).await;
-                        let _ = h.notify.send(TaskMsg::Event(crate::ReceiverEvent::HandoverStored {
-                            name: h.name.clone(),
-                        }));
+                        let _ =
+                            h.notify
+                                .send(TaskMsg::Event(crate::ReceiverEvent::HandoverStored {
+                                    name: h.name.clone(),
+                                }));
                     }
                     continue;
                 }

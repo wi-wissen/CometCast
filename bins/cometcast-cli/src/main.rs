@@ -925,6 +925,12 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
                 Some(ReceiverEvent::ConnectionCode(c)) => println!("Connection check code: {c}"),
                 Some(ReceiverEvent::PresentationStopped) => println!("The sender stopped presenting."),
+                Some(ReceiverEvent::PauseChanged { presenter, display }) => println!(
+                    "Pause: presenter {}, display {}{}.",
+                    if presenter { "paused" } else { "not paused" },
+                    if display { "paused" } else { "not paused" },
+                    if presenter || display { " (picture frozen)" } else { "" }
+                ),
                 Some(ReceiverEvent::VideoTrack { mime, .. }) => {
                     got_video = true;
                     println!("Video track: {mime}");

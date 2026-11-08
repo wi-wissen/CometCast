@@ -353,6 +353,15 @@ pub enum ReceiverUiEvent {
     /// The sender stopped its presentation but stays in the room: show Idle without a leave
     /// notice. The next presentation of the same sender needs no new approval.
     PresentationStopped,
+    /// A pause flag changed (docs/design/pause.md). The picture is frozen while either flag is
+    /// set: keep showing the last picture. Both flags are cleared (one event) when the
+    /// presentation ends. The presenter has been told with `pause_state`.
+    PauseChanged {
+        /// The presenter paused its screen (it stopped sending video).
+        presenter: bool,
+        /// The display's own flag ([`set_display_paused`]).
+        display: bool,
+    },
     /// The connection check code of the sender's connection, `"123 456"`, once per
     /// connection; the presenter shows the same digits (`cc_transport::sas`).
     ConnectionCode {
@@ -475,6 +484,9 @@ fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
         ReceiverEvent::Stats(s) => stats_event(s),
         ReceiverEvent::PeerLeft => ReceiverUiEvent::PeerLeft,
         ReceiverEvent::PresentationStopped => ReceiverUiEvent::PresentationStopped,
+        ReceiverEvent::PauseChanged { presenter, display } => {
+            ReceiverUiEvent::PauseChanged { presenter, display }
+        }
         ReceiverEvent::ConnectionCode(sas) => ReceiverUiEvent::ConnectionCode { sas },
         ReceiverEvent::Error(message) => ReceiverUiEvent::Error {
             code: cc_receiver::error_code(&message),
@@ -547,6 +559,7 @@ enum ReceiverCmd {
     Unblock(u64),
     EndRoom,
     RemovePeer { block: bool },
+    DisplayPause(bool),
 }
 
 /// The command channel of the running receiver (replaced at every start).
@@ -733,6 +746,7 @@ pub async fn start_receiver(
                         ReceiverCmd::Unblock(id) => core.unblock(id),
                         ReceiverCmd::EndRoom => core.end_room(),
                         ReceiverCmd::RemovePeer { block } => core.remove_peer(block),
+                        ReceiverCmd::DisplayPause(p) => core.set_display_paused(p),
                     },
                     _ = keyframe_tick.tick() => {
                         if VIDEO.take_keyframe_request() {
@@ -861,6 +875,16 @@ pub fn unblock(id: u64) -> bool {
 #[frb(sync)]
 pub fn end_room() -> bool {
     send_receiver_cmd(ReceiverCmd::EndRoom)
+}
+
+/// Set or clear the **display's own** pause flag (docs/design/pause.md): the display keeps the
+/// last picture while the presenter goes on sending, and the presenter is told. Only offered
+/// while a screen is shown; without one the call is ignored. The change arrives as
+/// [`ReceiverUiEvent::PauseChanged`] (also for the presenter's flag, which only the presenter
+/// can change). Returns `false` if no receiver runs.
+#[frb(sync)]
+pub fn set_display_paused(paused: bool) -> bool {
+    send_receiver_cmd(ReceiverCmd::DisplayPause(paused))
 }
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
@@ -2690,6 +2714,17 @@ pub enum PresenterUiEvent {
         /// The page count, from 1.
         pages: u32,
     },
+    /// The display's pause flags (`pause_state`, docs/design/pause.md): sent whenever either
+    /// flag changes and once when the control channel opens (both `false`). The picture is
+    /// frozen while either is set. `presenter` is the echo of [`set_presenter_paused`]: the
+    /// app shows its own flag as confirmed only when this event says so. Not sent by
+    /// displays that do not know pause (a presenter then stays "pending").
+    PauseState {
+        /// The presenter's own flag, as the display holds it.
+        presenter: bool,
+        /// The display froze the picture on its own.
+        display: bool,
+    },
     /// An Office file is being converted to a PDF (takes seconds; child process). Comes before
     /// `ContentPrepared`; a failure is `ContentRejected`.
     Converting {
@@ -2864,6 +2899,18 @@ pub fn present_content(source: ContentSource) -> bool {
 #[frb(sync)]
 pub fn request_handover(token: String) -> bool {
     cc_proto::sanitize_handover(Some(&token)).is_some() && presenter::send(PCmd::Handover(token))
+}
+
+/// Pause (`true`) or resume (`false`) the running **screen** presentation (docs/design/pause.md):
+/// the video stops at once, so nothing the presenter prepares reaches the display device, and
+/// the display keeps the last picture; on resume video flows again, beginning with a key frame.
+/// Ignored while no screen or pushed video is presented (content-only presentations). The
+/// display's answer is the event `PauseState`. Returns `false` if no presenter session runs.
+/// Not offered on iOS while the broadcast extension presents (it runs in another process
+/// and has no UI).
+#[frb(sync)]
+pub fn set_presenter_paused(paused: bool) -> bool {
+    presenter::send(PCmd::Pause(paused))
 }
 
 /// End the running presentation only: the display goes Idle with the same code and the
@@ -3839,6 +3886,16 @@ mod tests {
         assert_eq!(
             map_receiver_event(ReceiverEvent::PresentationStopped),
             ReceiverUiEvent::PresentationStopped
+        );
+        assert_eq!(
+            map_receiver_event(ReceiverEvent::PauseChanged {
+                presenter: true,
+                display: false
+            }),
+            ReceiverUiEvent::PauseChanged {
+                presenter: true,
+                display: false
+            }
         );
         assert_eq!(
             map_receiver_event(ReceiverEvent::Error(
