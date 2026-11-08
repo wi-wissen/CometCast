@@ -6,6 +6,7 @@ import { SenderSession, type SenderState } from '../core/senderSession'
 import { useRelay } from './useRelay'
 import { fetchIceServers, type IceFetchState } from '../core/altchaClient'
 import { loadDisplayName } from '../core/joinPrefs'
+import { makeJoinProof } from '../core/deviceIdentity'
 
 /** `contentOnly`: no screen capture, only the control channel (images, links). */
 export function useSender(opts: { contentOnly?: boolean } = {}) {
@@ -23,6 +24,8 @@ export function useSender(opts: { contentOnly?: boolean } = {}) {
     onChange: (s) => (state.value = s),
     // Shown to the host when it has to approve the join (read when the join is sent).
     name: () => loadDisplayName() || undefined,
+    // Proof of this browser's device key (WebCrypto Ed25519 in IndexedDB); none where that is not available.
+    deviceProof: (code, now) => makeJoinProof(code, now),
     getStream: opts.contentOnly ? undefined : getScreenStream,
   })
   onBeforeUnmount(() => session.stop())

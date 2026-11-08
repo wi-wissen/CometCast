@@ -49,6 +49,9 @@ function onEvent(e: ReceiverEvent) {
       return showToast(t('toast.sessionEnded'))
     case 'openDisabled':
       return showToast(t('toast.openDisabled'))
+    case 'joined':
+      // Open mode: the same neutral sentence as in the request dialog, appended when the name was used by another device.
+      return showToast(t('toast.joined', { name: quoted(e.name) }) + (e.otherDevice ? ` ${t('request.otherDevice')}` : ''))
     default:
       return showToast(t(`toast.${e.kind}`, { name: quoted(e.name) }))
   }

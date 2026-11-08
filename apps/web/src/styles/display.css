@@ -676,6 +676,18 @@
   flex-direction: column;
   gap: 4px;
 }
+/* The device note of a request: secondary text with an info icon, no warning colour. */
+.cd-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--mut);
+}
+.cd-note svg {
+  flex: none;
+  margin-top: 2px;
+}
 .cd-chk {
   display: flex;
   flex-direction: column;

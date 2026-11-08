@@ -368,7 +368,8 @@
     "yes": "Yes",
     "no": "No",
     "noBlock": "No and block",
-    "aria": "Request: {name}"
+    "aria": "Request: {name}",
+    "otherDevice": "This name was used here before by a different device."
   },
   "present": {
     "byline": "{name} is showing",

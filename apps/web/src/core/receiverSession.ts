@@ -8,6 +8,8 @@ import { SignalingClient, type JoinMode, type ServerMessage, type SocketFactory 
 import { BusyMemory } from './busyMemory'
 import { checkImageSize } from './imageSize'
 import type { IceFetchState } from './altchaClient'
+import { verifyJoinProof, type JoinDevice } from './deviceIdentity'
+import type { DeviceMemoryStore } from './deviceMemory'
 
 export type ReceiverPhase =
   | 'idle'
@@ -45,6 +47,10 @@ export interface JoinRequest {
   check: number
   /** Milliseconds since the epoch when it arrived (for the countdown). */
   receivedAt: number
+  /** The presenter's device id once its proof for this room verified (docs/design/presenter-identity.md); absent without a valid proof. */
+  deviceId?: string
+  /** `deviceId` is set and this name was used here before, but only by other devices: the dialog adds a neutral note. */
+  otherDevice?: boolean
 }
 
 /** A short message about something that happened to the room's join settings. */
@@ -67,7 +73,7 @@ export interface BlockedEntry {
  * (docs/design/first-run-and-display.md, 4.6). `name` is the sender's cleaned name (may be empty).
  */
 export type ReceiverEvent =
-  | { kind: 'joined'; name: string } // a sender is connected (open mode)
+  | { kind: 'joined'; name: string; otherDevice?: boolean } // a sender is connected (open mode); `otherDevice`: see JoinRequest
   | { kind: 'allowed'; name: string }
   | { kind: 'denied'; name: string }
   | { kind: 'blocked'; name: string }
@@ -126,6 +132,10 @@ export interface ReceiverDeps {
   iceState?: () => IceFetchState | undefined
   /** Creates the renderer for one received PDF (default: a Web Worker with the WASM build of cc-docs). */
   pdfRenderer?: PdfRendererFactory
+  /** The display's memory of names and devices (docs/design/presenter-identity.md). Omit for none: no device notes. */
+  deviceMemory?: DeviceMemoryStore
+  /** Test seam: checks a presenter's proof for a room code; resolves the device id or null (default: WebCrypto, {@link verifyJoinProof}). */
+  verifyDevice?: (device: JoinDevice, code: string, now: number) => Promise<string | null>
   /** Join mode of the room that is created (default "open"). Changed later with setJoinMode. */
   joinMode?: JoinMode
   /** The display's room name (from the setup). Sent with `create_room`; senders see it on their pages. */
@@ -234,6 +244,8 @@ export class ReceiverSession {
   private defaultMode: JoinMode
   /** The id of a request that was allowed, while its sender is about to connect (so "connected" is not toasted a second time). */
   private allowedPending: number | null = null
+  /** The verified device of the request that was allowed, until its sender connects (then the pair is remembered). */
+  private allowedDevice: { id: number; name: string; device: string } | null = null
   /** Offers of the current peer are answered in order (see the `offer` case). */
   private answerChain: Promise<void> = Promise.resolve()
 
@@ -441,9 +453,40 @@ export class ReceiverSession {
     const req = this.state.requests.find((r) => r.id === id)
     if (!req) return
     this.client?.send({ type: 'join_decision', id, allow, ...(block && !allow ? { block: true } : {}) })
-    if (allow) this.allowedPending = id
+    if (allow) {
+      this.allowedPending = id
+      this.allowedDevice = req.deviceId ? { id, name: req.name, device: req.deviceId } : null
+    }
     this.emit({ kind: allow ? 'allowed' : block ? 'blocked' : 'denied', name: req.name })
     this.set({ requests: this.state.requests.filter((r) => r.id !== id) })
+  }
+
+  private verifyDevice(device: JoinDevice): Promise<string | null> {
+    const code = this.state.code
+    if (code === null) return Promise.resolve(null)
+    const verify = this.deps.verifyDevice ?? verifyJoinProof
+    return verify(device, code, (this.deps.now ?? Date.now)()).catch(() => null)
+  }
+
+  /** Checks the proof of a waiting request and adds the device and the note to it (if it still waits). */
+  private async checkRequestDevice(id: number, name: string, device: JoinDevice): Promise<void> {
+    const run = this.run
+    const deviceId = await this.verifyDevice(device)
+    if (deviceId === null || run !== this.run) return
+    const otherDevice = this.deps.deviceMemory?.usedByOtherDevice(name, deviceId) ?? false
+    if (!this.state.requests.some((r) => r.id === id)) return
+    this.set({ requests: this.state.requests.map((r) => (r.id === id ? { ...r, deviceId, otherDevice } : r)) })
+  }
+
+  /** Open mode: a presenter joined with a proof. The toast says "connected", and the note when the name was used by another device. */
+  private async announceJoin(name: string, device: JoinDevice): Promise<void> {
+    const run = this.run
+    const id = await this.verifyDevice(device)
+    if (run !== this.run) return
+    const memory = this.deps.deviceMemory
+    const otherDevice = id !== null && (memory?.usedByOtherDevice(name, id) ?? false)
+    if (id !== null) memory?.remember(name, id)
+    this.emit({ kind: 'joined', name, ...(otherDevice ? { otherDevice: true } : {}) })
   }
 
   /** Denies everybody who waits. */
@@ -615,10 +658,16 @@ export class ReceiverSession {
             { id: m.id, name: m.name, check: m.check, receivedAt: (this.deps.now ?? Date.now)() },
           ],
         })
+        // The proof is checked while the dialog is already there: no proof, a bad one or no WebCrypto means the request
+        // is shown as always, without any device note.
+        if (m.device) void this.checkRequestDevice(m.id, m.name, m.device)
         break
       case 'join_request_cancelled': {
         // The allowed sender gave up before it arrived: the next one that joins is announced again.
-        if (this.allowedPending === m.id) this.allowedPending = null
+        if (this.allowedPending === m.id) {
+          this.allowedPending = null
+          this.allowedDevice = null
+        }
         const gone = this.state.requests.find((r) => r.id === m.id)
         const requests = this.state.requests.filter((r) => r.id !== m.id)
         if (gone && m.reason === 'timeout') this.emit({ kind: 'expired', name: gone.name })
@@ -659,12 +708,20 @@ export class ReceiverSession {
         this.set({ joinMode: this.mode, phase: 'connecting', code: null, stream: null, sas: undefined, peerName: null, requests: [], blocks: [] })
         this.sendCreateRoom()
         break
-      case 'peer_joined':
-        if (this.allowedPending === null) this.emit({ kind: 'joined', name: m.name })
+      case 'peer_joined': {
+        const announce = this.allowedPending === null
+        const allowed = this.allowedDevice
         this.allowedPending = null
+        this.allowedDevice = null
+        if (!announce) {
+          // A request the host allowed: now that the presenter is in, the pair is remembered.
+          if (allowed && allowed.name === m.name) this.deps.deviceMemory?.remember(m.name, allowed.device)
+        } else if (m.device) void this.announceJoin(m.name, m.device)
+        else this.emit({ kind: 'joined', name: m.name })
         this.newPeer()
         this.set({ phase: 'negotiating', stream: null, sas: undefined, peerName: m.name })
         break
+      }
       case 'offer': {
         // A sender that is still in the room makes a new peer connection for its next presentation
         // ("Stop", then show something else): that offer begins a fresh session, as on a native

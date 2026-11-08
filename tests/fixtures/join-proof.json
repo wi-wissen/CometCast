@@ -104,16 +104,16 @@
       "device_id": "3097e2dee2cb4a34b53840cdb705aed7"
     },
     {
-      "name": "ts at the largest u64",
+      "name": "ts at the largest exactly representable integer",
       "key": "B",
       "code": "K7QM2W",
-      "now_ms": 18446744073709551615,
+      "now_ms": 9007199254740991,
       "signed_for_code": "K7QM2W",
-      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d3257003138343436373434303733373039353531363135",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570039303037313939323534373430393931",
       "device": {
         "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
-        "ts": 18446744073709551615,
-        "sig": "77hbnMQPvnFQrjiZ_lhV8wfZXzX5Fea0VhC2v5N6eFzBxcmox2iDz5GbcH3OX7Br2VQH0kUqbh4DVcvghNtxDg"
+        "ts": 9007199254740991,
+        "sig": "ieurOj9tjID94m4sRFfPQvs9LDs_-8FUgtax9PjkP43nAMz2V2FQPgQlSD3ECRkThu2oJlIqYXBRZa5n42LhAg"
       },
       "device_id": "3097e2dee2cb4a34b53840cdb705aed7"
     }

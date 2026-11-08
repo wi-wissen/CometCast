@@ -6,3 +6,7 @@ declare module 'node:fs' {
 declare module 'node:url' {
   export function fileURLToPath(url: string | URL): string
 }
+declare module 'node:crypto' {
+  /** Node's WebCrypto (supports Ed25519). */
+  export const webcrypto: Crypto
+}

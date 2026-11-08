@@ -5,6 +5,7 @@ import { useRelay } from './useRelay'
 import { fetchIceServers, obtainAltchaPayload, type IceFetchState } from '../core/altchaClient'
 import { saveDefaultMode } from '../core/displaySetup'
 import type { JoinMode } from '../core/signaling'
+import { localStorageDeviceMemory } from '../core/deviceMemory'
 
 export interface UseReceiverOptions {
   /** The room's starting mode (the default chosen in the setup wizard; first run: open). */
@@ -42,6 +43,8 @@ export function useReceiver(opts: UseReceiverOptions = {}) {
     altcha: (signal) => obtainAltchaPayload(current.value.httpBase, { signal }),
     iceServers: () => fetchIceServers(current.value.httpBase, { onState: (s) => (iceState = s) }),
     iceState: () => iceState,
+    // Names and devices of allowed presenters (localStorage): the request dialog notes a name that another device used.
+    deviceMemory: localStorageDeviceMemory(),
     joinMode: opts.joinMode ?? 'open',
     roomName: opts.roomName,
     onEvent: opts.onEvent,

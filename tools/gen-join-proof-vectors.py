@@ -91,7 +91,8 @@ add_valid("lower-case code at the display is the same room", A, "K7QM2W", TS, TS
 add_valid("ts exactly 120 s behind the clock", A, "K7QM2W", TS, TS + WINDOW_MS)
 add_valid("ts exactly 120 s ahead of the clock", A, "K7QM2W", TS, TS - WINDOW_MS)
 add_valid("ts zero", B, "K7QM2W", 0, 60000)
-add_valid("ts at the largest u64", B, "K7QM2W", 2**64 - 1, 2**64 - 1)
+# JavaScript keeps integers exactly only up to 2^53 - 1; larger values are not realistic times anyway.
+add_valid("ts at the largest exactly representable integer", B, "K7QM2W", 2**53 - 1, 2**53 - 1)
 
 _, base = proof(A, "K7QM2W", TS)
 

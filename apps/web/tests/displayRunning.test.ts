@@ -173,6 +173,16 @@ describe('display: idle', () => {
     expect(w.get('[data-testid=toast]').text()).toBe('No name connected')
   })
 
+  it('the connected toast of open mode adds the neutral device sentence only for a name another device used', async () => {
+    const w = mk()
+    hoisted.onEvent?.({ kind: 'joined', name: 'Ana', otherDevice: true })
+    await nextTick()
+    expect(w.get('[data-testid=toast]').text()).toBe('“Ana” connected This name was used here before by a different device.')
+    hoisted.onEvent?.({ kind: 'joined', name: 'Ana' })
+    await nextTick()
+    expect(w.get('[data-testid=toast]').text()).toBe('“Ana” connected')
+  })
+
   it('a lost connection: the code and QR code go at once, the box comes only when the retry at 3 s has failed', async () => {
     const w = mk()
     await flushPromises()
