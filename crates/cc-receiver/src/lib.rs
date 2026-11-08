@@ -360,6 +360,7 @@ impl ReceiverCore {
                 options: o,
                 widths: width_rx,
                 events: Arc::new(content_tx),
+                room: content::RoomContent::new(),
             }
         });
         let has_content = content.is_some();
@@ -520,6 +521,9 @@ struct ContentSetup {
     options: ContentOptions,
     widths: mpsc::UnboundedReceiver<u32>,
     events: Arc<content::EventSink>,
+    /// Shared by the content tasks of all presentations in this room: the violation count,
+    /// the document-open budget and the one document job that may run.
+    room: content::RoomContent,
 }
 
 /// What belongs to the connection of one sender and starts over with the next one.
@@ -817,6 +821,7 @@ async fn run(
                             options,
                             wrx,
                             Arc::clone(&c.events),
+                            &c.room,
                             peer_name.clone().map(|name| content::HandoverHook {
                                 store: Arc::clone(&handover),
                                 name,

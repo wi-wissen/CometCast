@@ -16,8 +16,9 @@
 //! * a flood of page commands is merged into one render of the last page asked for, and
 //!   renders keep a minimum interval;
 //! * `stop`, a new document and a new image cancel a running render at once (a render that is
-//!   slow and stale is cancelled too); a document open cannot be interrupted, its result is
-//!   dropped when it returns;
+//!   slow and stale is cancelled too), and a running document open as well (its render
+//!   process is killed; the in-process engine cannot be interrupted, its result is dropped
+//!   when it returns);
 //! * [`ContentReceiver::handle_text`] is the simple form that does it all in the calling thread.
 //!
 //! Safety rules (each one has a test):
@@ -34,7 +35,11 @@
 //!   A **refused** transfer start (too large, type not allowed) is one violation; the data
 //!   that follows is swallowed silently up to the announced size, then its end message.
 //! * Opening a document is budgeted: a failed open is a violation, and opens are rate limited
-//!   (burst of 5, one more per 3 s), because each costs a child process.
+//!   (burst of 5, one more per 3 s), because each costs a child process. The violation count
+//!   and the open budget can be shared by several receivers ([`SharedBudget`]), so that a
+//!   sender cannot get a fresh budget by starting a new channel.
+//! * Every job has a cancel flag ([`Work::cancel_flag`]); an owner that gives up on a job (it
+//!   drops the receiver while the job runs) sets it, and the render process is killed.
 //! * A transfer that stalls for 60 s is dropped with an event ([`ContentReceiver::tick`]).
 //! * Links are validated again here and **never opened**; the event only asks.
 //! * A PDF is only handed to `cc-docs`, which checks it again, renders in a child process
@@ -43,8 +48,8 @@
 
 use std::collections::VecDeque;
 use std::ops::Deref;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use cc_docs::{
@@ -338,6 +343,7 @@ enum Job {
         bytes: Vec<u8>,
         limits: Limits,
         isolation: Isolation,
+        cancel: Arc<AtomicBool>,
     },
     Render {
         doc: Arc<Document>,
@@ -356,6 +362,7 @@ pub struct Work {
     id: u64,
     epoch: u64,
     job: Job,
+    cancel: Arc<AtomicBool>,
 }
 
 // Same as `Job`: one short-lived value per job.
@@ -384,6 +391,14 @@ impl Work {
         self.id
     }
 
+    /// The job's cancel flag. Setting it stops a running open or render soon (the render
+    /// process is killed; see `cc_docs::Document::open_cancellable`); the result is then
+    /// `cancelled`. The receiver sets it itself when the content is replaced or stopped; an
+    /// owner that stops waiting for the job (and drops the receiver) sets it too.
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel)
+    }
+
     /// Run the job. Blocks for as long as the render process needs (bounded by the limits of
     /// `cc-docs`, or shorter when cancelled).
     pub fn run(self) -> WorkDone {
@@ -393,9 +408,10 @@ impl Work {
                 bytes,
                 limits,
                 isolation,
+                cancel,
             } => Done::Opened {
                 name,
-                result: Document::open_with_options(bytes, limits, isolation),
+                result: Document::open_cancellable(bytes, limits, isolation, Some(cancel)),
             },
             Job::Render {
                 doc,
@@ -417,18 +433,56 @@ impl Work {
     }
 }
 
+/// The protocol-violation count and the document-open budget of a [`ContentReceiver`],
+/// which can be shared by several receivers one after the other: `cc-receiver` keeps one per
+/// room, so a presenter that starts a new presentation (a new channel, a new receiver) does
+/// not get a fresh open budget and loses no violations. Cloning shares the same state.
+#[derive(Clone)]
+pub struct SharedBudget(Arc<Mutex<Budget>>);
+
+struct Budget {
+    violations: u32,
+    last_decay: Instant,
+    /// Open tokens left; `None` until the first receiver sets the full burst.
+    open_tokens: Option<f64>,
+    open_last: Instant,
+}
+
+impl SharedBudget {
+    /// A fresh budget: no violations, a full open burst.
+    pub fn new() -> Self {
+        let now = Instant::now();
+        Self(Arc::new(Mutex::new(Budget {
+            violations: 0,
+            last_decay: now,
+            open_tokens: None,
+            open_last: now,
+        })))
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Budget> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Default for SharedBudget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The receiver state machine. See the module docs.
 pub struct ContentReceiver {
     opts: ContentOptions,
     active: Option<Active>,
     skipping: Option<Skipping>,
     shown: Option<Shown>,
-    violations: u32,
     blocked: bool,
     /// After an `unexpected_chunk` event, further ones are counted but not reported until
     /// the next text message (a flood must not flood the event queue).
     quiet_chunks: bool,
-    last_decay: Instant,
+    /// Violations and open budget (possibly shared with other receivers).
+    budget: SharedBudget,
     /// Document that is complete and waits for its open.
     open_pending: Option<(String, Vec<u8>)>,
     /// Page commands that came in while the new document was opening; applied to it when it is
@@ -441,24 +495,34 @@ pub struct ContentReceiver {
     next_job: u64,
     /// Bumped whenever the content is replaced or stopped; results of older jobs are dropped.
     epoch: u64,
-    open_tokens: f64,
-    open_last: Instant,
 }
 
 impl ContentReceiver {
-    /// A receiver with the given options.
+    /// A receiver with the given options and a budget of its own.
     pub fn new(opts: ContentOptions) -> Self {
+        Self::with_budget(opts, SharedBudget::new())
+    }
+
+    /// A receiver whose violations and open budget are `budget` (shared with the receivers
+    /// that used it before). If those violations, after their decay, are still above
+    /// [`ContentOptions::max_violations`], the receiver starts blocked.
+    pub fn with_budget(opts: ContentOptions, budget: SharedBudget) -> Self {
         let now = Instant::now();
-        let open_tokens = f64::from(opts.open_burst);
-        Self {
+        {
+            let mut b = budget.lock();
+            if b.open_tokens.is_none() {
+                b.open_tokens = Some(f64::from(opts.open_burst));
+                b.open_last = now;
+            }
+        }
+        let mut r = Self {
             opts,
             active: None,
             skipping: None,
             shown: None,
-            violations: 0,
             blocked: false,
             quiet_chunks: false,
-            last_decay: now,
+            budget,
             open_pending: None,
             queued_cmds: VecDeque::new(),
             render_wanted: false,
@@ -466,9 +530,10 @@ impl ContentReceiver {
             inflight: None,
             next_job: 0,
             epoch: 0,
-            open_tokens,
-            open_last: now,
-        }
+        };
+        r.decay(now);
+        r.blocked = r.budget.lock().violations > r.opts.max_violations;
+        r
     }
 
     /// `true` after too many violations: all input is ignored and the owner should close the channel.
@@ -479,7 +544,7 @@ impl ContentReceiver {
     /// Protocol violations counted now (they decay over time, see
     /// [`ContentOptions::violation_decay`]).
     pub fn violations(&self) -> u32 {
-        self.violations
+        self.budget.lock().violations
     }
 
     /// `true` while a transfer is being received.
@@ -494,8 +559,13 @@ impl ContentReceiver {
             .map(|s| (s.pages.current_page(), s.pages.page_count()))
     }
 
+    fn add_violation(&self) {
+        let mut b = self.budget.lock();
+        b.violations = b.violations.saturating_add(1);
+    }
+
     fn violation(&mut self, out: &mut Vec<ContentEvent>, error: ContentError, detail: &str) {
-        self.violations = self.violations.saturating_add(1);
+        self.add_violation();
         out.push(ContentEvent::Error {
             error,
             detail: detail.to_string(),
@@ -504,7 +574,7 @@ impl ContentReceiver {
     }
 
     fn check_blocked(&mut self, out: &mut Vec<ContentEvent>) {
-        if !self.blocked && self.violations > self.opts.max_violations {
+        if !self.blocked && self.violations() > self.opts.max_violations {
             self.blocked = true;
             self.active = None;
             self.skipping = None;
@@ -519,15 +589,16 @@ impl ContentReceiver {
     /// Forget one violation per [`ContentOptions::violation_decay`] that has passed.
     fn decay(&mut self, now: Instant) {
         let step = self.opts.violation_decay;
-        if self.violations == 0 || step.is_zero() {
-            self.last_decay = now;
+        let mut b = self.budget.lock();
+        if b.violations == 0 || step.is_zero() {
+            b.last_decay = now;
             return;
         }
-        let steps = now.saturating_duration_since(self.last_decay).as_nanos() / step.as_nanos();
+        let steps = now.saturating_duration_since(b.last_decay).as_nanos() / step.as_nanos();
         if steps > 0 {
             let steps32 = u32::try_from(steps).unwrap_or(u32::MAX);
-            self.violations = self.violations.saturating_sub(steps32);
-            self.last_decay += step.saturating_mul(steps32);
+            b.violations = b.violations.saturating_sub(steps32);
+            b.last_decay += step.saturating_mul(steps32);
         }
     }
 
@@ -693,7 +764,7 @@ impl ContentReceiver {
             return out;
         }
         let Some(a) = self.active.as_mut() else {
-            self.violations = self.violations.saturating_add(1);
+            self.add_violation();
             if !self.quiet_chunks {
                 self.quiet_chunks = true;
                 out.push(ContentEvent::Error {
@@ -841,14 +912,16 @@ impl ContentReceiver {
             return true;
         }
         let burst = f64::from(self.opts.open_burst);
+        let mut b = self.budget.lock();
         let gained =
-            now.saturating_duration_since(self.open_last).as_secs_f64() / refill.as_secs_f64();
-        self.open_last = now;
-        self.open_tokens = (self.open_tokens + gained).min(burst);
-        if self.open_tokens >= 1.0 {
-            self.open_tokens -= 1.0;
+            now.saturating_duration_since(b.open_last).as_secs_f64() / refill.as_secs_f64();
+        b.open_last = now;
+        let tokens = (b.open_tokens.unwrap_or(burst) + gained).min(burst);
+        if tokens >= 1.0 {
+            b.open_tokens = Some(tokens - 1.0);
             true
         } else {
+            b.open_tokens = Some(tokens);
             false
         }
     }
@@ -903,13 +976,15 @@ impl ContentReceiver {
             return Next::Idle;
         }
         if let Some((name, bytes)) = self.open_pending.take() {
+            let cancel = Arc::new(AtomicBool::new(false));
             let job = Job::Open {
                 name,
                 bytes,
                 limits: self.opts.doc_limits,
                 isolation: self.opts.isolation.clone(),
+                cancel: Arc::clone(&cancel),
             };
-            return Next::Work(self.begin(job, true, now, Arc::new(AtomicBool::new(false))));
+            return Next::Work(self.begin(job, true, now, cancel));
         }
         if self.render_wanted
             && let Some(shown) = self.shown.as_ref()
@@ -942,12 +1017,13 @@ impl ContentReceiver {
             id: self.next_job,
             is_open,
             started: now,
-            cancel,
+            cancel: Arc::clone(&cancel),
         });
         Work {
             id: self.next_job,
             epoch: self.epoch,
             job,
+            cancel,
         }
     }
 

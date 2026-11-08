@@ -164,6 +164,35 @@ fn cancel_kills_the_whole_group_too() {
     assert!(t.elapsed() < Duration::from_millis(500));
 }
 
+/// An open that its owner gives up on (the presentation ended) is killed at once, not at
+/// the open deadline.
+#[test]
+fn cancel_kills_a_running_open() {
+    if !unix_with_proc() {
+        return;
+    }
+    let dir = scratch("open-cancel");
+    let pidfile = dir.join("pid");
+    let script = format!("echo $$ > {}; sleep 600", pidfile.display());
+    let flag = Arc::new(AtomicBool::new(false));
+    let f2 = Arc::clone(&flag);
+    let t = Instant::now();
+    let opener = std::thread::spawn(move || {
+        Document::open_cancellable(
+            data("minimal.pdf"),
+            limits_ms(10_000),
+            sh(&script),
+            Some(f2),
+        )
+    });
+    let pid = read_pid(&pidfile);
+    flag.store(true, Ordering::SeqCst);
+    let r = opener.join().unwrap();
+    assert_eq!(r.unwrap_err(), DocError::Cancelled);
+    assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    wait_dead(pid);
+}
+
 /// The reviewer's `fd.sh`, with the output in a temp directory: the worker has only the three
 /// standard descriptors, no environment, `/` as working directory and no way to see secrets.
 #[test]

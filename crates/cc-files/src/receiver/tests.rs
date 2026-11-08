@@ -828,6 +828,74 @@ fn opening_documents_is_budgeted() {
 }
 
 #[test]
+fn a_shared_budget_carries_over_to_the_next_receiver() {
+    let opts = ContentOptions {
+        isolation: Isolation::InProcess,
+        open_burst: 1,
+        open_refill: Duration::from_secs(3600),
+        violation_decay: Duration::ZERO,
+        max_violations: 3,
+        ..ContentOptions::default()
+    };
+    let budget = SharedBudget::new();
+    let mut first = ContentReceiver::with_budget(opts.clone(), budget.clone());
+    let ev = feed(&mut first, document_transfer("m.pdf", MINIMAL).unwrap());
+    assert!(errors(&ev).is_empty(), "{ev:?}");
+    first.handle_text("junk");
+    assert_eq!(first.violations(), 1);
+    drop(first);
+
+    // A new presentation (new channel, new receiver) of the same room: no fresh budget.
+    let mut second = ContentReceiver::with_budget(opts.clone(), budget.clone());
+    assert_eq!(second.violations(), 1, "the violations stay");
+    let ev = feed(&mut second, document_transfer("m.pdf", MINIMAL).unwrap());
+    assert_eq!(errors(&ev), [ContentError::DocumentRejected], "{ev:?}");
+    second.handle_text("junk");
+    second.handle_text("junk");
+    assert!(second.is_blocked());
+    drop(second);
+
+    // Still above the limit: the next receiver starts blocked.
+    let third = ContentReceiver::with_budget(opts.clone(), budget);
+    assert!(third.is_blocked());
+    // A receiver with a budget of its own is not affected.
+    assert!(!ContentReceiver::new(opts).is_blocked());
+}
+
+#[test]
+fn a_running_open_can_be_cancelled_through_its_flag() {
+    let mut r = rx();
+    // Only the start and the data: the open is left as work.
+    let mut items = document_transfer("s.pdf", SAMPLE_PDF).unwrap();
+    for item in items.by_ref() {
+        match item {
+            Outgoing::Text(t) => {
+                r.feed_text(&t);
+            }
+            Outgoing::Binary(b) => {
+                r.feed_binary(b);
+            }
+        }
+    }
+    let Next::Work(job) = r.next_action(Instant::now(), false) else {
+        panic!("an open is due")
+    };
+    // The owner gives up on the job before it runs (it would kill a running worker).
+    job.cancel_flag().store(true, Ordering::SeqCst);
+    let done = job.run();
+    assert!(
+        matches!(
+            done.done,
+            Done::Opened {
+                result: Err(DocError::Cancelled),
+                ..
+            }
+        ),
+        "the open was cancelled"
+    );
+}
+
+#[test]
 fn a_refused_document_clears_the_old_one() {
     let mut r = open_sample();
     assert!(r.document_state().is_some());

@@ -8,6 +8,13 @@
 //! that piled up are read in one go before the next job starts, so a flood of page commands
 //! costs one render (and renders keep a minimum interval, see `cc-files`).
 //!
+//! A presenter can end a presentation and start a new one at any time (a new offer, leave and
+//! join again). So the limits are kept **per room**, not per presentation ([`RoomContent`]):
+//! the violation count and the document-open budget carry over to the next presentation, and
+//! one job runs at a time in the whole room. A task that is aborted while its job runs sets
+//! the job's cancel flag (the render process is killed), and the job keeps the room's job
+//! place until it has really ended, so the next presentation's first job waits for it.
+//!
 //! Events leave through a queue that is bounded by **count and by bytes**
 //! ([`EVENT_QUEUE`], [`EVENT_QUEUE_BYTES`]), and the channel is not read while it is full, so
 //! a slow application slows the sender down instead of using more memory. A rendered page
@@ -16,16 +23,69 @@
 //! violations) the channel is closed.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use cc_files::{
-    ContentEvent, ContentOptions, ContentReceiver, Next, WorkDone, handover_ok_message,
-    page_message,
+    ContentError, ContentEvent, ContentOptions, ContentReceiver, Next, SharedBudget, WorkDone,
+    handover_ok_message, page_message,
 };
 use cc_transport::{ControlChannel, ControlData};
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::task::JoinHandle;
+
+/// What the content tasks of one room share (one task per presentation, one after the other;
+/// an aborted task's job may still be running when the next task starts).
+#[derive(Clone)]
+pub(crate) struct RoomContent {
+    /// Violations and document-open budget.
+    budget: SharedBudget,
+    /// One place: the document job (open or render) that may run in this room.
+    jobs: Arc<Semaphore>,
+}
+
+impl RoomContent {
+    pub(crate) fn new() -> Self {
+        Self {
+            budget: SharedBudget::new(),
+            jobs: Arc::new(Semaphore::new(1)),
+        }
+    }
+
+    /// Wait for the room's job place (held by a job of an earlier presentation that has not
+    /// ended yet).
+    async fn job_place(&self) -> Option<OwnedSemaphorePermit> {
+        Arc::clone(&self.jobs).acquire_owned().await.ok()
+    }
+}
+
+/// Sets a job's cancel flag when dropped: the content task was aborted (or ended) while the
+/// job ran, so nobody waits for its result any more.
+struct CancelOnDrop(Option<Arc<AtomicBool>>);
+
+impl CancelOnDrop {
+    /// The job ended on its own: nothing to cancel.
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        if let Some(c) = &self.0 {
+            c.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+/// A job on the blocking pool: its id, its handle (which gives the room's job place back
+/// with the result) and its cancel flag.
+type Running = (
+    u64,
+    JoinHandle<(WorkDone, OwnedSemaphorePermit)>,
+    CancelOnDrop,
+);
 
 /// Events that may wait for the application (count).
 /// UNCERTAIN: placeholder, unmeasured.
@@ -199,22 +259,52 @@ pub(crate) fn spawn(
     opts: ContentOptions,
     mut widths: mpsc::UnboundedReceiver<u32>,
     events: Arc<EventSink>,
+    room: &RoomContent,
     hook: Option<HandoverHook>,
 ) -> JoinHandle<()> {
+    let room = room.clone();
     tokio::spawn(async move {
-        let mut rx = ContentReceiver::new(opts);
+        let mut rx = ContentReceiver::with_budget(opts, room.budget.clone());
+        if rx.is_blocked() {
+            // Too many violations in this room, not yet forgotten: no new presentation.
+            let _ = events
+                .push(ContentEvent::Error {
+                    error: ContentError::TooManyErrors,
+                    detail: "too many protocol violations in this room; try again later".into(),
+                })
+                .await;
+            channel.close().await;
+            return;
+        }
+        // The room's job place: a job of the previous presentation may still be ending.
+        // While the task holds it no other job runs; a job takes it along and gives it back
+        // with its result (or, if this task is aborted meanwhile, when it really ended).
+        let Some(place) = room.job_place().await else {
+            return;
+        };
+        let mut place = Some(place);
         // What the presenter was last told (decision 58): the page and the page count.
         let mut told: Option<(u32, u32)> = None;
-        let mut running: Option<(u64, JoinHandle<WorkDone>)> = None;
+        let mut running: Option<Running> = None;
         let mut closed = false;
         loop {
             // Start the next job, if one is due.
             let mut wake = None;
             if running.is_none() {
+                if place.is_none() {
+                    // The last job's thread panicked and dropped the place: take it again.
+                    match room.job_place().await {
+                        Some(p) => place = Some(p),
+                        None => return,
+                    }
+                }
                 match rx.next_action(Instant::now(), true) {
                     Next::Work(w) => {
                         let id = w.id();
-                        running = Some((id, tokio::task::spawn_blocking(move || w.run())));
+                        let cancel = CancelOnDrop(Some(w.cancel_flag()));
+                        let p = place.take().expect("the job place is held here");
+                        let h = tokio::task::spawn_blocking(move || (w.run(), p));
+                        running = Some((id, h, cancel));
                     }
                     Next::Wait(t) => wake = Some(t),
                     Next::Idle => {}
@@ -230,13 +320,19 @@ pub(crate) fn spawn(
                 biased;
                 res = async {
                     match running.as_mut() {
-                        Some((_, h)) => h.await,
+                        Some((_, h, _)) => h.await,
                         None => std::future::pending().await,
                     }
                 } => {
-                    let id = running.take().map_or(0, |(id, _)| id);
+                    let id = running.take().map_or(0, |(id, _, mut cancel)| {
+                        cancel.disarm();
+                        id
+                    });
                     evs = match res {
-                        Ok(done) => rx.finish_work(done),
+                        Ok((done, p)) => {
+                            place = Some(p);
+                            rx.finish_work(done)
+                        }
                         // The thread panicked (it should not). The receiver keeps its state.
                         Err(_) => rx.work_panicked(id),
                     };
@@ -392,6 +488,38 @@ mod tests {
             rx.next().await,
             Some(ContentEvent::ContentStopped)
         ));
+    }
+
+    #[tokio::test]
+    async fn an_aborted_task_cancels_its_job_and_the_job_keeps_the_room_place() {
+        let room = RoomContent::new();
+        let place = room.job_place().await.unwrap();
+        let flag = Arc::new(AtomicBool::new(false));
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let cancel = CancelOnDrop(Some(Arc::clone(&flag)));
+        // A task as the content task: its job holds the room's place on the blocking pool.
+        let task = tokio::spawn(async move {
+            let _cancel = cancel;
+            let job = tokio::task::spawn_blocking(move || {
+                let _place = place;
+                let _ = wait.recv();
+            });
+            let _ = job.await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        task.abort();
+        let _ = task.await;
+        assert!(flag.load(Ordering::SeqCst), "the job was told to stop");
+        assert_eq!(
+            room.jobs.available_permits(),
+            0,
+            "the job still runs: the next presentation must wait for it"
+        );
+        release.send(()).unwrap();
+        let _place = tokio::time::timeout(std::time::Duration::from_secs(5), room.job_place())
+            .await
+            .expect("the place is free once the job ended")
+            .unwrap();
     }
 
     #[tokio::test]
