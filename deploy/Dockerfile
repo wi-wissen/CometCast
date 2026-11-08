@@ -10,10 +10,18 @@
 # file system works. Not run: other architectures (arm64), a build without a proxy.
 # The web stage does NOT build the WASM PDF renderer (apps/web/public/pdf): PDF display in the
 # web app is therefore missing in this image (see apps/web/README.md).
+#
+# Base images are pinned by tag AND digest (image:tag@sha256:...): the tag is for people, the
+# digest decides what is pulled, so a tag moved in the registry changes nothing until the digest is
+# updated on purpose. The digests are the multi-arch indexes as read from the registries on
+# 2026-11-08 (Docker-Content-Digest of the tag); Dependabot (.github/dependabot.yml) proposes
+# updates. UNCERTAIN: no build was run with these digests (no Docker daemon where they were set);
+# the tags are the ones of the first real run, but the digests are what the tags pointed to on
+# 2026-11-08, not necessarily the exact images of that run.
 
 # ---- Stage 1: web app (Vue, built to plain files) ----
 # Tag node:22-bookworm-slim exists and `npm ci` + `npm run build` worked (run 2026-11-07).
-FROM node:22-bookworm-slim AS web
+FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS web
 WORKDIR /src/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 # Optional extra CA bundle (only for builds behind a TLS-intercepting proxy):
@@ -33,7 +41,7 @@ RUN COMETCAST_BRANDING="$COMETCAST_BRANDING" npm run build
 # ---- Stage 2: server binary ----
 # The workspace needs Rust >= 1.92 (rust-version in Cargo.toml). First run: built with 1.99.1
 # (rust:1-bookworm on 2026-11-07). The image tag is pinned to a minor release for repeatable builds.
-FROM rust:1.99-bookworm AS build
+FROM rust:1.99-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c AS build
 WORKDIR /src
 COPY . .
 # rust-toolchain.toml says channel = "stable". rustup would then try to DOWNLOAD a toolchain called
@@ -48,7 +56,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
 # ---- Stage 3: small runtime image ----
 # distroless "cc" has glibc and nothing else (no shell, no package manager). It runs as
 # a non-root user (UID 65532) with the ":nonroot" tag. The tag exists and the binary runs on it.
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
 COPY --from=build /src/target/release/cometcast-server /usr/local/bin/cometcast-server
 COPY --from=web /src/apps/web/dist /srv/cometcast/web
 # Inside a container the server must listen on all interfaces. The config file can
