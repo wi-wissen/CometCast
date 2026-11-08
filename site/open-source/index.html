@@ -1,38 +1,58 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open Source und Lizenz</title>
-<meta name="description" content="Comet Cast steht unter GPL-3.0-or-later. Beiträge laufen über eine CLA.">
+<title>Open source and licence</title>
+<meta name="description" content="Comet Cast is free software under GPL-3.0-or-later. Source code, licence, contributions and the third-party components it uses.">
 <link rel="canonical" href="https://cometcast.de/open-source/">
-<link rel="alternate" hreflang="de" href="https://cometcast.de/open-source/">
-<link rel="alternate" hreflang="en" href="https://cometcast.de/en/open-source/">
+<link rel="alternate" hreflang="en" href="https://cometcast.de/open-source/">
+<link rel="alternate" hreflang="de" href="https://cometcast.de/de/open-source/">
 <link rel="alternate" hreflang="x-default" href="https://cometcast.de/open-source/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#eceef2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1126" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/fonts.css">
 <link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/site.js" defer></script>
 </head>
-<body>
-<a class="skip" href="#main">Zum Inhalt</a>
-<header class="site"><div class="wrap">
-<a class="brand" href="/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast Logo: ein Komet in Form eines C" width="36" height="36"></picture><span>Comet Cast</span></a>
-<nav class="main" aria-label="Hauptnavigation"><a href="/">Start</a><a href="/funktionsweise/">Funktionsweise</a><a href="/downloads/">Downloads</a><a href="/datenschutz/">Datenschutz & Selbst hosten</a><a href="/open-source/" aria-current="page">Open Source</a><a href="/kontakt/">Kontakt</a></nav>
-<div class="lang"><a href="/en/open-source/" hreflang="en" lang="en" title="Switch to English">English</a></div>
+<body class="open">
+<a class="skip" href="#main">Skip to content</a>
+<div class="langhint" lang="de" data-target="de" hidden><div class="wrap"><span>Diese Seite gibt es auch auf Deutsch.</span><a href="/de/open-source/" hreflang="de" data-hint-link>Auf Deutsch lesen</a><button type="button" aria-label="Schließen" data-hint-close>×</button></div></div>
+<header class="site-head"><div class="wrap">
+<a class="brand" href="/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast logo: a comet shaped like a C" width="34" height="34"></picture><span>Comet Cast</span></a>
+<nav class="nav" aria-label="Main navigation">
+<div class="navlinks"><a href="/#finder">What you need</a><a href="/download/">Download</a></div>
+<a class="lang" href="/de/open-source/" hreflang="de" lang="de" title="Auf Deutsch lesen" aria-label="Auf Deutsch lesen">DE</a>
+<a class="btn btn-primary" href="/app/">Open web app</a>
+</nav>
 </div></header>
-<main id="main"><div class="wrap">
-<h1>Open Source</h1>
-<p class="lead">Comet Cast ist freie Software unter <strong>GPL-3.0-or-later</strong>. Quellcode: <a href="https://github.com/wi-wissen/CometCast">github.com/wi-wissen/CometCast</a>.</p>
-<h2>Lizenz</h2>
-<p>Text der Lizenz: <a href="https://github.com/wi-wissen/CometCast/blob/main/LICENSE">LICENSE</a>. Komponenten Dritter: <a href="https://github.com/wi-wissen/CometCast/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.</p>
-<p>Die GPL deckt den Code. Sie gibt für sich keine Rechte am Namen „Comet Cast“ oder am Logo. Eine Namens- und Logo-Richtlinie gibt es noch nicht. Das ist ein Überblick, keine Rechtsberatung.</p>
-<h2>Mitmachen und CLA</h2>
-<p>Beiträge Dritter werden unter der <a href="https://github.com/wi-wissen/CometCast/blob/main/CLA.md">CLA</a> angenommen. Sie erlaubt der Betreuerin, der Schulverwalter GmbH, die Apps in App-Stores zu verteilen; die öffentliche Version bleibt GPL-3.0-or-later. Der CLA-Text ist ein Entwurf und braucht noch eine juristische Prüfung. Siehe <a href="https://github.com/wi-wissen/CometCast/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> und den <a href="https://github.com/wi-wissen/CometCast/blob/main/CODE_OF_CONDUCT.md">Verhaltenskodex</a>.</p>
-<h2>Was wir bewusst nicht tun</h2>
-<ul><li>Keine Schlüssel oder Zertifikate extrahieren, kein FairPlay-, AirServer- oder AirParrot-Material</li><li>Keine DRM-Umgehung</li><li>Kein Cast-Empfang in Version 1, kein AirDrop, kein DLNA/UPnP, kein Miracast-Sender</li></ul>
-</div></main>
-<footer class="site"><div class="wrap"><span>Comet Cast ist freie Software (GPL-3.0-or-later). Diese Seite setzt keine Cookies und lädt nichts von Dritten.</span><a href="/impressum/">Impressum</a><a href="https://github.com/wi-wissen/CometCast">GitHub</a></div></footer>
+<main id="main"><div class="doc"><div class="wrap narrow">
+<h1>Open source</h1>
+<p class="lead">Comet Cast is free software under <strong>GPL-3.0-or-later</strong>. You may use it, study it, change it and share it. Source: <a href="https://github.com/wi-wissen/CometCast">github.com/wi-wissen/CometCast</a>.</p>
+<h2>Licence</h2>
+<p>Licence text: <a href="https://github.com/wi-wissen/CometCast/blob/main/LICENSE">LICENSE</a>. The GPL covers the code. It does not by itself give rights to the name "Comet Cast" or the logo.</p>
+<h2>Take part</h2>
+<p>Contributions are welcome and are accepted under the <a href="https://github.com/wi-wissen/CometCast/blob/main/CLA.md">CLA</a>. It allows the steward, Schulverwalter GmbH, to distribute the apps in app stores; the public version stays GPL-3.0-or-later. See <a href="https://github.com/wi-wissen/CometCast/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> and the <a href="https://github.com/wi-wissen/CometCast/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>.</p>
+<h2>Third-party components</h2>
+<p>Comet Cast builds on many open-source libraries. The full list with their licences is in <a href="https://github.com/wi-wissen/CometCast/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>. The fonts of this website are served from this site itself:</p>
+<ul>
+<li>Bricolage Grotesque, © 2022 The Bricolage Grotesque Project Authors</li>
+<li>Atkinson Hyperlegible, © 2020 Braille Institute of America, Inc.</li>
+<li>JetBrains Mono, © 2020 The JetBrains Mono Project Authors</li>
+</ul>
+<p>All three are licensed under the <a href="https://openfontlicense.org/open-font-license-official-text/">SIL Open Font License 1.1</a> and are used unchanged.</p>
+</div></div>
+</main>
+<footer class="foot"><div class="wrap">
+<div class="cols">
+<div class="col"><p class="coltitle">Product</p><ul><li><a href="/app/">Web app</a></li><li><a href="/download/">Download</a></li><li><a href="/#finder">What you need</a></li></ul></div>
+<div class="col"><p class="coltitle">Trust</p><ul><li><a href="/privacy/">Privacy</a></li><li><a href="/self-hosting/">Host it yourself</a></li><li><a href="/open-source/">Open source</a></li><li><a href="/how-it-works/">How it works (technical)</a></li></ul></div>
+<div class="col"><p class="coltitle">Project</p><ul><li><a href="/contact/">Contact</a></li><li><a href="/imprint/">Imprint</a></li><li><a href="https://github.com/wi-wissen/CometCast">GitHub</a></li></ul></div>
+</div>
+<p class="fine">Free software · no cookies · nothing loaded from third parties</p>
+</div></footer>
 </body>
 </html>

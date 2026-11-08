@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy</title>
+<meta name="description" content="What this website collects (nothing) and what the Comet Cast relay server sees and stores.">
+<link rel="canonical" href="https://cometcast.de/privacy/">
+<link rel="alternate" hreflang="en" href="https://cometcast.de/privacy/">
+<link rel="alternate" hreflang="de" href="https://cometcast.de/de/datenschutz/">
+<link rel="alternate" hreflang="x-default" href="https://cometcast.de/privacy/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1126" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/fonts.css">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/site.js" defer></script>
+</head>
+<body class="privacy">
+<a class="skip" href="#main">Skip to content</a>
+<div class="langhint" lang="de" data-target="de" hidden><div class="wrap"><span>Diese Seite gibt es auch auf Deutsch.</span><a href="/de/datenschutz/" hreflang="de" data-hint-link>Auf Deutsch lesen</a><button type="button" aria-label="Schließen" data-hint-close>×</button></div></div>
+<header class="site-head"><div class="wrap">
+<a class="brand" href="/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast logo: a comet shaped like a C" width="34" height="34"></picture><span>Comet Cast</span></a>
+<nav class="nav" aria-label="Main navigation">
+<div class="navlinks"><a href="/#finder">What you need</a><a href="/download/">Download</a></div>
+<a class="lang" href="/de/datenschutz/" hreflang="de" lang="de" title="Auf Deutsch lesen" aria-label="Auf Deutsch lesen">DE</a>
+<a class="btn btn-primary" href="/app/">Open web app</a>
+</nav>
+</div></header>
+<main id="main"><div class="doc"><div class="wrap narrow">
+<h1>Privacy</h1>
+<h2>This website</h2>
+<p>No cookies, no tracking, no fonts or scripts from third parties. The only thing your browser may remember is a small note on your own device that you closed the language hint. The site is delivered by GitHub Pages; GitHub technically processes connection data such as the IP address (see GitHub's privacy statement). <span class="todo">TODO: have the controller review and add a full privacy notice (GDPR Art. 13) here</span></p>
+<h2>The relay server</h2>
+<p>The relay server (<code>cometcast-server</code>) helps a device and a screen find each other: room codes and connection offers. It stores no pictures, files or media and does not forward them. Rooms live in memory only. To protect itself it sees and counts the address of the connecting device (for limits and temporary bans, also in memory only).</p>
+<p>By default the apps use the public relay <code>relay.cometcast.de</code>. Its operations files are in the repository <a href="https://github.com/wi-wissen/CometCast-Relay">CometCast-Relay</a>. If your organisation runs its own server with a TURN relay, the picture travels through that machine inside the organisation when a direct connection is not possible. See <a href="/self-hosting/">Host it yourself</a>.</p>
+<h2>What stays on your devices</h2>
+<p>Picture, sound, files and links go directly from your device to the screen, encrypted. Screens nearby are found in your own network and never leave it.</p>
+</div></div>
+</main>
+<footer class="foot"><div class="wrap">
+<div class="cols">
+<div class="col"><p class="coltitle">Product</p><ul><li><a href="/app/">Web app</a></li><li><a href="/download/">Download</a></li><li><a href="/#finder">What you need</a></li></ul></div>
+<div class="col"><p class="coltitle">Trust</p><ul><li><a href="/privacy/">Privacy</a></li><li><a href="/self-hosting/">Host it yourself</a></li><li><a href="/open-source/">Open source</a></li><li><a href="/how-it-works/">How it works (technical)</a></li></ul></div>
+<div class="col"><p class="coltitle">Project</p><ul><li><a href="/contact/">Contact</a></li><li><a href="/imprint/">Imprint</a></li><li><a href="https://github.com/wi-wissen/CometCast">GitHub</a></li></ul></div>
+</div>
+<p class="fine">Free software · no cookies · nothing loaded from third parties</p>
+</div></footer>
+</body>
+</html>

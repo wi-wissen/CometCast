@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wie es funktioniert: wohin deine Daten gehen</title>
+<meta name="description" content="Die technische Seite von Comet Cast: der Datenweg, was der Relay-Server sieht und speichert, der eigene Server, signierte Ankündigungen und die Bausteine.">
+<link rel="canonical" href="https://cometcast.de/de/so-funktionierts/">
+<link rel="alternate" hreflang="en" href="https://cometcast.de/how-it-works/">
+<link rel="alternate" hreflang="de" href="https://cometcast.de/de/so-funktionierts/">
+<link rel="alternate" hreflang="x-default" href="https://cometcast.de/how-it-works/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1126" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/fonts.css">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/site.js" defer></script>
+</head>
+<body class="how">
+<a class="skip" href="#main">Zum Inhalt</a>
+<div class="langhint" lang="en" data-target="en" hidden><div class="wrap"><span>This page is also available in English.</span><a href="/how-it-works/" hreflang="en" data-hint-link>Read in English</a><button type="button" aria-label="Close" data-hint-close>×</button></div></div>
+<header class="site-head"><div class="wrap">
+<a class="brand" href="/de/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet-Cast-Logo: ein Komet in Form eines C" width="34" height="34"></picture><span>Comet Cast</span></a>
+<nav class="nav" aria-label="Hauptnavigation">
+<div class="navlinks"><a href="/de/#finder">Was du brauchst</a><a href="/de/download/">Download</a></div>
+<a class="lang" href="/how-it-works/" hreflang="en" lang="en" title="Read in English" aria-label="Read in English">EN</a>
+<a class="btn btn-primary" href="/app/">Web-App öffnen</a>
+</nav>
+</div></header>
+<main id="main"><div class="doc"><div class="wrap narrow">
+<span class="eyebrow">Für IT und Neugierige</span>
+<h1>Wohin deine Daten gehen</h1>
+<p class="lead">Das Bild geht direkt von deinem Gerät zum Bildschirm. Ein kleiner Server hilft nur dabei, dass sich die beiden finden.</p>
+<div class="path">
+<svg viewBox="0 0 900 190" role="img" aria-labelledby="path-t">
+<title id="path-t">Datenweg: Dein Gerät und der Bildschirm reden direkt miteinander; das Relay hilft ihnen nur, sich zu finden.</title>
+<rect x="10" y="60" width="170" height="70" rx="12" class="box"/>
+<text x="95" y="100" text-anchor="middle" font-weight="700">Dein Gerät</text>
+<rect x="720" y="60" width="170" height="70" rx="12" class="box"/>
+<text x="805" y="100" text-anchor="middle" font-weight="700">Der Bildschirm</text>
+<rect x="350" y="4" width="200" height="44" rx="10" class="box"/>
+<text x="450" y="31" text-anchor="middle" font-size="14" font-weight="700">Relay: Code und Verbindungsaufbau</text>
+<path d="M180 82 C 260 30, 290 26, 350 26" class="dash"/>
+<path d="M550 26 C 610 26, 640 30, 720 82" class="dash"/>
+<path d="M180 108 L 720 108" class="direct"/>
+<text x="450" y="98" text-anchor="middle" font-weight="700">Bild, Dateien, Links: direkt (WebRTC, verschlüsselt)</text>
+<text x="450" y="160" text-anchor="middle" class="mut" font-size="14">Ist der direkte Weg gesperrt: der eigene TURN-Server der Organisation. Das öffentliche Relay trägt nie das Bild.</text>
+</svg>
+</div>
+<h2>Was das Relay sieht und speichert</h2>
+<p>Das Relay ist ein kleiner Server. Er bringt ein Gerät und einen Bildschirm über ihren Raumcode zusammen und reicht die Nachrichten weiter, die beide für den Verbindungsaufbau brauchen. Er sieht den Raumcode, den Namen des Bildschirms und deine Netzwerkadresse (um Missbrauch zu bremsen). Räume liegen nur im Arbeitsspeicher, auf der Platte wird nichts gespeichert. Bilder, Dateien und Links laufen nie über das öffentliche Relay.</p>
+<h2>Wenn der direkte Weg gesperrt ist</h2>
+<p>In manchen Netzen dürfen zwei Geräte nicht direkt miteinander reden. Dann kann eine Organisation einen eigenen Server mit TURN-Relay betreiben: Das Bild läuft über diesen Rechner, innerhalb der Organisation, und nicht über das öffentliche Relay. <a href="/de/selbst-hosten/">Selbst hosten</a> erklärt, wie.</p>
+<h2>Bildschirme in der Nähe und signierte Ankündigungen</h2>
+<p>Bildschirme in deinem Netz kündigen sich an, damit die App sie auflisten kann. Jede Ankündigung ist mit einem Schlüssel signiert, der zum Bildschirm gehört. Ein anderes Gerät im Netz kann sich also nicht als er ausgeben, ihn aus deiner Liste werfen oder ändern, was er sagt. Kommt ein Gerät mit einem Namen, den schon ein anderes Gerät benutzt hat, zeigt der Bildschirm einen neutralen Hinweis.</p>
+<h2>Der Verbindungs-Prüfcode</h2>
+<p>Sobald zwei Geräte verbunden sind, zeigen beide denselben kurzen Code. Stimmen die Codes überein, hat sich niemand dazwischengeschoben. Du musst sie nicht vergleichen, kannst es aber.</p>
+<h2>Bausteine</h2>
+<div class="libs"><table>
+<thead><tr><th>Teil</th><th>Aufgebaut auf (Open Source)</th><th>Wohin die Daten gehen</th></tr></thead>
+<tbody>
+<tr><td>Bild und Ton</td><td><code>webrtc-rs</code>, <code>OpenH264</code></td><td><span class="stays">Bleibt in deinem Netz</span></td></tr>
+<tr><td>Sich finden</td><td><code>cometcast-server</code> (<code>axum</code>), <code>ALTCHA</code></td><td><span class="leaves">Raumcode zum Relay, nichts gespeichert</span></td></tr>
+<tr><td>Bildschirme in der Nähe</td><td><code>mdns-sd</code>, <code>ed25519-dalek</code></td><td><span class="stays">Bleibt in deinem Netz, signiert</span></td></tr>
+<tr><td>PDF-Seiten</td><td><code>hayro</code></td><td><span class="stays">Wird auf dem Anzeigegerät geöffnet</span></td></tr>
+<tr><td>iPhone per AirPlay</td><td><code>UxPlay</code></td><td><span class="stays">Bleibt in deinem Netz</span></td></tr>
+<tr><td>Web-App</td><td><code>Vue</code>, <code>qrcode-generator</code></td><td><span class="stays">Läuft in deinem Browser</span></td></tr>
+</tbody></table></div>
+<h2>Mehr Details</h2>
+<p>Architektur: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/architecture.md">docs/architecture.md</a>. Protokoll: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/protocol.md">docs/protocol.md</a>. Der gesamte Quellcode: <a href="https://github.com/wi-wissen/CometCast">github.com/wi-wissen/CometCast</a>. Diese Dokumente sind auf Englisch.</p>
+</div></div>
+</main>
+<footer class="foot"><div class="wrap">
+<div class="cols">
+<div class="col"><p class="coltitle">Produkt</p><ul><li><a href="/app/">Web-App</a></li><li><a href="/de/download/">Download</a></li><li><a href="/de/#finder">Was du brauchst</a></li></ul></div>
+<div class="col"><p class="coltitle">Vertrauen</p><ul><li><a href="/de/datenschutz/">Datenschutz</a></li><li><a href="/de/selbst-hosten/">Selbst hosten</a></li><li><a href="/de/open-source/">Open Source</a></li><li><a href="/de/so-funktionierts/">Wie es technisch funktioniert</a></li></ul></div>
+<div class="col"><p class="coltitle">Projekt</p><ul><li><a href="/de/kontakt/">Kontakt</a></li><li><a href="/de/impressum/">Impressum</a></li><li><a href="https://github.com/wi-wissen/CometCast">GitHub</a></li></ul></div>
+</div>
+<p class="fine">Freie Software · keine Cookies · nichts von Dritten geladen</p>
+</div></footer>
+</body>
+</html>

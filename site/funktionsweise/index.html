@@ -3,45 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Funktionsweise: Raumcode und Verbindungswege</title>
-<meta name="description" content="Wie Comet Cast Geräte verbindet: Raumcode, direkte Verbindung, Server mit TURN oder das eigene WLAN des Empfängers.">
-<link rel="canonical" href="https://cometcast.de/funktionsweise/">
-<link rel="alternate" hreflang="de" href="https://cometcast.de/funktionsweise/">
-<link rel="alternate" hreflang="en" href="https://cometcast.de/en/how-it-works/">
-<link rel="alternate" hreflang="x-default" href="https://cometcast.de/funktionsweise/">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#eceef2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<title>Diese Seite ist umgezogen</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://cometcast.de/de/so-funktionierts/">
+<meta http-equiv="refresh" content="0; url=https://cometcast.de/de/so-funktionierts/">
+<link rel="stylesheet" href="/assets/fonts.css">
 <link rel="stylesheet" href="/assets/style.css">
 </head>
-<body>
-<a class="skip" href="#main">Zum Inhalt</a>
-<header class="site"><div class="wrap">
-<a class="brand" href="/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast Logo: ein Komet in Form eines C" width="36" height="36"></picture><span>Comet Cast</span></a>
-<nav class="main" aria-label="Hauptnavigation"><a href="/">Start</a><a href="/funktionsweise/" aria-current="page">Funktionsweise</a><a href="/downloads/">Downloads</a><a href="/datenschutz/">Datenschutz & Selbst hosten</a><a href="/open-source/">Open Source</a><a href="/kontakt/">Kontakt</a></nav>
-<div class="lang"><a href="/en/how-it-works/" hreflang="en" lang="en" title="Switch to English">English</a></div>
-</div></header>
-<main id="main"><div class="wrap">
-<h1>Funktionsweise</h1>
-<p class="lead">Geräte finden sich über einen Raumcode. Danach versucht Comet Cast die Verbindungswege der Reihe nach.</p>
-<h2>1. Raumcode</h2>
-<p>Der Empfänger erzeugt einen Raumcode, auch als QR-Code. Der Sender gibt ihn ein. Der Code ist kurz; der Server bremst Raten durch Limits und zeitweise Sperren.</p>
-<h2>2. Verbindungswege, in dieser Reihenfolge</h2>
-<ol class="steps">
-<li><strong>Direkt.</strong> WebRTC zwischen den beiden Geräten.</li>
-<li><strong>Über einen Server.</strong> Wenn direkt nicht geht: der Server einer Organisation mit TURN-Relay (und optional einem SFU).</li>
-<li><strong>Eigenes WLAN.</strong> Wenn auch das nicht geht: das WLAN des Empfängers.</li>
-</ol>
-<div class="note"><p>Die Reihenfolge ist der Plan. Gemessen ist bisher nur wenig: Verbindungen im lokalen Netz und ein TURN-Test auf einem einzigen Rechner. Über echte Netze, NAT oder zwischen zwei Geräten über TURN ist noch nicht getestet, ob und wie gut es funktioniert.</p></div>
-<h2>Wie die App den Server findet</h2>
-<ol class="steps"><li>MDM-Richtlinie</li><li>DNS-SRV-Eintrag <code>_cometcast._tcp</code></li><li>Ankündigung des Anzeigegeräts</li><li>Eingebaute Standardliste</li></ol>
-<p>Parallel läuft mDNS für die lokale Suche. Die Server-Suche in den Apps ist zum Teil noch nicht gebaut.</p>
-<h2>Was der Server tut</h2>
-<p>Der Server vermittelt nur: Räume und Signalisierung. Der offene Server speichert und leitet keine Bilder, Dateien oder Medien weiter. Der Bildschirm läuft direkt zwischen den Geräten oder, wenn nötig, über TURN. Mehr dazu auf der Seite <a href="/datenschutz/">Datenschutz &amp; Selbst hosten</a>.</p>
-<h2>Technische Details</h2>
-<p>Architektur: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/architecture.md">docs/architecture.md</a>, Protokoll: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/protocol.md">docs/protocol.md</a>, offene Annahmen: <a href="https://github.com/wi-wissen/CometCast/blob/main/docs/measurement-points.md">docs/measurement-points.md</a> (englisch).</p>
-</div></main>
-<footer class="site"><div class="wrap"><span>Comet Cast ist freie Software (GPL-3.0-or-later). Diese Seite setzt keine Cookies und lädt nichts von Dritten.</span><a href="/impressum/">Impressum</a><a href="https://github.com/wi-wissen/CometCast">GitHub</a></div></footer>
+<body class="redirect">
+<main id="main"><div class="wrap narrow doc"><p class="lead">Diese Seite ist umgezogen nach <a href="/de/so-funktionierts/">cometcast.de/de/so-funktionierts/</a></p></div></main>
 </body>
 </html>

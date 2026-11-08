@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Generates the static pages in site/ (German at /, English at /en/) from the text below.
-// Run: node tools/build-site.mjs   (no dependencies). The generated HTML is committed.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Generates the static website in site/ (English at /, German at /de/) from the texts in tools/site/text.*.mjs,
+// site-content/*.md (legal pages and self-hosting), the finder matrix (tools/site/finder.mjs) and the branding file.
+// Run: node tools/build-site.mjs   (Node 22; the fonts need `npm ci --prefix tools/site`). The generated files are committed.
+//   COMETCAST_BRANDING=...     branding file (branding/README.md), default branding/default.json
+//   COMETCAST_PUBLIC_BUILD=1   fail while required imprint fields are empty (the guard "fill the imprint before enabling Pages")
+//   --out DIR                  write there instead of site/ (used by the tests)
+//   --offline | COMETCAST_OFFLINE=1   do not ask GitHub for the latest release (the download page then says "coming soon")
+// site/assets/style.css and site/assets/site.js are written by hand; the build adds assets/fonts*, the pages and the plumbing.
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IMPRINT_REQUIRED, REPO_ROOT, loadBranding, missingImprint } from './branding.mjs';
+import { LANGS, ORIGIN, PAGES, REDIRECTS, APK_PATH, SLUG, pageUrl, otherLang } from './site/pages.mjs';
+import textEn from './site/text.en.mjs';
+import textDe from './site/text.de.mjs';
+import { renderFinder, ICON } from './site/finder.mjs';
+import { bundleFonts, fontsInstalled } from './site/fonts.mjs';
 
-// Publisher identity and imprint data come from the branding file (COMETCAST_BRANDING, default branding/default.json;
-// branding/README.md); the text of the privacy and imprint pages is in site-content/*.md.
-//   COMETCAST_PUBLIC_BUILD=1   fail while required imprint fields are empty (the guard "fill the imprint before enabling Pages")
-//   --out DIR                  write there instead of site/ (used by the tests)
 const oi = process.argv.indexOf('--out');
 const root = oi >= 0 ? resolve(process.argv[oi + 1]) : join(REPO_ROOT, 'site');
+const OFFLINE = process.argv.includes('--offline') || process.env.COMETCAST_OFFLINE === '1';
 const { file: brandingFile, branding } = loadBranding();
 const PUBLIC_BUILD = process.env.COMETCAST_PUBLIC_BUILD === '1';
 const missing = missingImprint(branding);
@@ -24,253 +32,91 @@ if (PUBLIC_BUILD && missing.length) {
 const incomplete = missing.length > 0;
 // The imprint page exists when the branding names a publisher or any imprint detail; the default has neither.
 const hasImprint = Boolean(branding.publisher_name) || Object.values(branding.imprint).some(Boolean);
-const ORIGIN = 'https://cometcast.de';
 const GH = branding.source_url.replace(/\/$/, '');
 const RELAY = 'https://github.com/wi-wissen/CometCast-Relay';
 const pub = branding.publisher_name;
+// The site's own domain as the display shows it (no port): the host of the legal pages in the branding file, else cometcast.de.
+const DOMAIN = (() => {
+  for (const u of [branding.privacy_url.en, branding.imprint_url.en, branding.privacy_url.de, branding.publisher_url]) {
+    if (u) return new URL(u).hostname;
+  }
+  return new URL(ORIGIN).hostname;
+})();
 const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const todo = (s) => `<span class="todo">TODO: ${s}</span>`;
+const pages = PAGES.filter((p) => p !== 'imprint' || hasImprint);
+const url = pageUrl;
 
-// slug per page and language ('' = start page)
-const pages = ['start', 'how', 'downloads', 'privacy', 'open', 'contact', ...(hasImprint ? ['imprint'] : [])];
-const slug = {
-  de: { start: '', how: 'funktionsweise/', downloads: 'downloads/', privacy: 'datenschutz/', open: 'open-source/', contact: 'kontakt/', imprint: 'impressum/' },
-  en: { start: '', how: 'how-it-works/', downloads: 'downloads/', privacy: 'privacy/', open: 'open-source/', contact: 'contact/', imprint: 'imprint/' },
-};
-const url = (lang, p) => (lang === 'de' ? '/' : '/en/') + slug[lang][p];
+// Where the apps are offered. An empty string means "not published yet": the download page then says "coming soon".
+const STORES = { appStore: '', googlePlay: '', appleTv: '', googleTv: '' };
 
-const ui = {
-  de: {
-    nav: { start: 'Start', how: 'Funktionsweise', downloads: 'Downloads', privacy: 'Datenschutz & Selbst hosten', open: 'Open Source', contact: 'Kontakt' },
-    imprint: 'Impressum', skip: 'Zum Inhalt', other: 'English', otherLabel: 'Switch to English',
-    foot: 'Comet Cast ist freie Software (GPL-3.0-or-later). Diese Seite setzt keine Cookies und lädt nichts von Dritten.',
-    logoAlt: 'Comet Cast Logo: ein Komet in Form eines C',
-  },
-  en: {
-    nav: { start: 'Home', how: 'How it works', downloads: 'Downloads', privacy: 'Privacy & self-hosting', open: 'Open source', contact: 'Contact' },
-    imprint: 'Imprint', skip: 'Skip to content', other: 'Deutsch', otherLabel: 'Auf Deutsch wechseln',
-    foot: 'Comet Cast is free software (GPL-3.0-or-later). This site sets no cookies and loads nothing from third parties.',
-    logoAlt: 'Comet Cast logo: a comet shaped like a C',
-  },
-};
+// ---- texts and the check that both languages have the same keys and the same HTML structure ------------------------
+const ctx = { GH, DOMAIN, pub };
+const T = { en: textEn(ctx), de: textDe(ctx) };
+const dummy = { pub: 'X', contactHtml: '<b>x</b>' };
+function flatten(v, path = '', out = new Map()) {
+  if (typeof v === 'function') return flatten(v(dummy), path, out);
+  if (typeof v === 'string') {
+    if (!v.trim()) out.set(path, 'EMPTY');
+    else out.set(path, [...v.matchAll(/<(\/?[a-z][a-z0-9]*)/gi)].map((m) => m[1].toLowerCase()).join(' '));
+  } else if (Array.isArray(v)) v.forEach((x, i) => flatten(x, `${path}[${i}]`, out));
+  else if (v && typeof v === 'object') for (const k of Object.keys(v)) flatten(v[k], path ? `${path}.${k}` : k, out);
+  else out.set(path, String(v));
+  return out;
+}
+{
+  const a = flatten(T.en), b = flatten(T.de);
+  const problems = [];
+  for (const k of new Set([...a.keys(), ...b.keys()])) {
+    if (!a.has(k)) problems.push(`text.en.mjs lacks "${k}"`);
+    else if (!b.has(k)) problems.push(`text.de.mjs lacks "${k}"`);
+    else if (a.get(k) === 'EMPTY' || b.get(k) === 'EMPTY') problems.push(`"${k}" is empty`);
+    else if (a.get(k) !== b.get(k)) problems.push(`"${k}" has different HTML in en and de (${a.get(k).slice(0, 60)} | ${b.get(k).slice(0, 60)})`);
+  }
+  if (problems.length) {
+    console.error(`build-site: the two languages are out of step:\n  ${problems.join('\n  ')}`);
+    process.exit(1);
+  }
+}
 
-const content = {};
 
-content.start = {
-  de: {
-    title: 'Comet Cast: eine App zum Senden und Empfangen',
-    desc: 'Comet Cast schickt Bildschirm, Dokumente, Links und Medien auf Apple TV, Google TV, Mini-PCs und Browser. Eine App ist Sender und Empfänger.',
-    body: `
-<div class="hero"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="" width="112" height="112"></picture><div>
-<h1>Eine App. Sender und Empfänger.</h1>
-<p class="lead">Comet Cast schickt Bildschirm, Dokumente, Links und Medien an Apple TV, Google TV / Android TV, Mini-PCs und Browser. Gedacht für Büros, Besprechungen, Vereine, Workshops und Schulen, in denen viele verschiedene Geräte in einem Raum zusammenkommen.</p>
-<div class="btns"><a class="btn primary" href="/app/">Web-App öffnen</a><a class="btn" href="/downloads/">Downloads &amp; Status</a><a class="btn" href="/funktionsweise/">Wie es funktioniert</a></div>
-<p><small>Die Web-App liegt unter <code>/app/</code>. Sie braucht einen Relay-Server; der Stand steht unter <a href="/downloads/">Downloads</a>.</small></p>
-</div></div>
-<div class="note"><p><strong>Stand: Beta 0.1, in Entwicklung.</strong> Vieles funktioniert bisher nur auf einem Rechner oder in einem lokalen Netz. Was geprüft ist und was nicht, steht ehrlich auf der Seite <a href="/downloads/">Downloads</a>.</p></div>
-<h2>Was Comet Cast ist</h2>
-<div class="cards">
-<div class="card"><h3>Eine App für beide Seiten</h3><p>Dieselbe App sendet und empfängt. Die Idee ähnelt LocalSend, aber zum Präsentieren auf einem Bildschirm.</p></div>
-<div class="card"><h3>So wenige Installationen wie möglich</h3><p>Die Seite mit den weniger Geräten bekommt die App. Die andere Seite nimmt einen Browser oder eine Funktion, die das Gerät schon hat.</p></div>
-<div class="card"><h3>Viele Inhalte</h3><p>Bildschirm, PDF-Dokumente, Bilder, Links und Medien. Auf dem Empfänger gibt es eine Werkzeugleiste (Stift, Marker, Laserpointer, Standbild, Schwarzbild).</p></div>
-</div>
-<h2>Wohin man senden kann</h2>
-<ul><li>Browser (Sender und Empfänger, ohne Installation)</li><li>Mini-PCs und Desktops (Linux, Windows, macOS)</li><li>Android TV / Google TV</li><li>Apple TV (nativer Empfänger)</li></ul>
-<p>Nicht alles davon läuft schon. Der Status je Plattform steht in der <a href="/downloads/#status">Tabelle</a>.</p>
-<h2>Verbindung per Raumcode</h2>
-<p>Der Empfänger zeigt einen Raumcode (oder QR-Code), der Sender gibt ihn ein. Danach wird direkt verbunden, wenn das Netz es zulässt. <a href="/funktionsweise/">Mehr dazu</a>.</p>`,
-  },
-  en: {
-    title: 'Comet Cast: one app to send and receive',
-    desc: 'Comet Cast sends your screen, documents, links and media to Apple TV, Google TV, mini PCs and browsers. One app is sender and receiver.',
-    body: `
-<div class="hero"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="" width="112" height="112"></picture><div>
-<h1>One app. Sender and receiver.</h1>
-<p class="lead">Comet Cast sends your screen, documents, links and media to Apple TV, Google TV / Android TV, mini PCs and browsers. It is meant for offices, meetings, clubs, workshops and schools, where many different devices meet in one room.</p>
-<div class="btns"><a class="btn primary" href="/app/">Open web app</a><a class="btn" href="/en/downloads/">Downloads &amp; status</a><a class="btn" href="/en/how-it-works/">How it works</a></div>
-<p><small>The web app is at <code>/app/</code>. It needs a relay server; the current status is on <a href="/en/downloads/">Downloads</a>.</small></p>
-</div></div>
-<div class="note"><p><strong>Status: v0.1 beta, in development.</strong> Much of it has only been tried on one machine or one local network. The page <a href="/en/downloads/">Downloads</a> says honestly what is checked and what is not.</p></div>
-<h2>What Comet Cast is</h2>
-<div class="cards">
-<div class="card"><h3>One app for both sides</h3><p>The same app sends and receives. The idea is similar to LocalSend, but for presenting on a display.</p></div>
-<div class="card"><h3>As few installs as possible</h3><p>The side with fewer devices gets the app. The other side uses a browser or a system feature it already has.</p></div>
-<div class="card"><h3>Many kinds of content</h3><p>Screen, PDF documents, images, links and media. The receiver has a toolbar (pen, marker, laser, freeze, black screen).</p></div>
-</div>
-<h2>Where you can send to</h2>
-<ul><li>Browsers (sender and receiver, no install)</li><li>Mini PCs and desktops (Linux, Windows, macOS)</li><li>Android TV / Google TV</li><li>Apple TV (native receiver)</li></ul>
-<p>Not all of this runs yet. The status per platform is in the <a href="/en/downloads/#status">table</a>.</p>
-<h2>Connecting with a room code</h2>
-<p>The receiver shows a room code (or QR code) and the sender enters it. Then the devices connect directly if the network allows it. <a href="/en/how-it-works/">More</a>.</p>`,
-  },
-};
+// ---- the latest GitHub release (download page) ------------------------------------------------------------------
+// The build asks GitHub once; the visitor's browser loads nothing from GitHub until they click a download.
+async function latestRelease() {
+  if (OFFLINE) return null;
+  const m = /^https:\/\/github\.com\/([^/]+\/[^/]+)/.exec(GH);
+  if (!m) return null;
+  const headers = { accept: 'application/vnd.github+json', 'user-agent': 'cometcast-site-build' };
+  if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${m[1]}/releases/latest`, { headers, signal: AbortSignal.timeout(10000) });
+    if (r.status === 404) return null; // no published release yet
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    console.warn(`build-site: could not read the latest release (${e.message}); the download page says "coming soon"`);
+    return null;
+  }
+}
+/** Release assets by platform; names as made by .github/workflows/release.yml. Unsigned/unverified/debug-key files are left out. */
+function platformAssets(release) {
+  const out = { windows: [], macos: [], linux: [], android: [] };
+  if (!release) return out;
+  const files = (release.assets ?? [])
+    .filter((a) => a.browser_download_url?.startsWith('https://') && !/debugkey|unverified|unsigned/i.test(a.name))
+    .map((a) => ({ name: a.name, url: a.browser_download_url }));
+  const pick = (re, label) => files.filter((f) => re.test(f.name)).map((f) => ({ ...f, label }));
+  out.windows = [...pick(/^cometcast-windows-.*\.msi$/i, '.msi'), ...pick(/^cometcast-windows-.*\.exe$/i, '.exe'), ...pick(/^cometcast-windows-.*\.zip$/i, '.zip')].slice(0, 1);
+  out.macos = [...pick(/^cometcast-macos-.*\.dmg$/i, '.dmg'), ...pick(/^cometcast-macos-.*\.zip$/i, '.zip')].slice(0, 1);
+  out.linux = [...pick(/\.deb$/i, '.deb'), ...pick(/^cometcast-linux-.*\.(tar\.gz)$/i, '.tar.gz'), ...pick(/\.AppImage$/i, '.AppImage')];
+  out.android = pick(/^cometcast-android-.*\.apk$/i, '.apk').slice(0, 1);
+  return out;
+}
+const release = await latestRelease();
+const assets = platformAssets(release);
+const releaseVersion = release?.tag_name ? String(release.tag_name).replace(/^v/, '') : '';
 
-content.how = {
-  de: {
-    title: 'Funktionsweise: Raumcode und Verbindungswege',
-    desc: 'Wie Comet Cast Geräte verbindet: Raumcode, direkte Verbindung, Server mit TURN oder das eigene WLAN des Empfängers.',
-    body: `
-<h1>Funktionsweise</h1>
-<p class="lead">Geräte finden sich über einen Raumcode. Danach versucht Comet Cast die Verbindungswege der Reihe nach.</p>
-<h2>1. Raumcode</h2>
-<p>Der Empfänger erzeugt einen Raumcode, auch als QR-Code. Der Sender gibt ihn ein. Der Code ist kurz; der Server bremst Raten durch Limits und zeitweise Sperren.</p>
-<h2>2. Verbindungswege, in dieser Reihenfolge</h2>
-<ol class="steps">
-<li><strong>Direkt.</strong> WebRTC zwischen den beiden Geräten.</li>
-<li><strong>Über einen Server.</strong> Wenn direkt nicht geht: der Server einer Organisation mit TURN-Relay (und optional einem SFU).</li>
-<li><strong>Eigenes WLAN.</strong> Wenn auch das nicht geht: das WLAN des Empfängers.</li>
-</ol>
-<div class="note"><p>Die Reihenfolge ist der Plan. Gemessen ist bisher nur wenig: Verbindungen im lokalen Netz und ein TURN-Test auf einem einzigen Rechner. Über echte Netze, NAT oder zwischen zwei Geräten über TURN ist noch nicht getestet, ob und wie gut es funktioniert.</p></div>
-<h2>Wie die App den Server findet</h2>
-<ol class="steps"><li>MDM-Richtlinie</li><li>DNS-SRV-Eintrag <code>_cometcast._tcp</code></li><li>Ankündigung des Anzeigegeräts</li><li>Eingebaute Standardliste</li></ol>
-<p>Parallel läuft mDNS für die lokale Suche. Die Server-Suche in den Apps ist zum Teil noch nicht gebaut.</p>
-<h2>Was der Server tut</h2>
-<p>Der Server vermittelt nur: Räume und Signalisierung. Der offene Server speichert und leitet keine Bilder, Dateien oder Medien weiter. Der Bildschirm läuft direkt zwischen den Geräten oder, wenn nötig, über TURN. Mehr dazu auf der Seite <a href="/datenschutz/">Datenschutz &amp; Selbst hosten</a>.</p>
-<h2>Technische Details</h2>
-<p>Architektur: <a href="${GH}/blob/main/docs/architecture.md">docs/architecture.md</a>, Protokoll: <a href="${GH}/blob/main/docs/protocol.md">docs/protocol.md</a>, offene Annahmen: <a href="${GH}/blob/main/docs/measurement-points.md">docs/measurement-points.md</a> (englisch).</p>`,
-  },
-  en: {
-    title: 'How it works: room code and connection routes',
-    desc: 'How Comet Cast connects devices: room code, direct connection, a server with TURN, or the receiver\'s own Wi-Fi.',
-    body: `
-<h1>How it works</h1>
-<p class="lead">Devices find each other with a room code. Then Comet Cast tries the connection routes in order.</p>
-<h2>1. Room code</h2>
-<p>The receiver creates a room code, also shown as a QR code. The sender enters it. The code is short; the server slows guessing with limits and temporary bans.</p>
-<h2>2. Connection routes, in this order</h2>
-<ol class="steps">
-<li><strong>Direct.</strong> WebRTC between the two devices.</li>
-<li><strong>Through a server.</strong> If direct fails: an organisation's server with a TURN relay (and optionally an SFU).</li>
-<li><strong>Own Wi-Fi.</strong> If that fails too: the receiver's own Wi-Fi.</li>
-</ol>
-<div class="note"><p>The order is the plan. Little is measured so far: connections on a local network and a TURN test on a single machine. Across real networks, through NAT, or between two devices over TURN it has not been tested yet whether and how well it works.</p></div>
-<h2>How the app finds the server</h2>
-<ol class="steps"><li>MDM policy</li><li>DNS-SRV record <code>_cometcast._tcp</code></li><li>Announcement from the display device</li><li>Built-in default list</li></ol>
-<p>mDNS runs in parallel for local discovery. Parts of the server discovery in the apps are not built yet.</p>
-<h2>What the server does</h2>
-<p>The server only mediates: rooms and signalling. The open server stores and relays no images, files or media. The screen travels directly between the devices or, if needed, through TURN. More on <a href="/en/privacy/">Privacy &amp; self-hosting</a>.</p>
-<h2>Technical details</h2>
-<p>Architecture: <a href="${GH}/blob/main/docs/architecture.md">docs/architecture.md</a>, protocol: <a href="${GH}/blob/main/docs/protocol.md">docs/protocol.md</a>, open assumptions: <a href="${GH}/blob/main/docs/measurement-points.md">docs/measurement-points.md</a>.</p>`,
-  },
-};
-
-// Status rows taken from docs/architecture.md and README.md (state of 2026-11-07).
-const rows = [
-  ['ok', 'Browser: Sender und Empfänger (Bildschirm über WebRTC, Raumcode, Werkzeugleiste, Bilder, Links, PDF)', 'Browser: sender and receiver (screen over WebRTC, room code, toolbar, images, links, PDF)', 'Funktioniert, aber nur auf einem Rechner / im lokalen Netz geprüft (PDF und Medienlinks nur mit Chromium auf Linux). Bildschirmfreigabe braucht HTTPS und einen Desktop-Browser; Mobil ist ungeprüft.', 'Works, but checked only on one machine / a local network (PDF and media links only with Chromium on Linux). Screen sharing needs HTTPS and a desktop browser; mobile is unchecked.'],
-  ['part', 'Signalisierungsserver (<code>cometcast-server</code>)', 'Signalling server (<code>cometcast-server</code>)', 'Gebaut und getestet. Erster echter Lauf auf einer Linux-Maschine: Docker-Image, Compose, WSS, coturn mit TURN-Zugangsdaten. Nicht geprüft: zwei echte Geräte, NAT, TURN über TLS, IPv6, echtes Zertifikat, Last, arm64.', 'Built and tested. First real run on one Linux machine: Docker image, Compose, WSS, coturn with TURN credentials. Not verified: two real devices, NAT, TURN over TLS, IPv6, a real certificate, load, arm64.'],
-  ['no', 'Öffentlicher Relay-Server <code>relay.cometcast.de</code>', 'Public relay server <code>relay.cometcast.de</code>', 'Existiert noch nicht.', 'Does not exist yet.'],
-  ['part', 'Native Rust-Peers und Kommandozeile (<code>cometcast-cli</code>)', 'Native Rust peers and command line tool (<code>cometcast-cli</code>)', 'Reden mit der Browser-App; Entwicklerwerkzeug. Linux-Bildschirmaufnahme (X11) mit H.264 vorhanden; Wayland, Windows, macOS nicht.', 'Talk to the browser app; a developer tool. X11 screen capture with H.264 exists on Linux; Wayland, Windows and macOS do not.'],
-  ['part', 'Flutter-Desktop-App (Linux)', 'Flutter desktop app (Linux)', 'Nutzt den Rust-Kern, hat die Werkzeugleiste des Web-Empfängers. Nur Linux getestet. Bildschirmaufnahme und Videoanzeige in den nativen Apps sind noch nicht fertig.', 'Uses the Rust core and has the web receiver\'s toolbar. Only Linux tested. Screen capture and video display in the native apps are not finished.'],
-  ['no', 'Windows und macOS App', 'Windows and macOS app', 'Nicht getestet. Aufnahme dort nicht gebaut.', 'Untested. Capture not built there.'],
-  ['part', 'AirPlay empfangen (über UxPlay)', 'AirPlay receiving (through UxPlay)', 'Der Steuerprozess läuft mit dem echten UxPlay unter Linux. Kein Test mit iPhone oder iPad; keine App-Integration; Windows fehlt.', 'The supervisor runs with the real UxPlay on Linux. No test with an iPhone or iPad; not integrated in the app; Windows missing.'],
-  ['no', 'Android und Android TV / Google TV', 'Android and Android TV / Google TV', 'Eine Debug-APK baut. Auf keinem Gerät ausgeführt.', 'A debug APK builds. Nothing ran on a device.'],
-  ['no', 'Apple TV (Empfänger)', 'Apple TV (receiver)', 'Der Quellcode liegt im Repository, funktioniert aber noch nicht.', 'The source is in the repository, but it does not work yet.'],
-  ['no', 'Miracast empfangen (Windows 11)', 'Miracast receiving (Windows 11)', 'Nur kompiliert, nie auf Windows ausgeführt.', 'Compile-checked only, never run on Windows.'],
-  ['no', 'Google Cast als Sender', 'Google Cast sender', 'Nur gegen einen eigenen Test-Empfänger auf demselben Rechner geprüft, nie gegen einen echten Chromecast.', 'Tested only against our own fake receiver on one machine, never against a real Chromecast.'],
-  ['part', 'AirPlay als Sender (ohne FairPlay)', 'AirPlay sender (without FairPlay)', 'Suche und Kopplung gegen UxPlay geprüft; alles andere nur gegen eigenen Test. Nichts auf einem Apple TV. Echte Bildschirmspiegelung ist wegen FairPlay bewusst nicht gebaut.', 'Discovery and pairing checked against UxPlay; everything else only against our own fake. Nothing on an Apple TV. Real mirroring is deliberately not built (FairPlay).'],
-  ['no', 'iOS-Broadcast-Erweiterung', 'iOS broadcast extension', 'Nicht begonnen.', 'Not started.'],
-  ['no', 'STUN/TURN über echte Netze', 'STUN/TURN across real networks', 'Nicht geprüft.', 'Not verified.'],
-];
-const stLabel = { de: { ok: 'läuft (eingeschränkt)', part: 'teilweise', no: 'läuft noch nicht' }, en: { ok: 'works (limited)', part: 'partly', no: 'not working yet' } };
-const statusTable = (lang) => {
-  const i = lang === 'de' ? 0 : 1;
-  const h = lang === 'de' ? ['Bereich', 'Status', 'Was geprüft ist'] : ['Area', 'Status', 'What is checked'];
-  return `<div class="tablewrap"><table><thead><tr><th>${h[0]}</th><th>${h[1]}</th><th>${h[2]}</th></tr></thead><tbody>${rows
-    .map((r) => `<tr><td>${r[1 + i]}</td><td class="st ${r[0]}">${stLabel[lang][r[0]]}</td><td>${r[3 + i]}</td></tr>`)
-    .join('')}</tbody></table></div>`;
-};
-
-content.downloads = {
-  de: {
-    title: 'Downloads und Status',
-    desc: 'Downloads von Comet Cast über GitHub Releases und eine ehrliche Statustabelle: was funktioniert und was ungeprüft ist.',
-    body: `
-<h1>Downloads und Status</h1>
-<p class="lead">Comet Cast ist eine Beta (0.1). Diese Seite sagt, was funktioniert und was nicht.</p>
-<h2>Downloads</h2>
-<div class="btns"><a class="btn primary" href="${GH}/releases/latest">Neueste Version auf GitHub Releases</a><a class="btn" href="/app/">Web-App öffnen</a></div>
-<div class="note"><p>Zum Zeitpunkt dieser Seite (2026-11-07) ist auf GitHub <strong>noch keine Version veröffentlicht</strong>. Der Link führt dann zu einer leeren oder fehlenden Seite. Dateien gibt es erst, wenn eine Version dort erscheint. Wer jetzt testen will, baut aus dem Quellcode (siehe <a href="${GH}#build-and-run">README</a>).</p>
-<p>Die Web-App liegt unter <code>/app/</code>. Sie besteht aus statischen Dateien und wird von dieser Seite ausgeliefert; sie spricht per <code>wss</code> mit einem Relay-Server. Die Anbindung an <code>relay.cometcast.de</code> ist noch nicht fertig, und dieser Server existiert noch nicht.</p></div>
-<h2 id="status">Statustabelle (Stand 2026-11-07)</h2>
-<p>Quelle: <a href="${GH}/blob/main/docs/architecture.md#milestones">docs/architecture.md</a> und README. Nichts darüber hinaus ist behauptet. Was nicht in der Tabelle steht, ist ein Plan.</p>
-${statusTable('de')}
-<p>Die vollständige Liste ungeprüfter Annahmen: <a href="${GH}/blob/main/docs/measurement-points.md">docs/measurement-points.md</a> (englisch).</p>`,
-  },
-  en: {
-    title: 'Downloads and status',
-    desc: 'Download Comet Cast through GitHub Releases, with an honest status table of what works and what is untested.',
-    body: `
-<h1>Downloads and status</h1>
-<p class="lead">Comet Cast is a beta (0.1). This page says what works and what does not.</p>
-<h2>Downloads</h2>
-<div class="btns"><a class="btn primary" href="${GH}/releases/latest">Latest release on GitHub Releases</a><a class="btn" href="/app/">Open web app</a></div>
-<div class="note"><p>When this page was written (2026-11-07) <strong>no release is published</strong> on GitHub yet. The link then leads to an empty or missing page. There are files only once a release appears there. To try it now, build from source (see the <a href="${GH}#build-and-run">README</a>).</p>
-<p>The web app is at <code>/app/</code>. It consists of static files and is served by this site; it talks to a relay server over <code>wss</code>. The connection to <code>relay.cometcast.de</code> is not finished, and that server does not exist yet.</p></div>
-<h2 id="status">Status table (as of 2026-11-07)</h2>
-<p>Source: <a href="${GH}/blob/main/docs/architecture.md#milestones">docs/architecture.md</a> and the README. Nothing beyond that is claimed. What is not in the table is a plan.</p>
-${statusTable('en')}
-<p>The complete list of unverified assumptions: <a href="${GH}/blob/main/docs/measurement-points.md">docs/measurement-points.md</a>.</p>`,
-  },
-};
-
-content.open = {
-  de: {
-    title: 'Open Source und Lizenz',
-    desc: 'Comet Cast steht unter GPL-3.0-or-later. Beiträge laufen über eine CLA.',
-    body: `
-<h1>Open Source</h1>
-<p class="lead">Comet Cast ist freie Software unter <strong>GPL-3.0-or-later</strong>. Quellcode: <a href="${GH}">github.com/wi-wissen/CometCast</a>.</p>
-<h2>Lizenz</h2>
-<p>Text der Lizenz: <a href="${GH}/blob/main/LICENSE">LICENSE</a>. Komponenten Dritter: <a href="${GH}/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.</p>
-<p>Die GPL deckt den Code. Sie gibt für sich keine Rechte am Namen „Comet Cast“ oder am Logo. Eine Namens- und Logo-Richtlinie gibt es noch nicht. Das ist ein Überblick, keine Rechtsberatung.</p>
-<h2>Mitmachen und CLA</h2>
-<p>Beiträge Dritter werden unter der <a href="${GH}/blob/main/CLA.md">CLA</a> angenommen. Sie erlaubt der Betreuerin${pub ? `, der ${pub},` : ''} die Apps in App-Stores zu verteilen; die öffentliche Version bleibt GPL-3.0-or-later. Der CLA-Text ist ein Entwurf und braucht noch eine juristische Prüfung. Siehe <a href="${GH}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> und den <a href="${GH}/blob/main/CODE_OF_CONDUCT.md">Verhaltenskodex</a>.</p>
-<h2>Was wir bewusst nicht tun</h2>
-<ul><li>Keine Schlüssel oder Zertifikate extrahieren, kein FairPlay-, AirServer- oder AirParrot-Material</li><li>Keine DRM-Umgehung</li><li>Kein Cast-Empfang in Version 1, kein AirDrop, kein DLNA/UPnP, kein Miracast-Sender</li></ul>`,
-  },
-  en: {
-    title: 'Open source and licence',
-    desc: 'Comet Cast is licensed under GPL-3.0-or-later. Contributions go through a CLA.',
-    body: `
-<h1>Open source</h1>
-<p class="lead">Comet Cast is free software under <strong>GPL-3.0-or-later</strong>. Source: <a href="${GH}">github.com/wi-wissen/CometCast</a>.</p>
-<h2>Licence</h2>
-<p>Licence text: <a href="${GH}/blob/main/LICENSE">LICENSE</a>. Third-party components: <a href="${GH}/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.</p>
-<p>The GPL covers the code. It does not by itself grant rights to the name "Comet Cast" or the logo. A naming and logo policy is not written yet. This is an overview, not legal advice.</p>
-<h2>Contributing and the CLA</h2>
-<p>Contributions from third parties are accepted under the <a href="${GH}/blob/main/CLA.md">CLA</a>. It allows the steward${pub ? `, ${pub},` : ''} to distribute the apps in app stores; the public version stays GPL-3.0-or-later. The CLA text is a draft that still needs a lawyer's review. See <a href="${GH}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> and the <a href="${GH}/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>.</p>
-<h2>What we deliberately do not do</h2>
-<ul><li>No extraction of keys or certificates, no FairPlay, AirServer or AirParrot material</li><li>No DRM circumvention</li><li>No Cast receiving in v1, no AirDrop, no DLNA/UPnP, no Miracast sender</li></ul>`,
-  },
-};
-
-content.contact = {
-  de: {
-    title: 'Kontakt und Sicherheit',
-    desc: 'Fehler melden, Sicherheitslücken privat melden, mitmachen.',
-    body: `
-<h1>Kontakt und Sicherheit</h1>
-<h2>Fehler und Ideen</h2>
-<p>Bitte als Issue auf GitHub: <a href="${GH}/issues">github.com/wi-wissen/CometCast/issues</a>.</p>
-<h2>Sicherheitslücken</h2>
-<p>Bitte <strong>kein</strong> öffentliches Issue. Nutze die private Meldung von GitHub: im Repository den Reiter <em>Security</em> und dann <em>Report a vulnerability</em>. Wird das nicht angezeigt, eröffne ein Issue, das nur sagt, dass du einen privaten Weg brauchst, ohne Einzelheiten. Es gibt noch keine festen Antwortzeiten. Die ganze Richtlinie: <a href="${GH}/blob/main/SECURITY.md">SECURITY.md</a> (englisch).</p>
-<h2>E-Mail</h2>
-<p>${branding.contact ? esc(branding.contact) : todo('Kontakt-E-Mail eintragen, falls gewünscht')}</p>`,
-  },
-  en: {
-    title: 'Contact and security',
-    desc: 'Report bugs, report vulnerabilities privately, get involved.',
-    body: `
-<h1>Contact and security</h1>
-<h2>Bugs and ideas</h2>
-<p>Please open an issue on GitHub: <a href="${GH}/issues">github.com/wi-wissen/CometCast/issues</a>.</p>
-<h2>Vulnerabilities</h2>
-<p>Please do <strong>not</strong> open a public issue. Use GitHub's private reporting: open the <em>Security</em> tab of the repository and choose <em>Report a vulnerability</em>. If that is not shown, open an issue that says only that you need a private channel, without details. There are no fixed response times yet. The full policy: <a href="${GH}/blob/main/SECURITY.md">SECURITY.md</a>.</p>
-<h2>Email</h2>
-<p>${branding.contact ? esc(branding.contact) : todo('add a contact email address if wanted')}</p>`,
-  },
-};
-
+// ---- pages from site-content/*.md ----------------------------------------------------------------
 // ---- pages from site-content/*.md ----------------------------------------------------------------
 // A small block format (no dependencies): front matter (title, description, optional title_incomplete /
 // description_incomplete for the placeholder state), `# ` / `## ` headings, paragraphs (lines joined with <br>),
@@ -329,77 +175,256 @@ function renderPage(name, lang) {
   const pick = (k) => (incomplete && fm[`${k}_incomplete`]) || fm[k];
   return { title: pick('title'), desc: pick('description'), body: `\n${blocks.join('\n')}` };
 }
-for (const p of ['privacy', 'imprint']) {
-  if (p === 'imprint' && !hasImprint) continue;
-  content[p] = { de: renderPage(p, 'de'), en: renderPage(p, 'en') };
+
+const MD = { privacy: 'privacy', selfhost: 'self-hosting', imprint: 'imprint' };
+const content = {};
+for (const lang of LANGS) {
+  content[lang] = {};
+  for (const p of pages) {
+    const t = T[lang];
+    if (MD[p]) {
+      content[lang][p] = renderPage(MD[p], lang);
+    } else if (p === 'how' || p === 'open') {
+      content[lang][p] = { title: t[p].title, desc: t[p].desc, body: t[p].body({ pub }) };
+    } else if (p === 'contact') {
+      const contactHtml = branding.contact ? esc(branding.contact) : '';
+      content[lang][p] = { title: t.contact.title, desc: t.contact.desc, body: t.contact.body({ contactHtml }) };
+    }
+  }
 }
 
+// ---- pictures drawn at build time (no JavaScript needed) ----------------------------------------------------------
+const lcg = (seed) => { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; };
+/** Faint stars behind the hero: a seeded scatter, drawn as SVG circles (colours from CSS tokens). */
+function starsSvg() {
+  const rr = lcg(5);
+  const dots = [];
+  for (let i = 0; i < 70; i++) {
+    const op = (0.2 + rr() * 0.5).toFixed(2);
+    const accent = rr() < 0.3;
+    const x = (rr() * 100).toFixed(1), y = (rr() * 100).toFixed(1), r = (rr() * 1.4 + 0.3).toFixed(2);
+    dots.push(`<circle class="${accent ? 'star a' : 'star'}" cx="${x}%" cy="${y}%" r="${r}" opacity="${op}"/>`);
+  }
+  return `<svg class="sky-bg" aria-hidden="true" focusable="false" width="100%" height="100%">${dots.join('')}</svg>`;
+}
+/** A QR-code look-alike for the display mock (finder patterns plus seeded modules). It does not encode anything. */
+function qrSvg() {
+  const n = 29, rnd = lcg(11);
+  const g = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const inF = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+    if (!inF && rnd() < 0.48) g[y][x] = 1;
+  }
+  for (const [fx, fy] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) g[fy + y][fx + x] = x === 0 || y === 0 || x === 6 || y === 6 || (x >= 2 && x <= 4 && y >= 2 && y <= 4) ? 1 : 0;
+  }
+  let d = '';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n;) {
+      if (!g[y][x]) { x++; continue; }
+      let e = x;
+      while (e < n && g[y][e]) e++;
+      d += `M${x} ${y}h${e - x}v1h${x - e}z`;
+      x = e;
+    }
+  }
+  return `<svg viewBox="0 0 29 29" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`;
+}
+const I = {
+  approval: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 11l2 2 4-4"/>',
+  gear: '<path d="M10.3 2.6h3.4l.5 2.6a7.5 7.5 0 0 1 1.9 1.1l2.5-.9 1.7 2.9-2 1.7a7.6 7.6 0 0 1 0 2.2l2 1.7-1.7 2.9-2.5-.9a7.5 7.5 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a7.5 7.5 0 0 1-1.9-1.1l-2.5.9-1.7-2.9 2-1.7a7.6 7.6 0 0 1 0-2.2l-2-1.7 1.7-2.9 2.5.9a7.5 7.5 0 0 1 1.9-1.1z"/><circle cx="12" cy="12" r="3"/>',
+};
+const icon = (name) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${I[name]}</svg>`;
+
+// ---- page shell ---------------------------------------------------------------------------------------------------
+const logo = (alt, size) => `<picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="${esc(alt)}" width="${size}" height="${size}"></picture>`;
 
 function layout(lang, p, c) {
-  const t = ui[lang];
-  const other = lang === 'de' ? 'en' : 'de';
+  const t = T[lang];
+  const o = otherLang(lang);
+  const home = url(lang, 'home');
+  const finder = `${home}#finder`;
   const self = url(lang, p);
-  const nav = ['start', 'how', 'downloads', 'privacy', 'open', 'contact']
-    .map((k) => `<a href="${url(lang, k)}"${k === p ? ' aria-current="page"' : ''}>${t.nav[k]}</a>`)
-    .join('');
-  const noindex = p === 'imprint' ? '\n<meta name="robots" content="noindex">' : '';
+  const ot = T[o];
   const alt = (l) => `<link rel="alternate" hreflang="${l}" href="${ORIGIN}${url(l, p)}">`;
+  const noindex = p === 'imprint' ? '\n<meta name="robots" content="noindex">' : '';
+  const cur = (k) => (k === p ? ' aria-current="page"' : '');
+  const col = (title, links) => `<div class="col"><p class="coltitle">${esc(title)}</p><ul>${links.map(([h, label]) => `<li><a href="${h}">${esc(label)}</a></li>`).join('')}</ul></div>`;
+  const body = p === 'home' ? c.body : `<div class="doc"><div class="wrap narrow${p === 'download' ? ' wide' : ''}">${c.body}\n</div></div>`;
   return `<!doctype html>
 <html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${c.title}</title>
-<meta name="description" content="${c.desc.replace(/"/g, '&quot;')}">${noindex}
+<title>${esc(c.title)}</title>
+<meta name="description" content="${esc(c.desc)}">${noindex}
 <link rel="canonical" href="${ORIGIN}${self}">
-${alt('de')}
 ${alt('en')}
-<link rel="alternate" hreflang="x-default" href="${ORIGIN}${url('de', p)}">
+${alt('de')}
+<link rel="alternate" hreflang="x-default" href="${ORIGIN}${url('en', p)}">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#eceef2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1126" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/fonts.css">
 <link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/site.js" defer></script>
 </head>
-<body>
-<a class="skip" href="#main">${t.skip}</a>
-<header class="site"><div class="wrap">
-<a class="brand" href="${url(lang, 'start')}"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="${t.logoAlt}" width="36" height="36"></picture><span>Comet Cast</span></a>
-<nav class="main" aria-label="${lang === 'de' ? 'Hauptnavigation' : 'Main navigation'}">${nav}</nav>
-<div class="lang"><a href="${url(other, p)}" hreflang="${other}" lang="${other}" title="${t.otherLabel}">${t.other}</a></div>
+<body class="${p}">
+<a class="skip" href="#main">${esc(t.ui.skip)}</a>
+<div class="langhint" lang="${o}" data-target="${o}" hidden><div class="wrap"><span>${esc(ot.hint.text)}</span><a href="${url(o, p)}" hreflang="${o}" data-hint-link>${esc(ot.hint.link)}</a><button type="button" aria-label="${esc(ot.hint.close)}" data-hint-close>×</button></div></div>
+<header class="site-head"><div class="wrap">
+<a class="brand" href="${home}">${logo(t.ui.brandAlt, 34)}<span>Comet Cast</span></a>
+<nav class="nav" aria-label="${esc(t.ui.mainNav)}">
+<div class="navlinks"><a href="${finder}">${esc(t.ui.whatYouNeed)}</a><a href="${url(lang, 'download')}"${cur('download')}>${esc(t.ui.download)}</a></div>
+<a class="lang" href="${url(o, p)}" hreflang="${o}" lang="${o}" title="${esc(t.ui.switchLabel)}" aria-label="${esc(t.ui.switchLabel)}">${esc(t.ui.switchText)}</a>
+<a class="btn btn-primary" href="/app/">${esc(t.ui.openApp)}</a>
+</nav>
 </div></header>
-<main id="main"><div class="wrap">${c.body}
-</div></main>
-<footer class="site"><div class="wrap"><span>${t.foot}</span>${hasImprint ? `<a href="${url(lang, 'imprint')}">${t.imprint}</a>` : ''}<a href="${GH}">GitHub</a></div></footer>
+<main id="main">${body}
+</main>
+<footer class="foot"><div class="wrap">
+<div class="cols">
+${col(t.ui.footProduct, [['/app/', t.ui.footApp], [url(lang, 'download'), t.ui.download], [finder, t.ui.whatYouNeed]])}
+${col(t.ui.footTrust, [[url(lang, 'privacy'), t.ui.footPrivacy], [url(lang, 'selfhost'), t.ui.footSelfhost], [url(lang, 'open'), t.ui.footOpen], [url(lang, 'how'), t.ui.footHow]])}
+${col(t.ui.footProject, [[url(lang, 'contact'), t.ui.footContact], ...(hasImprint ? [[url(lang, 'imprint'), t.ui.footImprint]] : []), [GH, 'GitHub']])}
+</div>
+<p class="fine">${esc(t.ui.footFine)}</p>
+</div></footer>
 </body>
 </html>
 `;
 }
 
+// ---- home page ------------------------------------------------------------------------------------------------------
+function homeBody(lang) {
+  const t = T[lang];
+  const h = t.home;
+  return `
+<section class="hero">${starsSvg()}
+<div class="wrap hero-grid">
+<div class="hero-text">
+<h1>${h.h1}</h1>
+<p class="lead">${esc(h.lead)}</p>
+<div class="ctas"><a href="${url(lang, 'download')}" class="btn btn-primary">${esc(h.ctaDownload)}</a><a href="/app/" class="btn btn-ghost">${esc(h.ctaApp)}</a></div>
+<p class="small"><span class="beta">${esc(h.beta)}</span><span>${esc(h.tryIt)}</span></p>
+</div>
+<div class="tv" role="img" aria-label="${esc(h.tv.label)}">
+<div class="top"><img class="tv-logo" src="/assets/cometcast-logo-dark.svg" alt="" width="40" height="40"><span class="room">${esc(h.tv.room)}</span><span class="pill">${icon('approval')}${esc(h.tv.pill)}</span></div>
+<div class="steps">
+<div class="st"><span class="num">1</span><div><div class="lbl">${esc(h.tv.step1)}</div><div class="big">${esc(DOMAIN)}</div></div></div>
+<div class="st"><span class="num">2</span><div><div class="lbl">${esc(h.tv.step2)}</div><div class="code">DXZ PNJ</div></div></div>
+</div>
+<div class="qr">${qrSvg()}</div>
+<div class="scan">${esc(h.tv.scan)}</div>
+<div class="tvfoot">${esc(h.tv.foot)}</div>
+<div class="gear">${icon('gear')}${esc(h.tv.settings)}</div>
+</div>
+</div>
+</section>
+
+<section class="section finder-section" id="finder"><div class="wrap">
+<h2>${esc(h.finderH2)}</h2>
+<p class="intro">${esc(h.finderIntro)}</p>
+${renderFinder(lang, t.finder, DOMAIN)}
+</div></section>
+
+<section class="section steps-section"><div class="wrap">
+<h2>${esc(h.stepsH2)}</h2>
+<ol class="steps3">${h.steps.map((s) => `<li class="step"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></li>`).join('')}</ol>
+</div></section>`;
+}
+
+// ---- download page --------------------------------------------------------------------------------------------------
+function downloadBody(lang) {
+  const t = T[lang];
+  const d = t.download;
+  const card = (id, ic, links, store) => {
+    const c = d.cards[id];
+    const yours = d.yours[id] ? ` data-yours="${esc(d.yours[id])}"` : '';
+    let actions = '';
+    if (id === 'web') actions = `<a class="btn btn-primary" href="/app/">${esc(c.btn)}</a>`;
+    else if (links.length) {
+      actions = `<a class="btn btn-primary" href="${esc(links[0].url)}">${esc(c.btn)}</a><span class="dl-meta">${links.map((l, i) => (i === 0 ? esc(l.label) : `<a href="${esc(l.url)}">${esc(l.label)}</a>`)).join(' · ')}</span>`;
+    }
+    if (store) actions += `<a class="btn ${links.length ? 'btn-ghost' : 'btn-primary'}" href="${esc(store)}">${esc(c.store)}</a>`;
+    if (!actions) actions = `<span class="soon">${esc(d.soon)}</span>`;
+    return `<article class="dl" id="${id}" data-platform="${id}"${yours}><div class="dl-ic"><svg viewBox="0 0 56 44" aria-hidden="true">${ICON[ic]}</svg></div><div class="dl-main"><h3>${esc(c.h)}</h3><p>${esc(c.p)}</p><div class="dl-actions">${actions}</div></div></article>`;
+  };
+  return `
+<span class="eyebrow">${esc(d.eyebrow)}</span>
+<h1>${esc(d.h1)}</h1>
+<p class="lead">${esc(d.lead)}</p>
+<p class="small"><span class="beta">${esc(d.beta)}</span><span>${esc(d.tryIt)}</span>${releaseVersion ? `<span class="ver">${esc(d.version.replace('{v}', releaseVersion))}</span>` : ''}</p>
+<div class="dls" id="downloads">
+${card('web', 'desktop', [], '')}
+${card('windows', 'laptop', assets.windows, '')}
+${card('macos', 'laptop', assets.macos, '')}
+${card('linux', 'laptop', assets.linux, '')}
+${card('android', 'android', assets.android, STORES.googlePlay)}
+${card('ios', 'iphone', [], STORES.appStore)}
+${card('appletv', 'appletv', [], STORES.appleTv)}
+${card('googletv', 'googletv', [], STORES.googleTv)}
+</div>
+<p class="after">${esc(d.notSure)} <a href="${url(lang, 'home')}#finder">${esc(d.notSureLink)}</a>${release ? ` · <a href="${GH}/releases">${esc(d.allReleases)}</a>` : ''}</p>`;
+}
+
+for (const lang of LANGS) {
+  content[lang].home = { title: T[lang].home.title, desc: T[lang].home.desc, body: homeBody(lang) };
+  content[lang].download = { title: T[lang].download.title, desc: T[lang].download.desc, body: downloadBody(lang) };
+}
+
+// ---- output ---------------------------------------------------------------------------------------------------------
 function write(rel, text) {
   const f = join(root, rel);
   mkdirSync(dirname(f), { recursive: true });
   writeFileSync(f, text);
 }
+const fileFor = (path) => path.slice(1) + 'index.html';
 
-const urls = [];
-for (const lang of ['de', 'en']) {
-  for (const p of pages) {
-    const rel = (lang === 'de' ? '' : 'en/') + slug[lang][p] + 'index.html';
-    write(rel, layout(lang, p, content[p][lang]));
-    if (p !== 'imprint') urls.push(url(lang, p));
-  }
-}
+for (const lang of LANGS) for (const p of pages) write(fileFor(url(lang, p)), layout(lang, p, content[lang][p]));
 
-// 404 (bilingual, root-relative links)
-write('404.html', `<!doctype html>
-<html lang="de">
+/** A small page that sends the browser on: meta refresh, canonical (for our own pages) and a link. */
+function redirectPage(lang, to) {
+  const t = T[lang].redirect;
+  const internal = to.startsWith('/');
+  const abs = internal ? ORIGIN + to : to;
+  return `<!doctype html>
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>404 - Seite nicht gefunden / Page not found</title>
+<title>${esc(t.title)}</title>
+<meta name="robots" content="noindex">${internal ? `\n<link rel="canonical" href="${esc(abs)}">` : ''}
+<meta http-equiv="refresh" content="0; url=${esc(abs)}">
+<link rel="stylesheet" href="/assets/fonts.css">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="redirect">
+<main id="main"><div class="wrap narrow doc"><p class="lead">${esc(t.p)} <a href="${esc(internal ? to : abs)}">${esc(internal ? ORIGIN.replace('https://', '') + to : abs)}</a></p></div></main>
+</body>
+</html>
+`;
+}
+for (const r of REDIRECTS) {
+  if (r.optional && !pages.includes(r.to)) continue;
+  write(fileFor(r.from), redirectPage(r.lang, url(r.lang, r.to)));
+}
+// /apk: the latest Android file straight away, else the Android card of the download page
+write(fileFor(APK_PATH), redirectPage('en', assets.android[0]?.url ?? `${url('en', 'download')}#android`));
+
+// 404 (both languages, root-relative links)
+write('404.html', `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(T.en.notFound.title)} / ${esc(T.de.notFound.title)}</title>
 <meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/fonts.css">
 <link rel="stylesheet" href="/assets/style.css">
 <script>
 // GitHub Pages answers every unknown path with this page. Under /app/ that means a join link (/app/K7QM2W) or
@@ -415,13 +440,12 @@ write('404.html', `<!doctype html>
 })();
 </script>
 </head>
-<body>
-<main id="main"><div class="wrap">
-<div class="hero"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="" width="112" height="112"></picture><div>
-<h1>404</h1>
-<p class="lead">Diese Seite gibt es nicht. <a href="/">Zur Startseite</a>.</p>
-<p lang="en" class="lead">This page does not exist. <a href="/en/">Back to the home page</a>.</p>
-</div></div>
+<body class="notfound">
+<main id="main"><div class="wrap narrow doc">
+<a class="brand" href="/">${logo(T.en.ui.brandAlt, 40)}<span>Comet Cast</span></a>
+<h1>${T.en.notFound.h1}</h1>
+<p class="lead" lang="en">${esc(T.en.notFound.p)} <a href="/">${esc(T.en.notFound.link)}</a>.</p>
+<p class="lead" lang="de">${esc(T.de.notFound.p)} <a href="/de/">${esc(T.de.notFound.link)}</a>.</p>
 </div></main>
 </body>
 </html>
@@ -431,14 +455,18 @@ write('404.html', `<!doctype html>
 const pagesForMap = pages.filter((p) => p !== 'imprint');
 const entry = (lang, p) =>
   `<url><loc>${ORIGIN}${url(lang, p)}</loc>` +
-  ['de', 'en'].map((l) => `<xhtml:link rel="alternate" hreflang="${l}" href="${ORIGIN}${url(l, p)}"/>`).join('') +
+  [...LANGS, 'x-default'].map((l) => `<xhtml:link rel="alternate" hreflang="${l}" href="${ORIGIN}${url(l === 'x-default' ? 'en' : l, p)}"/>`).join('') +
   `</url>`;
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
-${['de', 'en'].flatMap((l) => pagesForMap.map((p) => entry(l, p))).join('\n')}
+${LANGS.flatMap((l) => pagesForMap.map((p) => entry(l, p))).join('\n')}
 </urlset>
 `);
 write('robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
 write('CNAME', 'cometcast.de\n');
 write('.nojekyll', '');
-console.log(`wrote ${pages.length * 2} pages + 404 under site/`);
+
+// fonts: copied from the npm packages when installed; otherwise the committed copies stay (an --out build has none, the tests copy site/assets)
+if (fontsInstalled()) console.log(`fonts: ${bundleFonts(join(root, 'assets'))} woff2 files copied from @fontsource`);
+else if (!existsSync(join(root, 'assets', 'fonts'))) console.warn('fonts: the @fontsource packages are not installed (npm ci --prefix tools/site); keeping the committed site/assets/fonts');
+console.log(`wrote ${pages.length * LANGS.length} pages + ${REDIRECTS.length + 1} redirects + 404 under ${root === join(REPO_ROOT, 'site') ? 'site/' : root}${release ? ` (release ${releaseVersion})` : ''}`);
