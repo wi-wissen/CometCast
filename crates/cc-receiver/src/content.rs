@@ -242,6 +242,21 @@ fn feed(rx: &mut ContentReceiver, data: ControlData, evs: &mut Vec<ContentEvent>
     }
 }
 
+/// What the content task tells the receiver loop.
+pub(crate) enum TaskMsg {
+    /// An event for the application (a hand-over token was stored).
+    Event(crate::ReceiverEvent),
+    /// The presenter sent `cmd pause` (`true`) or `cmd resume` (`false`).
+    PresenterPause(bool),
+}
+
+/// The pause link of a content task (docs/design/pause.md): presenter commands go up, the
+/// `pause_state` texts for the presenter come down and are sent on the channel.
+pub(crate) struct PauseLink {
+    pub(crate) up: mpsc::UnboundedSender<TaskMsg>,
+    pub(crate) down: mpsc::UnboundedReceiver<String>,
+}
+
 /// What the content task needs to answer a presenter's hand-over request (native-apps.md 20.5).
 pub(crate) struct HandoverHook {
     /// The display's tokens.
@@ -249,7 +264,7 @@ pub(crate) struct HandoverHook {
     /// Name of the presenter whose channel this is (as the display knows it).
     pub(crate) name: String,
     /// Where "a token was stored" is reported to the receiver loop.
-    pub(crate) notify: mpsc::UnboundedSender<crate::ReceiverEvent>,
+    pub(crate) notify: mpsc::UnboundedSender<TaskMsg>,
 }
 
 /// Start the task. It ends when the channel closed and everything was handled, when the
@@ -261,6 +276,7 @@ pub(crate) fn spawn(
     events: Arc<EventSink>,
     room: &RoomContent,
     hook: Option<HandoverHook>,
+    mut pause: PauseLink,
 ) -> JoinHandle<()> {
     let room = room.clone();
     tokio::spawn(async move {
@@ -346,6 +362,11 @@ pub(crate) fn spawn(
                     evs = rx.tick(Instant::now());
                 }
                 Some(w) = widths.recv() => rx.feed_target_width(w),
+                // The pause flags for the presenter. A failed send only means that the
+                // channel is closing.
+                Some(text) = pause.down.recv() => {
+                    let _ = channel.send_text(&text).await;
+                }
                 data = async {
                     if closed {
                         std::future::pending().await
@@ -372,14 +393,21 @@ pub(crate) fn spawn(
             for e in evs {
                 // A hand-over request is for the display itself, not for the application:
                 // hold the token and answer. Without a known presenter it is not answered.
+                // Pause and resume are for the receiver loop, which holds the flags.
+                if let ContentEvent::PauseRequested { paused } = &e {
+                    let _ = pause.up.send(TaskMsg::PresenterPause(*paused));
+                    continue;
+                }
                 if let ContentEvent::HandoverRequested { token } = &e {
                     if let Some(h) = &hook
                         && h.store.insert(token, &h.name, Instant::now())
                     {
                         let _ = channel.send_text(&handover_ok_message()).await;
-                        let _ = h.notify.send(crate::ReceiverEvent::HandoverStored {
-                            name: h.name.clone(),
-                        });
+                        let _ =
+                            h.notify
+                                .send(TaskMsg::Event(crate::ReceiverEvent::HandoverStored {
+                                    name: h.name.clone(),
+                                }));
                     }
                     continue;
                 }

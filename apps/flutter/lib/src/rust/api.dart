@@ -95,6 +95,14 @@ bool unblock({required BigInt id}) =>
 /// room. Returns `false` if no receiver runs.
 bool endRoom() => RustLib.instance.api.crateApiEndRoom();
 
+/// Set or clear the **display's own** pause flag (docs/design/pause.md): the display keeps the
+/// last picture while the presenter goes on sending, and the presenter is told. Only offered
+/// while a screen is shown; without one the call is ignored. The change arrives as
+/// [`ReceiverUiEvent::PauseChanged`] (also for the presenter's flag, which only the presenter
+/// can change). Returns `false` if no receiver runs.
+bool setDisplayPaused({required bool paused}) =>
+    RustLib.instance.api.crateApiSetDisplayPaused(paused: paused);
+
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
 /// without padding), or `None`. Call it after a [`ReceiverUiEvent::FrameReady`].
 ///
@@ -519,6 +527,16 @@ bool presentContent({required ContentSource source}) =>
 /// presented. Returns `false` if no presenter session runs or the token is not valid.
 bool requestHandover({required String token}) =>
     RustLib.instance.api.crateApiRequestHandover(token: token);
+
+/// Pause (`true`) or resume (`false`) the running **screen** presentation (docs/design/pause.md):
+/// the video stops at once, so nothing the presenter prepares reaches the display device, and
+/// the display keeps the last picture; on resume video flows again, beginning with a key frame.
+/// Ignored while no screen or pushed video is presented (content-only presentations). The
+/// display's answer is the event `PauseState`. Returns `false` if no presenter session runs.
+/// Not offered on iOS while the broadcast extension presents (it runs in another process
+/// and has no UI).
+bool setPresenterPaused({required bool paused}) =>
+    RustLib.instance.api.crateApiSetPresenterPaused(paused: paused);
 
 /// End the running presentation only: the display goes Idle with the same code and the
 /// session stays joined (`PresentingStopped`); the next presentation needs no new approval.
@@ -1310,6 +1328,19 @@ sealed class PresenterUiEvent with _$PresenterUiEvent {
     required int pages,
   }) = PresenterUiEvent_Page;
 
+  /// The display's pause flags (`pause_state`, docs/design/pause.md): sent whenever either
+  /// flag changes and once when the control channel opens (both `false`). The picture is
+  /// frozen while either is set. `presenter` is the echo of [`set_presenter_paused`]: the
+  /// app shows its own flag as confirmed only when this event says so. Not sent by
+  /// displays that do not know pause (a presenter then stays "pending").
+  const factory PresenterUiEvent.pauseState({
+    /// The presenter's own flag, as the display holds it.
+    required bool presenter,
+
+    /// The display froze the picture on its own.
+    required bool display,
+  }) = PresenterUiEvent_PauseState;
+
   /// An Office file is being converted to a PDF (takes seconds; child process). Comes before
   /// `ContentPrepared`; a failure is `ContentRejected`.
   const factory PresenterUiEvent.converting({
@@ -1658,6 +1689,17 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
   /// notice. The next presentation of the same sender needs no new approval.
   const factory ReceiverUiEvent.presentationStopped() =
       ReceiverUiEvent_PresentationStopped;
+
+  /// A pause flag changed (docs/design/pause.md). The picture is frozen while either flag is
+  /// set: keep showing the last picture. Both flags are cleared (one event) when the
+  /// presentation ends. The presenter has been told with `pause_state`.
+  const factory ReceiverUiEvent.pauseChanged({
+    /// The presenter paused its screen (it stopped sending video).
+    required bool presenter,
+
+    /// The display's own flag ([`set_display_paused`]).
+    required bool display,
+  }) = ReceiverUiEvent_PauseChanged;
 
   /// The connection check code of the sender's connection, `"123 456"`, once per
   /// connection; the presenter shows the same digits (`cc_transport::sas`).

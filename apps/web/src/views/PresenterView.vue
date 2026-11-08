@@ -34,11 +34,13 @@ const whyRelay = ref(false)
 const presKind = ref<'screen' | 'file' | 'link'>('screen')
 const presPdf = ref(false)
 
+// Pause is offered while the screen is shown and the control channel is open (docs/design/pause.md).
+const NO_PAUSE = { requested: false, presenter: false, display: false }
 const platform = currentPlatform()
 const caps = detectCapabilities()
 const relay = useRelay()
 const dom = computed(() => relay.join.value.dom)
-const { state, start, stop, sendImage, sendDocument, sendLink, sendCmd, shareScreen, stopScreen } = useSender()
+const { state, start, stop, sendImage, sendDocument, sendLink, sendCmd, shareScreen, stopScreen, pausePresenter, resumePresenter } = useSender()
 const cooldown = useDeniedCooldown(state)
 
 const fromQr = ref(props.qrCode !== null)
@@ -199,6 +201,9 @@ onBeforeUnmount(() => {
       :pdf="presKind === 'file' && presPdf"
       :page="state.pdfPage?.page"
       :total="state.pdfPage?.pages"
+      :pause="state.channelOpen ? (state.pause ?? NO_PAUSE) : undefined"
+      @pause="pausePresenter"
+      @resume="resumePresenter"
       @stop="onStop"
       @page="turnPage"
     />

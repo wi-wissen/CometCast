@@ -33,6 +33,15 @@ enum PresenterSessionPhase {
   failed,
 }
 
+/// Which banner the presenter's Presenting page shows (docs/design/pause.md, rule 5).
+enum PauseBanner {
+  /// "Paused: the audience sees the last picture." (the person's own pause, confirmed)
+  presenter,
+
+  /// "The display has frozen the picture." (only the display froze)
+  display,
+}
+
 /// What happens to the content that is being shown.
 enum PresenterContentPhase {
   none,
@@ -101,6 +110,60 @@ class PresenterSessionController extends ChangeNotifier {
   int? page;
   int? pages;
 
+  // --- pause (docs/design/pause.md) --------------------------------------------------------
+
+  /// A screen (or pushed video) is being presented in this session, so Pause applies. Content
+  /// presentations and TV sessions have no screen of ours to pause.
+  bool presentingScreen = false;
+
+  /// The person pressed Pause (their own flag as asked: the button reads Resume at once and the
+  /// video stops). The display's echo confirms it in [pauseConfirmed].
+  bool pauseRequested = false;
+
+  /// The display holds the presenter's flag (its `pause_state` echoed the request).
+  bool pauseConfirmed = false;
+
+  /// The display froze the picture on its own (its own flag).
+  bool displayFrozen = false;
+
+  bool _tv = false;
+
+  /// The Pause button is offered: a screen is presented, not on a TV, and the session is
+  /// presenting. Not on iOS during a broadcast: the extension has no UI and runs elsewhere.
+  bool get canPause =>
+      phase == PresenterSessionPhase.presenting && presentingScreen && !_tv;
+
+  /// Banner text to show: `presenter` while the display confirmed the person's pause,
+  /// `display` while only the display froze the picture, or null. The presenter's text wins when
+  /// both are set. A request the display has not echoed yet shows no banner (pending).
+  PauseBanner? get pauseBanner => !canPause
+      ? null
+      : pauseConfirmed
+      ? PauseBanner.presenter
+      : displayFrozen
+      ? PauseBanner.display
+      : null;
+
+  /// Pause (`true`) or resume (`false`) the shown screen. False if nothing can be paused or
+  /// there is no session. The request counts at once; `pauseState` confirms it.
+  bool setPaused(bool paused) {
+    if (!canPause || pauseRequested == paused) return false;
+    final ok = core.setPresenterPaused(paused);
+    if (ok) {
+      pauseRequested = paused;
+      if (!paused) pauseConfirmed = false;
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  void _resetPause() {
+    presentingScreen = false;
+    pauseRequested = false;
+    pauseConfirmed = false;
+    displayFrozen = false;
+  }
+
   /// Previous and Next of a PDF page row: disabled at the ends once the display reported.
   bool get hasPreviousPage => page == null || page! > 1;
   bool get hasNextPage => page == null || pages == null || page! < pages!;
@@ -153,20 +216,25 @@ class PresenterSessionController extends ChangeNotifier {
     required String server,
     String? name,
     String? handover,
-  }) => _listen(
-    core.startPresenter(
-      code: code,
-      server: server.trim(),
-      name: name,
-      handover: handover,
-      udpBind: udpBind,
-    ),
-  );
+  }) {
+    _tv = false;
+    _listen(
+      core.startPresenter(
+        code: code,
+        server: server.trim(),
+        name: name,
+        handover: handover,
+        udpBind: udpBind,
+      ),
+    );
+  }
 
   /// Open a session to a TV without Comet Cast (`start_tv_presenter`, spec 15.5): the same
   /// events, plus [pairingRequired]; `Joined` carries the TV's name.
-  void connectTv({required String id}) =>
-      _listen(core.startTvPresenter(id: id));
+  void connectTv({required String id}) {
+    _tv = true;
+    _listen(core.startTvPresenter(id: id));
+  }
 
   /// The code the TV shows (AirPlay, the first time). False: wrong, [pairWrong] is set.
   Future<bool> pair(String pin) async {
@@ -219,6 +287,7 @@ class PresenterSessionController extends ChangeNotifier {
   }
 
   void _resetPresentation() {
+    _resetPause();
     connectionCode = null;
     page = null;
     pages = null;
@@ -268,6 +337,11 @@ class PresenterSessionController extends ChangeNotifier {
       case PresenterUiEvent_Page(:final page, :final pages):
         this.page = page;
         this.pages = pages;
+      case PresenterUiEvent_PauseState(:final presenter, :final display):
+        // The display's flags are the truth: the person's own flag counts as confirmed only
+        // when the display echoes it.
+        pauseConfirmed = presenter;
+        displayFrozen = display;
       case PresenterUiEvent_Converting(:final name):
         _resetPresentation();
         startFailure = null;
@@ -338,14 +412,18 @@ class PresenterSessionController extends ChangeNotifier {
   bool presentScreen([ScreenRequest? screen]) {
     _resetPresentation();
     startFailure = null;
-    return core.presentScreen(screen);
+    final ok = core.presentScreen(screen);
+    presentingScreen = ok;
+    return ok;
   }
 
   /// Share the H.264 that the host pushes (Android, iOS).
   bool presentEncoded() {
     _resetPresentation();
     startFailure = null;
-    return core.presentEncoded();
+    final ok = core.presentEncoded();
+    presentingScreen = ok;
+    return ok;
   }
 
   /// Show a file. The bytes never cross the bridge.

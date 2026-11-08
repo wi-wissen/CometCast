@@ -368,3 +368,63 @@ fn the_encoder_output_used_by_the_tests_has_in_band_parameter_sets() {
     let types = annexb_nal_types(&f.data);
     assert!(types.contains(&7) && types.contains(&8) && types.contains(&5));
 }
+
+/// Pause (docs/design/pause.md): while the presenter is paused nothing reaches the receiver,
+/// not even a picture that changes meanwhile; on resume the first unit is a key frame and the
+/// current picture arrives. The receiver sees no error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pause_sends_nothing_and_resume_begins_with_a_key_frame() {
+    let mut r = rig(Format::AnnexB).await;
+    assert!(
+        r.pump(Duration::from_secs(20), |r| r
+            .viewer
+            .last
+            .as_ref()
+            .is_some_and(|p| near(p, RED)))
+            .await,
+        "no red picture before the pause"
+    );
+    // Past the rate-limit window of the start, so that the resume request is not delayed.
+    r.pump(Duration::from_millis(1200), |_| false).await;
+
+    r.sender.pause().await;
+    assert!(r.sender.is_paused());
+    // Units that were already on their way arrive; then it is quiet.
+    r.pump(Duration::from_millis(1000), |_| false).await;
+    let units = r.viewer.units;
+    let sent = r.sender.external_stats().sent;
+    // The presenter prepares something else: it must not reach the display device at all.
+    r.host.colour = BLUE;
+    r.pump(Duration::from_secs(3), |_| false).await;
+    assert_eq!(r.viewer.units, units, "no frames while paused");
+    assert_eq!(r.sender.external_stats().sent, sent, "nothing was sent");
+    assert!(
+        r.viewer.last.as_ref().is_some_and(|p| near(p, RED)),
+        "the last picture stays; the changed one never arrived"
+    );
+    assert!(
+        r.host.outcomes.contains(&PushOutcome::NotStreaming),
+        "the host's units were refused while paused"
+    );
+
+    let keys_before = r.sender.external_stats().keyframes_sent;
+    r.sender.resume().await;
+    assert!(!r.sender.is_paused());
+    assert!(
+        r.pump(Duration::from_secs(20), |r| r
+            .viewer
+            .last
+            .as_ref()
+            .is_some_and(|p| near(p, BLUE)))
+            .await,
+        "the current picture arrives after the resume: {:?}",
+        r.sender.external_stats()
+    );
+    let s = r.sender.external_stats();
+    assert!(
+        s.keyframes_sent > keys_before,
+        "resume sent a key frame: {s:?}"
+    );
+    r.sender.stop().await;
+    r.receiver.stop().await;
+}

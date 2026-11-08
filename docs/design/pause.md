@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Pause: freeze the picture from either side
 
-Status: specification, to be built. Replaces the display-only "Freeze" of the web display
+Status: **built** (see "As built" at the end). Replaces the display-only "Freeze" of the web display
 (`toolbarState.ts`, `PresentingStage.vue`) with one feature that both sides see.
 
 ## Goal
@@ -92,3 +92,39 @@ differ, add it to the copy tables.
   receiver, resume brings a key frame, no error events while paused for 30 s.
 * Flutter widget tests for both buttons and banners. Fixtures updated and passing in Rust, web
   and (by reading) Swift.
+
+## As built
+
+What was built per row of the table above, the decisions taken where the spec said "check", and what is still unsure.
+
+| Part | Built |
+| --- | --- |
+| `cc-files` wire + receiver | `ControlCmd::Pause` / `Resume` (in `cc-proto`), `Message::PauseState` (both fields required booleans), `PauseState` (pure: `set_presenter`, `set_display`, `clear`, `message`), `ContentEvent::PauseRequested`, `pause_state_message`. Pause and resume are never violations, are not queued while a document opens and do not touch a running transfer |
+| `cc-receiver` | `ReceiverEvent::PauseChanged { presenter, display }`, `ReceiverCore::set_display_paused(bool)`, `pause_state` to the presenter on every change and once when the control channel arrives, both flags cleared (one event, before `PresentationStopped` / `PeerLeft`) when the presentation ends. Pause only applies while a video track is shown. No frame watchdog exists, so a pause of 30 s is no error (loopback test `crates/cc-receiver/tests/pause.rs`) |
+| `cc-sender` | `SenderCore::pause` / `resume` (screen: the pipeline thread neither captures nor encodes, key frame forced on resume; external H.264: units refused while paused, `begin_streaming` on resume asks the host for a key frame and drops delta frames until it comes; test pattern: silent), `PresenterSession::pause` / `resume`, `PresenterEvent::PauseState`, a flag the display does not hold is asked for again. Order: pause stops the video first and then tells the display; resume tells the display first, then sends again |
+| `cc-ffi` | `set_display_paused`, `ReceiverUiEvent::PauseChanged`, `set_presenter_paused`, `PresenterUiEvent::PauseState`; bindings regenerated. A TV session answers `Unsupported` to a pause command (the apps do not offer it there) |
+| `apps/web` | `ReceiverSession.setDisplayPaused` and `state.pause`; `SenderSession.pausePresenter` / `resumePresenter` and `state.pause` (`requested`, `presenter`, `display`); `Peer.setStreamPaused` (`replaceTrack`); `PresentingStage` badge and freeze canvas; `PresentingPage` button and banner |
+| `apps/flutter` | `ReceiverController` (`pausedByPresenter`, `pausedByDisplay`, `frozen`, `canPause`), `PresenterSessionController` (`pauseRequested`, `pauseConfirmed`, `displayFrozen`, `pauseBanner`), Pause control left of End, badge, button and banners |
+| `apps/apple-tv` | `PauseState`, parser and `pause_state` message in CometCastCore, `AppModel` sends and applies the flags, Pause control, badge, `intentForPlayPause` for the remote |
+| iOS broadcast extension | presenter pause not offered; stated in `docs/ios.md` |
+| `cometcast-cli` | `receive` prints `Pause: presenter ..., display ...` for every change |
+| Docs | `docs/web-m2.md` (messages and the "Pause" section), `docs/protocol.md`, `docs/transport.md`, `docs/appletv.md`, `docs/ios.md`, `docs/design/first-run-and-display.md` (4.5 and copy table 11.11), `docs/design/native-apps.md`, `docs/measurement-points.md` (A22 to A24) |
+
+### Decisions
+
+* **Older peers (the spec's "check").** Checked: before this change `cc-files` answered an unknown `cmd` value with `InvalidFields`, which is one protocol violation **and** drops a running transfer (every refused text message does); the web and Swift parsers answered with a bad-message toast. So the new values are known on every receiver in the same commit series (`cc-files`, web, Swift) and the shared fixtures pin it. An older display cannot be fixed; see the "Pause" section of `docs/web-m2.md` for what happens with one.
+* **Pending state.** The presenter shows its own flag as confirmed (banner) only after the display's echo. Meanwhile the button already reads Resume and the video is already stopped. With a display that never echoes the presenter stays pending and shows no banner (UNCERTAIN: acceptable for an old display, no timeout is built).
+* **Banner precedence.** The presenter text wins when both flags are set (as on the display). The presenter's own request alone, not yet echoed, shows no banner.
+* **Where the flags live.** On the display side in the receiver core (native) or the receiver session (web, Apple TV core): the single owner that sees the video track, the control channel and the end of the presentation. The presenter side keeps only its request and the last `pause_state`.
+* **Order on the wire.** Pause: video off, then `pause`. Resume: `resume`, then video on. The display therefore never unfreezes before the presenter's frames can arrive, and never receives frames of what the presenter prepares.
+* **Frozen picture on the displays.** Web: a canvas painted from the video element (also for the presenter's flag, because a `<video>` without frames can go black). Flutter software path: new pictures are held (the newest one is shown when live again). Flutter hardware path: units are dropped while frozen and a key frame is requested when live again. Apple TV: the video view is taken off the track.
+* **Display's own control words.** The display's Pause control uses `pause.presenter.button` / `pause.presenter.resume` ("Pause" / "Resume"); no extra strings. Apple TV has no pause icon in the asset catalog, so its control is text only.
+* **Strings.** The five keys of the spec, du and Sie identical, so no "differs" rows; the copy table 11.11 was added to `first-run-and-display.md` anyway so that the locale test checks the words.
+* **Stopping the screen.** A web presenter sends `resume` before it removes the track, so a native display clears the presenter flag. Both flags are cleared by the display with the stream (web) or the end of the presentation (native).
+
+### UNCERTAIN
+
+* The key frame after `replaceTrack(track)` in browsers (A22 in [../measurement-points.md](../measurement-points.md)).
+* That the Apple TV Metal view, the Android hardware texture and a `<video>` keep their last frame when nothing updates them (A23).
+* A native display does not learn that a web presenter stopped its screen while the display flag was set (A24).
+* Apple TV: written against the headers, never compiled; the Swift tests (`PauseTests`, `testPlayPauseTogglesThePauseFlagWhileALiveScreenIsShown`) were not run.

@@ -24,6 +24,8 @@ public let progressIntervalMs: Double = 100
 
 public enum ControlCmd: Equatable, Sendable {
     case nextPage, prevPage, stop
+    /// Presenter to display (docs/design/pause.md): the presenter paused its screen / resumed. Idempotent.
+    case pause, resume
     case goToPage(Int)
 
     var json: JSONValue {
@@ -31,6 +33,8 @@ public enum ControlCmd: Equatable, Sendable {
         case .nextPage: return .string("next_page")
         case .prevPage: return .string("prev_page")
         case .stop: return .string("stop")
+        case .pause: return .string("pause")
+        case .resume: return .string("resume")
         case .goToPage(let p): return .object(["go_to_page": .object(["page": .number(Double(p))])])
         }
     }
@@ -43,6 +47,9 @@ public enum ControlMessage: Equatable, Sendable {
     case document(name: String, size: Int)
     case documentEnd
     case link(url: String)
+    /// Display to presenter (docs/design/pause.md): the pause flags. A receiver ignores it (the app never receives one
+    /// that matters); it is parsed so that it is no bad message and the shared fixtures stay equal.
+    case pauseState(presenter: Bool, display: Bool)
 
     /// The same JSON shape the web client's `ControlMessage` has (used by the shared fixtures).
     public var json: JSONValue {
@@ -55,6 +62,7 @@ public enum ControlMessage: Equatable, Sendable {
             return .object(["kind": .string("document"), "name": .string(n), "mime": .string("application/pdf"), "size": .number(Double(s))])
         case .documentEnd: return .object(["kind": .string("document_end")])
         case .link(let u): return .object(["kind": .string("link"), "url": .string(u)])
+        case .pauseState(let p, let d): return .object(["kind": .string("pause_state"), "presenter": .bool(p), "display": .bool(d)])
         }
     }
 }
@@ -136,6 +144,8 @@ private func parseCmd(_ c: JSONValue?) -> ControlCmd? {
         case "next_page": return .nextPage
         case "prev_page": return .prevPage
         case "stop": return .stop
+        case "pause": return .pause
+        case "resume": return .resume
         default: return nil
         }
     case .object(let o):
@@ -173,6 +183,10 @@ public func parseControlMessage(_ text: String) -> ControlMessage? {
     case "link":
         guard case .string(let u)? = o["url"], let url = validateLinkUrl(u) else { return nil }
         return .link(url: url)
+    case "pause_state":
+        // Both flags are required and must be booleans; other keys are ignored.
+        guard case .bool(let p)? = o["presenter"], case .bool(let d)? = o["display"] else { return nil }
+        return .pauseState(presenter: p, display: d)
     default: return nil
     }
 }
@@ -327,6 +341,8 @@ public final class ControlReceiver {
             }
         case .link(let url):
             h.onLink(url: url)
+        case .pauseState:
+            break // display to presenter only: a receiver has nothing to do with it
         }
     }
 }

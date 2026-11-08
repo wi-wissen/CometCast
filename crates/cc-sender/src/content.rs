@@ -62,6 +62,14 @@ pub enum DisplayMessage {
     },
     /// The display stored the hand-over token that was sent (`handover_ok`).
     HandoverOk,
+    /// The display's pause flags (`pause_state`, docs/design/pause.md): the source of truth for
+    /// the presenter's UI.
+    PauseState {
+        /// The presenter's own flag, as the display holds it (the echo of `cmd pause`).
+        presenter: bool,
+        /// The display's own flag.
+        display: bool,
+    },
 }
 
 /// Sends content on an open `control` channel. Cheap to clone.
@@ -123,7 +131,8 @@ impl ControlSender {
         Ok(())
     }
 
-    /// Send a remote-control command (next/previous page, go to page, stop).
+    /// Send a remote-control command (next/previous page, go to page, stop; `Pause` and
+    /// `Resume` tell the display about the presenter's pause, see `SenderCore::pause`).
     pub async fn send_cmd(&self, cmd: ControlCmd) -> Result<(), ContentSendError> {
         self.channel.send_text(&cmd_message(cmd)).await?;
         Ok(())
@@ -155,6 +164,9 @@ impl ControlSender {
                             return Some(DisplayMessage::Page { page, pages });
                         }
                         Ok(Message::HandoverOk) => return Some(DisplayMessage::HandoverOk),
+                        Ok(Message::PauseState { presenter, display }) => {
+                            return Some(DisplayMessage::PauseState { presenter, display });
+                        }
                         _ => {}
                     }
                 }

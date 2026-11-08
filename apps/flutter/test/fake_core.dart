@@ -169,6 +169,31 @@ class FakeCoreApi implements CoreApi {
     return true;
   }
 
+  /// What the display asked for with `setDisplayPaused`. The fake echoes it like the core
+  /// does (a `pauseChanged` event) unless [echoPause] is off; the presenter's flag is whatever
+  /// the test set with [presenterPaused].
+  final displayPauseRequests = <bool>[];
+  bool echoPause = true;
+  bool presenterPaused = false;
+  bool displayPaused = false;
+
+  @override
+  bool setDisplayPaused(bool paused) {
+    displayPauseRequests.add(paused);
+    displayPaused = paused;
+    if (echoPause) {
+      scheduleMicrotask(
+        () => receiverEvents.add(
+          ReceiverUiEvent.pauseChanged(
+            presenter: presenterPaused,
+            display: displayPaused,
+          ),
+        ),
+      );
+    }
+    return true;
+  }
+
   /// The name given to the last sender start.
   String? senderName;
 
@@ -327,6 +352,25 @@ class FakeCoreApi implements CoreApi {
   bool presentContent(ContentSource source) {
     if (presenterAccepts) presentedContent.add(source);
     return presenterAccepts;
+  }
+
+  /// What the presenter asked for with `setPresenterPaused`; the fake answers like a display
+  /// that echoes the flag (`pauseState`) unless [presenterPauseEcho] is null.
+  final presenterPauseRequests = <bool>[];
+  bool? presenterPauseEcho = true;
+
+  @override
+  bool setPresenterPaused(bool paused) {
+    if (!presenterAccepts) return false;
+    presenterPauseRequests.add(paused);
+    if (presenterPauseEcho != null) {
+      scheduleMicrotask(
+        () => presenterEvents.add(
+          PresenterUiEvent.pauseState(presenter: paused, display: false),
+        ),
+      );
+    }
+    return true;
   }
 
   @override

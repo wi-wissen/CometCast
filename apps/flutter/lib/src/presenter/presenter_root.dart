@@ -1547,6 +1547,11 @@ class PresenterRootState extends State<PresenterRoot>
           onNext: () => c.sendCommand(const UiContentCmd.nextPage()),
           onStop: _stop,
           onOwnPdf: c.converted && _tvRow == null ? _ownPdf : null,
+          // Pause is offered while a screen is shown (not for files, links, TVs or the iOS
+          // broadcast extension, which has no UI: docs/ios.md).
+          onPause: c.canPause && !_iosPresenting ? c.setPaused : null,
+          paused: c.pauseRequested,
+          banner: c.pauseBanner,
         );
       case PresenterPage.bye:
         return ByePage(onAgain: () => _go(PresenterPage.firstRun));

@@ -10,6 +10,7 @@ import 'package:cometcast/l10n/app_localizations.dart';
 
 import '../../codec_controller.dart';
 import '../../core/core_api.dart';
+import '../../presenter_session_controller.dart' show PauseBanner;
 import '../../tv_controller.dart' show TvRow;
 import '../design/icons.dart';
 import '../design/spans.dart';
@@ -725,7 +726,20 @@ class PresentingPage extends StatelessWidget {
     this.page,
     this.pages,
     this.onOwnPdf,
+    this.onPause,
+    this.paused = false,
+    this.banner,
   });
+
+  /// Pause (docs/design/pause.md): set while a screen is presented, not otherwise. The button
+  /// reads Pause, or Resume while [paused] (the person's own request, shown at once); pressing
+  /// it calls this with the new value. Null: no pause control (files, links, TVs, iOS).
+  final void Function(bool paused)? onPause;
+  final bool paused;
+
+  /// The banner of rule 5: the person's own pause once the display confirmed it, or the
+  /// display's own freeze. Null: none (a request that is not echoed yet shows no banner).
+  final PauseBanner? banner;
 
   /// A converted Office file is shown (spec 15.6): the limits line `presenting.converted` and the
   /// link `presenting.ownPdf` (stops presenting and opens a PDF-only picker). Null: neither.
@@ -776,6 +790,24 @@ class PresentingPage extends StatelessWidget {
     );
     return PPage(
       actions: [
+        if (onPause != null && banner != null)
+          Text(
+            banner == PauseBanner.presenter
+                ? t.pausePresenterBanner
+                : t.pausePresenterDisplayFrozen,
+            key: const Key('pause-banner'),
+            style: s.type.small.copyWith(
+              fontWeight: FontWeight.w700,
+              color: s.tokens.fg2,
+            ),
+          ),
+        if (onPause != null)
+          PSecondaryButton(
+            key: const Key('pause-button'),
+            label: paused ? t.pausePresenterResume : t.pausePresenterButton,
+            fullWidth: !s.laptop,
+            onPressed: () => onPause!(!paused),
+          ),
         if (pdf && known)
           Text(
             t.presentingPageOf('$page', '$pages'),

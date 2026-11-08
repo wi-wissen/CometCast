@@ -24,6 +24,18 @@ final class InteractionTests: XCTestCase {
         XCTAssertEqual(intentForMenu(.presenting(controlsShown: true)), .consume)
     }
 
+    func testPlayPauseTogglesThePauseFlagWhileALiveScreenIsShown() {
+        // docs/design/pause.md: the Play/Pause button toggles the display's own flag, with the controls shown or not
+        XCTAssertEqual(intentForPlayPause(.presenting(controlsShown: false), canPause: true), .togglePause)
+        XCTAssertEqual(intentForPlayPause(.presenting(controlsShown: true), canPause: true), .togglePause)
+        // everything else stands for Menu as before (an image, a PDF page, Idle, the dialogs)
+        XCTAssertEqual(intentForPlayPause(.presenting(controlsShown: false), canPause: false), .showControls)
+        XCTAssertEqual(intentForPlayPause(.presenting(controlsShown: true), canPause: false), .consume)
+        XCTAssertEqual(intentForPlayPause(.idle, canPause: true), .openSettings)
+        XCTAssertEqual(intentForPlayPause(.joinRequest, canPause: true), .consume)
+        XCTAssertEqual(intentForPlayPause(.linkCard, canPause: true), .consume)
+    }
+
     func testPresentingKeysTable() {
         // hidden: the first input only reveals; arrows also focus End; nothing activates
         for k: RemoteKey in [.up, .down, .left, .right] {

@@ -41,6 +41,8 @@ pub(crate) enum PCmd {
     Content(ContentSource),
     /// A page command for the shown PDF.
     Cmd(ControlCmd),
+    /// Pause or resume the screen (docs/design/pause.md).
+    Pause(bool),
     /// End the presentation, stay joined.
     StopPresenting,
     /// Ask the display to hold this hand-over token (iOS, native-apps.md 20.5).
@@ -265,6 +267,14 @@ pub(crate) async fn drive(
                             });
                         }
                     }
+                    PCmd::Pause(paused) => {
+                        // Only a media presentation has a screen; others ignore it.
+                        if paused {
+                            session.pause();
+                        } else {
+                            session.resume();
+                        }
+                    }
                     PCmd::StopPresenting => {
                         abort_jobs(&mut send_job, &mut preparing);
                         if control.is_some() {
@@ -330,6 +340,10 @@ pub(crate) async fn drive(
                     PresenterEvent::Page { page, pages } => {
                         (Some(PresenterUiEvent::Page { page, pages }), false)
                     }
+                    PresenterEvent::PauseState { presenter, display } => (
+                        Some(PresenterUiEvent::PauseState { presenter, display }),
+                        false,
+                    ),
                     PresenterEvent::Ended(reason) => (
                         Some(PresenterUiEvent::Ended { code: reason.code().into() }),
                         true,
@@ -478,7 +492,13 @@ mod tests {
         assert!(running());
         assert!(send(PCmd::Encoded));
         assert!(matches!(rx.try_recv(), Ok(PCmd::Encoded)));
+        // Pause and resume (docs/design/pause.md) go through the same channel.
+        assert!(crate::api::set_presenter_paused(true));
+        assert!(matches!(rx.try_recv(), Ok(PCmd::Pause(true))));
+        assert!(crate::api::set_presenter_paused(false));
+        assert!(matches!(rx.try_recv(), Ok(PCmd::Pause(false))));
         clear();
         assert!(!send(PCmd::Encoded));
+        assert!(!crate::api::set_presenter_paused(true));
     }
 }

@@ -51,6 +51,7 @@ export 'package:cometcast/src/rust/api.dart'
         denyAndBlockJoin,
         unblock,
         endRoom,
+        setDisplayPaused,
         removePeer,
         startSender,
         startEncodedSender,
@@ -81,6 +82,7 @@ export 'package:cometcast/src/rust/api.dart'
         presentEncoded,
         presentContent,
         requestHandover,
+        setPresenterPaused,
         stopPresenting,
         captureInfo,
         serverDefaults,
@@ -172,6 +174,11 @@ abstract class CoreApi {
   /// stream ends). Start a new receiver for a new room.
   bool endRoom();
 
+  /// Set or clear the display's own pause flag (docs/design/pause.md): the display keeps the last
+  /// picture, the presenter goes on sending and is told. Only while a screen is shown. The core
+  /// answers with a `pauseChanged` event. False if no receiver runs.
+  bool setDisplayPaused(bool paused);
+
   /// The received image or PDF page that waits, or null. Call it after a `contentFrameReady`
   /// event; fetching re-arms that event. Only the latest picture is kept.
   Future<ContentFrame?> takeContentFrame();
@@ -246,6 +253,11 @@ abstract class CoreApi {
 
   /// Show a file or a link in the joined session. False if no session.
   bool presentContent(ContentSource source);
+
+  /// Pause (true) or resume (false) the running screen presentation (docs/design/pause.md): the
+  /// video stops at once and the display keeps the last picture. Ignored without a screen. The
+  /// display's answer is the `pauseState` event. False if no session.
+  bool setPresenterPaused(bool paused);
 
   /// End the presentation only; the session stays joined. False if no session.
   bool stopPresenting();
@@ -513,6 +525,9 @@ class RustCoreApi implements CoreApi {
   bool endRoom() => rust.endRoom();
 
   @override
+  bool setDisplayPaused(bool paused) => rust.setDisplayPaused(paused: paused);
+
+  @override
   Future<ContentFrame?> takeContentFrame() => rust.takeContentFrame();
 
   @override
@@ -583,6 +598,10 @@ class RustCoreApi implements CoreApi {
   @override
   bool presentContent(ContentSource source) =>
       rust.presentContent(source: source);
+
+  @override
+  bool setPresenterPaused(bool paused) =>
+      rust.setPresenterPaused(paused: paused);
 
   @override
   bool stopPresenting() => rust.stopPresenting();

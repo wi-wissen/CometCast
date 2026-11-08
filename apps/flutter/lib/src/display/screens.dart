@@ -1149,7 +1149,23 @@ class PresentingControls extends StatelessWidget {
     this.via,
     this.endFocus,
     this.inert = false,
+    this.onPause,
+    this.pauseFocus,
+    this.paused = false,
+    this.frozenBadge,
   });
+
+  /// Pause (docs/design/pause.md): set while a live screen is shown. Pressing the control calls
+  /// this with the new value for the display's own flag; null: no control (an image, PDF page
+  /// or link is shown, or nothing live yet). [paused] is the display's own flag: the control
+  /// reads Resume then.
+  final void Function(bool paused)? onPause;
+  final FocusNode? pauseFocus;
+  final bool paused;
+
+  /// The text of the badge on a frozen picture (who paused), or null while the picture is live.
+  /// A state, so it shows at rest too; it steps aside while the controls are shown.
+  final String? frozenBadge;
 
   /// Miracast: line 2 `present.via` in the place of the security code (spec 15.4).
   final String? via;
@@ -1179,6 +1195,26 @@ class PresentingControls extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
+        if (frozenBadge != null)
+          Positioned(
+            left: 12,
+            top: 12,
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: shown ? 0 : 1,
+                duration: dur,
+                curve: Curves.ease,
+                child: Container(
+                  key: const Key('frozen-badge'),
+                  constraints: const BoxConstraints(minHeight: 46),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  alignment: Alignment.center,
+                  decoration: overlayDecoration(s.tokens),
+                  child: Text(frozenBadge!, style: s.type.nameTag),
+                ),
+              ),
+            ),
+          ),
         Positioned(
           left: 12,
           bottom: 12,
@@ -1241,26 +1277,71 @@ class PresentingControls extends StatelessWidget {
                 opacity: shown ? 1 : 0,
                 duration: dur,
                 curve: Curves.ease,
-                child: DisplayControl(
-                  row: 0,
-                  col: 0,
-                  radius: 10,
-                  focusNode: endFocus,
-                  onPressed: shown ? onEnd : null,
-                  child: Container(
-                    key: const Key('end'),
-                    constraints: const BoxConstraints(minHeight: 46),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: overlayDecoration(s.tokens),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CcIcon(CcIconName.stop, color: s.tokens.fg, size: 18),
-                        const SizedBox(width: 6),
-                        Text(t.presentEnd, style: s.type.nameTag),
-                      ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Pause next to End, on its left (D-pad: Left from End). Same words as the
+                    // presenter's button; the toggled state is the display's own flag.
+                    if (onPause != null) ...[
+                      DisplayControl(
+                        row: 0,
+                        col: 0,
+                        radius: 10,
+                        focusNode: pauseFocus,
+                        toggled: paused,
+                        onPressed: shown ? () => onPause!(!paused) : null,
+                        child: Container(
+                          key: const Key('pause'),
+                          constraints: const BoxConstraints(minHeight: 46),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: overlayDecoration(s.tokens),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CcIcon(
+                                paused ? CcIconName.play : CcIconName.pause,
+                                color: s.tokens.fg,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                paused
+                                    ? t.pausePresenterResume
+                                    : t.pausePresenterButton,
+                                style: s.type.nameTag,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    DisplayControl(
+                      row: 0,
+                      col: 1,
+                      radius: 10,
+                      focusNode: endFocus,
+                      onPressed: shown ? onEnd : null,
+                      child: Container(
+                        key: const Key('end'),
+                        constraints: const BoxConstraints(minHeight: 46),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: overlayDecoration(s.tokens),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CcIcon(
+                              CcIconName.stop,
+                              color: s.tokens.fg,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(t.presentEnd, style: s.type.nameTag),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),

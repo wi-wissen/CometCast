@@ -25,6 +25,8 @@ enum CcIconName {
   link,
   scan,
   search,
+  pause,
+  play,
 }
 
 sealed class _Shape {
@@ -62,6 +64,9 @@ const Map<CcIconName, List<_Shape>> _shapes = {
   ],
   CcIconName.close: [_P('M6 6l12 12M18 6L6 18')],
   CcIconName.stop: [_R(5, 5, 14, 14, 2)],
+  // Pause and resume (docs/design/pause.md): the same two bars as the web toolbar, and a triangle.
+  CcIconName.pause: [_P('M9 5v14M15 5v14')],
+  CcIconName.play: [_P('M8 5l11 7-11 7z')],
   CcIconName.wifiOff: [
     _P('M2 2l20 20'),
     _P('M8.5 16.5a5 5 0 0 1 7 0'),

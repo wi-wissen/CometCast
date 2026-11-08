@@ -327,7 +327,7 @@ pub fn request_handover(token: &str) -> bool {
             loop {
                 match control.recv_message().await? {
                     DisplayMessage::HandoverOk => return Some(()),
-                    DisplayMessage::Page { .. } => {}
+                    DisplayMessage::Page { .. } | DisplayMessage::PauseState { .. } => {}
                 }
             }
         };

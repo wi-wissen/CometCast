@@ -4338,7 +4338,7 @@ extension PresenterUiEventPatterns on PresenterUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PresenterUiEvent_PairingRequired value)?  pairingRequired,TResult Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult Function( PresenterUiEvent_Joined value)?  joined,TResult Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult Function( PresenterUiEvent_Page value)?  page,TResult Function( PresenterUiEvent_Converting value)?  converting,TResult Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult Function( PresenterUiEvent_Progress value)?  progress,TResult Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult Function( PresenterUiEvent_Presenting value)?  presenting,TResult Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult Function( PresenterUiEvent_Ended value)?  ended,TResult Function( PresenterUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PresenterUiEvent_PairingRequired value)?  pairingRequired,TResult Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult Function( PresenterUiEvent_Joined value)?  joined,TResult Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult Function( PresenterUiEvent_Page value)?  page,TResult Function( PresenterUiEvent_PauseState value)?  pauseState,TResult Function( PresenterUiEvent_Converting value)?  converting,TResult Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult Function( PresenterUiEvent_Progress value)?  progress,TResult Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult Function( PresenterUiEvent_Presenting value)?  presenting,TResult Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult Function( PresenterUiEvent_Ended value)?  ended,TResult Function( PresenterUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case PresenterUiEvent_PairingRequired() when pairingRequired != null:
@@ -4346,7 +4346,8 @@ return pairingRequired(_that);case PresenterUiEvent_WaitingForApproval() when wa
 return waitingForApproval(_that);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that);case PresenterUiEvent_Page() when page != null:
-return page(_that);case PresenterUiEvent_Converting() when converting != null:
+return page(_that);case PresenterUiEvent_PauseState() when pauseState != null:
+return pauseState(_that);case PresenterUiEvent_Converting() when converting != null:
 return converting(_that);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
 return contentPrepared(_that);case PresenterUiEvent_ContentRejected() when contentRejected != null:
 return contentRejected(_that);case PresenterUiEvent_Progress() when progress != null:
@@ -4374,7 +4375,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PresenterUiEvent_PairingRequired value)  pairingRequired,required TResult Function( PresenterUiEvent_WaitingForApproval value)  waitingForApproval,required TResult Function( PresenterUiEvent_Joined value)  joined,required TResult Function( PresenterUiEvent_ConnectionCode value)  connectionCode,required TResult Function( PresenterUiEvent_Page value)  page,required TResult Function( PresenterUiEvent_Converting value)  converting,required TResult Function( PresenterUiEvent_ContentPrepared value)  contentPrepared,required TResult Function( PresenterUiEvent_ContentRejected value)  contentRejected,required TResult Function( PresenterUiEvent_Progress value)  progress,required TResult Function( PresenterUiEvent_ContentSent value)  contentSent,required TResult Function( PresenterUiEvent_HandoverResult value)  handoverResult,required TResult Function( PresenterUiEvent_Presenting value)  presenting,required TResult Function( PresenterUiEvent_PresentingStopped value)  presentingStopped,required TResult Function( PresenterUiEvent_Ended value)  ended,required TResult Function( PresenterUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PresenterUiEvent_PairingRequired value)  pairingRequired,required TResult Function( PresenterUiEvent_WaitingForApproval value)  waitingForApproval,required TResult Function( PresenterUiEvent_Joined value)  joined,required TResult Function( PresenterUiEvent_ConnectionCode value)  connectionCode,required TResult Function( PresenterUiEvent_Page value)  page,required TResult Function( PresenterUiEvent_PauseState value)  pauseState,required TResult Function( PresenterUiEvent_Converting value)  converting,required TResult Function( PresenterUiEvent_ContentPrepared value)  contentPrepared,required TResult Function( PresenterUiEvent_ContentRejected value)  contentRejected,required TResult Function( PresenterUiEvent_Progress value)  progress,required TResult Function( PresenterUiEvent_ContentSent value)  contentSent,required TResult Function( PresenterUiEvent_HandoverResult value)  handoverResult,required TResult Function( PresenterUiEvent_Presenting value)  presenting,required TResult Function( PresenterUiEvent_PresentingStopped value)  presentingStopped,required TResult Function( PresenterUiEvent_Ended value)  ended,required TResult Function( PresenterUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case PresenterUiEvent_PairingRequired():
@@ -4382,7 +4383,8 @@ return pairingRequired(_that);case PresenterUiEvent_WaitingForApproval():
 return waitingForApproval(_that);case PresenterUiEvent_Joined():
 return joined(_that);case PresenterUiEvent_ConnectionCode():
 return connectionCode(_that);case PresenterUiEvent_Page():
-return page(_that);case PresenterUiEvent_Converting():
+return page(_that);case PresenterUiEvent_PauseState():
+return pauseState(_that);case PresenterUiEvent_Converting():
 return converting(_that);case PresenterUiEvent_ContentPrepared():
 return contentPrepared(_that);case PresenterUiEvent_ContentRejected():
 return contentRejected(_that);case PresenterUiEvent_Progress():
@@ -4406,7 +4408,7 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PresenterUiEvent_PairingRequired value)?  pairingRequired,TResult? Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult? Function( PresenterUiEvent_Joined value)?  joined,TResult? Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( PresenterUiEvent_Page value)?  page,TResult? Function( PresenterUiEvent_Converting value)?  converting,TResult? Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult? Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult? Function( PresenterUiEvent_Progress value)?  progress,TResult? Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult? Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult? Function( PresenterUiEvent_Presenting value)?  presenting,TResult? Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult? Function( PresenterUiEvent_Ended value)?  ended,TResult? Function( PresenterUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PresenterUiEvent_PairingRequired value)?  pairingRequired,TResult? Function( PresenterUiEvent_WaitingForApproval value)?  waitingForApproval,TResult? Function( PresenterUiEvent_Joined value)?  joined,TResult? Function( PresenterUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( PresenterUiEvent_Page value)?  page,TResult? Function( PresenterUiEvent_PauseState value)?  pauseState,TResult? Function( PresenterUiEvent_Converting value)?  converting,TResult? Function( PresenterUiEvent_ContentPrepared value)?  contentPrepared,TResult? Function( PresenterUiEvent_ContentRejected value)?  contentRejected,TResult? Function( PresenterUiEvent_Progress value)?  progress,TResult? Function( PresenterUiEvent_ContentSent value)?  contentSent,TResult? Function( PresenterUiEvent_HandoverResult value)?  handoverResult,TResult? Function( PresenterUiEvent_Presenting value)?  presenting,TResult? Function( PresenterUiEvent_PresentingStopped value)?  presentingStopped,TResult? Function( PresenterUiEvent_Ended value)?  ended,TResult? Function( PresenterUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case PresenterUiEvent_PairingRequired() when pairingRequired != null:
@@ -4414,7 +4416,8 @@ return pairingRequired(_that);case PresenterUiEvent_WaitingForApproval() when wa
 return waitingForApproval(_that);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that);case PresenterUiEvent_Page() when page != null:
-return page(_that);case PresenterUiEvent_Converting() when converting != null:
+return page(_that);case PresenterUiEvent_PauseState() when pauseState != null:
+return pauseState(_that);case PresenterUiEvent_Converting() when converting != null:
 return converting(_that);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
 return contentPrepared(_that);case PresenterUiEvent_ContentRejected() when contentRejected != null:
 return contentRejected(_that);case PresenterUiEvent_Progress() when progress != null:
@@ -4441,14 +4444,15 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  pairingRequired,TResult Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult Function( String? roomName)?  joined,TResult Function( String sas)?  connectionCode,TResult Function( int page,  int pages)?  page,TResult Function( String name)?  converting,TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult Function( UiSendRejection reason)?  contentRejected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  contentSent,TResult Function( bool ok)?  handoverResult,TResult Function()?  presenting,TResult Function()?  presentingStopped,TResult Function( String code)?  ended,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  pairingRequired,TResult Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult Function( String? roomName)?  joined,TResult Function( String sas)?  connectionCode,TResult Function( int page,  int pages)?  page,TResult Function( bool presenter,  bool display)?  pauseState,TResult Function( String name)?  converting,TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult Function( UiSendRejection reason)?  contentRejected,TResult Function( BigInt sent,  BigInt total)?  progress,TResult Function()?  contentSent,TResult Function( bool ok)?  handoverResult,TResult Function()?  presenting,TResult Function()?  presentingStopped,TResult Function( String code)?  ended,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case PresenterUiEvent_PairingRequired() when pairingRequired != null:
 return pairingRequired();case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
 return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that.roomName);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that.sas);case PresenterUiEvent_Page() when page != null:
-return page(_that.page,_that.pages);case PresenterUiEvent_Converting() when converting != null:
+return page(_that.page,_that.pages);case PresenterUiEvent_PauseState() when pauseState != null:
+return pauseState(_that.presenter,_that.display);case PresenterUiEvent_Converting() when converting != null:
 return converting(_that.name);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
 return contentPrepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case PresenterUiEvent_ContentRejected() when contentRejected != null:
 return contentRejected(_that.reason);case PresenterUiEvent_Progress() when progress != null:
@@ -4476,14 +4480,15 @@ return error(_that.code,_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  pairingRequired,required TResult Function( int timeoutSecs,  int check,  String? roomName)  waitingForApproval,required TResult Function( String? roomName)  joined,required TResult Function( String sas)  connectionCode,required TResult Function( int page,  int pages)  page,required TResult Function( String name)  converting,required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  contentPrepared,required TResult Function( UiSendRejection reason)  contentRejected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  contentSent,required TResult Function( bool ok)  handoverResult,required TResult Function()  presenting,required TResult Function()  presentingStopped,required TResult Function( String code)  ended,required TResult Function( String code,  String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  pairingRequired,required TResult Function( int timeoutSecs,  int check,  String? roomName)  waitingForApproval,required TResult Function( String? roomName)  joined,required TResult Function( String sas)  connectionCode,required TResult Function( int page,  int pages)  page,required TResult Function( bool presenter,  bool display)  pauseState,required TResult Function( String name)  converting,required TResult Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)  contentPrepared,required TResult Function( UiSendRejection reason)  contentRejected,required TResult Function( BigInt sent,  BigInt total)  progress,required TResult Function()  contentSent,required TResult Function( bool ok)  handoverResult,required TResult Function()  presenting,required TResult Function()  presentingStopped,required TResult Function( String code)  ended,required TResult Function( String code,  String message)  error,}) {final _that = this;
 switch (_that) {
 case PresenterUiEvent_PairingRequired():
 return pairingRequired();case PresenterUiEvent_WaitingForApproval():
 return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined():
 return joined(_that.roomName);case PresenterUiEvent_ConnectionCode():
 return connectionCode(_that.sas);case PresenterUiEvent_Page():
-return page(_that.page,_that.pages);case PresenterUiEvent_Converting():
+return page(_that.page,_that.pages);case PresenterUiEvent_PauseState():
+return pauseState(_that.presenter,_that.display);case PresenterUiEvent_Converting():
 return converting(_that.name);case PresenterUiEvent_ContentPrepared():
 return contentPrepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case PresenterUiEvent_ContentRejected():
 return contentRejected(_that.reason);case PresenterUiEvent_Progress():
@@ -4507,14 +4512,15 @@ return error(_that.code,_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  pairingRequired,TResult? Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult? Function( String? roomName)?  joined,TResult? Function( String sas)?  connectionCode,TResult? Function( int page,  int pages)?  page,TResult? Function( String name)?  converting,TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult? Function( UiSendRejection reason)?  contentRejected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  contentSent,TResult? Function( bool ok)?  handoverResult,TResult? Function()?  presenting,TResult? Function()?  presentingStopped,TResult? Function( String code)?  ended,TResult? Function( String code,  String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  pairingRequired,TResult? Function( int timeoutSecs,  int check,  String? roomName)?  waitingForApproval,TResult? Function( String? roomName)?  joined,TResult? Function( String sas)?  connectionCode,TResult? Function( int page,  int pages)?  page,TResult? Function( bool presenter,  bool display)?  pauseState,TResult? Function( String name)?  converting,TResult? Function( String name,  UiContentKind kind,  BigInt size,  int? pages,  String? host)?  contentPrepared,TResult? Function( UiSendRejection reason)?  contentRejected,TResult? Function( BigInt sent,  BigInt total)?  progress,TResult? Function()?  contentSent,TResult? Function( bool ok)?  handoverResult,TResult? Function()?  presenting,TResult? Function()?  presentingStopped,TResult? Function( String code)?  ended,TResult? Function( String code,  String message)?  error,}) {final _that = this;
 switch (_that) {
 case PresenterUiEvent_PairingRequired() when pairingRequired != null:
 return pairingRequired();case PresenterUiEvent_WaitingForApproval() when waitingForApproval != null:
 return waitingForApproval(_that.timeoutSecs,_that.check,_that.roomName);case PresenterUiEvent_Joined() when joined != null:
 return joined(_that.roomName);case PresenterUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that.sas);case PresenterUiEvent_Page() when page != null:
-return page(_that.page,_that.pages);case PresenterUiEvent_Converting() when converting != null:
+return page(_that.page,_that.pages);case PresenterUiEvent_PauseState() when pauseState != null:
+return pauseState(_that.presenter,_that.display);case PresenterUiEvent_Converting() when converting != null:
 return converting(_that.name);case PresenterUiEvent_ContentPrepared() when contentPrepared != null:
 return contentPrepared(_that.name,_that.kind,_that.size,_that.pages,_that.host);case PresenterUiEvent_ContentRejected() when contentRejected != null:
 return contentRejected(_that.reason);case PresenterUiEvent_Progress() when progress != null:
@@ -4843,6 +4849,78 @@ class _$PresenterUiEvent_PageCopyWithImpl<$Res>
 page: null == page ? _self.page : page // ignore: cast_nullable_to_non_nullable
 as int,pages: null == pages ? _self.pages : pages // ignore: cast_nullable_to_non_nullable
 as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PresenterUiEvent_PauseState extends PresenterUiEvent {
+  const PresenterUiEvent_PauseState({required this.presenter, required this.display}): super._();
+  
+
+/// The presenter's own flag, as the display holds it.
+ final  bool presenter;
+/// The display froze the picture on its own.
+ final  bool display;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PresenterUiEvent_PauseStateCopyWith<PresenterUiEvent_PauseState> get copyWith => _$PresenterUiEvent_PauseStateCopyWithImpl<PresenterUiEvent_PauseState>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PresenterUiEvent_PauseState&&(identical(other.presenter, presenter) || other.presenter == presenter)&&(identical(other.display, display) || other.display == display));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,presenter,display);
+}
+
+@override
+String toString() {
+    return 'PresenterUiEvent.pauseState(presenter: $presenter, display: $display)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PresenterUiEvent_PauseStateCopyWith<$Res> implements $PresenterUiEventCopyWith<$Res> {
+  factory $PresenterUiEvent_PauseStateCopyWith(PresenterUiEvent_PauseState value, $Res Function(PresenterUiEvent_PauseState) _then) = _$PresenterUiEvent_PauseStateCopyWithImpl;
+@useResult
+$Res call({
+ bool presenter, bool display
+});
+
+
+
+
+}
+/// @nodoc
+class _$PresenterUiEvent_PauseStateCopyWithImpl<$Res>
+    implements $PresenterUiEvent_PauseStateCopyWith<$Res> {
+  _$PresenterUiEvent_PauseStateCopyWithImpl(this._self, this._then);
+
+  final PresenterUiEvent_PauseState _self;
+  final $Res Function(PresenterUiEvent_PauseState) _then;
+
+/// Create a copy of PresenterUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? presenter = null,Object? display = null,}) {
+  return _then(PresenterUiEvent_PauseState(
+presenter: null == presenter ? _self.presenter : presenter // ignore: cast_nullable_to_non_nullable
+as bool,display: null == display ? _self.display : display // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -5490,7 +5568,7 @@ extension ReceiverUiEventPatterns on ReceiverUiEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_HandoverStored value)?  handoverStored,TResult Function( ReceiverUiEvent_HandoverExpired value)?  handoverExpired,TResult Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult Function( ReceiverUiEvent_Blocked value)?  blocked,TResult Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult Function( ReceiverUiEvent_ServerNotice value)?  serverNotice,TResult Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult Function( ReceiverUiEvent_ContentTransferProgress value)?  contentTransferProgress,TResult Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult Function( ReceiverUiEvent_ContentError value)?  contentError,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_PresentationStopped value)?  presentationStopped,TResult Function( ReceiverUiEvent_ConnectionCode value)?  connectionCode,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult Function( ReceiverUiEvent_HandoverStored value)?  handoverStored,TResult Function( ReceiverUiEvent_HandoverExpired value)?  handoverExpired,TResult Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult Function( ReceiverUiEvent_Blocked value)?  blocked,TResult Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult Function( ReceiverUiEvent_ServerNotice value)?  serverNotice,TResult Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult Function( ReceiverUiEvent_Stats value)?  stats,TResult Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult Function( ReceiverUiEvent_ContentTransferProgress value)?  contentTransferProgress,TResult Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult Function( ReceiverUiEvent_ContentError value)?  contentError,TResult Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult Function( ReceiverUiEvent_PresentationStopped value)?  presentationStopped,TResult Function( ReceiverUiEvent_PauseChanged value)?  pauseChanged,TResult Function( ReceiverUiEvent_ConnectionCode value)?  connectionCode,TResult Function( ReceiverUiEvent_Error value)?  error,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -5519,7 +5597,8 @@ return contentLink(_that);case ReceiverUiEvent_ContentStopped() when contentStop
 return contentStopped(_that);case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
-return presentationStopped(_that);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return presentationStopped(_that);case ReceiverUiEvent_PauseChanged() when pauseChanged != null:
+return pauseChanged(_that);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that);case ReceiverUiEvent_Error() when error != null:
 return error(_that);case _:
   return orElse();
@@ -5539,7 +5618,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_HandoverStored value)  handoverStored,required TResult Function( ReceiverUiEvent_HandoverExpired value)  handoverExpired,required TResult Function( ReceiverUiEvent_JoinRequest value)  joinRequest,required TResult Function( ReceiverUiEvent_JoinRequestCancelled value)  joinRequestCancelled,required TResult Function( ReceiverUiEvent_JoinModeChanged value)  joinModeChanged,required TResult Function( ReceiverUiEvent_Blocked value)  blocked,required TResult Function( ReceiverUiEvent_Unblocked value)  unblocked,required TResult Function( ReceiverUiEvent_ServerNotice value)  serverNotice,required TResult Function( ReceiverUiEvent_RoomEnded value)  roomEnded,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_EncodedReady value)  encodedReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_ContentTransferStarted value)  contentTransferStarted,required TResult Function( ReceiverUiEvent_ContentTransferProgress value)  contentTransferProgress,required TResult Function( ReceiverUiEvent_ContentFrameReady value)  contentFrameReady,required TResult Function( ReceiverUiEvent_ContentDocumentOpened value)  contentDocumentOpened,required TResult Function( ReceiverUiEvent_ContentLink value)  contentLink,required TResult Function( ReceiverUiEvent_ContentStopped value)  contentStopped,required TResult Function( ReceiverUiEvent_ContentError value)  contentError,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_PresentationStopped value)  presentationStopped,required TResult Function( ReceiverUiEvent_ConnectionCode value)  connectionCode,required TResult Function( ReceiverUiEvent_Error value)  error,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReceiverUiEvent_RoomCode value)  roomCode,required TResult Function( ReceiverUiEvent_PeerJoined value)  peerJoined,required TResult Function( ReceiverUiEvent_HandoverStored value)  handoverStored,required TResult Function( ReceiverUiEvent_HandoverExpired value)  handoverExpired,required TResult Function( ReceiverUiEvent_JoinRequest value)  joinRequest,required TResult Function( ReceiverUiEvent_JoinRequestCancelled value)  joinRequestCancelled,required TResult Function( ReceiverUiEvent_JoinModeChanged value)  joinModeChanged,required TResult Function( ReceiverUiEvent_Blocked value)  blocked,required TResult Function( ReceiverUiEvent_Unblocked value)  unblocked,required TResult Function( ReceiverUiEvent_ServerNotice value)  serverNotice,required TResult Function( ReceiverUiEvent_RoomEnded value)  roomEnded,required TResult Function( ReceiverUiEvent_ConnectionState value)  connectionState,required TResult Function( ReceiverUiEvent_VideoTrack value)  videoTrack,required TResult Function( ReceiverUiEvent_Stats value)  stats,required TResult Function( ReceiverUiEvent_FrameReady value)  frameReady,required TResult Function( ReceiverUiEvent_EncodedReady value)  encodedReady,required TResult Function( ReceiverUiEvent_VideoStats value)  videoStats,required TResult Function( ReceiverUiEvent_ContentTransferStarted value)  contentTransferStarted,required TResult Function( ReceiverUiEvent_ContentTransferProgress value)  contentTransferProgress,required TResult Function( ReceiverUiEvent_ContentFrameReady value)  contentFrameReady,required TResult Function( ReceiverUiEvent_ContentDocumentOpened value)  contentDocumentOpened,required TResult Function( ReceiverUiEvent_ContentLink value)  contentLink,required TResult Function( ReceiverUiEvent_ContentStopped value)  contentStopped,required TResult Function( ReceiverUiEvent_ContentError value)  contentError,required TResult Function( ReceiverUiEvent_PeerLeft value)  peerLeft,required TResult Function( ReceiverUiEvent_PresentationStopped value)  presentationStopped,required TResult Function( ReceiverUiEvent_PauseChanged value)  pauseChanged,required TResult Function( ReceiverUiEvent_ConnectionCode value)  connectionCode,required TResult Function( ReceiverUiEvent_Error value)  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
@@ -5568,7 +5647,8 @@ return contentLink(_that);case ReceiverUiEvent_ContentStopped():
 return contentStopped(_that);case ReceiverUiEvent_ContentError():
 return contentError(_that);case ReceiverUiEvent_PeerLeft():
 return peerLeft(_that);case ReceiverUiEvent_PresentationStopped():
-return presentationStopped(_that);case ReceiverUiEvent_ConnectionCode():
+return presentationStopped(_that);case ReceiverUiEvent_PauseChanged():
+return pauseChanged(_that);case ReceiverUiEvent_ConnectionCode():
 return connectionCode(_that);case ReceiverUiEvent_Error():
 return error(_that);}
 }
@@ -5584,7 +5664,7 @@ return error(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_HandoverStored value)?  handoverStored,TResult? Function( ReceiverUiEvent_HandoverExpired value)?  handoverExpired,TResult? Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult? Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult? Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult? Function( ReceiverUiEvent_Blocked value)?  blocked,TResult? Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult? Function( ReceiverUiEvent_ServerNotice value)?  serverNotice,TResult? Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult? Function( ReceiverUiEvent_ContentTransferProgress value)?  contentTransferProgress,TResult? Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult? Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult? Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult? Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult? Function( ReceiverUiEvent_ContentError value)?  contentError,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_PresentationStopped value)?  presentationStopped,TResult? Function( ReceiverUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReceiverUiEvent_RoomCode value)?  roomCode,TResult? Function( ReceiverUiEvent_PeerJoined value)?  peerJoined,TResult? Function( ReceiverUiEvent_HandoverStored value)?  handoverStored,TResult? Function( ReceiverUiEvent_HandoverExpired value)?  handoverExpired,TResult? Function( ReceiverUiEvent_JoinRequest value)?  joinRequest,TResult? Function( ReceiverUiEvent_JoinRequestCancelled value)?  joinRequestCancelled,TResult? Function( ReceiverUiEvent_JoinModeChanged value)?  joinModeChanged,TResult? Function( ReceiverUiEvent_Blocked value)?  blocked,TResult? Function( ReceiverUiEvent_Unblocked value)?  unblocked,TResult? Function( ReceiverUiEvent_ServerNotice value)?  serverNotice,TResult? Function( ReceiverUiEvent_RoomEnded value)?  roomEnded,TResult? Function( ReceiverUiEvent_ConnectionState value)?  connectionState,TResult? Function( ReceiverUiEvent_VideoTrack value)?  videoTrack,TResult? Function( ReceiverUiEvent_Stats value)?  stats,TResult? Function( ReceiverUiEvent_FrameReady value)?  frameReady,TResult? Function( ReceiverUiEvent_EncodedReady value)?  encodedReady,TResult? Function( ReceiverUiEvent_VideoStats value)?  videoStats,TResult? Function( ReceiverUiEvent_ContentTransferStarted value)?  contentTransferStarted,TResult? Function( ReceiverUiEvent_ContentTransferProgress value)?  contentTransferProgress,TResult? Function( ReceiverUiEvent_ContentFrameReady value)?  contentFrameReady,TResult? Function( ReceiverUiEvent_ContentDocumentOpened value)?  contentDocumentOpened,TResult? Function( ReceiverUiEvent_ContentLink value)?  contentLink,TResult? Function( ReceiverUiEvent_ContentStopped value)?  contentStopped,TResult? Function( ReceiverUiEvent_ContentError value)?  contentError,TResult? Function( ReceiverUiEvent_PeerLeft value)?  peerLeft,TResult? Function( ReceiverUiEvent_PresentationStopped value)?  presentationStopped,TResult? Function( ReceiverUiEvent_PauseChanged value)?  pauseChanged,TResult? Function( ReceiverUiEvent_ConnectionCode value)?  connectionCode,TResult? Function( ReceiverUiEvent_Error value)?  error,}){
 final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
@@ -5613,7 +5693,8 @@ return contentLink(_that);case ReceiverUiEvent_ContentStopped() when contentStop
 return contentStopped(_that);case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft(_that);case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
-return presentationStopped(_that);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return presentationStopped(_that);case ReceiverUiEvent_PauseChanged() when pauseChanged != null:
+return pauseChanged(_that);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that);case ReceiverUiEvent_Error() when error != null:
 return error(_that);case _:
   return null;
@@ -5632,7 +5713,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code,  UiJoinMode joinMode)?  roomCode,TResult Function( String name,  bool handover)?  peerJoined,TResult Function( String name)?  handoverStored,TResult Function()?  handoverExpired,TResult Function( BigInt id,  String name,  int check)?  joinRequest,TResult Function( BigInt id,  String reason)?  joinRequestCancelled,TResult Function( UiJoinMode mode)?  joinModeChanged,TResult Function( BigInt id,  String name)?  blocked,TResult Function( BigInt id)?  unblocked,TResult Function( String code,  String message)?  serverNotice,TResult Function()?  roomEnded,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function()?  encodedReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult Function( BigInt received,  BigInt total)?  contentTransferProgress,TResult Function()?  contentFrameReady,TResult Function( String name,  int pages)?  contentDocumentOpened,TResult Function( String url,  String host)?  contentLink,TResult Function()?  contentStopped,TResult Function( UiContentError error)?  contentError,TResult Function()?  peerLeft,TResult Function()?  presentationStopped,TResult Function( String sas)?  connectionCode,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String code,  UiJoinMode joinMode)?  roomCode,TResult Function( String name,  bool handover)?  peerJoined,TResult Function( String name)?  handoverStored,TResult Function()?  handoverExpired,TResult Function( BigInt id,  String name,  int check)?  joinRequest,TResult Function( BigInt id,  String reason)?  joinRequestCancelled,TResult Function( UiJoinMode mode)?  joinModeChanged,TResult Function( BigInt id,  String name)?  blocked,TResult Function( BigInt id)?  unblocked,TResult Function( String code,  String message)?  serverNotice,TResult Function()?  roomEnded,TResult Function( UiConnectionState state)?  connectionState,TResult Function( String mime,  String? codec)?  videoTrack,TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult Function()?  frameReady,TResult Function()?  encodedReady,TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult Function( BigInt received,  BigInt total)?  contentTransferProgress,TResult Function()?  contentFrameReady,TResult Function( String name,  int pages)?  contentDocumentOpened,TResult Function( String url,  String host)?  contentLink,TResult Function()?  contentStopped,TResult Function( UiContentError error)?  contentError,TResult Function()?  peerLeft,TResult Function()?  presentationStopped,TResult Function( bool presenter,  bool display)?  pauseChanged,TResult Function( String sas)?  connectionCode,TResult Function( String code,  String message)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code,_that.joinMode);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
@@ -5660,7 +5741,8 @@ return contentLink(_that.url,_that.host);case ReceiverUiEvent_ContentStopped() w
 return contentStopped();case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that.error);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
-return presentationStopped();case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return presentationStopped();case ReceiverUiEvent_PauseChanged() when pauseChanged != null:
+return pauseChanged(_that.presenter,_that.display);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that.sas);case ReceiverUiEvent_Error() when error != null:
 return error(_that.code,_that.message);case _:
   return orElse();
@@ -5680,7 +5762,7 @@ return error(_that.code,_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code,  UiJoinMode joinMode)  roomCode,required TResult Function( String name,  bool handover)  peerJoined,required TResult Function( String name)  handoverStored,required TResult Function()  handoverExpired,required TResult Function( BigInt id,  String name,  int check)  joinRequest,required TResult Function( BigInt id,  String reason)  joinRequestCancelled,required TResult Function( UiJoinMode mode)  joinModeChanged,required TResult Function( BigInt id,  String name)  blocked,required TResult Function( BigInt id)  unblocked,required TResult Function( String code,  String message)  serverNotice,required TResult Function()  roomEnded,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function()  encodedReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function( bool document,  String name,  BigInt size)  contentTransferStarted,required TResult Function( BigInt received,  BigInt total)  contentTransferProgress,required TResult Function()  contentFrameReady,required TResult Function( String name,  int pages)  contentDocumentOpened,required TResult Function( String url,  String host)  contentLink,required TResult Function()  contentStopped,required TResult Function( UiContentError error)  contentError,required TResult Function()  peerLeft,required TResult Function()  presentationStopped,required TResult Function( String sas)  connectionCode,required TResult Function( String code,  String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String code,  UiJoinMode joinMode)  roomCode,required TResult Function( String name,  bool handover)  peerJoined,required TResult Function( String name)  handoverStored,required TResult Function()  handoverExpired,required TResult Function( BigInt id,  String name,  int check)  joinRequest,required TResult Function( BigInt id,  String reason)  joinRequestCancelled,required TResult Function( UiJoinMode mode)  joinModeChanged,required TResult Function( BigInt id,  String name)  blocked,required TResult Function( BigInt id)  unblocked,required TResult Function( String code,  String message)  serverNotice,required TResult Function()  roomEnded,required TResult Function( UiConnectionState state)  connectionState,required TResult Function( String mime,  String? codec)  videoTrack,required TResult Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)  stats,required TResult Function()  frameReady,required TResult Function()  encodedReady,required TResult Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)  videoStats,required TResult Function( bool document,  String name,  BigInt size)  contentTransferStarted,required TResult Function( BigInt received,  BigInt total)  contentTransferProgress,required TResult Function()  contentFrameReady,required TResult Function( String name,  int pages)  contentDocumentOpened,required TResult Function( String url,  String host)  contentLink,required TResult Function()  contentStopped,required TResult Function( UiContentError error)  contentError,required TResult Function()  peerLeft,required TResult Function()  presentationStopped,required TResult Function( bool presenter,  bool display)  pauseChanged,required TResult Function( String sas)  connectionCode,required TResult Function( String code,  String message)  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode():
 return roomCode(_that.code,_that.joinMode);case ReceiverUiEvent_PeerJoined():
@@ -5708,7 +5790,8 @@ return contentLink(_that.url,_that.host);case ReceiverUiEvent_ContentStopped():
 return contentStopped();case ReceiverUiEvent_ContentError():
 return contentError(_that.error);case ReceiverUiEvent_PeerLeft():
 return peerLeft();case ReceiverUiEvent_PresentationStopped():
-return presentationStopped();case ReceiverUiEvent_ConnectionCode():
+return presentationStopped();case ReceiverUiEvent_PauseChanged():
+return pauseChanged(_that.presenter,_that.display);case ReceiverUiEvent_ConnectionCode():
 return connectionCode(_that.sas);case ReceiverUiEvent_Error():
 return error(_that.code,_that.message);}
 }
@@ -5724,7 +5807,7 @@ return error(_that.code,_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code,  UiJoinMode joinMode)?  roomCode,TResult? Function( String name,  bool handover)?  peerJoined,TResult? Function( String name)?  handoverStored,TResult? Function()?  handoverExpired,TResult? Function( BigInt id,  String name,  int check)?  joinRequest,TResult? Function( BigInt id,  String reason)?  joinRequestCancelled,TResult? Function( UiJoinMode mode)?  joinModeChanged,TResult? Function( BigInt id,  String name)?  blocked,TResult? Function( BigInt id)?  unblocked,TResult? Function( String code,  String message)?  serverNotice,TResult? Function()?  roomEnded,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function()?  encodedReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult? Function( BigInt received,  BigInt total)?  contentTransferProgress,TResult? Function()?  contentFrameReady,TResult? Function( String name,  int pages)?  contentDocumentOpened,TResult? Function( String url,  String host)?  contentLink,TResult? Function()?  contentStopped,TResult? Function( UiContentError error)?  contentError,TResult? Function()?  peerLeft,TResult? Function()?  presentationStopped,TResult? Function( String sas)?  connectionCode,TResult? Function( String code,  String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String code,  UiJoinMode joinMode)?  roomCode,TResult? Function( String name,  bool handover)?  peerJoined,TResult? Function( String name)?  handoverStored,TResult? Function()?  handoverExpired,TResult? Function( BigInt id,  String name,  int check)?  joinRequest,TResult? Function( BigInt id,  String reason)?  joinRequestCancelled,TResult? Function( UiJoinMode mode)?  joinModeChanged,TResult? Function( BigInt id,  String name)?  blocked,TResult? Function( BigInt id)?  unblocked,TResult? Function( String code,  String message)?  serverNotice,TResult? Function()?  roomEnded,TResult? Function( UiConnectionState state)?  connectionState,TResult? Function( String mime,  String? codec)?  videoTrack,TResult? Function( BigInt packets,  BigInt bytes,  BigInt frames,  BigInt keyframes)?  stats,TResult? Function()?  frameReady,TResult? Function()?  encodedReady,TResult? Function( BigInt decoded,  BigInt delivered,  BigInt dropped,  BigInt droppedPackets,  BigInt decodeErrors,  BigInt keyframeRequests,  int width,  int height,  BigInt avgDecodeUs,  String? error)?  videoStats,TResult? Function( bool document,  String name,  BigInt size)?  contentTransferStarted,TResult? Function( BigInt received,  BigInt total)?  contentTransferProgress,TResult? Function()?  contentFrameReady,TResult? Function( String name,  int pages)?  contentDocumentOpened,TResult? Function( String url,  String host)?  contentLink,TResult? Function()?  contentStopped,TResult? Function( UiContentError error)?  contentError,TResult? Function()?  peerLeft,TResult? Function()?  presentationStopped,TResult? Function( bool presenter,  bool display)?  pauseChanged,TResult? Function( String sas)?  connectionCode,TResult? Function( String code,  String message)?  error,}) {final _that = this;
 switch (_that) {
 case ReceiverUiEvent_RoomCode() when roomCode != null:
 return roomCode(_that.code,_that.joinMode);case ReceiverUiEvent_PeerJoined() when peerJoined != null:
@@ -5752,7 +5835,8 @@ return contentLink(_that.url,_that.host);case ReceiverUiEvent_ContentStopped() w
 return contentStopped();case ReceiverUiEvent_ContentError() when contentError != null:
 return contentError(_that.error);case ReceiverUiEvent_PeerLeft() when peerLeft != null:
 return peerLeft();case ReceiverUiEvent_PresentationStopped() when presentationStopped != null:
-return presentationStopped();case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
+return presentationStopped();case ReceiverUiEvent_PauseChanged() when pauseChanged != null:
+return pauseChanged(_that.presenter,_that.display);case ReceiverUiEvent_ConnectionCode() when connectionCode != null:
 return connectionCode(_that.sas);case ReceiverUiEvent_Error() when error != null:
 return error(_that.code,_that.message);case _:
   return null;
@@ -7336,6 +7420,78 @@ String toString() {
 
 
 
+
+/// @nodoc
+
+
+class ReceiverUiEvent_PauseChanged extends ReceiverUiEvent {
+  const ReceiverUiEvent_PauseChanged({required this.presenter, required this.display}): super._();
+  
+
+/// The presenter paused its screen (it stopped sending video).
+ final  bool presenter;
+/// The display's own flag ([`set_display_paused`]).
+ final  bool display;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ReceiverUiEvent_PauseChangedCopyWith<ReceiverUiEvent_PauseChanged> get copyWith => _$ReceiverUiEvent_PauseChangedCopyWithImpl<ReceiverUiEvent_PauseChanged>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ReceiverUiEvent_PauseChanged&&(identical(other.presenter, presenter) || other.presenter == presenter)&&(identical(other.display, display) || other.display == display));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,presenter,display);
+}
+
+@override
+String toString() {
+    return 'ReceiverUiEvent.pauseChanged(presenter: $presenter, display: $display)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ReceiverUiEvent_PauseChangedCopyWith<$Res> implements $ReceiverUiEventCopyWith<$Res> {
+  factory $ReceiverUiEvent_PauseChangedCopyWith(ReceiverUiEvent_PauseChanged value, $Res Function(ReceiverUiEvent_PauseChanged) _then) = _$ReceiverUiEvent_PauseChangedCopyWithImpl;
+@useResult
+$Res call({
+ bool presenter, bool display
+});
+
+
+
+
+}
+/// @nodoc
+class _$ReceiverUiEvent_PauseChangedCopyWithImpl<$Res>
+    implements $ReceiverUiEvent_PauseChangedCopyWith<$Res> {
+  _$ReceiverUiEvent_PauseChangedCopyWithImpl(this._self, this._then);
+
+  final ReceiverUiEvent_PauseChanged _self;
+  final $Res Function(ReceiverUiEvent_PauseChanged) _then;
+
+/// Create a copy of ReceiverUiEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? presenter = null,Object? display = null,}) {
+  return _then(ReceiverUiEvent_PauseChanged(
+presenter: null == presenter ? _self.presenter : presenter // ignore: cast_nullable_to_non_nullable
+as bool,display: null == display ? _self.display : display // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
 
 /// @nodoc
 

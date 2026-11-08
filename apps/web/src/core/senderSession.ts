@@ -19,6 +19,18 @@ export type SenderPhase =
   | 'stopped' // the user stopped sharing
   | 'error'
 
+/**
+ * The pause state of the presenter (docs/design/pause.md). `requested` is what the presenter asked for (immediate: the video
+ * stops at once, whatever the display says). `presenter` and `display` are the display's `pause_state` flags: the presenter
+ * shows its own flag as confirmed only when `presenter` is set, i.e. when the display echoed it. `display` is the display's
+ * own freeze. The picture is frozen on the display while either flag is set.
+ */
+export interface SenderPause {
+  requested: boolean
+  presenter: boolean
+  display: boolean
+}
+
 export interface SenderState {
   phase: SenderPhase
   /** Server error code or a local one: capture_denied, capture_failed, connection_lost, peer_failed. */
@@ -41,6 +53,8 @@ export interface SenderState {
   pdfPage?: { page: number; pages: number }
   /** True while the screen is being shown (see {@link SenderSession.shareScreen}). */
   screen?: boolean
+  /** The pause state while the screen is shown and a flag is set or was asked for; absent otherwise. */
+  pause?: SenderPause
 }
 
 export interface SenderDeps {
@@ -81,6 +95,9 @@ export class SenderSession {
   private answered: (() => void) | null = null
   private readonly busy = new BusyMemory()
   private pdfPage: { page: number; pages: number } | undefined
+  private pause: SenderPause | undefined
+  /** Pause and resume run one after another (`replaceTrack` is asynchronous). */
+  private pauseChain: Promise<void> = Promise.resolve()
   private icePromise: Promise<RTCIceServer[]> = Promise.resolve([])
   private readonly peerFactory: PeerFactory
 
@@ -105,6 +122,7 @@ export class SenderSession {
       if (ice) this.state.iceState = ice
     }
     if (this.pdfPage && phase === 'sharing') this.state.pdfPage = this.pdfPage
+    if (this.pause && phase === 'sharing') this.state.pause = this.pause
     if (this.roomName && (phase === 'waiting_approval' || phase === 'negotiating' || phase === 'sharing' || phase === 'peer_left')) {
       this.state.roomName = this.roomName
     }
@@ -119,6 +137,71 @@ export class SenderSession {
     const { pdfPage: _gone, ...rest } = this.state
     this.state = p ? { ...rest, pdfPage: p } : rest
     this.deps.onChange(this.state)
+  }
+
+  private setPause(p: SenderPause | undefined): void {
+    const cur = this.pause
+    if (cur?.requested === p?.requested && cur?.presenter === p?.presenter && cur?.display === p?.display) return
+    this.pause = p
+    const { pause: _gone, ...rest } = this.state
+    this.state = p ? { ...rest, pause: p } : rest
+    this.deps.onChange(this.state)
+  }
+
+  /** A command to the display that may fail because the channel is closing; the state says so by itself. */
+  private tryCmd(cmd: ControlCmd): void {
+    try {
+      this.control?.sendCmd(cmd)
+    } catch {
+      /* channel closed */
+    }
+  }
+
+  /**
+   * Pauses the screen (docs/design/pause.md): the video stops at once (`replaceTrack(null)`, no renegotiation), so that what
+   * the presenter prepares does not reach the display device at all, and the display is told (`cmd pause`) so that it keeps
+   * the last picture. The display's `pause_state` confirms it. Only while the screen is shown; idempotent.
+   */
+  pausePresenter(): Promise<void> {
+    return this.setPresenterPaused(true)
+  }
+
+  /** Resumes after {@link pausePresenter}: the display is told (`cmd resume`), then the video flows again. */
+  resumePresenter(): Promise<void> {
+    return this.setPresenterPaused(false)
+  }
+
+  private setPresenterPaused(on: boolean): Promise<void> {
+    const run = this.run
+    this.pauseChain = this.pauseChain.then(async () => {
+      const stream = this.stream
+      const peer = this.peer
+      if (run !== this.run || !stream || !peer) return
+      const cur = this.pause ?? { requested: false, presenter: false, display: false }
+      if (cur.requested === on) return
+      this.setPause({ ...cur, requested: on })
+      // Pause: stop the video first, then tell the display. Resume: tell the display first, then send again.
+      if (!on) this.tryCmd('resume')
+      try {
+        await peer.setStreamPaused?.(stream, on)
+      } catch {
+        /* the connection is going away anyway */
+      }
+      if (on) this.tryCmd('pause')
+    })
+    return this.pauseChain
+  }
+
+  /** The display's `pause_state`: the truth for the UI. A flag it does not echo is asked for once more (idempotent). */
+  private onPauseState(f: { presenter: boolean; display: boolean }): void {
+    const cur = this.pause
+    if (!cur && !f.presenter && !f.display) return
+    const base = cur ?? { requested: false, presenter: false, display: false }
+    // Not asked for and the display holds nothing: nothing to remember (the state is only kept while a flag matters).
+    const next = { ...base, presenter: f.presenter, display: f.display }
+    this.setPause(!next.requested && !next.presenter && !next.display ? undefined : next)
+    if (base.requested && !f.presenter) this.tryCmd('pause')
+    else if (!base.requested && f.presenter) this.tryCmd('resume')
   }
 
   private setChannelOpen(open: boolean): void {
@@ -199,9 +282,13 @@ export class SenderSession {
     const run = this.run
     this.screenOn = false
     this.stream = null
+    // The screen stops: both pause flags are cleared on both sides (docs/design/pause.md, rule 2). A web display clears them
+    // with the stream; a native one is told with `resume`.
+    if (this.pause?.requested) this.tryCmd('resume')
     this.peer?.removeStream?.(stream)
     stream.getTracks().forEach((t) => t.stop())
-    const { screen: _screen, ...rest } = this.state
+    const { screen: _screen, pause: _pause, ...rest } = this.state
+    this.pause = undefined
     this.state = rest
     this.deps.onChange(this.state)
     try {
@@ -316,6 +403,8 @@ export class SenderSession {
     this.control = null
     this.channelOpen = false
     this.pdfPage = undefined
+    this.pause = undefined
+    this.pauseChain = Promise.resolve()
     this.peer?.close()
     this.peer = null
     this.client?.close()
@@ -375,6 +464,7 @@ export class SenderSession {
         this.run++
         this.control = null
         this.channelOpen = false
+        this.pause = undefined
         this.peer?.close()
         this.peer = null
         this.client?.close()
@@ -424,9 +514,15 @@ export class SenderSession {
       // Created before the offer so that the offer contains the data section.
       const ch = peer.openChannel(CONTROL_CHANNEL_LABEL)
       ch.binaryType = 'arraybuffer'
-      this.control = new ControlSender(ch, (p) => {
-        if (run === this.run) this.setPdfPage(p)
-      })
+      this.control = new ControlSender(
+        ch,
+        (p) => {
+          if (run === this.run) this.setPdfPage(p)
+        },
+        (f) => {
+          if (run === this.run) this.onPauseState(f)
+        },
+      )
       ch.onopen = () => {
         if (run === this.run) this.setChannelOpen(true)
       }

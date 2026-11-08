@@ -402,6 +402,16 @@ impl ExternalInput {
         self.inner.key_ready.notify_one();
     }
 
+    /// The presenter paused (docs/design/pause.md): units are not accepted any more (they count
+    /// as `dropped_not_streaming`) and the queue is emptied, so nothing reaches the transport.
+    /// [`Self::begin_streaming`] resumes: it asks the host for a key frame at once and drops
+    /// delta frames until one arrives.
+    pub(crate) fn pause_streaming(&self) {
+        let mut st = self.state();
+        st.streaming = false;
+        st.queue.clear();
+    }
+
     /// Stop accepting units; wakes the waiting sender task and key frame waiters.
     pub fn close(&self) {
         self.inner.closed.store(true, Ordering::Relaxed);

@@ -171,6 +171,7 @@ The data channel with the label `control` (other labels are ignored) carries tex
 | Stall timeout | 30 s without a chunk drops the transfer (`stalled`) | UNCERTAIN; Rust uses 60 s; the app polls once a second |
 | Progress updates | at most one per 100 ms | |
 | One transfer at a time | a new `image`/`document` drops the one in progress; `stop` drops it too | |
+| Pause (docs/design/pause.md) | `cmd pause` / `cmd resume` set and clear the presenter flag, `pause_state` is parsed and ignored; the display sends `pause_state` whenever either flag changes and once when the control channel opens | no difference from the web client; the shared fixtures cover it |
 | Memory | one buffer of the announced size, allocated at the start | at most 64 MiB for a PDF |
 
 Error codes of a transfer (`transferError.<code>`): `bad_message`, `unexpected_chunk`, `too_large`, `size_mismatch`, `no_transfer`, `bad_chunk`, `stalled`, the `document_*` codes, and two Apple TV additions, `image_undecodable` and `image_too_many_pixels`.

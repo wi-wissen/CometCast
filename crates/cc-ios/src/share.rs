@@ -362,7 +362,11 @@ async fn run(
                     PresenterEvent::Error { code, message } => {
                         (Some(json!({"event": "error", "code": code, "message": message})), true)
                     }
-                    PresenterEvent::State(_) | PresenterEvent::Streaming { .. } => (None, false),
+                    // The broadcast extension has no UI to pause from (docs/ios.md); the
+                    // display's own pause is not shown here either.
+                    PresenterEvent::State(_)
+                    | PresenterEvent::Streaming { .. }
+                    | PresenterEvent::PauseState { .. } => (None, false),
                 };
                 if let Some(out) = out { push(&queue, &log, &out); }
                 if last { break; }

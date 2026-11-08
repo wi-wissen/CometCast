@@ -26,6 +26,16 @@ export type ReceivedContent =
   /** A PDF. `pages` is 0 while it is being opened; `page` is the shown page, counted from 1. */
   | { kind: 'document'; id: number; name: string; pages: number; page: number } // `id`: one per received transfer (also for the same name)
 
+/**
+ * The two pause flags of the live screen (docs/design/pause.md). `presenter` is set only by the presenter (`cmd pause` /
+ * `cmd resume`), `display` only by this display ({@link ReceiverSession.setDisplayPaused}). The picture is frozen while
+ * either is set; each side clears only its own flag.
+ */
+export interface PauseFlags {
+  presenter: boolean
+  display: boolean
+}
+
 /** A sender that waits for the host's decision (join mode "confirm"). All text is untrusted: show as plain text. */
 export interface JoinRequest {
   id: number
@@ -93,6 +103,8 @@ export interface ReceiverState {
   contentErrorSeq?: number
   /** Connection check code once connected (compare with the sender), else absent. */
   sas?: string
+  /** The pause flags; absent until one was set (read as both `false`). Cleared with the screen (stream becomes `null`). */
+  pause?: PauseFlags
   /** With `peer_failed`: how the last `GET /ice-servers` ended (decision 13.45). The display shows nothing of it; the presenter's page tells the person. */
   iceState?: IceFetchState
 }
@@ -207,6 +219,8 @@ export class ReceiverSession {
   /** The control channel (for the `page` messages to the presenter). */
   private channel: ControlChannel | null = null
   private lastPageSent = ''
+  /** The pause flags (the same as `state.pause`, always present here). */
+  private pause: PauseFlags = { presenter: false, display: false }
   /** Identity of the peer connection the last offer came from (see {@link sdpIdentity}). */
   private offerId: string | null = null
   private iceServers: RTCIceServer[] = []
@@ -238,6 +252,12 @@ export class ReceiverSession {
   }
 
   private set(patch: Partial<ReceiverState>): void {
+    // The screen stopped (stop, peer left, new session, end): both pause flags go (pause.md rule 2).
+    if (patch.stream === null && (this.pause.presenter || this.pause.display)) {
+      this.pause = { presenter: false, display: false }
+      patch = { ...patch, pause: this.pause }
+      this.sendPauseState()
+    }
     if (patch.contentError) patch = { ...patch, contentErrorSeq: (this.state.contentErrorSeq ?? 0) + 1 }
     this.state = { ...this.state, ...patch }
     this.deps.onChange(this.state)
@@ -247,8 +267,42 @@ export class ReceiverSession {
   private renderer: PdfRenderer | null = null
   private docRun = 0 // invalidates the completion of an earlier open
 
+  /** The presenter paused or resumed its screen. Pause applies to the live screen only: ignored without a stream. */
+  private setPresenterPaused(on: boolean): void {
+    if (on && this.state.stream === null) return
+    this.applyPause({ ...this.pause, presenter: on })
+  }
+
+  /**
+   * The display's own pause flag (the existing Freeze of the toolbar). Only offered while a screen is shown: a request to
+   * pause without a stream is ignored. The presenter is told with `pause_state`.
+   */
+  setDisplayPaused(on: boolean): void {
+    if (on && this.state.stream === null) return
+    this.applyPause({ ...this.pause, display: on })
+  }
+
+  private applyPause(next: PauseFlags): void {
+    if (next.presenter === this.pause.presenter && next.display === this.pause.display) return
+    this.pause = next
+    this.set({ pause: next })
+    this.sendPauseState()
+  }
+
+  /** Tells the presenter the flags (`pause_state`), if the channel is open: whenever either changes and once when it opens. */
+  private sendPauseState(): void {
+    const ch = this.channel
+    if (!ch || ch.readyState !== 'open') return
+    try {
+      ch.send(JSON.stringify({ kind: 'pause_state', presenter: this.pause.presenter, display: this.pause.display }))
+    } catch {
+      /* the channel is closing; the presenter learns that from the connection */
+    }
+  }
+
   private onCmd(cmd: ControlCmd): void {
-    if (cmd === 'stop') this.clearContent()
+    if (cmd === 'pause' || cmd === 'resume') this.setPresenterPaused(cmd === 'pause')
+    else if (cmd === 'stop') this.clearContent()
     else if (cmd === 'next_page') this.goToPage((this.state.content?.kind === 'document' ? this.state.content.page : 0) + 1)
     else if (cmd === 'prev_page') this.goToPage((this.state.content?.kind === 'document' ? this.state.content.page : 0) - 1)
     else this.goToPage(cmd.go_to_page.page)
@@ -517,6 +571,12 @@ export class ReceiverSession {
     ch.onmessage = (ev) => this.control.handle(ev.data)
     this.channel = ch
     this.lastPageSent = ''
+    // The presenter learns the flags once when the channel opens (both `false` unless the display paused meanwhile).
+    if (ch.readyState === 'open') this.sendPauseState()
+    else
+      ch.onopen = () => {
+        if (this.channel === ch) this.sendPauseState()
+      }
   }
 
   /** Tells the presenter which page is shown and how many there are (decision 13.31), whenever either changes. */
