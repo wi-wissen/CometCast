@@ -893,7 +893,7 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                 }
             },
             ev = core.next_event() => match ev {
-                Some(ReceiverEvent::JoinRequest { id, name, check }) => {
+                Some(ReceiverEvent::JoinRequest { id, name, check, .. }) => {
                     queue.push(approval::Waiting { id, name, check });
                     if queue.len() == 1 {
                         ask_next(&queue);
@@ -922,6 +922,8 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                     return ExitCode::SUCCESS;
                 }
                 Some(ReceiverEvent::PeerJoined { name, .. }) => println!("Sender joined: \"{name}\"."),
+                // The command line display keeps no memory of names and devices.
+                Some(ReceiverEvent::DeviceMemoryChanged(_)) => {}
                 Some(ReceiverEvent::State(s)) => println!("Connection: {s:?}"),
                 Some(ReceiverEvent::ConnectionCode(c)) => println!("Connection check code: {c}"),
                 Some(ReceiverEvent::PresentationStopped) => println!("The sender stopped presenting."),
