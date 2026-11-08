@@ -133,7 +133,7 @@
     },
     {
       "name": "cmd unknown string",
-      "input": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"dance\"}",
       "expect": null
     },
     {
@@ -791,6 +791,93 @@
       "expect": {
         "kind": "image_end"
       }
+    },
+    {
+      "name": "cmd pause",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": "pause"
+      }
+    },
+    {
+      "name": "cmd resume",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"resume\"}",
+      "expect": {
+        "kind": "cmd",
+        "cmd": "resume"
+      }
+    },
+    {
+      "name": "cmd pause wrong case",
+      "input": "{\"kind\":\"cmd\",\"cmd\":\"Pause\"}",
+      "expect": null
+    },
+    {
+      "name": "cmd pause as object",
+      "input": "{\"kind\":\"cmd\",\"cmd\":{\"pause\":{}}}",
+      "expect": null
+    },
+    {
+      "name": "pause_state both false",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":false,\"display\":false}",
+      "expect": {
+        "kind": "pause_state",
+        "presenter": false,
+        "display": false
+      }
+    },
+    {
+      "name": "pause_state presenter",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":true,\"display\":false}",
+      "expect": {
+        "kind": "pause_state",
+        "presenter": true,
+        "display": false
+      }
+    },
+    {
+      "name": "pause_state both",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":true,\"display\":true}",
+      "expect": {
+        "kind": "pause_state",
+        "presenter": true,
+        "display": true
+      }
+    },
+    {
+      "name": "pause_state with extra key",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":false,\"display\":true,\"x\":1}",
+      "expect": {
+        "kind": "pause_state",
+        "presenter": false,
+        "display": true
+      }
+    },
+    {
+      "name": "pause_state missing display",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":true}",
+      "expect": null
+    },
+    {
+      "name": "pause_state missing presenter",
+      "input": "{\"kind\":\"pause_state\",\"display\":true}",
+      "expect": null
+    },
+    {
+      "name": "pause_state numbers",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":1,\"display\":0}",
+      "expect": null
+    },
+    {
+      "name": "pause_state strings",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":\"true\",\"display\":\"false\"}",
+      "expect": null
+    },
+    {
+      "name": "pause_state null",
+      "input": "{\"kind\":\"pause_state\",\"presenter\":null,\"display\":false}",
+      "expect": null
     }
   ]
 }

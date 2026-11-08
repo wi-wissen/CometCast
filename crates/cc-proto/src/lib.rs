@@ -110,6 +110,11 @@ pub enum ControlCmd {
     },
     /// Stop showing the current content.
     Stop,
+    /// Presenter to display: the presenter paused its screen (it stops sending video). The
+    /// display keeps the last picture. Idempotent (docs/design/pause.md).
+    Pause,
+    /// Presenter to display: the presenter resumed. Idempotent.
+    Resume,
 }
 
 /// Error codes added with server hardening (milestone M8). They are additive: older

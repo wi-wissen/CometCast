@@ -116,6 +116,14 @@ pub enum Message {
         /// The page count, from 1, at least `page`.
         pages: u32,
     },
+    /// Display to presenter (docs/design/pause.md): which of the two pause flags are set. A
+    /// receiver ignores it; a presenter shows it. The source of truth for the presenter's UI.
+    PauseState {
+        /// The presenter's own flag, as the display holds it.
+        presenter: bool,
+        /// The display's own flag.
+        display: bool,
+    },
     /// Presenter to display (iOS, native-apps.md 20.5): "hold this single-use token, the
     /// broadcast extension will join with it". The token is 1 to 64 characters of the
     /// base64url alphabet. A display without hand-over support does not answer.
@@ -219,6 +227,14 @@ pub fn parse_message(text: &str, max_image: u64, max_document: u64) -> Result<Me
             };
             match (n("page"), n("pages")) {
                 (Some(page), Some(pages)) if page <= pages => Ok(Message::Page { page, pages }),
+                _ => Err(ParseError::InvalidFields),
+            }
+        }
+        "pause_state" => {
+            // Both flags are required and must be booleans; other keys are ignored.
+            let flag = |k: &str| o.get(k).and_then(|v| v.as_bool());
+            match (flag("presenter"), flag("display")) {
+                (Some(presenter), Some(display)) => Ok(Message::PauseState { presenter, display }),
                 _ => Err(ParseError::InvalidFields),
             }
         }
@@ -409,6 +425,9 @@ impl Message {
             Message::DocumentEnd => json!({"kind": "document_end"}),
             Message::Link { url } => json!({"kind": "link", "url": url}),
             Message::Page { page, pages } => json!({"kind": "page", "page": page, "pages": pages}),
+            Message::PauseState { presenter, display } => {
+                json!({"kind": "pause_state", "presenter": presenter, "display": display})
+            }
             Message::Handover { token } => json!({"kind": "handover", "token": token}),
             Message::HandoverOk => json!({"kind": "handover_ok"}),
         };
@@ -474,6 +493,45 @@ mod tests {
             r#"{"kind":"handover","token":"x1"}"#
         );
         assert_eq!(Message::HandoverOk.to_json(), r#"{"kind":"handover_ok"}"#);
+    }
+
+    #[test]
+    fn pause_messages_are_parsed_and_strict() {
+        assert_eq!(
+            parse(r#"{"kind":"cmd","cmd":"pause"}"#),
+            Ok(Message::Cmd(ControlCmd::Pause))
+        );
+        assert_eq!(
+            parse(r#"{"kind":"cmd","cmd":"resume"}"#),
+            Ok(Message::Cmd(ControlCmd::Resume))
+        );
+        assert_eq!(
+            Message::Cmd(ControlCmd::Pause).to_json(),
+            r#"{"cmd":"pause","kind":"cmd"}"#
+        );
+        let st = |presenter, display| Ok(Message::PauseState { presenter, display });
+        assert_eq!(
+            parse(r#"{"kind":"pause_state","presenter":true,"display":false}"#),
+            st(true, false)
+        );
+        assert_eq!(
+            parse(r#"{"kind":"pause_state","presenter":false,"display":true,"x":1}"#),
+            st(false, true)
+        );
+        for bad in [
+            r#"{"kind":"pause_state"}"#,
+            r#"{"kind":"pause_state","presenter":true}"#,
+            r#"{"kind":"pause_state","presenter":1,"display":0}"#,
+            r#"{"kind":"pause_state","presenter":"true","display":false}"#,
+            r#"{"kind":"pause_state","presenter":null,"display":false}"#,
+        ] {
+            assert_eq!(parse(bad), Err(ParseError::InvalidFields), "{bad}");
+        }
+        let m = Message::PauseState {
+            presenter: true,
+            display: true,
+        };
+        assert_eq!(parse(&m.to_json()), Ok(m));
     }
 
     #[test]

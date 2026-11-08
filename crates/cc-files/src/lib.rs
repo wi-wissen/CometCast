@@ -15,13 +15,15 @@
 //! client does not render PDFs yet and answers a document with a notice.
 
 pub mod outgoing;
+pub mod pause;
 pub mod receiver;
 pub mod wire;
 
 pub use outgoing::{
     Outgoing, SendError, Transfer, cmd_message, document_transfer, handover_message,
-    handover_ok_message, image_transfer, link_message, page_message,
+    handover_ok_message, image_transfer, link_message, page_message, pause_state_message,
 };
+pub use pause::PauseState;
 pub use receiver::{
     Blob, ContentError, ContentEvent, ContentOptions, ContentReceiver, DEFAULT_MAX_VIOLATIONS,
     DEFAULT_TARGET_WIDTH, MAX_SKIPPED_BYTES, Next, SharedBudget, Work, WorkDone,
