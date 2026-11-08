@@ -238,6 +238,15 @@ pub enum ReceiverUiEvent {
         /// Block id.
         id: u64,
     },
+    /// The server refused a command of the host but the room goes on, for example
+    /// `no_such_request` (the request was withdrawn as the host decided), `block_list_full` or
+    /// `no_such_block`. Show it as a note; do not end anything.
+    ServerNotice {
+        /// Protocol error code (docs/protocol.md "Error codes").
+        code: String,
+        /// The server's English text, for logs.
+        message: String,
+    },
     /// The room session was ended by [`end_room`]. The stream ends after this; start a new
     /// receiver for a new room (a new code).
     RoomEnded,
@@ -439,6 +448,7 @@ fn stats_event(s: MediaSnapshot) -> ReceiverUiEvent {
     }
 }
 
+/// The UI event for a core event.
 fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
     match e {
         ReceiverEvent::PeerJoined { name, handover } => {
@@ -470,6 +480,12 @@ fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
             code: cc_receiver::error_code(&message),
             message,
         },
+        // A server error that does not end the room (e.g. `no_such_request` after the host
+        // decided on a request that was cancelled at the same moment). It must not become
+        // `Error`: the UI ends the room on that.
+        ReceiverEvent::ServerNotice { code, message } => {
+            ReceiverUiEvent::ServerNotice { code, message }
+        }
     }
 }
 
@@ -3837,6 +3853,17 @@ mod tests {
             map_receiver_event(ReceiverEvent::Error("signalling connection closed".into())),
             ReceiverUiEvent::Error { code, .. } if code == "connection_lost"
         ));
+        // A server error that keeps the room reaches the UI as a notice, never as an `Error`.
+        assert_eq!(
+            map_receiver_event(ReceiverEvent::ServerNotice {
+                code: "no_such_request".into(),
+                message: "no such waiting request".into()
+            }),
+            ReceiverUiEvent::ServerNotice {
+                code: "no_such_request".into(),
+                message: "no such waiting request".into()
+            }
+        );
     }
 
     #[test]

@@ -527,3 +527,59 @@ async fn a_refused_document_does_not_block_the_channel() {
     tx.stop().await;
     rx.core.stop().await;
 }
+
+/// Wait for the core to report that the sender left (content events in between are read).
+async fn wait_peer_left(rx: &mut Rx) {
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            match rx.core.next_event().await {
+                Some(ReceiverEvent::PeerLeft) => return,
+                Some(ReceiverEvent::Error(m)) => panic!("receiver error: {m}"),
+                Some(_) => {}
+                None => panic!("receiver ended"),
+            }
+        }
+    })
+    .await
+    .expect("timeout waiting for peer_left");
+}
+
+/// The document-open budget belongs to the room, not to one presentation: a presenter that
+/// leaves and joins again (a new channel) does not get a fresh budget.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_open_budget_is_kept_across_presentations_of_a_room() {
+    let server = start_server().await;
+    let mut opts = content_options();
+    opts.open_burst = 1;
+    opts.open_refill = Duration::from_secs(3600);
+    let mut rx = start_receiver_with(&server, opts).await;
+
+    let tx = start_content_sender(&server, &rx).await;
+    tx.control()
+        .send_document("min.pdf", MINIMAL)
+        .await
+        .unwrap();
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::DocumentOpened { pages: 1, .. }
+    ));
+    assert!(matches!(
+        next(&mut rx).await,
+        ContentEvent::PageRendered { page: 1, .. }
+    ));
+    tx.stop().await;
+    wait_peer_left(&mut rx).await;
+
+    // Back in with a new presentation: the budget of the room is used up.
+    let tx = start_content_sender(&server, &rx).await;
+    tx.control()
+        .send_document("min.pdf", MINIMAL)
+        .await
+        .unwrap();
+    match next(&mut rx).await {
+        ContentEvent::Error { error, .. } => assert_eq!(error, ContentError::DocumentRejected),
+        other => panic!("{other:?}"),
+    }
+    tx.stop().await;
+    rx.core.stop().await;
+}

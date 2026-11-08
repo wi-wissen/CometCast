@@ -24,7 +24,7 @@ pub use outgoing::{
 };
 pub use receiver::{
     Blob, ContentError, ContentEvent, ContentOptions, ContentReceiver, DEFAULT_MAX_VIOLATIONS,
-    DEFAULT_TARGET_WIDTH, MAX_SKIPPED_BYTES, Next, Work, WorkDone,
+    DEFAULT_TARGET_WIDTH, MAX_SKIPPED_BYTES, Next, SharedBudget, Work, WorkDone,
 };
 pub use wire::{
     CHUNK_SIZE, ImageMime, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_LINK_LENGTH, MAX_NAME_LENGTH,

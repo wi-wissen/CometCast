@@ -270,6 +270,23 @@ impl Document {
         limits: Limits,
         isolation: Isolation,
     ) -> Result<Document, DocError> {
+        Self::open_cancellable(bytes, limits, isolation, None)
+    }
+
+    /// Like [`open_with_options`](Self::open_with_options) with a cancel flag. Setting the
+    /// flag while the file is parsed in a worker process kills the process (within about
+    /// 10 ms) and the open answers [`DocError::Cancelled`]. The in-process engine cannot be
+    /// interrupted: the flag is only looked at before parsing starts there.
+    pub fn open_cancellable(
+        bytes: Vec<u8>,
+        limits: Limits,
+        isolation: Isolation,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> Result<Document, DocError> {
+        let cancelled = || cancel.as_deref().is_some_and(|c| c.load(Ordering::SeqCst));
+        if cancelled() {
+            return Err(DocError::Cancelled);
+        }
         if bytes.is_empty() {
             return Err(DocError::Empty);
         }
@@ -302,7 +319,7 @@ impl Document {
                     &limits,
                     crate::process::Call::Info,
                     limits.open_timeout,
-                    None,
+                    cancel.as_deref(),
                 );
                 last_peak_kib.store(done.peak_kib, Ordering::Relaxed);
                 last_protections.store(done.protections.0, Ordering::Relaxed);
@@ -322,6 +339,9 @@ impl Document {
                 )
             }
             Resolved::Thread => {
+                if cancelled() {
+                    return Err(DocError::Cancelled);
+                }
                 let key = crate::worker::content_key(&bytes);
                 let (engine, sizes) = Engine::open(Arc::clone(&bytes), limits, key)?;
                 let state = ThreadState {

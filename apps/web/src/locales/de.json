@@ -48,6 +48,8 @@
       "no_transfer": "Eine Bildübertragung wurde unerwartet beendet und ignoriert.",
       "stalled": "Die Übertragung vom Absender ist ins Stocken geraten und wurde verworfen.",
       "bad_chunk": "Bilddaten kamen in unerwarteter Form an und wurden verworfen.",
+      "image_too_large": "Das Bild hat zu viele Pixel, um angezeigt zu werden, und wurde verworfen.",
+      "image_invalid": "Das Bild konnte nicht gelesen werden und wurde verworfen.",
       "document_unsupported": "Der Absender hat ein PDF-Dokument gesendet. Diese App kann Dokumente noch nicht anzeigen.",
       "document_invalid": "Das PDF ist beschädigt oder wird nicht unterstützt und kann nicht angezeigt werden.",
       "document_encrypted": "Das PDF ist passwortgeschützt und kann nicht angezeigt werden.",

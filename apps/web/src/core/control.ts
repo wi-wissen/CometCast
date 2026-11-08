@@ -210,6 +210,8 @@ export type TransferErrorCode =
   | 'no_transfer'
   | 'bad_chunk'
   | 'stalled'
+  | 'image_too_large'
+  | 'image_invalid'
   | 'document_unsupported'
   | 'document_invalid'
   | 'document_encrypted'
@@ -323,10 +325,15 @@ export class ControlReceiver {
   /** The transfer in progress is a PDF (otherwise an image). */
   private isDocument = false
   private lastProgress = 0
-  /** `now` is injectable for tests; progress callbacks are throttled to one per PROGRESS_INTERVAL_MS. */
+  /**
+   * `now` is injectable for tests; progress callbacks are throttled to one per PROGRESS_INTERVAL_MS.
+   * `checkImage` looks at a complete image's bytes before it is handed out (the display checks the
+   * pixel size there, see imageSize.ts); an error code drops the image.
+   */
   constructor(
     private readonly h: ControlReceiverHandlers,
     private readonly now: () => number = () => Date.now(),
+    private readonly checkImage?: (bytes: Uint8Array, mime: string) => TransferErrorCode | null,
   ) {}
 
   handle(data: unknown): void {
@@ -394,10 +401,11 @@ export class ControlReceiver {
           this.h.onError('no_transfer')
           break
         }
-        const r = this.asm.finish()
+        const r = this.asm.finishBytes()
         this.h.onProgress(null)
-        if (typeof r === 'string') this.h.onError(r)
-        else this.h.onImage(r.blob, r.name)
+        const bad = typeof r === 'string' ? r : this.checkImage?.(r.bytes, r.mime)
+        if (bad) this.h.onError(bad)
+        else if (typeof r !== 'string') this.h.onImage(new Blob([r.bytes as BlobPart], { type: r.mime }), r.name)
         break
       }
       case 'link':

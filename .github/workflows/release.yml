@@ -17,8 +17,8 @@
 # release points at the commit this run started from (github.sha). A draft release creates its
 # tag only when someone publishes it.
 #
-# Action versions are pinned to full commit SHAs (resolved with `git ls-remote` on 2026-11-07;
-# the comment names the release tag the SHA belonged to). Dependabot or a manual bump keeps them
+# Action versions are pinned to full commit SHAs (resolved with `git ls-remote` on 2026-11-07,
+# actions/attest-build-provenance on 2026-11-08; the comment names the release tag the SHA belonged to). Dependabot or a manual bump keeps them
 # current. Not pinned: Homebrew packages (xcodegen), the tools that `cargo install`/`npx` fetch by
 # exact version, and the Flutter/NDK/Xcode versions the runner image provides.
 name: Release
@@ -1174,15 +1174,23 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Also signs: a build provenance attestation (SLSA, Sigstore-signed through GitHub's OIDC token) for
+  # the pushed multi-arch index digest, stored with GitHub's attestations API and pushed to ghcr.io
+  # next to the image. Verify: gh attestation verify oci://IMAGE:VERSION --owner OWNER
+  # (docs/releasing.md). The per-arch builds above keep provenance/sbom off (the join needs plain
+  # images); the attestation covers the index that people pull. UNCERTAIN: never run.
   docker-manifest:
     name: Docker multi-arch tag
     needs: [prepare, docker]
     if: ${{ !inputs.dry_run && !contains(format(',{0},', inputs.skip), ',docker,') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # id-token and attestations only for this job: they let it sign and store the attestation.
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       IMAGE: ${{ needs.prepare.outputs.image }}
@@ -1204,6 +1212,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Create the multi-arch tag
+        id: index
         run: |
           set -euo pipefail
           test "$(find digests -type f | wc -l)" -eq 2 || { echo "::error::expected 2 digests (amd64, arm64)"; find digests -type f; exit 1; }
@@ -1213,6 +1222,19 @@ jobs:
           for f in digests/*; do refs+=("$IMAGE@$(cat "$f")"); done
           docker buildx imagetools create -t "$IMAGE:$VERSION" "${refs[@]}"
           docker buildx imagetools inspect "$IMAGE:$VERSION"
+          # The digest of the index just pushed: what the attestation is about.
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
+          printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "::error::unexpected index digest '$digest'"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance (signed, pushed to ghcr.io)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          push-to-registry: true
+          # A storage record needs the extra permission artifact-metadata and an organisation-owned
+          # repository; the attestation itself does not need it.
+          create-storage-record: false
 
   # ---------------------------------------------------------------------------------------
   # SBOMs (CycloneDX: Rust workspace and web app), the deploy bundle and the licence files.

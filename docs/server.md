@@ -101,12 +101,12 @@ UNCERTAIN: every number is a placeholder.
 | `limits.ban_after_failed_joins` | 10 | 30 | Failed joins within the window cause a ban. |
 | `limits.failed_join_window_secs` | 600 | 600 | The window. |
 | `limits.ban_secs` | `[60, 300, 1800]` | same | 1st, 2nd, 3rd+ ban. The plan says 1, 5, 30 minutes. |
-| `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. |
+| `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. 1 to 31536000 (one year); each `ban_secs` entry at most one year too. |
 | `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because an office may sit behind one NAT address. |
 | `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address. |
-| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. |
-| `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". |
-| `limits.max_room_lifetime_secs` | 43200 | 86400 | Hard cap: longest life of any room, however busy and alive (`room_lifetime`). UNCERTAIN: 12 h / 24 h are placeholders; clients see `peer_left` when it is reached even if the video still runs. |
+| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. Each 1 to 86400. |
+| `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". 1 to 31536000. |
+| `limits.max_room_lifetime_secs` | 43200 | 86400 | Hard cap: longest life of any room, however busy and alive (`room_lifetime`). UNCERTAIN: 12 h / 24 h are placeholders; clients see `peer_left` when it is reached even if the video still runs. 1 to 31536000. |
 | `limits.msg_rate_per_sec` / `msg_burst` | 20 / 100 | 50 / 200 | Per connection: messages per second and burst. |
 | `limits.bytes_per_sec` / `bytes_burst` | 65536 / 262144 | 262144 / 1048576 | Per connection: bytes per second and burst (burst must be at least `max_message_bytes`). |
 | `limits.max_room_relay_bytes` | 8388608 | 67108864 | Total bytes relayed through one room. |
@@ -125,7 +125,7 @@ UNCERTAIN: every number is a placeholder.
 | `stun.urls` | `[]` | `[]` | Public STUN servers listed at `/ice-servers`, **allowed in both modes**. At most 4, only `stun:` / `stuns:` URLs (lowercase) as `host[:port]` (port 1-65535, IPv6 as `[addr]`), no credentials (`@`), path or query; checked at start. Env `COMETCAST__STUN__URLS=stun:a:3478,stun:b:3478` (comma-separated), CLI `--set stun.urls=...`. |
 | `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. `turn.stun_urls` follows the same rules as `stun.urls`; both are listed (without duplicates) in one STUN entry. |
 | `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |
-| `turn.ttl_secs` | | 3600 | Credential lifetime. |
+| `turn.ttl_secs` | | 3600 | Credential lifetime. 1 to 31536000. |
 
 ## Join approval (who may join a room)
 
@@ -551,21 +551,21 @@ What the image and compose file give you (all checked in the first run, see belo
 
 | Item | State |
 | --- | --- |
-| Server user | non-root (UID 65532); coturn image runs as `nobody` (65534) |
+| Server user | non-root (UID 65532); coturn runs as `COTURN_UID:COTURN_GID` from `.env` (default 3478:3478, compose `user:`), not the image's `nobody:nogroup` (65534): GID 65534 is the host's shared `nogroup` on Debian/Ubuntu, so other daemons could read what is given to it ([deploy/README.md](../deploy/README.md#coturn-user-and-group)). UNCERTAIN: the first run used `nobody`; the new user was not run yet |
 | Root file system | read-only for both containers (coturn gets tmpfs `/tmp`, `/var/tmp`) |
 | Capabilities | `cap_drop: ALL` and `no-new-privileges` for both; coturn needs `NET_BIND_SERVICE` added back, otherwise its binary cannot start |
 | Health check | server: in the Dockerfile, `cometcast-server --healthcheck`; `docker compose ps` shows `healthy` (reads config file and `COMETCAST_*` env, not compose `command:` flags, see above). coturn: compose runs `turnutils_stunclient -p 3478 <TURN_LISTENING_IP or 127.0.0.1>` (a STUN request over UDP; exit 0 when answered, 1 when not; checked by hand with `docker exec`, not by waiting for Docker to report `healthy`); it does not test TLS on 5349 or relaying |
 | Resource limits | `mem_limit` 512m / `pids_limit` 512 (server), 1g / 512 (coturn): UNCERTAIN guesses, never load-tested; accepted by `docker compose config`, not exercised under load. The server needs no tmpfs (read-only root worked in the first run) |
-| Base images | **not digest-pinned**: `node:22-bookworm-slim`, `rust:1.99-bookworm` (minor-pinned), `gcr.io/distroless/cc-debian12:nonroot` and `coturn/coturn:${COTURN_VERSION}` are tags that can move. Digests could not be resolved reliably in the review (Docker Hub rate-limited the pulls), so none were invented. Pin with `image@sha256:...` before a production build |
+| Base images | pinned by tag **and** digest (`image:tag@sha256:...`): `node:22-bookworm-slim`, `rust:1.99-bookworm`, `gcr.io/distroless/cc-debian12:nonroot` in the Dockerfile and `coturn/coturn:4.18.0` in compose (the multi-arch index digests read from Docker Hub and gcr.io on 2026-11-08; coturn's equals the relay repository's pin of 2026-11-07). Dependabot (`.github/dependabot.yml`) proposes digest updates. UNCERTAIN: no image was built with these digests yet |
 | Secrets | `turn_secret`, `altcha_secret` as compose file secrets (`/run/secrets/...`), read by the server from `secret_file`; never in the image, `Dockerfile.dockerignore` excludes `deploy/secrets`, `deploy/certs`, `deploy/.env`, `**/.env`, `**/.env.*` (except `.env.example`), `**/*.pem`, `**/*.key` (nested too; checked with a test build of a scratch context) |
-| coturn secret | has to be in `turnserver.conf` (coturn has no secret-file option; UNCERTAIN: not looked for other ways), written by `render.sh` with mode 600, or 640 for group 65534 with `TURN_CONF_GROUP=65534` |
-| TLS files | mounted read-only from `deploy/certs/`; the key must be readable by 65532 (server) and 65534 (coturn): `chown 65532:65534 certs/privkey.pem; chmod 640` |
+| coturn secret | has to be in `turnserver.conf` (coturn has no secret-file option; UNCERTAIN: not looked for other ways), written by `render.sh` with mode 600, or 640 for coturn's group with `TURN_CONF_GROUP=3478` (must equal `COTURN_GID`; 65534 is refused) |
+| TLS files | mounted read-only from `deploy/certs/`; the key must be readable by 65532 (server) and `COTURN_GID` (coturn): `chown 65532:3478 certs/privkey.pem; chmod 640` (`render.sh` with `TURN_CONF_GROUP` sets group and mode of the key too) |
 | Ports | server `8443/tcp` published on all host addresses; coturn on the host network (3478 udp/tcp, 5349 tcp, relay range) |
 | Trusted proxy | none by default; set `network.trusted_proxies` only for your proxy's address |
 
 Silent failure modes found in the run, and what to look for:
 
-- coturn cannot read `turnserver.conf` (mode 600 root file, container user `nobody`): it does **not**
+- coturn cannot read `turnserver.conf` (mode 600 root file, or a group other than `COTURN_GID`): it does **not**
   stop. It logs `Cannot find config file ... Default and command-line settings will be used` and
   starts with defaults, so there is no TURN REST authentication and no hardening from the file. Check
   `docker compose logs coturn` for that line and for `Bad configuration format` or `ERROR`.
@@ -707,7 +707,7 @@ Review of the deploy commit, same machine type (Docker Engine 29.9.2 started by 
    single machine, **never run behind a real NAT**). Render tests: 164 checks.
 6. Compose: coturn health check (`turnutils_stunclient`), `mem_limit` and `pids_limit` for both
    services, `Dockerfile.dockerignore` patterns for nested `.env*`, `*.pem`, `*.key` (verified with
-   a scratch build context). Base images remain **not digest-pinned**.
+   a scratch build context). Base images remained **not digest-pinned** then (pinned since, see the table above).
 
 **Not verified**: TLS shutdown with clients; IPv6 behaviour of any kind; the NAT form behind a real
 NAT; the memory and pid limits under load; a full `docker compose up` of the changed files (only

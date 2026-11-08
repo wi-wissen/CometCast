@@ -38,6 +38,27 @@ void main() {
     }
 
     test(
+      'a server notice is a note, the room and the presenter stay',
+      () async {
+        final (core, c, notices) = await rig();
+        core.receiverEvents
+          ..add(const ReceiverUiEvent.peerJoined(name: 'Ada', handover: false))
+          ..add(
+            const ReceiverUiEvent.serverNotice(
+              code: 'no_such_request',
+              message: 'no such waiting request',
+            ),
+          );
+        await tick();
+        final n = notices.whereType<NoticeServer>().single;
+        expect(n.code, 'no_such_request');
+        expect(c.senderJoined, isTrue);
+        expect(c.error, isNull);
+        expect(c.errorCode, isNull);
+      },
+    );
+
+    test(
       'a hand-over join is no "connected" notice, a normal one is',
       () async {
         final (core, c, notices) = await rig();

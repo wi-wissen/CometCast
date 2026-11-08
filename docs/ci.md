@@ -170,5 +170,8 @@ Before switching on, start every workflow once by hand and check that it is gree
 `docker-image.yml` (manual only) builds `deploy/Dockerfile` for linux/amd64 and pushes
 `ghcr.io/<owner>/cometcast-server:edge` and `:sha-<commit>`. Inputs: `branding` (empty = default,
 `branding/cometcast.json` = official) and `push` (off = build only). Versioned multi-arch images and
-`latest` still come only from `release.yml` and `promote-latest.yml`. UNCERTAIN: the workflow never ran
+`latest` still come only from `release.yml` and `promote-latest.yml`. A pushed edge image gets a signed
+build provenance attestation like a release (`actions/attest-build-provenance`; the job has `id-token: write`
+and `attestations: write` for it; verify with `gh attestation verify oci://ghcr.io/<owner>/cometcast-server:edge
+--owner <owner>`, see `docs/releasing.md`). UNCERTAIN: the workflow never ran
 on GitHub. A package on ghcr.io is private at first; make it public in the package settings once.

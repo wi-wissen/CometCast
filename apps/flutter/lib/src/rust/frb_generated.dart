@@ -3093,28 +3093,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 8:
         return ReceiverUiEvent_Unblocked(id: dco_decode_u_64(raw[1]));
       case 9:
-        return ReceiverUiEvent_RoomEnded();
+        return ReceiverUiEvent_ServerNotice(
+          code: dco_decode_String(raw[1]),
+          message: dco_decode_String(raw[2]),
+        );
       case 10:
+        return ReceiverUiEvent_RoomEnded();
+      case 11:
         return ReceiverUiEvent_ConnectionState(
           state: dco_decode_ui_connection_state(raw[1]),
         );
-      case 11:
+      case 12:
         return ReceiverUiEvent_VideoTrack(
           mime: dco_decode_String(raw[1]),
           codec: dco_decode_opt_String(raw[2]),
         );
-      case 12:
+      case 13:
         return ReceiverUiEvent_Stats(
           packets: dco_decode_u_64(raw[1]),
           bytes: dco_decode_u_64(raw[2]),
           frames: dco_decode_u_64(raw[3]),
           keyframes: dco_decode_u_64(raw[4]),
         );
-      case 13:
-        return ReceiverUiEvent_FrameReady();
       case 14:
-        return ReceiverUiEvent_EncodedReady();
+        return ReceiverUiEvent_FrameReady();
       case 15:
+        return ReceiverUiEvent_EncodedReady();
+      case 16:
         return ReceiverUiEvent_VideoStats(
           decoded: dco_decode_u_64(raw[1]),
           delivered: dco_decode_u_64(raw[2]),
@@ -3127,42 +3132,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           avgDecodeUs: dco_decode_u_64(raw[9]),
           error: dco_decode_opt_String(raw[10]),
         );
-      case 16:
+      case 17:
         return ReceiverUiEvent_ContentTransferStarted(
           document: dco_decode_bool(raw[1]),
           name: dco_decode_String(raw[2]),
           size: dco_decode_u_64(raw[3]),
         );
-      case 17:
+      case 18:
         return ReceiverUiEvent_ContentTransferProgress(
           received: dco_decode_u_64(raw[1]),
           total: dco_decode_u_64(raw[2]),
         );
-      case 18:
-        return ReceiverUiEvent_ContentFrameReady();
       case 19:
+        return ReceiverUiEvent_ContentFrameReady();
+      case 20:
         return ReceiverUiEvent_ContentDocumentOpened(
           name: dco_decode_String(raw[1]),
           pages: dco_decode_u_32(raw[2]),
         );
-      case 20:
+      case 21:
         return ReceiverUiEvent_ContentLink(
           url: dco_decode_String(raw[1]),
           host: dco_decode_String(raw[2]),
         );
-      case 21:
-        return ReceiverUiEvent_ContentStopped();
       case 22:
+        return ReceiverUiEvent_ContentStopped();
+      case 23:
         return ReceiverUiEvent_ContentError(
           error: dco_decode_ui_content_error(raw[1]),
         );
-      case 23:
-        return ReceiverUiEvent_PeerLeft();
       case 24:
-        return ReceiverUiEvent_PresentationStopped();
+        return ReceiverUiEvent_PeerLeft();
       case 25:
-        return ReceiverUiEvent_ConnectionCode(sas: dco_decode_String(raw[1]));
+        return ReceiverUiEvent_PresentationStopped();
       case 26:
+        return ReceiverUiEvent_ConnectionCode(sas: dco_decode_String(raw[1]));
+      case 27:
         return ReceiverUiEvent_Error(
           code: dco_decode_String(raw[1]),
           message: dco_decode_String(raw[2]),
@@ -4322,15 +4327,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_id = sse_decode_u_64(deserializer);
         return ReceiverUiEvent_Unblocked(id: var_id);
       case 9:
-        return ReceiverUiEvent_RoomEnded();
+        var var_code = sse_decode_String(deserializer);
+        var var_message = sse_decode_String(deserializer);
+        return ReceiverUiEvent_ServerNotice(
+          code: var_code,
+          message: var_message,
+        );
       case 10:
+        return ReceiverUiEvent_RoomEnded();
+      case 11:
         var var_state = sse_decode_ui_connection_state(deserializer);
         return ReceiverUiEvent_ConnectionState(state: var_state);
-      case 11:
+      case 12:
         var var_mime = sse_decode_String(deserializer);
         var var_codec = sse_decode_opt_String(deserializer);
         return ReceiverUiEvent_VideoTrack(mime: var_mime, codec: var_codec);
-      case 12:
+      case 13:
         var var_packets = sse_decode_u_64(deserializer);
         var var_bytes = sse_decode_u_64(deserializer);
         var var_frames = sse_decode_u_64(deserializer);
@@ -4341,11 +4353,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           frames: var_frames,
           keyframes: var_keyframes,
         );
-      case 13:
-        return ReceiverUiEvent_FrameReady();
       case 14:
-        return ReceiverUiEvent_EncodedReady();
+        return ReceiverUiEvent_FrameReady();
       case 15:
+        return ReceiverUiEvent_EncodedReady();
+      case 16:
         var var_decoded = sse_decode_u_64(deserializer);
         var var_delivered = sse_decode_u_64(deserializer);
         var var_dropped = sse_decode_u_64(deserializer);
@@ -4368,7 +4380,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           avgDecodeUs: var_avgDecodeUs,
           error: var_error,
         );
-      case 16:
+      case 17:
         var var_document = sse_decode_bool(deserializer);
         var var_name = sse_decode_String(deserializer);
         var var_size = sse_decode_u_64(deserializer);
@@ -4377,39 +4389,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           name: var_name,
           size: var_size,
         );
-      case 17:
+      case 18:
         var var_received = sse_decode_u_64(deserializer);
         var var_total = sse_decode_u_64(deserializer);
         return ReceiverUiEvent_ContentTransferProgress(
           received: var_received,
           total: var_total,
         );
-      case 18:
-        return ReceiverUiEvent_ContentFrameReady();
       case 19:
+        return ReceiverUiEvent_ContentFrameReady();
+      case 20:
         var var_name = sse_decode_String(deserializer);
         var var_pages = sse_decode_u_32(deserializer);
         return ReceiverUiEvent_ContentDocumentOpened(
           name: var_name,
           pages: var_pages,
         );
-      case 20:
+      case 21:
         var var_url = sse_decode_String(deserializer);
         var var_host = sse_decode_String(deserializer);
         return ReceiverUiEvent_ContentLink(url: var_url, host: var_host);
-      case 21:
-        return ReceiverUiEvent_ContentStopped();
       case 22:
+        return ReceiverUiEvent_ContentStopped();
+      case 23:
         var var_error = sse_decode_ui_content_error(deserializer);
         return ReceiverUiEvent_ContentError(error: var_error);
-      case 23:
-        return ReceiverUiEvent_PeerLeft();
       case 24:
-        return ReceiverUiEvent_PresentationStopped();
+        return ReceiverUiEvent_PeerLeft();
       case 25:
+        return ReceiverUiEvent_PresentationStopped();
+      case 26:
         var var_sas = sse_decode_String(deserializer);
         return ReceiverUiEvent_ConnectionCode(sas: var_sas);
-      case 26:
+      case 27:
         var var_code = sse_decode_String(deserializer);
         var var_message = sse_decode_String(deserializer);
         return ReceiverUiEvent_Error(code: var_code, message: var_message);
@@ -5663,13 +5675,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case ReceiverUiEvent_Unblocked(id: final id):
         sse_encode_i_32(8, serializer);
         sse_encode_u_64(id, serializer);
-      case ReceiverUiEvent_RoomEnded():
+      case ReceiverUiEvent_ServerNotice(
+        code: final code,
+        message: final message,
+      ):
         sse_encode_i_32(9, serializer);
-      case ReceiverUiEvent_ConnectionState(state: final state):
+        sse_encode_String(code, serializer);
+        sse_encode_String(message, serializer);
+      case ReceiverUiEvent_RoomEnded():
         sse_encode_i_32(10, serializer);
+      case ReceiverUiEvent_ConnectionState(state: final state):
+        sse_encode_i_32(11, serializer);
         sse_encode_ui_connection_state(state, serializer);
       case ReceiverUiEvent_VideoTrack(mime: final mime, codec: final codec):
-        sse_encode_i_32(11, serializer);
+        sse_encode_i_32(12, serializer);
         sse_encode_String(mime, serializer);
         sse_encode_opt_String(codec, serializer);
       case ReceiverUiEvent_Stats(
@@ -5678,15 +5697,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         frames: final frames,
         keyframes: final keyframes,
       ):
-        sse_encode_i_32(12, serializer);
+        sse_encode_i_32(13, serializer);
         sse_encode_u_64(packets, serializer);
         sse_encode_u_64(bytes, serializer);
         sse_encode_u_64(frames, serializer);
         sse_encode_u_64(keyframes, serializer);
       case ReceiverUiEvent_FrameReady():
-        sse_encode_i_32(13, serializer);
-      case ReceiverUiEvent_EncodedReady():
         sse_encode_i_32(14, serializer);
+      case ReceiverUiEvent_EncodedReady():
+        sse_encode_i_32(15, serializer);
       case ReceiverUiEvent_VideoStats(
         decoded: final decoded,
         delivered: final delivered,
@@ -5699,7 +5718,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         avgDecodeUs: final avgDecodeUs,
         error: final error,
       ):
-        sse_encode_i_32(15, serializer);
+        sse_encode_i_32(16, serializer);
         sse_encode_u_64(decoded, serializer);
         sse_encode_u_64(delivered, serializer);
         sse_encode_u_64(dropped, serializer);
@@ -5715,7 +5734,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         name: final name,
         size: final size,
       ):
-        sse_encode_i_32(16, serializer);
+        sse_encode_i_32(17, serializer);
         sse_encode_bool(document, serializer);
         sse_encode_String(name, serializer);
         sse_encode_u_64(size, serializer);
@@ -5723,36 +5742,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         received: final received,
         total: final total,
       ):
-        sse_encode_i_32(17, serializer);
+        sse_encode_i_32(18, serializer);
         sse_encode_u_64(received, serializer);
         sse_encode_u_64(total, serializer);
       case ReceiverUiEvent_ContentFrameReady():
-        sse_encode_i_32(18, serializer);
+        sse_encode_i_32(19, serializer);
       case ReceiverUiEvent_ContentDocumentOpened(
         name: final name,
         pages: final pages,
       ):
-        sse_encode_i_32(19, serializer);
+        sse_encode_i_32(20, serializer);
         sse_encode_String(name, serializer);
         sse_encode_u_32(pages, serializer);
       case ReceiverUiEvent_ContentLink(url: final url, host: final host):
-        sse_encode_i_32(20, serializer);
+        sse_encode_i_32(21, serializer);
         sse_encode_String(url, serializer);
         sse_encode_String(host, serializer);
       case ReceiverUiEvent_ContentStopped():
-        sse_encode_i_32(21, serializer);
-      case ReceiverUiEvent_ContentError(error: final error):
         sse_encode_i_32(22, serializer);
+      case ReceiverUiEvent_ContentError(error: final error):
+        sse_encode_i_32(23, serializer);
         sse_encode_ui_content_error(error, serializer);
       case ReceiverUiEvent_PeerLeft():
-        sse_encode_i_32(23, serializer);
-      case ReceiverUiEvent_PresentationStopped():
         sse_encode_i_32(24, serializer);
-      case ReceiverUiEvent_ConnectionCode(sas: final sas):
+      case ReceiverUiEvent_PresentationStopped():
         sse_encode_i_32(25, serializer);
+      case ReceiverUiEvent_ConnectionCode(sas: final sas):
+        sse_encode_i_32(26, serializer);
         sse_encode_String(sas, serializer);
       case ReceiverUiEvent_Error(code: final code, message: final message):
-        sse_encode_i_32(26, serializer);
+        sse_encode_i_32(27, serializer);
         sse_encode_String(code, serializer);
         sse_encode_String(message, serializer);
     }

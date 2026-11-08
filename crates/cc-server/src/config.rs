@@ -442,6 +442,10 @@ pub const DEFAULT_NO_ROOM_TIMEOUT: Duration = Duration::from_secs(60);
 /// placeholder; the defaults are minutes, and the bound mainly keeps deadlines far from an
 /// overflow.
 pub const MAX_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+/// Longest accepted value of the long-lived limits (`paired_idle_secs`,
+/// `max_room_lifetime_secs`, `ban_secs`, `ban_memory_secs`, `turn.ttl_secs`). One year is far
+/// beyond any sensible setting; the bound keeps `Instant + Duration` from overflowing.
+pub const MAX_LONG_DURATION: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 /// UNCERTAIN: 256 queued messages is a placeholder; the right size depends on
 /// how bursty ICE candidates and control messages are in practice.
 pub const DEFAULT_OUTGOING_QUEUE_LEN: usize = 256;
@@ -578,15 +582,32 @@ impl ServerConfig {
                 "limits.max_connections_per_ip, max_rooms_per_ip and max_room_relay_bytes must be at least 1",
             ));
         }
-        for (name, d) in [
-            ("limits.ping_interval_secs", l.ping_interval),
-            ("limits.pong_timeout_secs", l.pong_timeout),
-            ("limits.paired_idle_secs", l.paired_idle),
-            ("limits.max_room_lifetime_secs", l.max_room_lifetime),
+        for (name, d, max) in [
+            ("limits.ping_interval_secs", l.ping_interval, MAX_TIMEOUT),
+            ("limits.pong_timeout_secs", l.pong_timeout, MAX_TIMEOUT),
+            ("limits.paired_idle_secs", l.paired_idle, MAX_LONG_DURATION),
+            (
+                "limits.max_room_lifetime_secs",
+                l.max_room_lifetime,
+                MAX_LONG_DURATION,
+            ),
+            ("limits.ban_memory_secs", l.ban_memory, MAX_LONG_DURATION),
         ] {
             if d.is_zero() {
                 return Err(ConfigError::new(format!("{name} must be at least 1")));
             }
+            if d > max {
+                return Err(ConfigError::new(format!(
+                    "{name} must be at most {}",
+                    max.as_secs()
+                )));
+            }
+        }
+        if l.ban_durations.iter().any(|d| *d > MAX_LONG_DURATION) {
+            return Err(ConfigError::new(format!(
+                "every limits.ban_secs entry must be at most {}",
+                MAX_LONG_DURATION.as_secs()
+            )));
         }
         if (l.bytes_burst as usize) < self.max_message_bytes {
             return Err(ConfigError::new(
@@ -627,6 +648,12 @@ impl ServerConfig {
             }
             if turn.ttl.is_zero() {
                 return Err(ConfigError::new("turn.ttl_secs must be at least 1"));
+            }
+            if turn.ttl > MAX_LONG_DURATION {
+                return Err(ConfigError::new(format!(
+                    "turn.ttl_secs must be at most {}",
+                    MAX_LONG_DURATION.as_secs()
+                )));
             }
         }
         for o in &self.allowed_origins {

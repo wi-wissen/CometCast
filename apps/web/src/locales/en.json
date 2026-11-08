@@ -48,6 +48,8 @@
       "no_transfer": "An image transfer ended unexpectedly and was ignored.",
       "stalled": "The transfer from the sender stopped and was discarded.",
       "bad_chunk": "Image data arrived in an unexpected form and was discarded.",
+      "image_too_large": "The image has too many pixels to be shown and was discarded.",
+      "image_invalid": "The image could not be read and was discarded.",
       "document_unsupported": "The sender sent a PDF document. This app cannot show documents yet.",
       "document_invalid": "The PDF is damaged or not supported and cannot be shown.",
       "document_encrypted": "The PDF is password protected and cannot be shown.",

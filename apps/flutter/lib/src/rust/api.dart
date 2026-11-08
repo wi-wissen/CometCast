@@ -9,7 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `ui_codec_state`, `video_stats_event`
+// These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
 
@@ -1425,6 +1425,17 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// Block id.
     required BigInt id,
   }) = ReceiverUiEvent_Unblocked;
+
+  /// The server refused a command of the host but the room goes on, for example
+  /// `no_such_request` (the request was withdrawn as the host decided), `block_list_full` or
+  /// `no_such_block`. Show it as a note; do not end anything.
+  const factory ReceiverUiEvent.serverNotice({
+    /// Protocol error code (docs/protocol.md "Error codes").
+    required String code,
+
+    /// The server's English text, for logs.
+    required String message,
+  }) = ReceiverUiEvent_ServerNotice;
 
   /// The room session was ended by [`end_room`]. The stream ends after this; start a new
   /// receiver for a new room (a new code).

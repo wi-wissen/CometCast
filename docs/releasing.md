@@ -48,7 +48,7 @@ Try it in a scratch copy: `git stash -u; node tools/set-version.mjs 0.2.0 && git
 | `tvos` | without secrets: `cometcast-tvos-V-UNSIGNED.xcarchive.zip`; with secrets: `cometcast-tvos-V.ipa` and `cometcast-tvos-V.xcarchive.zip` | `apps/apple-tv` has an XcodeGen spec (app target, unit-test target, scheme `CometCastTV`, local package `CometCastCore`, the LiveKit WebRTC package pinned by commit); the project is generated in the job. The spec and the app were written without Xcode and never built; the job needs the network for the 686 MB WebRTC package. Names checked against [appletv.md](appletv.md#project-and-release-workflow). Signing: see "tvOS signing". |
 | `web` | `cometcast-web-V.zip` | WASM PDF renderer (`npm run build:wasm`) plus `npm run build`. |
 | `server` | `cometcast-server-V-<target>.tar.gz` / `.zip` | linux x86_64 and aarch64, windows x86_64, macOS arm64 and x86_64. The web app is a separate file (`COMETCAST_WEB_DIR`). |
-| `docker`, `docker-manifest` | image `ghcr.io/<owner>/cometcast-server:V` (**only** the version tag; `latest` is promoted separately) | One native build per architecture (amd64, arm64), pushed by digest and joined. Uses `deploy/Dockerfile`. No image SBOM/provenance. **The image contains no PDF viewer** (the server does not render PDFs; the browser app does). See "Docker image and latest". |
+| `docker`, `docker-manifest` | image `ghcr.io/<owner>/cometcast-server:V` (**only** the version tag; `latest` is promoted separately) | One native build per architecture (amd64, arm64), pushed by digest and joined. Uses `deploy/Dockerfile` (base images pinned by digest). A signed build provenance attestation for the multi-arch index (see "Verifying the Docker image"); no image SBOM. **The image contains no PDF viewer** (the server does not render PDFs; the browser app does). See "Docker image and latest". |
 | `meta` | `cometcast-sbom-rust-V.tar.gz`, `cometcast-sbom-web-V.cdx.json`, `cometcast-deploy-V.tar.gz`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | CycloneDX SBOMs. Dart/Flutter dependencies are not covered. |
 | `release` | `SHA256SUMS`, notes | Checksums over every attached file. |
 
@@ -77,7 +77,7 @@ All secrets are optional. A job whose secrets are missing still runs and produce
 | `IOS_CERT_P12_BASE64`, `IOS_CERT_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64` (app) and `IOS_EXTENSION_PROVISIONING_PROFILE_BASE64` (broadcast extension; **new**, all four needed) | ios | Only the unsigned `-UNSIGNED-UNVERIFIED.xcarchive.zip`, no `.ipa`. The App IDs, the App Group and the profiles to create: [ios.md](ios.md#signing-and-provisioning). |
 | `TVOS_PROVISIONING_PROFILE_BASE64` (certificate: reuses `IOS_CERT_P12_BASE64` and `IOS_CERT_PASSWORD`, same Apple Distribution certificate; optional overrides `TVOS_CERT_P12_BASE64`, `TVOS_CERT_PASSWORD`) | tvos | Only the unsigned `-UNSIGNED.xcarchive.zip`. |
 
-Without secrets these remain unsigned in any case: Linux files, the Windows zip and exe, server binaries, the web zip, the Docker image (pushed with the built-in `GITHUB_TOKEN`, no extra secret). Secrets are only passed to the steps that need them and are never printed; keystores and keychains are deleted at the end of the job (`always()`).
+Without secrets these remain unsigned in any case: Linux files, the Windows zip and exe, server binaries, the web zip. The Docker image needs no secret either: it is pushed with the built-in `GITHUB_TOKEN`, and its build provenance attestation is signed through the workflow's OIDC token (Sigstore), not with a stored key. Secrets are only passed to the steps that need them and are never printed; keystores and keychains are deleted at the end of the job (`always()`).
 
 The workflow uses only the built-in `GITHUB_TOKEN`. Permissions are empty at the top and minimal per job: `contents: read` almost everywhere, `packages: write` for the Docker jobs, `contents: write` for the `release` job and for the small `prepare` guard job (a token with only read access cannot see draft releases, so the guard needs write; that job has no checkout of repository code beyond one script and no build step).
 
@@ -137,7 +137,28 @@ The Windows zip carries `vcruntime140.dll`, `vcruntime140_1.dll` and `msvcp140.d
 
 - The release run pushes **only** `ghcr.io/<owner>/cometcast-server:<version>`. It refuses a version whose tag already exists (checked in `prepare` and again right before the join with `docker buildx imagetools inspect`), so re-running a workflow for an already pushed version fails instead of overwriting the image.
 - `latest` is moved by the separate manual workflow **Promote latest** (`.github/workflows/promote-latest.yml`, input `version`), after you published the GitHub release. It refuses: a pre-release version, a release that is a draft or missing, a missing image, and a version **lower** than the one `latest` points to now (the current one is found by comparing digests with the published releases; if it cannot be determined the run fails). The same version again is a no-op. Only the default branch may start it.
+- **Build provenance.** `docker-manifest` creates a build provenance attestation (SLSA provenance, signed with a short-lived Sigstore certificate issued for the workflow run's OIDC token) for the **digest of the multi-arch index** it pushed, stores it with GitHub's attestations API and pushes it to ghcr.io next to the image (`actions/attest-build-provenance`, pinned by SHA). Only that job has `id-token: write` and `attestations: write`. The per-architecture images inside the index carry no attestation of their own (the join needs plain images, so `provenance` and `sbom` of the build step stay off). `latest` moved by Promote latest points to the same digest, so the same attestation applies. The edge image (`docker-image.yml`) gets one too when it is pushed.
 - **The image has no PDF viewer.** The server relays and stores files; it does not render or display PDFs. Viewing happens in the clients (the web app renders with the WASM renderer).
+
+### Verifying the Docker image
+
+With the GitHub CLI (logged in: `gh auth login`, or `GH_TOKEN` set):
+
+```sh
+gh attestation verify oci://ghcr.io/wi-wissen/cometcast-server:<version> --owner wi-wissen
+# stricter: only this repository's workflows count, and only the release workflow
+gh attestation verify oci://ghcr.io/wi-wissen/cometcast-server:<version> --repo wi-wissen/CometCast \
+  --signer-workflow wi-wissen/CometCast/.github/workflows/release.yml
+```
+
+It resolves the tag to its digest, fetches the attestations for that digest and checks the signature, the
+certificate's identity (repository, workflow) and that the subject digest matches. A digest can be given instead of
+the tag (`oci://ghcr.io/wi-wissen/cometcast-server@sha256:...`), which is what to check before pinning one. The relay
+repository's `scripts/update.sh` and `scripts/up.sh` run this check when `VERIFY_ATTESTATION=1` is set (its
+`docs/SETUP.md`). **Uncertain:** never run; no release with an attestation exists yet. Images pushed before this change
+have none, and the check fails for them. Whether the edge image's subject (the `push: true` digest of
+`docker/build-push-action`, an index because its default provenance is on) is the digest that `gh` resolves for `:edge` is also
+unchecked.
 
 ## Third-party licences (release is refused when stale)
 
@@ -168,7 +189,7 @@ the LiveKit xcframework's bundled notices, Flutter engine notices).
 
 ## Not pinned or not covered
 
-- Actions are pinned to full commit SHAs (resolved 2026-11-07 with `git ls-remote`, the comment names the tag). Bump them by hand or with Dependabot.
+- Actions are pinned to full commit SHAs (resolved 2026-11-07 with `git ls-remote`, `actions/attest-build-provenance` v4.2.2 on 2026-11-08; the comment names the tag). The Dockerfile's base images and the compose file's coturn image are pinned by digest. `.github/dependabot.yml` proposes updates for all three (GitHub Actions weekly, `docker` and `docker-compose` in `/deploy`); bump by hand otherwise.
 - Not pinned: Homebrew `xcodegen` (tvOS job), the Xcode, NDK and Android SDK versions the runner image ships, the `macos-15`/`windows-latest`/`ubuntu-latest` images (the Linux desktop and Linux server jobs use `ubuntu-22.04` on purpose). Rust (1.97.0), Flutter (3.47.9), cargo-ndk (4.1.2), cargo-cyclonedx (0.5.10) and `@cyclonedx/cyclonedx-npm` (6.0.1) are pinned.
 - No build caches are used in the release workflow (the web job's `cache: npm` was removed), so a release never reuses a cache that a pull request could have written. Builds are slower for it. The ordinary CI workflows (`web.yml` etc.) may still cache; that does not feed the release.
 
@@ -187,7 +208,7 @@ the LiveKit xcframework's bundled notices, Flutter engine notices).
 | promote-latest | UNCERTAIN: nothing run |
 | web | UNCERTAIN: nothing run in this form (the same commands run in `web.yml`, also unverified on GitHub) |
 | server | UNCERTAIN: nothing run in this form |
-| docker / docker-manifest | UNCERTAIN: the Dockerfile ran on amd64 only (see its header); arm64 and the push-by-digest join never ran |
+| docker / docker-manifest | UNCERTAIN: the Dockerfile ran on amd64 only (see its header), not with the digest-pinned base images; arm64, the push-by-digest join and the provenance attestation never ran |
 | meta | cargo-cyclonedx was run locally and produced one `.cdx.json` per crate; the npm SBOM, the deploy bundle and the job itself never ran |
 | release | UNCERTAIN: `gh release create --draft --generate-notes --notes-file` (the notes file is expected to be placed before the generated list) never ran |
 

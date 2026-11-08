@@ -122,14 +122,23 @@ Receiver rules (each has a unit test in `crates/cc-files`, several also in `crat
   application's choice) and a page is rendered only after its size was checked against the output limits (scaled down to
   fit when it would be too large). Page numbers are clamped by `DocumentSession`. Every failure is an `Error` event; a
   document that cannot be opened is also a violation, and opens are rate limited (burst of 5, one more per 3 s), because
-  each costs a child process. A new document always closes the old one first (nothing stale stays shown).
+  each costs a child process. The violation count and the open budget belong to the **room**, not to one
+  presentation (`cc_files::SharedBudget`, one per `ReceiverCore`): a presenter that starts a new presentation (a new
+  offer, or leave and join again) gets no fresh budget, and a receiver whose room is still above the violation limit
+  refuses the next presentation's content at once (`TooManyErrors`) until the violations have decayed. The budget is
+  shared by everybody who presents in the room, so one presenter's violations can hold back the next one for a while
+  (2 s per violation by default). Only **one** document job (open or render) runs in a room at a time, across
+  presentations: when a presentation ends while its job runs, the job's cancel flag is set (the render process is
+  killed) and the next presentation's first job waits until that job has really ended. A new document always closes
+  the old one first (nothing stale stays shown).
 - Page commands do not render by themselves. The content task reads everything that is queued, so a flood of
   `next_page` / `prev_page` / `go_to_page` costs **one** render of the last page asked for (tested: 1000 commands, a
   handful of renders). Renders keep at least 100 ms between their starts. `stop`, a new document and a new image cancel a
   running render at once (the cc-docs cancel flag kills the child process); a newer page cancels a render that already ran
-  for more than 1 s, a faster one is allowed to finish and its picture is still delivered. Opening a document cannot be
-  interrupted (up to the open time limit of `cc-docs`, 10 s by default); its result is dropped if `stop` came in the
-  meantime. A panic in the blocking thread does not reset the receiver: violations and the blocked state stay.
+  for more than 1 s, a faster one is allowed to finish and its picture is still delivered. `stop`, a new document and the
+  end of the presentation also cancel a running document open (`cc_docs::Document::open_cancellable` kills the child
+  process; the in-process engine cannot be interrupted, there the open runs up to the open time limit of `cc-docs`,
+  10 s by default, and its result is dropped). A panic in the blocking thread does not reset the receiver: violations and the blocked state stay.
   UNCERTAIN: 100 ms, 1 s and the open budget are placeholders, unmeasured; the in-process engine (tests, no worker)
   cannot interrupt a render.
 - A transfer that receives nothing for 60 s is dropped with a `transfer_timeout` event (not a violation).

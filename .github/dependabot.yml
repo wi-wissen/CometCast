@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Dependabot: proposes pull requests that bump pinned digests and SHAs. Nothing is merged
+# automatically; read the release notes of the new version before merging.
+# - docker:          the FROM lines of deploy/Dockerfile (image:tag@sha256:..., tag and digest together)
+# - docker-compose:  the coturn image in deploy/docker-compose.yml (coturn/coturn:4.18.0@sha256:...).
+#                    The cometcast-server image line there has no digest; tools/set-version.mjs owns it.
+#                    A coturn version bump also needs coturn/turnserver.conf.template checked against the
+#                    new option set (see the comment at the coturn image line).
+# - github-actions:  the `uses:` lines in .github/workflows (full commit SHA with a "# vX.Y.Z" comment)
+# UNCERTAIN: not run yet (Dependabot only runs on GitHub, after this file is on the default branch).
+# Whether Dependabot keeps the tag readable when it moves a digest-only change (it should update
+# only the digest when the tag did not move) is to be checked on its first pull request.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
