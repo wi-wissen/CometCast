@@ -185,10 +185,10 @@ impl Advertisement {
 impl Drop for Advertisement {
     fn drop(&mut self) {
         let seq = self.seq.next(unix_ms());
-        if let Ok(txt) = txt_records(&self.state, &self.key, seq, AnnounceState::Gone) {
-            if self.backend.publish(&self.instance, &txt).is_ok() {
-                self.backend.settle_before_goodbye();
-            }
+        if let Ok(txt) = txt_records(&self.state, &self.key, seq, AnnounceState::Gone)
+            && self.backend.publish(&self.instance, &txt).is_ok()
+        {
+            self.backend.settle_before_goodbye();
         }
         self.backend.withdraw();
     }

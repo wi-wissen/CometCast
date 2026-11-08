@@ -20,10 +20,10 @@ void main() {
   testWidgets('rows without a note show no tag', (t) async {
     final n = await pumpNearby(t);
     await found(t, n, [screen(_idA, name: 'Elbe')]);
-    expect(find.byKey(Key('nearby-tag-$_idA')), findsNothing);
+    expect(find.byKey(const Key('nearby-tag-$_idA')), findsNothing);
     expect(find.textContaining('ID '), findsNothing);
-    expect(find.byKey(Key('nearby-same-name-$_idA')), findsNothing);
-    expect(find.byKey(Key('nearby-new-device-$_idA')), findsNothing);
+    expect(find.byKey(const Key('nearby-same-name-$_idA')), findsNothing);
+    expect(find.byKey(const Key('nearby-new-device-$_idA')), findsNothing);
     await done(t, n);
   });
 
@@ -52,12 +52,12 @@ void main() {
   ) async {
     final n = await pumpNearby(t);
     await found(t, n, [screen(_idA, name: 'Room A', sameName: true)]);
-    expect(find.byKey(Key('nearby-tag-$_idA')), findsOneWidget);
+    expect(find.byKey(const Key('nearby-tag-$_idA')), findsOneWidget);
     n.core.search.add(
       NearbyUiEvent.updated(screen: screen(_idA, name: 'Room A')),
     );
     await settle(t);
-    expect(find.byKey(Key('nearby-tag-$_idA')), findsNothing);
+    expect(find.byKey(const Key('nearby-tag-$_idA')), findsNothing);
     await done(t, n);
   });
 
@@ -73,7 +73,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('ID 3F7A'), findsOneWidget);
-    await t.tap(find.byKey(Key('nearby-row-$_idB')));
+    await t.tap(find.byKey(const Key('nearby-row-$_idB')));
     await settle(t);
     expect(n.core.startPresenterCalls, 1, reason: 'the row is a normal row');
     await done(t, n);
@@ -106,7 +106,7 @@ void main() {
     final n = await pumpNearby(t);
     await found(t, n, [screen(_idA, name: 'Elbe')]);
     expect(n.core.remembered, isEmpty);
-    await t.tap(find.byKey(Key('nearby-row-$_idA')));
+    await t.tap(find.byKey(const Key('nearby-row-$_idA')));
     await settle(t);
     // Not yet: the join did not succeed.
     expect(n.settings.rememberedScreens, isEmpty);

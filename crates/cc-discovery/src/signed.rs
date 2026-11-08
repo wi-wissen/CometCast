@@ -537,7 +537,8 @@ mod tests {
     fn malformed_records_are_refused() {
         let k = key(7);
         let good = rec(&k, 10, AnnounceState::Live);
-        let case = |f: &dyn Fn(&mut Vec<(String, String)>)| {
+        type Txt = Vec<(String, String)>;
+        let case = |f: &dyn Fn(&mut Txt)| {
             let mut t = good.clone();
             f(&mut t);
             verify(&t)
