@@ -65,12 +65,17 @@ async fn announced_display_is_listed_updated_and_removed() {
     assert_eq!(s.name, "Loopback room");
     assert_eq!(s.server, "ws://10.99.0.5:8443");
 
-    // A new code is seen as an update (within a few seconds here; the spec's 1 s is the
-    // publishing side, and is tested with the fake backend).
+    // A new code is seen as an update. The list takes other content for an id only once the
+    // old content has not been announced for `CHANGE_HOLD` (15 s), so this takes 15 to 25 s here;
+    // the spec's 1 s is the publishing side, and is tested with the fake backend.
     ann.set(Some(state(&id, "K7Q2MW", ScreenMode::Approval)));
-    let upd = next_for(&mut search, &id, 10, |c| {
-        matches!(c, NearbyChange::Updated(_))
-    })
+    // (An update of the addresses alone may come first; wait for the one with the new code.)
+    let upd = next_for(
+        &mut search,
+        &id,
+        35,
+        |c| matches!(c, NearbyChange::Updated(s) if s.code.as_deref() == Some("K7Q2MW")),
+    )
     .await;
     match upd {
         Some(NearbyChange::Updated(s)) => {
@@ -80,11 +85,14 @@ async fn announced_display_is_listed_updated_and_removed() {
         other => panic!("no update seen: {other:?}"),
     }
 
-    // Locked: the row stays, without a code.
+    // Locked: the row stays, without a code (withdrawing the code is shown at once).
     ann.set(Some(state(&id, "K7Q2MW", ScreenMode::Locked)));
-    let upd = next_for(&mut search, &id, 10, |c| {
-        matches!(c, NearbyChange::Updated(_))
-    })
+    let upd = next_for(
+        &mut search,
+        &id,
+        10,
+        |c| matches!(c, NearbyChange::Updated(s) if s.mode == ScreenMode::Locked),
+    )
     .await;
     match upd {
         Some(NearbyChange::Updated(s)) => assert_eq!((s.mode, s.code), (ScreenMode::Locked, None)),

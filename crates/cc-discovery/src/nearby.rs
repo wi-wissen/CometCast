@@ -19,9 +19,25 @@
 //!   exactly 6 characters of the code alphabet, otherwise the record is dropped; a `locked`
 //!   record never carries a code (a code in it is ignored);
 //! * at most [`MAX_SCREENS`] rows; a row that is not refreshed within [`SCREEN_TTL`] is
-//!   removed; a goodbye removes it at once; a later record with the id of an existing row
-//!   changes the row only when it comes from the same instance (or from an address the row
-//!   already knew), so a second device cannot take over the row of the first.
+//!   removed; a goodbye removes it at once. No record removes a row: an unusable record, or a
+//!   record with a new id under the instance name of a row, is ignored for that row (the row
+//!   leaves by goodbye or expiry);
+//! * **the content of a row (server, code, mode, name) is the first content seen for its id**.
+//!   A later record for the id with other content changes the row only when the shown content
+//!   has not been announced for [`CHANGE_HOLD`] (the display really changed it), and such a
+//!   record does not refresh the row. Only withdrawing the code (`locked`, same server and
+//!   name) is applied at once: it makes the row untappable, it cannot point it elsewhere. The
+//!   instance name, the id and the A/AAAA records are all chosen by the sender, so none of
+//!   them proves that a record comes from the device of the row; while that device keeps
+//!   announcing, another device therefore cannot point its row to another server or room.
+//!   A record must also come from an instance of the row or from an address the row knew.
+//!
+//! What is **not** protected: a goodbye names only the instance and can be sent by anybody,
+//! so a row can be removed; a device that then announces the id first decides the content of
+//! the row that comes back (at the end of the list). The row always shows the code, which the
+//! person can compare with the screen. UNCERTAIN: no backend hands over the source address of
+//! the packets (`mdns-sd` merges several packets into one resolved service), and a source
+//! address on a LAN can be forged as well (docs/measurement-points.md, A8).
 //!
 //! Nothing here picks a screen, remembers one or saves a server: the list is information.
 
@@ -50,6 +66,12 @@ pub const CODE_LEN: usize = 6;
 const MAX_VALUE_BYTES: usize = 255;
 /// Instance names remembered per row.
 const MAX_INSTANCES_PER_ROW: usize = 4;
+/// A record with other content than its row replaces the content only when the shown content
+/// has not been announced for this long. Longer than the refresh of a display
+/// ([`crate::display::REFRESH_EVERY`], 10 s), so a display that keeps announcing keeps its row;
+/// shorter than [`SCREEN_TTL`], so a real change (a new code without a goodbye) shows in place
+/// before the row would expire.
+pub const CHANGE_HOLD: Duration = Duration::from_secs(15);
 
 /// Who may join, as announced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -204,7 +226,19 @@ struct Entry {
     screen: NearbyScreen,
     /// The instance names (and their addresses) this id was seen under.
     instances: Vec<(String, Vec<IpAddr>)>,
+    /// When the content of [`Entry::screen`] was last announced.
     last_seen: Instant,
+}
+
+/// Do two rows show the same thing (everything but the addresses)?
+fn same_content(a: &NearbyScreen, b: &NearbyScreen) -> bool {
+    a.server == b.server && a.code == b.code && a.mode == b.mode && a.name == b.name
+}
+
+/// Does `new` only withdraw the code of `row` (Locked, same server and name)? That cannot
+/// point the row anywhere else, and a withdrawn code must leave the list at once.
+fn only_withdraws_code(row: &NearbyScreen, new: &NearbyScreen) -> bool {
+    new.mode == ScreenMode::Locked && new.server == row.server && new.name == row.name
 }
 
 /// The rows, with their expiry. Pure: time is passed in.
@@ -240,10 +274,11 @@ impl NearbyTracker {
     /// A record was seen (new or refreshed).
     pub fn on_seen(&mut self, rec: &RawRecord, now: Instant) -> Vec<NearbyChange> {
         let instance = clean_text(&rec.instance, 63);
+        // An unusable record is ignored. It does not remove a row: anybody can send one under
+        // the instance name of a row; a display that stops announcing something usable leaves
+        // by expiry.
         let Some(screen) = screen_from_raw(rec) else {
-            // A screen that now announces something unusable is no longer a screen we can
-            // offer: drop what we have from this instance.
-            return self.on_gone(&instance);
+            return Vec::new();
         };
         if instance.is_empty() {
             return Vec::new();
@@ -252,26 +287,9 @@ impl NearbyTracker {
         addresses.sort();
         addresses.dedup();
         addresses.truncate(crate::announce::MAX_ADDRESSES);
-        let mut changes = Vec::new();
-
-        // The same instance name under another id: the old id is not announced any more.
-        let moved: Vec<usize> = self
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| {
-                e.screen.id != screen.id && e.instances.iter().any(|(i, _)| *i == instance)
-            })
-            .map(|(n, _)| n)
-            .collect();
-        for n in moved.into_iter().rev() {
-            let e = &mut self.entries[n];
-            e.instances.retain(|(i, _)| *i != instance);
-            if e.instances.is_empty() {
-                changes.push(NearbyChange::Removed(self.entries.remove(n).screen.id));
-            }
-        }
-
+        // A record with a new id under the instance name of another row does not remove that
+        // row (the instance name is public, anybody can announce it): the old row leaves by
+        // goodbye or expiry like any other.
         if let Some(e) = self.entries.iter_mut().find(|e| e.screen.id == screen.id) {
             let known = e.instances.iter().position(|(i, _)| *i == instance);
             let allowed = match known {
@@ -284,7 +302,15 @@ impl NearbyTracker {
                 }
             };
             if !allowed {
-                return changes;
+                return Vec::new();
+            }
+            // The first content seen for the id stays while it is announced (see the module
+            // documentation): other content neither changes nor refreshes the row.
+            let takes_over = same_content(&e.screen, &screen)
+                || only_withdraws_code(&e.screen, &screen)
+                || now.duration_since(e.last_seen) >= CHANGE_HOLD;
+            if !takes_over {
+                return Vec::new();
             }
             match known {
                 Some(n) => e.instances[n].1 = addresses,
@@ -297,26 +323,25 @@ impl NearbyTracker {
             // The addresses of the row are those of all its instances.
             let mut screen = screen;
             screen.addresses = address_texts(e.instances.iter().flat_map(|(_, a)| a.iter()));
-            if e.screen != screen {
-                e.screen = screen.clone();
-                changes.push(NearbyChange::Updated(screen));
+            if e.screen == screen {
+                return Vec::new();
             }
-            return changes;
+            e.screen = screen.clone();
+            return vec![NearbyChange::Updated(screen)];
         }
 
         if self.entries.len() >= MAX_SCREENS {
             // Spec 14.8, point 10 (decision N49): the first 32 found stay; a further screen is
             // neither reported nor stored. It is added at the end when its next refresh
             // arrives after a row has left.
-            return changes;
+            return Vec::new();
         }
         self.entries.push(Entry {
             screen: screen.clone(),
             instances: vec![(instance, addresses)],
             last_seen: now,
         });
-        changes.push(NearbyChange::Added(screen));
-        changes
+        vec![NearbyChange::Added(screen)]
     }
 
     /// A goodbye (or the backend lost the service).
@@ -729,9 +754,10 @@ mod tests {
         ));
         // A refresh without a change is silent.
         assert!(seen(&mut t, "a", "10.0.0.1", &a, now).is_empty());
-        // A new code updates in place (the row does not move to the end).
+        // A new code (the display restarted its room without a goodbye) updates in place (the
+        // row does not move to the end) once the old code was not announced for CHANGE_HOLD.
         let a2 = open(ID1, "AAAAAA");
-        let ch = seen(&mut t, "a", "10.0.0.1", &a2, now);
+        let ch = seen(&mut t, "a", "10.0.0.1", &a2, now + CHANGE_HOLD);
         assert!(
             matches!(&ch[..], [NearbyChange::Updated(s)] if s.code.as_deref() == Some("AAAAAA"))
         );
@@ -785,16 +811,168 @@ mod tests {
     }
 
     #[test]
-    fn goodbye_and_unusable_update_remove_the_row() {
+    fn a_second_device_cannot_take_over_a_row_under_its_instance_name() {
+        // The attacker copies everything public: the instance name, the id, the name and even
+        // the address of the display (A/AAAA records are written by the sender).
+        let mut t = NearbyTracker::new();
+        let now = t0();
+        let inst = "CometCast-01234567";
+        seen(&mut t, inst, "10.0.0.1", &open(ID1, "P4X9TR"), now);
+        let mut other_relay = open(ID1, "K7Q2MW");
+        other_relay[2] = ("srv", "10.66.0.1:1".into());
+        // The same relay with another room (an attacker's room on the default relay).
+        let other_room = open(ID1, "K7Q2MW");
+        let mut renamed = open(ID1, "P4X9TR");
+        renamed[5] = ("name", "Room 205".into());
+        let mut approval = open(ID1, "P4X9TR");
+        approval[3] = ("mode", "approval".into());
+        for s in 0..90u64 {
+            let at = now + Duration::from_secs(s);
+            // The display refreshes every 10 s ...
+            if s % 10 == 0 {
+                assert!(seen(&mut t, inst, "10.0.0.1", &open(ID1, "P4X9TR"), at).is_empty());
+            }
+            // ... the attacker every second, with every variant.
+            for (addr, v) in [
+                ("10.0.0.1", &other_relay),
+                ("10.0.0.66", &other_relay),
+                ("", &other_relay),
+                ("10.0.0.1", &other_room),
+                ("10.0.0.1", &renamed),
+                ("10.0.0.1", &approval),
+            ] {
+                assert!(
+                    seen(&mut t, inst, addr, v, at).is_empty(),
+                    "taken over at {s} s"
+                );
+            }
+            assert!(t.expire(at).is_empty());
+        }
+        let row = &t.screens()[0];
+        assert_eq!(row.server, "ws://10.0.0.5:8443");
+        assert_eq!(row.code.as_deref(), Some("P4X9TR"));
+        assert_eq!(
+            (row.mode, row.name.as_str()),
+            (ScreenMode::Open, "Room 204")
+        );
+        // The attacker's records do not refresh the row: when the display stops, it expires.
+        // (Once the display has been quiet for CHANGE_HOLD, other content is taken as a real
+        // change; that is the documented limit.)
+        let last = now + Duration::from_secs(80);
+        for s in 81..95u64 {
+            seen(
+                &mut t,
+                inst,
+                "10.0.0.1",
+                &other_room,
+                now + Duration::from_secs(s),
+            );
+        }
+        assert_eq!(
+            t.expire(last + SCREEN_TTL),
+            [NearbyChange::Removed(ID1.into())]
+        );
+    }
+
+    #[test]
+    fn a_real_change_shows_once_the_old_content_is_quiet() {
+        let mut t = NearbyTracker::new();
+        let now = t0();
+        seen(&mut t, "a", "10.0.0.1", &open(ID1, "P4X9TR"), now);
+        // A new code right after the last refresh of the old one is held ...
+        let new = open(ID1, "K7Q2MW");
+        let one = Duration::from_secs(1);
+        assert!(seen(&mut t, "a", "10.0.0.1", &new, now + one).is_empty());
+        assert!(seen(&mut t, "a", "10.0.0.1", &new, now + 11 * one).is_empty());
+        assert_eq!(t.screens()[0].code.as_deref(), Some("P4X9TR"));
+        // ... and shown in place with the first refresh after CHANGE_HOLD.
+        let ch = seen(&mut t, "a", "10.0.0.1", &new, now + 21 * one);
+        assert!(
+            matches!(&ch[..], [NearbyChange::Updated(s)] if s.code.as_deref() == Some("K7Q2MW"))
+        );
+        // From now on the old code is the one that is held.
+        assert!(
+            seen(
+                &mut t,
+                "a",
+                "10.0.0.1",
+                &open(ID1, "P4X9TR"),
+                now + 22 * one
+            )
+            .is_empty()
+        );
+        // A new server on the display is applied the same way (it is not pinned for ever).
+        let mut moved = open(ID1, "K7Q2MW");
+        moved[2] = ("srv", "10.0.0.6:8443".into());
+        assert!(seen(&mut t, "a", "10.0.0.1", &moved, now + 23 * one).is_empty());
+        let ch = seen(
+            &mut t,
+            "a",
+            "10.0.0.1",
+            &moved,
+            now + 21 * one + CHANGE_HOLD,
+        );
+        assert!(matches!(&ch[..], [NearbyChange::Updated(s)] if s.server == "ws://10.0.0.6:8443"));
+        assert!(CHANGE_HOLD > crate::display::REFRESH_EVERY && CHANGE_HOLD < SCREEN_TTL);
+    }
+
+    #[test]
+    fn locking_shows_at_once_unlocking_after_the_hold() {
+        let mut t = NearbyTracker::new();
+        let now = t0();
+        let mut locked = open(ID1, "P4X9TR");
+        locked[3] = ("mode", "locked".into());
+        locked.retain(|(k, _)| *k != "code");
+        seen(&mut t, "a", "10.0.0.1", &open(ID1, "P4X9TR"), now);
+        // Withdrawing the code cannot point the row anywhere: at once.
+        let ch = seen(&mut t, "a", "10.0.0.1", &locked, now);
+        assert!(matches!(&ch[..], [NearbyChange::Updated(s)] if s.code.is_none()));
+        // Open again (possibly with a code chosen by somebody else): only after the hold.
+        let again = open(ID1, "K7Q2MW");
+        assert!(
+            seen(
+                &mut t,
+                "a",
+                "10.0.0.1",
+                &again,
+                now + Duration::from_secs(5)
+            )
+            .is_empty()
+        );
+        let ch = seen(&mut t, "a", "10.0.0.1", &again, now + CHANGE_HOLD);
+        assert!(
+            matches!(&ch[..], [NearbyChange::Updated(s)] if s.code.as_deref() == Some("K7Q2MW"))
+        );
+        // "Locked" with another name or server is a change like any other.
+        let mut locked_elsewhere = locked.clone();
+        locked_elsewhere[2] = ("srv", "10.66.0.1:1".into());
+        assert!(
+            seen(
+                &mut t,
+                "a",
+                "10.0.0.1",
+                &locked_elsewhere,
+                now + CHANGE_HOLD
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn goodbye_removes_the_row_an_unusable_record_does_not() {
         let mut t = NearbyTracker::new();
         let now = t0();
         seen(&mut t, "a", "10.0.0.1", &open(ID1, "P4X9TR"), now);
         assert_eq!(t.on_gone("a"), [NearbyChange::Removed(ID1.into())]);
         assert!(t.on_gone("a").is_empty());
         seen(&mut t, "a", "10.0.0.1", &open(ID1, "P4X9TR"), now);
-        // The same instance now announces a broken code: the row is not kept.
+        // A broken record under the instance name of the row (anybody can send one) neither
+        // removes nor refreshes it; the row leaves by expiry.
+        let later = now + Duration::from_secs(20);
+        assert!(seen(&mut t, "a", "10.0.0.1", &open(ID1, "bad"), later).is_empty());
+        assert_eq!(t.screens().len(), 1);
         assert_eq!(
-            seen(&mut t, "a", "10.0.0.1", &open(ID1, "bad"), now),
+            t.expire(now + SCREEN_TTL),
             [NearbyChange::Removed(ID1.into())]
         );
     }
@@ -881,15 +1059,32 @@ mod tests {
     }
 
     #[test]
-    fn the_same_instance_with_a_new_id_replaces_the_row() {
+    fn a_new_id_under_the_instance_name_of_a_row_does_not_evict_it() {
         let mut t = NearbyTracker::new();
         let now = t0();
-        seen(&mut t, "a", "10.0.0.1", &open(ID1, "P4X9TR"), now);
-        let ch = seen(&mut t, "a", "10.0.0.1", &open(ID2, "K7Q2MW"), now);
-        assert_eq!(ch.len(), 2);
-        assert_eq!(ch[0], NearbyChange::Removed(ID1.into()));
-        assert!(matches!(ch[1], NearbyChange::Added(_)));
-        assert_eq!(t.screens().len(), 1);
+        let inst = "CometCast-01234567";
+        seen(&mut t, inst, "10.0.0.1", &open(ID1, "P4X9TR"), now);
+        // Another device (or the same one after a data reset) under the same instance name.
+        let ch = seen(&mut t, inst, "10.0.0.1", &open(ID2, "K7Q2MW"), now);
+        assert!(matches!(&ch[..], [NearbyChange::Added(s)] if s.id == ID2));
+        let ids: Vec<_> = t.screens().into_iter().map(|s| s.id).collect();
+        assert_eq!(ids, [ID1, ID2]);
+        // The first row stays while it is refreshed, and leaves by expiry once it is not.
+        let at = now + Duration::from_secs(20);
+        seen(&mut t, inst, "10.0.0.1", &open(ID1, "P4X9TR"), at);
+        seen(
+            &mut t,
+            inst,
+            "10.0.0.1",
+            &open(ID2, "K7Q2MW"),
+            at + SCREEN_TTL,
+        );
+        assert!(t.expire(at + Duration::from_secs(29)).is_empty());
+        assert_eq!(
+            t.expire(at + SCREEN_TTL),
+            [NearbyChange::Removed(ID1.into())]
+        );
+        assert_eq!(t.screens()[0].id, ID2);
     }
 
     #[tokio::test(start_paused = true)]

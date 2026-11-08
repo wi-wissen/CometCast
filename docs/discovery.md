@@ -181,7 +181,9 @@ the display does **not** show or that has been withdrawn on purpose:
 
 **Timing.** A change (code, mode, name) is published at once (the spec's limit is 1 s). The record
 is published again every 10 s (`REFRESH_EVERY`) and the presenter side drops a row after 30 s
-without a refresh (`SCREEN_TTL`); a goodbye removes it at once. **Record lifetime (decision N50).** `mdns-sd` 0.21.7 announces with 120 s (SRV, address) and 4500 s (PTR, TXT)
+without a refresh (`SCREEN_TTL`); a goodbye removes it at once. The list shows a change of a
+row's content without a goodbye only 15 s after the old content was last announced (`CHANGE_HOLD`,
+see "What a record can change" below); withdrawing the code (Locked) shows at once. **Record lifetime (decision N50).** `mdns-sd` 0.21.7 announces with 120 s (SRV, address) and 4500 s (PTR, TXT)
 and has no public setter, and Android's `NsdManager` and Apple's `NWBrowser` answer from the system's cache until a
 record's lifetime has passed, so a display that dies without a goodbye would stay in a list for minutes. The repository
 therefore carries a patched copy, `vendor/mdns-sd` (the published crate plus two public setters, see
@@ -213,10 +215,13 @@ sender is pointed to sees room codes and the addresses of the devices. Therefore
 * An announced server has the **lowest rank** after MDM and DNS-SRV, and above only the
   default list. In the list of screens (section "Nearby screens" below) it is **never trusted
   because it was announced**: only the default relay, a policy server, a DNS-SRV server and a
-  server the person confirmed on this device are joined at once. Receivers with the same DNS-SD instance name: the **first one seen is kept**;
-  a later announcement replaces it only if it comes from the same addresses and port (the
-  same device updating its record). Otherwise a second device could take over the entry.
-  Browses keep at most 64 receivers; the command line tool also drops an entry on `Lost`.
+  server the person confirmed on this device are joined at once. Receivers with the same DNS-SD
+  instance name (`record_receiver`, the older record): the **first one seen is kept and its
+  server is never replaced**; a later announcement with the same server, addresses and port
+  may only change the friendly name. The addresses do not prove the sender (the A/AAAA records
+  are written by the sender), so they are not enough on their own. Browses keep at most 64
+  receivers; the command line tool also drops an entry on `Lost`. The list of screens has its
+  own rule (section "Nearby screens", "What a record can change").
 * An MDM policy can switch announcements off (`forbid_announcement`), and
   `forbid_user_override` ignores them as well.
 * The `srv` value is checked like DNS data: no scheme, path or user name; host name or an IP
@@ -265,11 +270,42 @@ way ([measurement-points.md](measurement-points.md), A8).
   32 TXT entries are read, values over 255 bytes are ignored, the first occurrence of a key wins.
 * **Rows are keyed by the instance id** and kept in the order they were first found (new ones at the
   end, never re-sorted). Two screens with the same name are two rows. The same id under two
-  instance names (two interfaces) is one row. A later record with the id of an existing row changes
-  the row only when it comes from the same instance, or from an address the row already knew (a
-  second device cannot take over a row); the same instance announcing a new id replaces its row.
-* A row leaves on goodbye, after 30 s without a refresh, or when the same instance announces
-  something unusable. At most 32 rows: the **first 32 found stay**; a 33rd and later screen is neither
+  instance names (two interfaces) is one row.
+* **What a record can change.** The instance name (`CometCast-` plus the first 8 characters of
+  the id), the id and the A/AAAA records are all public or written by the sender, so nothing in
+  a record proves that it comes from the device of a row. Therefore:
+  * The **content of a row** (server, code, mode, name) is the first content seen for its id. A
+    later record for the id with other content is ignored, and it does not refresh the row,
+    as long as the shown content keeps being announced. It replaces the content (in place) only
+    when the shown content has not been announced for **15 s** (`CHANGE_HOLD`, longer than the
+    10 s refresh of a display, shorter than the 30 s expiry). So a display that restarts its
+    room without a goodbye and announces a new code shows the new code 15 to 25 s later (a tap
+    in between gets `room_not_found`, which restarts the list, spec 14.4); a display that ends
+    its room with a goodbye comes back at once as a new row.
+  * Only **withdrawing the code** (`locked`, same server and name) is applied at once: it makes the
+    row untappable and points it nowhere. Unlocking again is a change like any other (after
+    15 s).
+  * The record must in addition come from an instance name of the row or from an address the row
+    knew (this alone proves nothing, see above).
+  * **No record removes a row.** A record with a new id under the instance name of a row adds its
+    own row (if there is room) and leaves the old one alone; an unusable record is ignored. Such
+    rows leave by goodbye or expiry.
+  * **The guarantee:** while a display keeps announcing (at least every 15 s), no other device on
+    the network can point its row to another server or room, rename it, or remove it by an
+    announcement. **Not protected:** a goodbye names only the instance and can be sent by anybody,
+    so a row can be removed at once, and a device that then announces the id first decides the
+    content of the row that comes back (at the end of the list); a device can also flip a row to
+    Locked (it cannot be tapped until the display's content wins again); and once a display has been
+    quiet for 15 s, other content for its id is taken as a real change. The row always shows the
+    code, so the person can compare it with the screen, and a server that is not trusted still
+    needs the relay confirmation (14.4). **UNCERTAIN:** binding a row to the source address of the
+    packets was not done: no backend hands it over (`mdns-sd` merges several packets into one
+    resolved service; `NsdManager` and `NWBrowser` report services, not packets), and a source
+    address on a LAN can be forged too ([measurement-points.md](measurement-points.md), A8).
+  * The Flutter list has no "conflicting" state; a contested row is not marked, it just keeps
+    its first content.
+* A row leaves on goodbye or after 30 s without a refresh of its content. At most 32 rows: the
+  **first 32 found stay**; a 33rd and later screen is neither
   reported nor stored until a row leaves, then it is added at the end with its next refresh (spec 14.8 point 10,
   decision N49).
 * Nothing is picked, remembered or saved here. In the Flutter app a row is tapped by the person; the
@@ -408,8 +444,11 @@ with exactly 1.92.
 * `display.rs` and `nearby.rs` unit tests with a fake announce backend and a fake clock: TXT building
   (Locked never carries a code, bounds, hostile server and id), changes published at once, refresh
   every 10 s, goodbye, retry after a failed publish, hostile TXT of every field, merging by id, a
-  second device that claims an id, expiry after 30 s, the 32-row limit, goodbye and reset through
-  the sink.
+  second device that claims an id (also under the display's own instance name, id, name and
+  address, for another relay, another room on the same relay, another name or mode), a new id
+  or an unusable record under the instance name of a row (no eviction), a real code or server
+  change after `CHANGE_HOLD`, Locked at once, expiry after 30 s, the 32-row limit, goodbye and
+  reset through the sink; `record_receiver` never replaces the server of an entry.
 * `tests/nearby_loopback.rs`: a display announces with `mdns-sd`, the list sees the row, a new code
   and mode, Locked without a code, and the goodbye (real multicast, skips itself where there is
   none); `refreshed_row_does_not_expire` (45 s, run with `-- --ignored`).

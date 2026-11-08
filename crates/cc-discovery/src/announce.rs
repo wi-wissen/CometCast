@@ -414,14 +414,20 @@ fn forward_event(sink: &RawSink, ev: ServiceEvent) {
 
 /// Remember `r` in `list` (at most [`MAX_RECEIVERS`] entries, one per instance name).
 ///
-/// Anybody on the network can announce under any instance name. The FIRST announcement seen
-/// for a name is kept: a later one replaces it only when it comes from the same addresses and
-/// port (the same device updating its record, for example a new name or server); otherwise it
-/// is ignored, so a second device cannot take over the entry of the first. Returns whether the
-/// list changed.
+/// Anybody on the network can announce under any instance name, and the addresses of a record
+/// (its A/AAAA records) are written by the sender as well, so neither proves which device sent
+/// it. The FIRST announcement seen for a name is kept, and **its server is never replaced**: a
+/// later record for the name with another server (or with a server where the first had none,
+/// or none where it had one) is ignored. A later record with the same server, addresses and
+/// port may update the entry (a new friendly name); it can point the entry nowhere else.
+/// Returns whether the list changed.
 pub fn record_receiver(list: &mut Vec<ReceiverInfo>, r: ReceiverInfo) -> bool {
     if let Some(old) = list.iter_mut().find(|o| o.instance == r.instance) {
-        if old.addresses == r.addresses && old.port == r.port && *old != r {
+        if old.announced_server == r.announced_server
+            && old.addresses == r.addresses
+            && old.port == r.port
+            && *old != r
+        {
             *old = r;
             return true;
         }
@@ -572,6 +578,29 @@ mod tests {
         assert_eq!(l[0].name, "A2");
         assert!(!record_receiver(&mut l, rinfo("tv", "10.0.0.1", "A2")));
         assert_eq!(l.len(), 1);
+    }
+
+    #[test]
+    fn the_server_of_an_entry_is_never_replaced() {
+        let with = |srv: Option<&str>| ReceiverInfo {
+            announced_server: srv.map(str::to_owned),
+            ..rinfo("tv", "10.0.0.1", "A")
+        };
+        let mut l = Vec::new();
+        assert!(record_receiver(&mut l, with(Some("ws://10.0.0.5:8443"))));
+        // A device that copies the instance name AND the address (A records are written by
+        // the sender) still cannot point the entry to its own server, nor remove the server.
+        assert!(!record_receiver(&mut l, with(Some("ws://10.66.0.1:1"))));
+        assert!(!record_receiver(&mut l, with(None)));
+        let mut renamed = with(Some("ws://10.66.0.1:1"));
+        renamed.name = "Evil".into();
+        assert!(!record_receiver(&mut l, renamed));
+        assert_eq!(l[0].announced_server.as_deref(), Some("ws://10.0.0.5:8443"));
+        assert_eq!(l[0].name, "A");
+        // An entry without a server does not get one later either.
+        let mut l = vec![with(None)];
+        assert!(!record_receiver(&mut l, with(Some("ws://10.66.0.1:1"))));
+        assert_eq!(l[0].announced_server, None);
     }
 
     #[test]
