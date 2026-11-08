@@ -162,7 +162,7 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `limits.bytes_burst` | 1048576 | 262144 | Burst; must be at least `max_message_bytes` |
 | `limits.max_room_relay_bytes` | 67108864 | 8388608 | Bytes relayed through one room, whole life |
 | `limits.max_bad_messages` | 50 | 20 | Garbage or wrong-role messages before closing |
-| `limits.global_failed_joins_per_min` | 1000 | 300 | Emergency brake for all joins (at most 10000) |
+| `limits.global_failed_joins_per_min` | 1000 | 300 | Failed joins per minute (whole server) above which all joins are slowed (at most 10000) |
 | `limits.wide_failure_factor` | 10 | | An IPv6 /48 is banned after `ban_after_failed_joins` times this |
 | `altcha.mode` | `optional` | `always` (forced) | `always` or `optional` |
 | `altcha.secret` / `secret_file` | random at start | | HMAC secret for puzzles, at least 16 characters |

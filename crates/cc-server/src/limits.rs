@@ -122,7 +122,7 @@ pub(crate) struct Guard {
     per_ip_connections: Mutex<HashMap<IpAddr, usize>>,
     /// All bad events (for the ALTCHA difficulty).
     events: Mutex<EventWindow>,
-    /// Failed joins and abuse of the whole server (for the global brake).
+    /// Failed joins of the whole server (for the global brake).
     failures: Mutex<EventWindow>,
     open_connections: AtomicUsize,
     /// Start of the guard; `last_housekeeping_ms` counts from here.
@@ -443,17 +443,19 @@ impl Guard {
         if let Some(extra) = NonZeroU32::new(self.cfg.failed_join_weight.saturating_sub(1)) {
             let _ = self.join.check_key_n(&limit_key(ip), extra);
         }
-        self.record_failure(ip, now)
-    }
-
-    /// Any kind of abuse (failed join, message spam, too fast sending). Counts toward a
-    /// ban of the address and of its IPv6 /48, and toward the global brake.
-    pub(crate) fn record_failure(&self, ip: IpAddr, now: Instant) -> Option<Duration> {
-        self.note_event(now);
+        // Only real failed joins (code guessing) feed the server-wide brake.
         self.failures
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(now);
+        self.record_failure(ip, now)
+    }
+
+    /// Any kind of abuse (failed join, message spam, too fast sending, refused join).
+    /// Counts toward a ban of the address and of its IPv6 /48. Not toward the global brake:
+    /// that one counts failed joins only (`record_failed_join`).
+    pub(crate) fn record_failure(&self, ip: IpAddr, now: Instant) -> Option<Duration> {
+        self.note_event(now);
         let narrow = self.fail_one((limit_key(ip), false), self.cfg.ban_after_failed_joins, now);
         let wide = wide_key(ip).and_then(|w| {
             self.fail_one(
@@ -850,6 +852,23 @@ mod tests {
             g.check_join(ip("192.0.2.99"), now + Duration::from_secs(61))
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn other_failures_do_not_feed_the_global_brake() {
+        let g = Guard::new(LimitsConfig {
+            global_failed_joins_per_min: 5,
+            ban_after_failed_joins: 1000,
+            join_attempts_per_min: 1000,
+            ..limits()
+        });
+        let now = Instant::now();
+        // Bad messages, floods, refused joins: many, from many addresses.
+        for i in 1..=50 {
+            let a: IpAddr = format!("192.0.2.{i}").parse().unwrap();
+            g.record_failure(a, now);
+        }
+        assert!(g.check_join(ip("192.0.2.99"), now).is_ok());
     }
 
     #[test]
