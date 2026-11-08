@@ -168,9 +168,9 @@ pub const DEVICE_SIG_CHARS: usize = 86;
 
 /// The device proof of `join_room` (docs/design/presenter-identity.md): the public key of the
 /// presenter installation and its Ed25519 signature over the room code and `ts` (see
-/// `device::join_signed_bytes`). The name is not signed. The server checks only the shape
+/// `cc_transport::device::join_signed_bytes`). The name is not signed. The server checks only the shape
 /// ([`JoinDevice::is_well_formed`]) and relays the object unchanged; the display verifies it
-/// (`device::verify_join`).
+/// (`cc_transport::device::verify_join`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JoinDevice {

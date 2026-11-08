@@ -1145,6 +1145,7 @@ dependencies = [
  "bytes",
  "cc-proto",
  "cc-server",
+ "ed25519-dalek",
  "futures-util",
  "rtc",
  "rustls",
