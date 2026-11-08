@@ -525,6 +525,21 @@ class FakeCoreApi implements CoreApi {
     return s;
   }
 
+  /// Every key given to [setPresenterDeviceKey], in order.
+  final presenterKeys = <Uint8List>[];
+
+  /// Every text given to [setDisplayDeviceMemory], in order.
+  final deviceMemories = <String>[];
+
+  @override
+  bool setPresenterDeviceKey(Uint8List secretKey) {
+    presenterKeys.add(secretKey);
+    return secretKey.length == 32;
+  }
+
+  @override
+  void setDisplayDeviceMemory(String json) => deviceMemories.add(json);
+
   /// A fake identity: the id is the key bytes in hex (32 digits from the first 16 bytes).
   @override
   DisplayIdentity? displayIdentity(Uint8List secretKey) {

@@ -218,6 +218,12 @@ abstract class DisplayStore {
   /// hardware-backed keystore (see docs/measurement-points.md).
   Future<DisplayKeyData> key(Uint8List Function() generate);
 
+  /// What the display remembers about names and devices (docs/design/presenter-identity.md):
+  /// the text of the core's `DeviceMemoryChanged` (a list of name and device id pairs, at most
+  /// 200). Empty when nothing is stored or storing fails. Forgotten by [reset].
+  Future<String> loadDeviceMemory();
+  Future<void> saveDeviceMemory(String json);
+
   /// Remember the highest `seq` the core may have used with the key (from
   /// `displaySeqToPersist`), so a clock that goes back after a restart cannot reuse values.
   Future<void> saveSeq(int seq);
@@ -248,6 +254,12 @@ class MemoryDisplayStore implements DisplayStore {
   Future<void> saveAppearance(Appearance a) async => appearance = a;
   Uint8List? _key;
   int _seq = 0;
+  String deviceMemory = '';
+
+  @override
+  Future<String> loadDeviceMemory() async => deviceMemory;
+  @override
+  Future<void> saveDeviceMemory(String json) async => deviceMemory = json;
 
   @override
   Future<DisplayKeyData> key(Uint8List Function() generate) async =>
@@ -262,6 +274,7 @@ class MemoryDisplayStore implements DisplayStore {
     appearance = Appearance.dark;
     _key = null;
     _seq = 0;
+    deviceMemory = '';
   }
 }
 
@@ -273,6 +286,7 @@ class PrefsDisplayStore implements DisplayStore {
   static const _look = 'display.appearance';
   static const _key = 'display.key';
   static const _seq = 'display.seq';
+  static const _names = 'display.deviceMemory';
 
   @override
   Future<DisplaySetup?> loadSetup() async {
@@ -369,6 +383,26 @@ class PrefsDisplayStore implements DisplayStore {
   }
 
   @override
+  Future<String> loadDeviceMemory() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return p.getString(_names) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  @override
+  Future<void> saveDeviceMemory(String json) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_names, json);
+    } catch (_) {
+      // Not remembered: no notes about names until the next allowed request.
+    }
+  }
+
+  @override
   Future<void> saveSeq(int seq) async {
     final c = _cached;
     if (c != null) _cached = DisplayKeyData(c.secret, seq);
@@ -385,7 +419,7 @@ class PrefsDisplayStore implements DisplayStore {
     _cached = null;
     try {
       final p = await SharedPreferences.getInstance();
-      for (final k in [_room, _mode, _server, _look, _key, _seq]) {
+      for (final k in [_room, _mode, _server, _look, _key, _seq, _names]) {
         await p.remove(k);
       }
     } catch (_) {

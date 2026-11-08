@@ -1327,6 +1327,10 @@
       }
     }
   },
+  "requestOtherDevice": "This name was used here before by a different device.",
+  "@requestOtherDevice": {
+    "description": "Presenter identity (docs/design/presenter-identity.md): neutral information under the name in the request dialog and after the open-mode connected toast. Same for du and Sie."
+  },
   "requestSubtitle": "wants to connect",
   "@requestSubtitle": {
     "description": "Spec key request.subtitle"

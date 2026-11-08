@@ -283,6 +283,7 @@
   "requestNo": "Nein",
   "requestNoBlock": "Nein und sperren",
   "requestQueue": "+{n} warten",
+  "requestOtherDevice": "Dieser Name wurde hier schon von einem anderen Gerät benutzt.",
   "requestSubtitle": "möchte sich verbinden",
   "requestTitle": "Anfrage",
   "requestYes": "Ja",

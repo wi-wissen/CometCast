@@ -3,6 +3,7 @@
 // is a presenter, tablets and computers are presenters until the person chose "Use this device
 // as the screen"; after the display setup they start as a display on every launch.
 
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -106,6 +107,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   AppRole _role = AppRole.loading;
   bool _tv = false;
+  Uint8List? _deviceKey;
 
   @override
   void initState() {
@@ -114,7 +116,24 @@ class _AppShellState extends State<AppShell> {
     _decide();
   }
 
+  /// The key of this installation (docs/design/presenter-identity.md): the display key if one
+  /// is stored, otherwise a new one stored the same way, so one key serves as display key and as
+  /// presenter key. The core signs the joins of this app with it.
+  Future<void> _loadDeviceKey() async {
+    try {
+      final key = await widget.store.key(widget.core.newDisplaySecret);
+      if (!mounted) return;
+      setState(() => _deviceKey = key.secret);
+      widget.core.setPresenterDeviceKey(key.secret);
+    } catch (_) {
+      // No key: joins carry no proof and the display shows no device note.
+    }
+  }
+
   Future<void> _decide() async {
+    // Not awaited: the first screen must not wait for the settings; the key is there long
+    // before a person can start a join.
+    unawaited(_loadDeviceKey());
     if (_tv) {
       setState(() => _role = AppRole.display);
       return;
@@ -163,6 +182,7 @@ class _AppShellState extends State<AppShell> {
         return PresenterRoot(
           core: widget.core,
           settings: widget.settings,
+          deviceKey: _deviceKey,
           pickFile: widget.pickFile,
           pickFileFor: widget.pickFileFor,
           openUrl: widget.openUrl,

@@ -173,6 +173,7 @@ class JoinRequestView {
     required this.name,
     required this.check,
     required this.receivedAt,
+    this.otherDevice = false,
   });
 
   final BigInt id;
@@ -181,6 +182,10 @@ class JoinRequestView {
   /// Two-digit number that the sender's waiting screen shows too.
   final int check;
   final DateTime receivedAt;
+
+  /// The presenter proved its device key and this name was used here before, but only by other
+  /// devices: the dialog adds a neutral note (docs/design/presenter-identity.md).
+  final bool otherDevice;
 }
 
 /// A sender on the room's block list (blocked for the rest of this room session).
@@ -207,8 +212,12 @@ sealed class ReceiverNotice {
 
 /// A sender connected (join mode open, or after the host allowed it).
 class NoticeJoined extends ReceiverNotice {
-  const NoticeJoined(this.name);
+  const NoticeJoined(this.name, {this.otherDevice = false});
   final String name;
+
+  /// Open mode: the name was used here before, but only by other devices; the toast adds the
+  /// neutral sentence of the request dialog.
+  final bool otherDevice;
 }
 
 /// The server ended a waiting request (`join_approval_secs` ran out).
@@ -260,12 +269,17 @@ class ReceiverController extends ChangeNotifier {
     this.maxImagePixels = defaultMaxImagePixels,
     this.hardwareDecoder,
     this.onNotice,
+    this.onDeviceMemory,
     this.restartMode,
     this.keepRoomOnPeerLeft = false,
   }) : _setFullscreen = setFullscreen ?? setWindowFullscreen;
 
   /// Called for what the display tells the host in a toast. Null in the old screens.
   final void Function(ReceiverNotice notice)? onNotice;
+
+  /// Called with the new text of the display's memory of names and devices whenever it
+  /// changes; the app stores it with its settings.
+  final void Function(String json)? onDeviceMemory;
 
   /// The mode of a room that starts after End (the default mode; Locked never survives End,
   /// spec 4.3). Null: the current mode is kept.
@@ -612,7 +626,12 @@ class ReceiverController extends ChangeNotifier {
         roomCode = code;
         joinMode = mode;
         phase = ReceiverPhase.running;
-      case ReceiverUiEvent_JoinRequest(:final id, :final name, :final check):
+      case ReceiverUiEvent_JoinRequest(
+        :final id,
+        :final name,
+        :final check,
+        :final otherDevice,
+      ):
         if (requests.every((r) => r.id != id)) {
           requests = [
             ...requests,
@@ -621,6 +640,7 @@ class ReceiverController extends ChangeNotifier {
               name: name,
               check: check,
               receivedAt: joinClock(),
+              otherDevice: otherDevice,
             ),
           ];
         }
@@ -659,13 +679,22 @@ class ReceiverController extends ChangeNotifier {
         onNotice?.call(const NoticeSessionEnded());
         _begin(_startServer, restartMode ?? joinMode);
         return;
-      case ReceiverUiEvent_PeerJoined(:final name, :final handover):
+      case ReceiverUiEvent_DeviceMemoryChanged(:final json):
+        onDeviceMemory?.call(json);
+        return;
+      case ReceiverUiEvent_PeerJoined(
+        :final name,
+        :final handover,
+        :final otherDevice,
+      ):
         peerName = name;
         senderJoined = true;
         // A join with the display's own hand-over token: the person was approved before and
         // came back; no "connected" notice, no dialog.
         _endHandover();
-        if (!handover) onNotice?.call(NoticeJoined(name));
+        if (!handover) {
+          onNotice?.call(NoticeJoined(name, otherDevice: otherDevice));
+        }
       case ReceiverUiEvent_HandoverStored():
         handoverPending = true;
       case ReceiverUiEvent_HandoverExpired():

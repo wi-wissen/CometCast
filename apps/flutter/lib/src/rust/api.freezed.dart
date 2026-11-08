@@ -5928,7 +5928,7 @@ as UiJoinMode,
 
 
 class ReceiverUiEvent_PeerJoined extends ReceiverUiEvent {
-  const ReceiverUiEvent_PeerJoined({required this.name, required this.handover, this.device, required this.otherDevice}): super._();
+  const ReceiverUiEvent_PeerJoined({required this.name, required this.handover, this.device, this.otherDevice = false}): super._();
   
 
 /// Cleaned display name of the sender (plain text, at most 40 characters).
@@ -5942,7 +5942,7 @@ class ReceiverUiEvent_PeerJoined extends ReceiverUiEvent {
  final  String? device;
 /// `device` is set and this name was used here before, but only by other devices
 /// (open mode): the "connected" notice adds a neutral sentence. Not a warning.
- final  bool otherDevice;
+@JsonKey() final  bool otherDevice;
 
 /// Create a copy of ReceiverUiEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -6180,7 +6180,7 @@ String toString() {
 
 
 class ReceiverUiEvent_JoinRequest extends ReceiverUiEvent {
-  const ReceiverUiEvent_JoinRequest({required this.id, required this.name, required this.check, this.device, required this.otherDevice}): super._();
+  const ReceiverUiEvent_JoinRequest({required this.id, required this.name, required this.check, this.device, this.otherDevice = false}): super._();
   
 
 /// Request id for [`decide_join`].
@@ -6194,7 +6194,7 @@ class ReceiverUiEvent_JoinRequest extends ReceiverUiEvent {
 /// `device` is set and this name was used here before, but only by other devices:
 /// the dialog adds "This name was used here before by a different device." as neutral
 /// information.
- final  bool otherDevice;
+@JsonKey() final  bool otherDevice;
 
 /// Create a copy of ReceiverUiEvent
 /// with the given fields replaced by the non-null parameter values.

@@ -1500,7 +1500,7 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
 
     /// `device` is set and this name was used here before, but only by other devices
     /// (open mode): the "connected" notice adds a neutral sentence. Not a warning.
-    required bool otherDevice,
+    @Default(false) bool otherDevice,
   }) = ReceiverUiEvent_PeerJoined;
 
   /// The display's memory of names and devices changed: store `json` with the settings and
@@ -1541,7 +1541,7 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// `device` is set and this name was used here before, but only by other devices:
     /// the dialog adds "This name was used here before by a different device." as neutral
     /// information.
-    required bool otherDevice,
+    @Default(false) bool otherDevice,
   }) = ReceiverUiEvent_JoinRequest;
 
   /// A waiting request ended: `left`, `cancelled`, `timeout`, `locked` or `room_full`.

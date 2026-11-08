@@ -161,6 +161,7 @@ class IosBroadcastRequest {
     this.bitrate = 2500000,
     this.name,
     this.handover,
+    this.deviceKey,
   });
 
   final String code;
@@ -170,6 +171,12 @@ class IosBroadcastRequest {
   /// for this person (null = an ordinary join, the display asks the host).
   final String? name;
   final String? handover;
+
+  /// The secret of the app's device key as base64url without padding (43 characters): the
+  /// extension joins with the proof of this key, so the display sees the same device as for the
+  /// app (docs/design/presenter-identity.md). It travels in config.json in the App Group, which
+  /// the extension deletes when it has read it. Null: no proof.
+  final String? deviceKey;
   final int maxDimension;
   final int fps;
   final int bitrate;
@@ -221,6 +228,7 @@ class ChannelIosBroadcast implements IosBroadcast {
       'bitrate': r.bitrate,
       'name': r.name,
       'handover': r.handover,
+      'deviceKey': r.deviceKey,
     });
   }
 

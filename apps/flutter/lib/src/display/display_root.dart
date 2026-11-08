@@ -260,6 +260,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       udpBind: widget.settings.udpBind,
       hardwareDecoder: DeviceProfile.peek(context).videoDecoder,
       onNotice: _onNotice,
+      onDeviceMemory: _onDeviceMemory,
       keepRoomOnPeerLeft: true,
     )..addListener(_onController);
     final profile = DeviceProfile.peek(context);
@@ -301,6 +302,9 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     final setup = await widget.store.loadSetup();
     final look = await widget.store.loadAppearance();
     final key = await widget.store.key(widget.core.newDisplaySecret);
+    // What this display remembers about names and devices goes to the core before a room starts
+    // (docs/design/presenter-identity.md).
+    widget.core.setDisplayDeviceMemory(await widget.store.loadDeviceMemory());
     // Not awaited: with a consent on file `init` downloads the codec (or follows a running
     // download), which can take minutes, and the display must not stay blank meanwhile.
     unawaited(_codec?.init());
@@ -596,12 +600,24 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     return full.isEmpty ? t.commonNoName : t.commonQuoted(shortName(full));
   }
 
+  /// The core's memory of names and devices changed: keep it with the settings, and for the
+  /// next room of this run (a new room is a new core that starts from what was set last).
+  void _onDeviceMemory(String json) {
+    widget.core.setDisplayDeviceMemory(json);
+    unawaited(widget.store.saveDeviceMemory(json));
+  }
+
   void _onNotice(ReceiverNotice n) {
     if (!mounted) return;
     final t = AppLocalizations.of(context);
     final text = switch (n) {
-      NoticeJoined(:final name) =>
-        _justAllowed ? null : t.toastJoined(_quoted(t, name)),
+      NoticeJoined(:final name, :final otherDevice) =>
+        _justAllowed
+            ? null
+            // Open mode: the same neutral sentence as in the request dialog, appended.
+            : otherDevice
+            ? '${t.toastJoined(_quoted(t, name))} ${t.requestOtherDevice}'
+            : t.toastJoined(_quoted(t, name)),
       NoticeExpired(:final name) => t.toastExpired(_quoted(t, name)),
       NoticeWithdrawn(:final name) => t.toastWithdrawn(_quoted(t, name)),
       NoticeLeft(:final name) => t.toastLeft(_quoted(t, name)),
@@ -1183,6 +1199,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       check: head.check,
                       more: c.requests.length - 1,
                       guard: widget.guard,
+                      otherDevice: head.otherDevice,
                       onAllow: () => _decide(head, allow: true),
                       onDeny: () => _decide(head, allow: false),
                       onBlock: () => _decide(head, allow: false, block: true),

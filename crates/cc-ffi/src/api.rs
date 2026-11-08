@@ -199,6 +199,7 @@ pub enum ReceiverUiEvent {
         device: Option<String>,
         /// `device` is set and this name was used here before, but only by other devices
         /// (open mode): the "connected" notice adds a neutral sentence. Not a warning.
+        #[cfg_attr(frb_expand, frb(default = "false"))]
         other_device: bool,
     },
     /// The display's memory of names and devices changed: store `json` with the settings and
@@ -231,6 +232,7 @@ pub enum ReceiverUiEvent {
         /// `device` is set and this name was used here before, but only by other devices:
         /// the dialog adds "This name was used here before by a different device." as neutral
         /// information.
+        #[cfg_attr(frb_expand, frb(default = "false"))]
         other_device: bool,
     },
     /// A waiting request ended: `left`, `cancelled`, `timeout`, `locked` or `room_full`.

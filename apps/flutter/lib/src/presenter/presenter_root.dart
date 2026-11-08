@@ -7,6 +7,7 @@
 
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -116,6 +117,7 @@ class PresenterRoot extends StatefulWidget {
     super.key,
     required this.core,
     required this.settings,
+    this.deviceKey,
     required this.pickFile,
     this.androidCapture,
     this.iosBroadcast,
@@ -170,6 +172,10 @@ class PresenterRoot extends StatefulWidget {
   final PickFile pickFile;
   final AndroidCapture? androidCapture;
   final IosBroadcast? iosBroadcast;
+
+  /// The secret of this installation's key (the display key, see `AppShell`): the iOS broadcast
+  /// extension joins with the proof of the same key (App Group), so the display sees one device.
+  final Uint8List? deviceKey;
   final ScanQr? scanQr;
 
   /// Tablets and computers: starts the display setup (`app.beDisplay`).
@@ -989,6 +995,7 @@ class PresenterRootState extends State<PresenterRoot>
       server: server,
       name: name,
       handover: _iosOwnToken,
+      deviceKey: widget.deviceKey,
     );
   }
 

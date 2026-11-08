@@ -94,6 +94,8 @@ export 'package:cometcast/src/rust/api.dart'
         setDisplayAnnouncing,
         newDisplaySecret,
         displayIdentity,
+        setPresenterDeviceKey,
+        setDisplayDeviceMemory,
         displaySeqToPersist,
         setRememberedScreens,
         watchNearbyScreens,
@@ -359,6 +361,16 @@ abstract class CoreApi {
 
   /// Id, tag and public key of a display key; null when [secretKey] is not 32 bytes.
   DisplayIdentity? displayIdentity(Uint8List secretKey);
+
+  /// The key that signs this installation's joins as a presenter (the display key of this
+  /// installation: one key serves both). The display then sees the same device again and again
+  /// (docs/design/presenter-identity.md). Call before joining a room. False when it is not 32
+  /// bytes (joins then carry no proof).
+  bool setPresenterDeviceKey(Uint8List secretKey);
+
+  /// What the display remembered about names and devices (the text of the last
+  /// `ReceiverUiEvent.deviceMemoryChanged`; empty for nothing). Call before [startReceiver].
+  void setDisplayDeviceMemory(String json);
 
   /// What to persist with the key so a restart continues above every `seq` used.
   int displaySeqToPersist();
@@ -729,6 +741,14 @@ class RustCoreApi implements CoreApi {
   @override
   DisplayIdentity? displayIdentity(Uint8List secretKey) =>
       rust.displayIdentity(secretKey: secretKey);
+
+  @override
+  bool setPresenterDeviceKey(Uint8List secretKey) =>
+      rust.setPresenterDeviceKey(secretKey: secretKey);
+
+  @override
+  void setDisplayDeviceMemory(String json) =>
+      rust.setDisplayDeviceMemory(json: json);
 
   @override
   int displaySeqToPersist() => rust.displaySeqToPersist();
