@@ -56,6 +56,11 @@ public struct JoinRequest: Equatable, Sendable {
     public var check: Int
     /// The name was empty after cleaning (`name` is then the fallback "Guest N"): the screens show `common.noName`.
     public var unnamed = false
+    /// The presenter's device id when its proof for this room verified (docs/design/presenter-identity.md), else nil.
+    public var deviceId: String?
+    /// `deviceId` is set and this name was used here before, but only by other devices: the dialog adds a neutral note
+    /// (`request.otherDevice`, info style, not a warning).
+    public var otherDevice = false
 }
 
 /// Something the host should be told about with a toast (spec 4.6). The machine collects them; the app takes them
@@ -65,8 +70,10 @@ public enum HostEvent: Equatable, Sendable {
     case requestExpired(name: String, unnamed: Bool)
     /// The person who asked left or withdrew the request (`toast.withdrawn`).
     case requestWithdrawn(name: String, unnamed: Bool)
-    /// A sender joined (`toast.joined`, unless the host just allowed it: `toast.allowed` then says it).
-    case senderJoined(name: String, unnamed: Bool)
+    /// A sender joined (`toast.joined`, unless the host just allowed it: `toast.allowed` then says it). `otherDevice`:
+    /// open mode, the proof verified and the name was used here before, but only by other devices; the toast then
+    /// appends `request.otherDevice`.
+    case senderJoined(name: String, unnamed: Bool, otherDevice: Bool = false)
     /// The sender left (`toast.left`); the room and its code stay.
     case senderLeft(name: String, unnamed: Bool)
     /// The room session ended on the host's request (`toast.sessionEnded`).
@@ -157,6 +164,21 @@ public struct ReceiverMachine: Sendable {
     /// The room name sent with `create_room` (nil = none). No UI sets it yet.
     private var roomName: String?
     private var events: [HostEvent] = []
+    /// What the display remembers about names and devices (docs/design/presenter-identity.md). The app stores
+    /// `deviceMemory.json` when `takeDeviceMemoryChange()` gives a value, and passes it back to `init`.
+    public private(set) var deviceMemory: DeviceMemory
+    private var memoryChanged = false
+    /// Verified devices of requests the host allowed, until their `peer_joined` shows the presenter is in.
+    private var allowedDevices: [(name: String, id: String)] = []
+    /// The clock for the 120 s window of a proof, in milliseconds since the Unix epoch (replaced in tests).
+    public var nowMs: @Sendable () -> UInt64 = { UInt64(max(0, Date().timeIntervalSince1970 * 1000)) }
+
+    /// The new text of the memory when it changed since the last call, else nil.
+    public mutating func takeDeviceMemoryChange() -> String? {
+        guard memoryChanged else { return nil }
+        memoryChanged = false
+        return deviceMemory.json
+    }
 
     /// The events since the last call (see `HostEvent`).
     public mutating func takeEvents() -> [HostEvent] {
@@ -165,8 +187,9 @@ public struct ReceiverMachine: Sendable {
         return e
     }
 
-    public init(joinMode: JoinMode = .open, roomName: String? = nil) {
+    public init(joinMode: JoinMode = .open, roomName: String? = nil, deviceMemory: DeviceMemory = DeviceMemory()) {
         self.roomName = roomName
+        self.deviceMemory = deviceMemory
         mode = joinMode
         defaultMode = joinMode == .locked ? .open : joinMode
         state.joinMode = joinMode
@@ -236,8 +259,12 @@ public struct ReceiverMachine: Sendable {
             if m != .locked { defaultMode = m }
             return state.code != nil ? [.send(.setJoinMode(m))] : []
         case .decide(let id, let allow, let block):
-            guard state.code != nil, state.requests.contains(where: { $0.id == id }) else { return [] }
+            guard state.code != nil, let request = state.requests.first(where: { $0.id == id }) else { return [] }
             state.requests.removeAll { $0.id == id }
+            if allow, let device = request.deviceId, !request.unnamed {
+                allowedDevices.append((request.name, device))
+                if allowedDevices.count > 16 { allowedDevices.removeFirst() }
+            }
             return [.send(.joinDecision(id: id, allow: allow, block: block && !allow))]
         case .denyAll:
             guard state.code != nil, !state.requests.isEmpty else { return [] }
@@ -253,6 +280,16 @@ public struct ReceiverMachine: Sendable {
             state.notice = nil
             return []
         }
+    }
+
+    /// The device id of a proof that verifies for the current room code now, else nil.
+    private func verified(_ device: JoinDevice?) -> String? {
+        guard let device, let code = state.code else { return nil }
+        return verifyJoinProof(device, code: code, nowMs: nowMs())
+    }
+
+    private mutating func remember(name: String, id: String) {
+        if deviceMemory.remember(name: name, id: id) { memoryChanged = true }
     }
 
     private func createRoom() -> ReceiverEffect { .send(.createRoom(altcha: altchaPayload, joinMode: mode, roomName: roomName)) }
@@ -303,10 +340,15 @@ public struct ReceiverMachine: Sendable {
             state.joinMode = joinMode
             // A mode that was chosen while the room was being created is applied now.
             return mode != joinMode ? [.send(.setJoinMode(mode))] : []
-        case .joinRequest(let id, let name, let check):
+        case .joinRequest(let id, let name, let check, let device):
             if state.requests.contains(where: { $0.id == id }) { return [] }
-            state.requests.append(JoinRequest(id: id, name: sanitizeDisplayName(name, guestNumber: id), check: check,
-                                              unnamed: sanitizedDisplayNameOrNil(name) == nil))
+            let clean = sanitizeDisplayName(name, guestNumber: id)
+            let unnamed = sanitizedDisplayNameOrNil(name) == nil
+            // The proof counts only when it verifies for this room right now; otherwise the request is shown as always.
+            let deviceId = verified(device)
+            let other = !unnamed && deviceId.map { deviceMemory.usedByOtherDevice(name: clean, id: $0) } == true
+            state.requests.append(JoinRequest(id: id, name: clean, check: check, unnamed: unnamed,
+                                              deviceId: deviceId, otherDevice: other))
             return []
         case .joinRequestCancelled(let id, let reason):
             if let r = state.requests.first(where: { $0.id == id }) {
@@ -355,7 +397,7 @@ public struct ReceiverMachine: Sendable {
             state.joinMode = mode
             fx.append(createRoom())
             return fx
-        case .peerJoined(let name):
+        case .peerJoined(let name, let device):
             peersSeen += 1
             let fx = newPeer()
             state.phase = .negotiating
@@ -363,7 +405,20 @@ public struct ReceiverMachine: Sendable {
             state.sas = nil
             state.peerName = sanitizeDisplayName(name, guestNumber: peersSeen)
             state.peerUnnamed = sanitizedDisplayNameOrNil(name) == nil
-            events.append(.senderJoined(name: state.peerName ?? "", unnamed: state.peerUnnamed))
+            // Open mode: the proof came with the join. Confirm mode: the device of the request the host allowed. The
+            // note is for open mode only (the dialog showed it in confirm mode).
+            var other = false
+            let clean = state.peerName ?? ""
+            if !state.peerUnnamed {
+                if let id = verified(device) {
+                    other = deviceMemory.usedByOtherDevice(name: clean, id: id)
+                    remember(name: clean, id: id)
+                } else if let i = allowedDevices.firstIndex(where: { $0.name == clean }) {
+                    remember(name: clean, id: allowedDevices[i].id)
+                }
+            }
+            allowedDevices = []
+            events.append(.senderJoined(name: clean, unnamed: state.peerUnnamed, otherDevice: other))
             return fx
         case .offer(let sdp):
             var fx: [ReceiverEffect] = []

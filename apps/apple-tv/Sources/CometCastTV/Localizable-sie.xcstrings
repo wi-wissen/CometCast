@@ -1395,6 +1395,23 @@
         }
       }
     },
+    "request.otherDevice": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This name was used here before by a different device."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Name wurde hier schon von einem anderen Gerät benutzt."
+          }
+        }
+      }
+    },
     "request.check": {
       "extractionState": "manual",
       "localizations": {

@@ -75,10 +75,11 @@ public enum ServerMessage: Equatable, Sendable {
     case roomCreated(code: String, joinMode: JoinMode)
     /// `roomName`: the room's name as the display device set it (`room_name`); nil when absent, not a string, or empty.
     case joined(roomName: String? = nil)
-    /// `name` is untrusted text as the server sent it (it cleans it, the machine cleans it again).
-    case peerJoined(name: String)
+    /// `name` is untrusted text as the server sent it (it cleans it, the machine cleans it again). `device`: the
+    /// presenter's proof (docs/design/presenter-identity.md), relayed in open mode; nil when absent or malformed.
+    case peerJoined(name: String, device: JoinDevice? = nil)
     case joinPending(timeoutSecs: Double, check: Int, roomName: String? = nil)
-    case joinRequest(id: Int, name: String, check: Int)
+    case joinRequest(id: Int, name: String, check: Int, device: JoinDevice? = nil)
     case joinRequestCancelled(id: Int, reason: String)
     case joinModeChanged(JoinMode)
     case blocked(id: Int, name: String)
@@ -115,7 +116,7 @@ public enum ServerMessage: Equatable, Sendable {
             guard let c = str("code"), let m = mode("join_mode") else { return nil }
             return .roomCreated(code: c, joinMode: m)
         case "joined": return .joined(roomName: roomName())
-        case "peer_joined": return str("name").map { .peerJoined(name: $0) }
+        case "peer_joined": return str("name").map { .peerJoined(name: $0, device: parseJoinDevice(o["device"])) }
         case "peer_left": return .peerLeft
         case "room_ended": return .roomEnded
         case "join_pending":
@@ -123,7 +124,7 @@ public enum ServerMessage: Equatable, Sendable {
             return .joinPending(timeoutSecs: t, check: c, roomName: roomName())
         case "join_request":
             guard let id = int("id"), let n = str("name"), let c = int("check") else { return nil }
-            return .joinRequest(id: id, name: n, check: c)
+            return .joinRequest(id: id, name: n, check: c, device: parseJoinDevice(o["device"]))
         case "join_request_cancelled":
             guard let id = int("id"), let r = str("reason") else { return nil }
             return .joinRequestCancelled(id: id, reason: r)

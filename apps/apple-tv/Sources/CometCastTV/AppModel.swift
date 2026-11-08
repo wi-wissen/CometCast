@@ -91,7 +91,7 @@ final class AppModel: ObservableObject {
         if let stored = ConfigStore.displayConfig, stored.relay != nil {
             // set up before: no wizard, the room opens at once (spec 4.1: "Finish stores ... then shows Idle")
             config = stored
-            machine = ReceiverMachine(joinMode: stored.mode, roomName: stored.room)
+            machine = ReceiverMachine(joinMode: stored.mode, roomName: stored.room, deviceMemory: ConfigStore.deviceMemory)
             activeRelay = effectiveRelay(for: stored)
             resolveBoxAddress()
             start()
@@ -168,7 +168,7 @@ final class AppModel: ObservableObject {
         config = cfg
         wizard = nil
         discovery.stop()
-        machine = ReceiverMachine(joinMode: cfg.mode, roomName: cfg.room)
+        machine = ReceiverMachine(joinMode: cfg.mode, roomName: cfg.room, deviceMemory: ConfigStore.deviceMemory)
         activeRelay = r.relay
         resolveBoxAddress()
         tracker = ConnectionTracker(now: Self.nowS)
@@ -404,9 +404,13 @@ final class AppModel: ObservableObject {
             switch e {
             case .requestExpired(let n, let u): showToast(L.t("toast.expired", ["name": L.quoted(n, unnamed: u)]))
             case .requestWithdrawn(let n, let u): showToast(L.t("toast.withdrawn", ["name": L.quoted(n, unnamed: u)]))
-            case .senderJoined(let n, let u):
-                // After "Yes" the toast `toast.allowed` has said it already.
-                if expectJoinAfterAllow { expectJoinAfterAllow = false } else { showToast(L.t("toast.joined", ["name": L.quoted(n, unnamed: u)])) }
+            case .senderJoined(let n, let u, let other):
+                // After "Yes" the toast `toast.allowed` has said it already. Open mode: the neutral sentence of the
+                // request dialog is appended when the name was used by another device (presenter-identity.md).
+                if expectJoinAfterAllow { expectJoinAfterAllow = false } else {
+                    let text = L.t("toast.joined", ["name": L.quoted(n, unnamed: u)])
+                    showToast(other ? text + " " + L.s("request.otherDevice") : text)
+                }
             case .senderLeft(let n, let u): showToast(L.t("toast.left", ["name": L.quoted(n, unnamed: u)]))
             case .sessionEnded: showToast(L.s("toast.sessionEnded"))
             }
@@ -516,6 +520,8 @@ final class AppModel: ObservableObject {
         }
         state = machine.state
         let events = machine.takeEvents()
+        // The display's memory of names and devices changed (an allowed request, or a verified open join): keep it.
+        if machine.takeDeviceMemoryChange() != nil { ConfigStore.deviceMemory = machine.deviceMemory }
         let now = Self.nowS
 
         // the reconnect schedule (spec 4.2): 1 s, 2 s, 3 s, then every 4 s; busy 30 s; outdated never
