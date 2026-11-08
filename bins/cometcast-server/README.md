@@ -212,7 +212,9 @@ sent unless `allowed_origins` is set (then only for the listed origins, with `Re
 ## ALTCHA
 
 Creating a room needs a solved proof-of-work puzzle (always in open mode). Difficulty rises with
-server load and recent bad events. Puzzles are single-use. Without a configured secret a random one
+server load and recent bad events. Puzzles are single-use per server process: the list of used puzzles is lost at a restart and not
+shared between instances, so with a fixed secret a solution can be reused there until it expires
+(at most `ttl_secs`). When that list is full (200 000), new solutions are refused. Without a configured secret a random one
 is made at start, so puzzles from before a restart (or from another instance) are refused: behind
 several instances use the same `secret_file`. Joining a room is not protected by ALTCHA, only by
 limits and bans. Solving time on weak devices is not measured.

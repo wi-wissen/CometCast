@@ -8,7 +8,9 @@
 //! picks a secret counter, derives the answer once, and signs it. Checking a solution
 //! is then one HMAC, so verifying costs the server almost nothing.
 //!
-//! Every puzzle can be used once (replay protection) and expires.
+//! Every puzzle can be used once (replay protection) and expires. The list of used
+//! puzzles lives in the memory of one server process: it is empty after a restart, and
+//! several instances that share `altcha.secret` do not know each other's list.
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -28,6 +30,12 @@ use crate::net::ClientIp;
 /// A payload longer than this is refused without looking at it. (A real one is under 1 KiB.)
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
 
+/// Most used puzzles remembered at the same time. When the list is full, new solutions are
+/// refused (fail closed) instead of forgetting a used puzzle before it expires.
+/// UNCERTAIN: 200 000 is a placeholder cap (about 550 rooms per second over a 6 minute
+/// window with the default `ttl_secs`).
+const MAX_USED: u64 = 200_000;
+
 /// Why a solution was not accepted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PuzzleError {
@@ -45,7 +53,10 @@ pub(crate) struct Puzzle {
     /// Signs the correct answer (so checking does not need to redo the work).
     key_secret: String,
     /// Puzzles that were already used, kept until they would have expired anyway.
+    /// No size cap in the cache itself (it would evict used puzzles early); `used_cap` is
+    /// checked before every insert instead.
     used: moka::sync::Cache<String, ()>,
+    used_cap: u64,
 }
 
 fn unix_now() -> i64 {
@@ -69,10 +80,9 @@ impl Puzzle {
         Self {
             used: moka::sync::Cache::builder()
                 // Slightly longer than the puzzle lifetime, so a used one cannot come back.
-                .time_to_live(cfg.ttl + Duration::from_secs(60))
-                // UNCERTAIN: 200 000 remembered solutions is a placeholder cap.
-                .max_capacity(200_000)
+                .time_to_live(cfg.ttl.saturating_add(Duration::from_secs(60)))
                 .build(),
+            used_cap: MAX_USED,
             cfg: cfg.clone(),
             secret,
             key_secret,
@@ -137,6 +147,16 @@ impl Puzzle {
         }
         // Each solved puzzle counts once. The signature is unique per puzzle.
         let id = payload.challenge.signature.clone().unwrap_or_default();
+        if self.used.contains_key(&id) {
+            return Err(PuzzleError::Invalid);
+        }
+        // Drop expired entries and bring the count up to date, then fail closed when the
+        // list is full. UNCERTAIN: two checks at the same moment may both pass, so the list
+        // can grow a few entries beyond the cap; that only costs a little memory.
+        self.used.run_pending_tasks();
+        if self.used.entry_count() >= self.used_cap {
+            return Err(PuzzleError::Invalid);
+        }
         if !self.used.entry(id).or_insert(()).is_fresh() {
             return Err(PuzzleError::Invalid);
         }
@@ -226,6 +246,19 @@ mod tests {
         assert_eq!(p.check(Some(&answer)), Ok(()));
         // The same answer again is a replay.
         assert_eq!(p.check(Some(&answer)), Err(PuzzleError::Invalid));
+    }
+
+    #[test]
+    fn full_used_list_refuses_new_solutions() {
+        let mut p = Puzzle::new(&cfg(AltchaMode::Always));
+        p.used_cap = 2;
+        for _ in 0..2 {
+            let answer = solve(&p.challenge(0).unwrap());
+            assert_eq!(p.check(Some(&answer)), Ok(()));
+        }
+        // Full: a third, valid solution is refused rather than forgetting a used one.
+        let third = solve(&p.challenge(0).unwrap());
+        assert_eq!(p.check(Some(&third)), Err(PuzzleError::Invalid));
     }
 
     #[test]

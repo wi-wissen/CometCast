@@ -350,9 +350,15 @@ Flow:
    standard base64 of the JSON `{"challenge": <the challenge>, "solution": <the solution>}`.
 4. The server checks signature, expiry and solution, and remembers the puzzle so it can be
    used **once** (a [moka](https://crates.io/crates/moka) cache with a time-to-live, so replays fail).
+   The list of used puzzles holds at most 200 000 entries; when it is full, new solutions are
+   refused (`altcha_invalid`) rather than forgetting a used puzzle early. Limits: the list is
+   in the memory of one process. After a restart it is empty, so with a fixed `altcha.secret` a
+   solution from before the restart can be used once more until it expires (`altcha.ttl_secs`).
+   Several instances that share the secret each keep their own list, so one solution can create
+   one room on each instance (there is no shared store).
 
-Errors: `altcha_required` (missing), `altcha_invalid` (wrong, expired, replayed, or signed by
-another server). Without a configured `altcha.secret` the server uses a random secret made at
+Errors: `altcha_required` (missing), `altcha_invalid` (wrong, expired, replayed, signed by
+another server, or the list of used puzzles is full). Without a configured `altcha.secret` the server uses a random secret made at
 start, so puzzles from before a restart, or from another server instance, are refused.
 Behind several instances, set the same `altcha.secret` on all of them.
 
