@@ -101,12 +101,12 @@ UNCERTAIN: every number is a placeholder.
 | `limits.ban_after_failed_joins` | 10 | 30 | Failed joins within the window cause a ban. |
 | `limits.failed_join_window_secs` | 600 | 600 | The window. |
 | `limits.ban_secs` | `[60, 300, 1800]` | same | 1st, 2nd, 3rd+ ban. The plan says 1, 5, 30 minutes. |
-| `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. |
+| `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. 1 to 31536000 (one year); each `ban_secs` entry at most one year too. |
 | `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because an office may sit behind one NAT address. |
 | `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address. |
-| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. |
-| `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". |
-| `limits.max_room_lifetime_secs` | 43200 | 86400 | Hard cap: longest life of any room, however busy and alive (`room_lifetime`). UNCERTAIN: 12 h / 24 h are placeholders; clients see `peer_left` when it is reached even if the video still runs. |
+| `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. Each 1 to 86400. |
+| `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". 1 to 31536000. |
+| `limits.max_room_lifetime_secs` | 43200 | 86400 | Hard cap: longest life of any room, however busy and alive (`room_lifetime`). UNCERTAIN: 12 h / 24 h are placeholders; clients see `peer_left` when it is reached even if the video still runs. 1 to 31536000. |
 | `limits.msg_rate_per_sec` / `msg_burst` | 20 / 100 | 50 / 200 | Per connection: messages per second and burst. |
 | `limits.bytes_per_sec` / `bytes_burst` | 65536 / 262144 | 262144 / 1048576 | Per connection: bytes per second and burst (burst must be at least `max_message_bytes`). |
 | `limits.max_room_relay_bytes` | 8388608 | 67108864 | Total bytes relayed through one room. |
@@ -125,7 +125,7 @@ UNCERTAIN: every number is a placeholder.
 | `stun.urls` | `[]` | `[]` | Public STUN servers listed at `/ice-servers`, **allowed in both modes**. At most 4, only `stun:` / `stuns:` URLs (lowercase) as `host[:port]` (port 1-65535, IPv6 as `[addr]`), no credentials (`@`), path or query; checked at start. Env `COMETCAST__STUN__URLS=stun:a:3478,stun:b:3478` (comma-separated), CLI `--set stun.urls=...`. |
 | `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. `turn.stun_urls` follows the same rules as `stun.urls`; both are listed (without duplicates) in one STUN entry. |
 | `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |
-| `turn.ttl_secs` | | 3600 | Credential lifetime. |
+| `turn.ttl_secs` | | 3600 | Credential lifetime. 1 to 31536000. |
 
 ## Join approval (who may join a room)
 

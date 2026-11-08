@@ -721,6 +721,20 @@ mod tests {
             assert!(bad(key, "18446744073709551615"), "{key} = u64::MAX");
             assert!(!bad(key, "86400"), "{key} = one day");
         }
+        // Ping and pong: one day at most; the long-lived limits: one year at most.
+        for key in ["limits.ping_interval_secs", "limits.pong_timeout_secs"] {
+            assert!(bad(key, "86401"), "{key} too big");
+            assert!(!bad(key, "86400"), "{key} = one day");
+        }
+        for key in [
+            "limits.paired_idle_secs",
+            "limits.max_room_lifetime_secs",
+            "limits.ban_memory_secs",
+        ] {
+            assert!(bad(key, "0"), "{key} = 0");
+            assert!(bad(key, "18446744073709551615"), "{key} = u64::MAX");
+            assert!(!bad(key, "31536000"), "{key} = one year");
+        }
     }
 
     #[test]
