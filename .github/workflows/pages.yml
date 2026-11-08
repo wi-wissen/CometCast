@@ -130,7 +130,7 @@ jobs:
             exit 1
           fi
           echo "::warning::$msg The build and link checks passed; the deploy is skipped."
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         if: steps.pages.outputs.enabled == 'true'
       - id: deployment
         if: steps.pages.outputs.enabled == 'true'
