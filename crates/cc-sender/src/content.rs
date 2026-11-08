@@ -19,9 +19,10 @@ use cc_files::{
 };
 use cc_proto::{ClientMsg, ControlCmd, Role, RoomCode, ServerMsg};
 use cc_transport::JoinProgress;
+use cc_transport::device::DeviceKey;
 use cc_transport::{
     ConnectionState, ControlChannel, ServerAddr, Session, SessionConfig, SessionEvent,
-    SignalingClient, TlsTrust, TransportError, ice, join_room,
+    SignalingClient, TlsTrust, TransportError, ice, join_room_with,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -213,6 +214,10 @@ pub struct ContentSenderOptions {
     pub name: Option<String>,
     /// Receives [`JoinProgress::Pending`] when the room waits for the host's approval.
     pub join_progress: Option<mpsc::UnboundedSender<JoinProgress>>,
+    /// The key of this installation: the join carries its proof, so the display can tell
+    /// whether this name was used by a different device before
+    /// (docs/design/presenter-identity.md). `None` = no proof.
+    pub device_key: Option<DeviceKey>,
     /// Do not ask the server for its STUN/TURN list even if `session.ice_servers` is empty (the
     /// caller asked already and keeps the outcome). Default `false`.
     pub skip_ice_fetch: bool,
@@ -228,6 +233,7 @@ impl ContentSenderOptions {
             trust: TlsTrust::system(),
             name: None,
             join_progress: None,
+            device_key: None,
             skip_ice_fetch: false,
         }
     }
@@ -248,10 +254,12 @@ impl ContentSender {
     pub async fn start(options: ContentSenderOptions) -> Result<Self, TransportError> {
         let mut sig =
             SignalingClient::connect_with(&options.server, Role::Sender, &options.trust).await?;
-        let room_name = join_room(
+        let room_name = join_room_with(
             &mut sig,
             options.code.clone(),
             options.name.clone(),
+            None,
+            options.device_key.as_ref(),
             options.join_progress.as_ref(),
         )
         .await?;

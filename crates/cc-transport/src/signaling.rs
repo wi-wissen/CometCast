@@ -14,6 +14,7 @@ use tokio::task::JoinHandle;
 use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::device::DeviceKey;
 use crate::error::TransportError;
 use crate::net::{ServerAddr, TlsTrust, connect_io};
 
@@ -185,24 +186,27 @@ pub async fn join_room(
     name: Option<String>,
     progress: Option<&mpsc::UnboundedSender<JoinProgress>>,
 ) -> Result<Option<String>, TransportError> {
-    join_room_with(sig, code, name, None, progress).await
+    join_room_with(sig, code, name, None, None, progress).await
 }
 
 /// [`join_room`] with a single-use hand-over token (`join_room.handover`, native-apps.md
 /// 20.5): the display admits a join that carries a token it issued without asking the host.
-/// `None` is an ordinary join.
+/// `None` is an ordinary join. With a `device` key the join carries the proof of that key for
+/// this room code and the current time (docs/design/presenter-identity.md); the name is not signed.
 pub async fn join_room_with(
     sig: &mut SignalingClient,
     code: RoomCode,
     name: Option<String>,
     handover: Option<String>,
+    device: Option<&DeviceKey>,
     progress: Option<&mpsc::UnboundedSender<JoinProgress>>,
 ) -> Result<Option<String>, TransportError> {
+    let device = device.map(|k| k.proof_now(code.as_str()));
     sig.send(ClientMsg::JoinRoom {
         code,
         name,
         handover,
-        device: None,
+        device,
     })
     .await?;
     let mut deadline = tokio::time::Instant::now() + JOIN_ANSWER_TIMEOUT;

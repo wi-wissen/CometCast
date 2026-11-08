@@ -79,6 +79,47 @@ pub fn sign_join(secret: &[u8; 32], code: &str, ts: u64) -> JoinDevice {
     }
 }
 
+/// The secret of a presenter installation (its 32 seed bytes). The app stores the bytes with its
+/// settings; the same key may be the display key of `signed-announcements.md`. The secret is not
+/// shown by `Debug`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DeviceKey([u8; 32]);
+
+impl std::fmt::Debug for DeviceKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DeviceKey(id {})", self.id())
+    }
+}
+
+impl DeviceKey {
+    /// The key of a 32-byte secret; `None` for any other length.
+    pub fn from_secret(secret: &[u8]) -> Option<Self> {
+        <[u8; 32]>::try_from(secret).ok().map(Self)
+    }
+
+    /// The key of a secret written as base64url without padding (43 characters), the form the
+    /// iOS app hands to the broadcast extension; `None` when it is not 32 bytes of that.
+    pub fn from_secret_b64(text: &str) -> Option<Self> {
+        let bytes = URL_SAFE_NO_PAD.decode(text.trim()).ok()?;
+        Self::from_secret(&bytes)
+    }
+
+    /// The device id of the key.
+    pub fn id(&self) -> String {
+        device_id_of_secret(&self.0)
+    }
+
+    /// The proof for joining room `code` at `ts` (see [`sign_join`]).
+    pub fn sign_join(&self, code: &str, ts: u64) -> JoinDevice {
+        sign_join(&self.0, code, ts)
+    }
+
+    /// The proof for joining room `code` now.
+    pub fn proof_now(&self, code: &str) -> JoinDevice {
+        self.sign_join(code, unix_ms())
+    }
+}
+
 /// Milliseconds since the Unix epoch now.
 pub fn unix_ms() -> u64 {
     std::time::SystemTime::now()
@@ -124,7 +165,7 @@ mod tests {
     fn signed_bytes_have_the_documented_layout() {
         assert_eq!(
             join_signed_bytes("k7qm2w", 1767225600000),
-            b"cometcast-join-v1\0K7QM2W\01767225600000".to_vec()
+            b"cometcast-join-v1\0K7QM2W\x001767225600000".to_vec()
         );
     }
 
@@ -147,6 +188,25 @@ mod tests {
         assert_eq!(
             verify_join(&d, "K7QM2W", now - JOIN_WINDOW_MS - 1),
             Err(JoinReject::Window)
+        );
+    }
+
+    #[test]
+    fn a_device_key_signs_for_the_room_and_hides_its_secret() {
+        let key = DeviceKey::from_secret(&SECRET).unwrap();
+        assert!(DeviceKey::from_secret(&SECRET[..31]).is_none());
+        let d = key.proof_now("K7QM2W");
+        assert_eq!(
+            verify_join(&d, "K7QM2W", unix_ms()),
+            Ok(device_id_of_secret(&SECRET))
+        );
+        let text = URL_SAFE_NO_PAD.encode(SECRET);
+        assert_eq!(DeviceKey::from_secret_b64(&text), Some(key.clone()));
+        assert!(DeviceKey::from_secret_b64("short").is_none());
+        let shown = format!("{key:?}");
+        assert!(
+            shown.contains(&key.id()) && !shown.contains(&text),
+            "{shown}"
         );
     }
 

@@ -107,7 +107,9 @@ unsafe fn text(ptr: *const c_char) -> Option<String> {
 /// else an `ErrorCode` (1 bad room code, 2 bad relay, 7 internal, 8 already running).
 /// `app_group_path` is the directory for `cc-ios.log` (may be NULL). `callback` may be NULL.
 /// `name` is the person's name for the display's request and `handover` the single-use token
-/// the app got from the display (native-apps.md 20.5); both may be NULL or empty.
+/// the app got from the display (native-apps.md 20.5); both may be NULL or empty. `device_key`
+/// is the secret of the app's device key, 43 characters of base64url (NULL, empty or invalid =
+/// the join carries no device proof, docs/design/presenter-identity.md).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cc_ios_start(
     room_code: *const c_char,
@@ -115,17 +117,19 @@ pub unsafe extern "C" fn cc_ios_start(
     app_group_path: *const c_char,
     name: *const c_char,
     handover: *const c_char,
+    device_key: *const c_char,
     callback: CcIosStatusCallback,
     user: *mut c_void,
 ) -> i32 {
     // SAFETY: header contract, see `text`.
-    let (code, relay, dir, name, handover) = unsafe {
+    let (code, relay, dir, name, handover, device_key) = unsafe {
         (
             text(room_code),
             text(relay_url),
             text(app_group_path),
             text(name),
             text(handover),
+            text(device_key),
         )
     };
     let Some(code) = code else {
@@ -141,6 +145,7 @@ pub unsafe extern "C" fn cc_ios_start(
         udp_bind: None,
         name: name.filter(|n| !n.trim().is_empty()),
         handover: handover.filter(|h| !h.is_empty()),
+        device_key: device_key.filter(|k| !k.is_empty()),
     };
     match engine::start(config, sink(callback, user)) {
         Ok(()) => 0,
@@ -295,10 +300,10 @@ pub extern "C" fn cc_ios_share_stop() {
     share::stop();
 }
 
-/// Version of this C ABI. Bumped when a signature or number changes (3: the share functions).
+/// Version of this C ABI. Bumped when a signature or number changes (3: the share functions; 4: `device_key` in `cc_ios_start`).
 #[unsafe(no_mangle)]
 pub extern "C" fn cc_ios_abi_version() -> i32 {
-    3
+    4
 }
 
 #[cfg(test)]
@@ -324,8 +329,8 @@ mod tests {
         ] {
             assert!(header.contains(name), "{name} missing in cc_ios.h");
         }
-        assert!(header.contains("#define CC_IOS_ABI_VERSION 3"));
-        assert_eq!(super::cc_ios_abi_version(), 3);
+        assert!(header.contains("#define CC_IOS_ABI_VERSION 4"));
+        assert_eq!(super::cc_ios_abi_version(), 4);
         // 4 ints, 6 counters and 3 pointers (64-bit layout, as on every iOS device).
         assert_eq!(
             std::mem::size_of::<super::CcIosStatus>(),

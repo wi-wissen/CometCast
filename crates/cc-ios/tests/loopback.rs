@@ -75,6 +75,7 @@ fn config(server: &str, code: &str) -> Config {
         udp_bind: Some("127.0.0.1:0".into()),
         name: None,
         handover: None,
+        device_key: None,
     }
 }
 
@@ -230,6 +231,7 @@ fn the_c_functions_work_without_a_running_sender() {
         ffi::cc_ios_start(
             bad.as_ptr(),
             relay.as_ptr(),
+            std::ptr::null(),
             std::ptr::null(),
             std::ptr::null(),
             std::ptr::null(),
