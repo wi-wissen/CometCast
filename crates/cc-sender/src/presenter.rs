@@ -596,6 +596,13 @@ async fn run(
             }
             Next::Page(Some(DisplayMessage::PauseState { presenter, display })) => {
                 emit(PresenterEvent::PauseState { presenter, display });
+                // A display that does not hold what this side wants is asked again (it may
+                // have ignored the command before its first picture).
+                if let Some(r) = running.as_ref()
+                    && let Core::Media(c) = &r.core
+                {
+                    c.sync_pause(presenter).await;
+                }
             }
             Next::Page(Some(DisplayMessage::HandoverOk)) => {
                 acks.send_modify(|n| *n += 1);

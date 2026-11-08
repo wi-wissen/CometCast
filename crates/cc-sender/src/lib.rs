@@ -421,6 +421,16 @@ impl SenderCore {
         *self.paused.borrow()
     }
 
+    /// The display's `pause_state` said it holds the presenter flag as `display_has` while this
+    /// side wants it as [`Self::is_paused`]: send the matching command again (idempotent). The
+    /// display may have ignored an earlier one (for example before its first picture). One
+    /// message per state message cannot loop: a display answers only when its state changes.
+    pub async fn sync_pause(&self, display_has: bool) {
+        if let (Some(cmd), Some(c)) = (pause_resync(self.is_paused(), display_has), &self.control) {
+            let _ = c.send_cmd(cmd).await;
+        }
+    }
+
     /// Counters of the screen pipeline (all zero in test pattern mode).
     pub fn screen_stats(&self) -> ScreenStats {
         self.counters.snapshot()
@@ -470,6 +480,17 @@ impl Drop for SenderCore {
         if let Some(tx) = self.stop.take() {
             let _ = tx.send(());
         }
+    }
+}
+
+/// The command that brings a display's presenter flag (`display_has`) to what the presenter
+/// wants (`want`), or `None` when they agree.
+pub(crate) fn pause_resync(want: bool, display_has: bool) -> Option<cc_proto::ControlCmd> {
+    use cc_proto::ControlCmd;
+    match (want, display_has) {
+        (true, false) => Some(ControlCmd::Pause),
+        (false, true) => Some(ControlCmd::Resume),
+        _ => None,
     }
 }
 
@@ -768,6 +789,15 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pause_flag_the_display_does_not_hold_is_asked_for_again() {
+        use cc_proto::ControlCmd;
+        assert_eq!(pause_resync(true, false), Some(ControlCmd::Pause));
+        assert_eq!(pause_resync(false, true), Some(ControlCmd::Resume));
+        assert_eq!(pause_resync(true, true), None);
+        assert_eq!(pause_resync(false, false), None);
+    }
 
     #[test]
     fn builtin_frames_are_vp8_key_frames() {
