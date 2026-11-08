@@ -79,9 +79,9 @@ UNCERTAIN: every number is a placeholder.
 | `allowed_origins` | | `[]` | Web origins (`https://host[:port]`, exact) whose pages may use this relay from another site: CORS for `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`. Empty = same-origin only for HTTP, any browser origin on `/ws`. `*` = any origin, internal mode only. See [Web app on another origin](#web-app-on-another-origin). Env `COMETCAST_ALLOWED_ORIGINS`, CLI `--allowed-origins`. |
 | `default_join_mode` | `open` | `open` | Join mode of rooms whose creator names none (`open` or `confirm`; never `locked`). Web, Flutter and CLI clients send `open` themselves unless the person chose another mode. |
 | `allow_open_rooms` | `true` | `true` | `false` = rooms in join mode `open` are refused (`open_rooms_disabled`), also when a receiver switches an existing room to `open`. Needs `default_join_mode = "confirm"`. For operators who want approval everywhere. |
-| `join_approval_secs` | 60 | 60 | A join request waits this long for the display device (`approval_timeout`). |
-| `idle_room_secs` | 1800 | 1800 | Room without sender expires. |
-| `hello_secs` / `no_room_secs` | 5 / 60 | 5 / 60 | Handshake and "must be in a room" deadlines. |
+| `join_approval_secs` | 60 | 60 | A join request waits this long for the display device (`approval_timeout`). 1 to 86400. |
+| `idle_room_secs` | 1800 | 1800 | Room without sender expires. 1 to 86400. |
+| `hello_secs` / `no_room_secs` | 5 / 60 | 5 / 60 | Handshake and "must be in a room" deadlines. Each 1 to 86400. |
 | `max_message_bytes` | 65536 | 65536 | Largest WebSocket message. |
 | `outgoing_queue_len` | 256 | 256 | Queue per slow client. |
 | `tls.cert_file`, `tls.key_file` | | none | PEM files; HTTPS/WSS is on when set. |
@@ -121,7 +121,7 @@ UNCERTAIN: every number is a placeholder.
 | `altcha.cost` | 1000 | 1000 | PBKDF2 iterations per attempt. |
 | `altcha.base_counter` | 1000 | 1000 | Size of the search; doubles per pressure level. |
 | `altcha.max_difficulty_factor` | 8 | 8 | Upper limit of the multiplier. |
-| `altcha.ttl_secs` | 300 | 300 | Puzzle lifetime. |
+| `altcha.ttl_secs` | 300 | 300 | Puzzle lifetime. 1 to 86400. |
 | `stun.urls` | `[]` | `[]` | Public STUN servers listed at `/ice-servers`, **allowed in both modes**. At most 4, only `stun:` / `stuns:` URLs (lowercase) as `host[:port]` (port 1-65535, IPv6 as `[addr]`), no credentials (`@`), path or query; checked at start. Env `COMETCAST__STUN__URLS=stun:a:3478,stun:b:3478` (comma-separated), CLI `--set stun.urls=...`. |
 | `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. `turn.stun_urls` follows the same rules as `stun.urls`; both are listed (without duplicates) in one STUN entry. |
 | `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |

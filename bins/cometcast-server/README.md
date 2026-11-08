@@ -121,9 +121,9 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `listen` | `127.0.0.1:8443` | | Address and port |
 | `web_dir` | not set | | Serve the web app from this directory. Empty (`""`, or `COMETCAST_WEB_DIR=`) means not set: no files, unknown paths are `404` |
 | `allowed_origins` | `[]` | | Exact web origins (`https://host[:port]`) that may use this relay from another site: CORS on `/ice-servers`, `/altcha/challenge`, `/healthz` and an `Origin` check on `/ws`; empty = same-origin only and any `/ws` origin; `*` internal mode only. [Details](../../docs/server.md#web-app-on-another-origin) |
-| `idle_room_secs` | 1800 | | A room without a sender is removed after this |
-| `hello_secs` | 5 | | A connection must say hello within this |
-| `no_room_secs` | 60 | | A connection must be in a room within this |
+| `idle_room_secs` | 1800 | | A room without a sender is removed after this (1 to 86400) |
+| `hello_secs` | 5 | | A connection must say hello within this (1 to 86400) |
+| `no_room_secs` | 60 | | A connection must be in a room within this (1 to 86400) |
 | `max_message_bytes` | 65536 | | Largest WebSocket message |
 | `outgoing_queue_len` | 256 | | Queued messages per slow client |
 | `tls.cert_file`, `tls.key_file` | not set | | PEM files; HTTPS/WSS is on when set |
@@ -149,7 +149,7 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `limits.max_rooms_per_ip` | 100 | 5 | Rooms owned by one address |
 | `default_join_mode` | `open` | `open` | Join mode of rooms whose creator names none (`open` or `confirm`) |
 | `allow_open_rooms` | `true` | `true` | `false` refuses rooms that anybody with the code can join (needs `default_join_mode = "confirm"`) |
-| `join_approval_secs` | 60 | 60 | How long a join request waits for the display device |
+| `join_approval_secs` | 60 | 60 | How long a join request waits for the display device (1 to 86400) |
 | `limits.max_pending_per_room` / `max_pending_per_ip` | 8 / 8 | 8 / 3 | Senders waiting for approval per room / per address |
 | `limits.denied_join_weight` | 2 | 2 | Failures counted toward a ban for a denied or timed-out join request |
 | `limits.ping_interval_secs` | 20 | | Server pings this often |
@@ -169,7 +169,7 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `altcha.cost` | 1000 | | PBKDF2 iterations per attempt |
 | `altcha.base_counter` | 1000 | | Search size; doubles per pressure level |
 | `altcha.max_difficulty_factor` | 8 | | Cap on the multiplier |
-| `altcha.ttl_secs` | 300 | | Puzzle lifetime |
+| `altcha.ttl_secs` | 300 | | Puzzle lifetime (1 to 86400) |
 | `stun.urls` | `[]` | `[]` | Public STUN URLs listed at `/ice-servers`; allowed in **both** modes; max 4, only `stun:`/`stuns:` `host[:port]`, no credentials |
 | `turn.urls`, `turn.stun_urls` | not set | not allowed | URLs given to clients (`turn.stun_urls` is checked like `stun.urls`) |
 | `turn.secret` / `secret_file` | not set | not allowed | Shared secret with coturn |
