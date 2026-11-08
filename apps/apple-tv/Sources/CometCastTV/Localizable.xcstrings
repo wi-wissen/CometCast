@@ -1327,6 +1327,23 @@
         }
       }
     },
+    "display.tag": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ID {tag}"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ID {tag}"
+          }
+        }
+      }
+    },
     "request.title": {
       "extractionState": "manual",
       "localizations": {

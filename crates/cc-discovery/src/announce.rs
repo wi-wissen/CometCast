@@ -1,24 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Receivers on the local network and the server they announce (mDNS / DNS-SD).
 //!
-//! A receiver registers a DNS-SD service `_cometcast._tcp` on `local.` ([`advertise_receiver`]).
-//! Its TXT record carries (UNCERTAIN: this record layout is a proposal of this crate, not an
-//! agreed protocol; nothing else implements it yet):
+//! The server ladder (step 3) reads the same signed `v=2` display records as the list of screens
+//! (`crate::signed`, `docs/discovery.md` section 3): a record is used only if its id derives from
+//! its `pk` and its signature verifies; `v=1` records and unverifiable records give no server.
+//! The browse here keeps no `seq` memory (it is a one-shot lookup of 1.5 s), so a replayed old
+//! record of a display could name the server that display used before. An announced server is
+//! therefore only a suggestion of the lowest trust, as before.
 //!
-//! | key | meaning |
-//! | --- | --- |
-//! | `v` | layout version, `1` |
-//! | `srv` | the server the receiver prefers, `host:port` |
-//! | `tls` | `1`: the server speaks TLS (`wss://`), otherwise plain `ws://` |
-//! | `name` | friendly name shown to people |
-//!
-//! This is the older, small layout (`v`, `srv`, `tls`, `name`) that [`advertise_receiver`] still
-//! writes and that server discovery reads. The announcement of a display device with an id, a
-//! join mode and, for Open and With approval, the current room code is written by
-//! `crate::display` and read by `crate::nearby` (`docs/discovery.md`, section 3).
+//! [`advertise_receiver`] (used by `cometcast-cli discover --announce` and the older
+//! `start_advertising` API) announces a **locked** display record, signed with a key that is made
+//! for the lifetime of the [`Advertisement`] (it joins no room; it only names a server). Dropping
+//! it publishes the signed `state=gone` record before the goodbye.
 //!
 //! Everything read from the network is untrusted: any device on the local network can send
-//! such a record. The announced server is checked with [`Trust::Network`] (host name, or a
+//! such a record, and a signature only proves that the sender holds the key of the id, not that
+//! its content is true. The announced server is checked with [`Trust::Network`] (host name, or a
 //! private IP literal; no scheme, path, loopback, link-local and so on) and with the TLS rule
 //! of [`network_server`]: plain `ws://` is only accepted for a private IP literal or a `.local`
 //! name, every other host needs `tls=1`. Names are stripped of control and format characters
@@ -38,23 +35,17 @@ use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::address::{Trust, clean_text, network_server, normalize_server};
-use crate::nearby::{RawRecord, RawSink};
+use crate::address::{clean_text, network_server, validate_hostname};
+use crate::display::{AnnounceBackend, DisplayState, MdnsBackend, instance_name, txt_records};
+use crate::nearby::{RawRecord, RawSink, ScreenMode};
+use crate::signed::{AnnounceState, DisplayKey, SeqCounter, unix_ms, verify};
 
 /// DNS-SD service type with domain, as `mdns-sd` wants it.
 pub const MDNS_SERVICE_TYPE: &str = "_cometcast._tcp.local.";
-/// TXT key: layout version.
-pub const TXT_VERSION: &str = "v";
-/// TXT key: announced server.
-pub const TXT_SERVER: &str = "srv";
-/// TXT key: TLS flag.
-pub const TXT_TLS: &str = "tls";
-/// TXT key: friendly name.
-pub const TXT_NAME: &str = "name";
 /// Most addresses kept per receiver.
 pub const MAX_ADDRESSES: usize = 8;
 /// Most receivers collected by one browse.
@@ -101,23 +92,22 @@ pub fn receiver_from_parts<'a>(
     if instance.is_empty() {
         return None;
     }
-    let (mut version, mut srv, mut tls, mut name) = (None, None, false, None);
-    // Look at a bounded number of TXT entries; the first occurrence of a key wins.
-    for (k, v) in txt.into_iter().take(32) {
-        match k {
-            TXT_VERSION if version.is_none() => version = Some(v),
-            TXT_SERVER if srv.is_none() => srv = Some(v),
-            TXT_TLS => tls |= v == "1",
-            TXT_NAME if name.is_none() => name = Some(v),
-            _ => {}
-        }
-    }
-    let announced_server = match (version, srv) {
-        (None | Some("1"), Some(s)) => network_server(s, Some(tls)).ok().map(|(a, _)| a),
-        _ => None,
-    };
-    let name = name
-        .map(|n| clean_text(n, MAX_NAME_CHARS))
+    // A bounded number of TXT entries; only a record that verifies (v=2, id from pk, signature)
+    // and says `live` is used. Anything else gives no server and no announced name.
+    let pairs: Vec<(String, String)> = txt
+        .into_iter()
+        .take(32)
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+    let verified = verify(&pairs)
+        .ok()
+        .filter(|v| v.state == AnnounceState::Live);
+    let announced_server = verified
+        .as_ref()
+        .and_then(|v| network_server(&v.srv, Some(v.tls)).ok().map(|(a, _)| a));
+    let name = verified
+        .as_ref()
+        .map(|v| clean_text(&v.name, MAX_NAME_CHARS))
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| instance.clone());
     let mut addresses: Vec<IpAddr> = addresses.into_iter().collect();
@@ -153,22 +143,30 @@ fn receiver_from_resolved(info: &ResolvedService) -> Option<ReceiverInfo> {
 /// What [`advertise_receiver`] announces.
 #[derive(Debug, Clone)]
 pub struct AdvertiseOptions {
-    /// DNS-SD instance name (cleaned, cut to 63 bytes).
+    /// The friendly name (the `name` key; cleaned and cut like a room name). The DNS-SD instance
+    /// name is derived from the id of the key made for the announcement (`CometCast-xxxxxxxx`).
     pub instance_name: String,
     /// Port of the service. Comet Cast receivers do not listen for senders yet; UNCERTAIN: the
-    /// value has no meaning for the protocol, mDNS only needs one.
+    /// value has no meaning for the protocol, mDNS only needs one. The value is not used: the
+    /// display layout fixes it (`display::SERVICE_PORT`).
     pub port: u16,
     /// The server to announce: `host:port`, or with `wss://` / `ws://` (an announced `wss://`
-    /// becomes `tls=1`). The same rules as for received announcements apply (no loopback, no
-    /// public IP literal), so a wrong value is found at the receiver, not at every sender.
+    /// becomes `tls=1`). Required: a signed record names a server. The same rules as for
+    /// received announcements apply (no loopback, no public IP literal), so a wrong value is
+    /// found here, not at every sender.
     pub preferred_server: Option<String>,
     /// Host name for the `.local.` address records; random when `None`.
     pub host_label: Option<String>,
 }
 
-/// An active announcement. Dropping it withdraws the service and stops the mDNS daemon.
+/// An active announcement. Dropping it publishes the signed `gone` record, withdraws the
+/// service and stops the mDNS daemon.
 pub struct Advertisement {
-    daemon: ServiceDaemon,
+    backend: MdnsBackend,
+    key: DisplayKey,
+    seq: SeqCounter,
+    state: DisplayState,
+    instance: String,
     fullname: String,
 }
 
@@ -177,82 +175,61 @@ impl Advertisement {
     pub fn fullname(&self) -> &str {
         &self.fullname
     }
+
+    /// The id of the key made for this announcement.
+    pub fn id(&self) -> String {
+        self.key.id()
+    }
 }
 
 impl Drop for Advertisement {
     fn drop(&mut self) {
-        let _ = self.daemon.unregister(&self.fullname);
-        let _ = self.daemon.shutdown();
+        let seq = self.seq.next(unix_ms());
+        if let Ok(txt) = txt_records(&self.state, &self.key, seq, AnnounceState::Gone)
+            && self.backend.publish(&self.instance, &txt).is_ok()
+        {
+            self.backend.settle_before_goodbye();
+        }
+        self.backend.withdraw();
     }
 }
 
-/// Announce this receiver and its preferred server on the local network.
+/// Announce a locked display record that names `preferred_server`, signed with a new key.
 pub fn advertise_receiver(opts: &AdvertiseOptions) -> Result<Advertisement, MdnsError> {
-    let instance = clean_text(&opts.instance_name, 63);
-    if instance.is_empty() || instance.len() > 63 {
-        return Err(MdnsError("instance name is empty or too long".into()));
-    }
-    let mut props: Vec<(String, String)> = vec![
-        (TXT_VERSION.into(), "1".into()),
-        (
-            TXT_NAME.into(),
-            clean_text(&opts.instance_name, MAX_NAME_CHARS),
-        ),
-    ];
-    if let Some(server) = &opts.preferred_server {
-        let full = normalize_server(server, Trust::Admin).map_err(|e| MdnsError(e.to_string()))?;
-        let (tls, authority) = match full.split_once("://") {
-            Some(("wss" | "https", a)) => (true, a),
-            Some((_, a)) => (false, a),
-            None => (false, full.as_str()),
-        };
-        // The same checks as the senders will apply (including the TLS rule).
-        let (checked, _) = network_server(authority, Some(tls))
-            .map_err(|e| MdnsError(format!("server cannot be announced: {e}")))?;
-        let authority = checked
-            .split_once("://")
-            .map_or(checked.as_str(), |(_, a)| a);
-        props.push((TXT_SERVER.into(), authority.to_owned()));
-        if tls {
-            props.push((TXT_TLS.into(), "1".into()));
+    let server = opts
+        .preferred_server
+        .clone()
+        .ok_or_else(|| MdnsError("server cannot be announced: none given".into()))?;
+    if let Some(l) = &opts.host_label {
+        let label = validate_hostname(l).map_err(|e| MdnsError(e.to_string()))?;
+        if label.contains('.') {
+            return Err(MdnsError("host label must not contain dots".into()));
         }
     }
-    let label = match &opts.host_label {
-        Some(l) => crate::address::validate_hostname(l).map_err(|e| MdnsError(e.to_string()))?,
-        None => {
-            use rand::Rng;
-            format!("cometcast-{:08x}", rand::rng().random::<u32>())
-        }
+    let key = DisplayKey::generate();
+    let state = DisplayState {
+        room_name: opts.instance_name.clone(),
+        server,
+        mode: ScreenMode::Locked,
+        code: None,
     };
-    if label.contains('.') {
-        return Err(MdnsError("host label must not contain dots".into()));
-    }
-    let host = format!("{label}.local.");
-    // An empty address list plus `enable_addr_auto` lets mdns-sd use the addresses of this
-    // machine's interfaces.
-    let info = ServiceInfo::new(
-        MDNS_SERVICE_TYPE,
-        &instance,
-        &host,
-        "",
-        opts.port,
-        props.as_slice(),
-    )
-    .map_err(|e| MdnsError(e.to_string()))?
-    .enable_addr_auto();
-    let mut info = info;
-    // Decision N50: a platform cache (NsdManager, NWBrowser) keeps answering for the lifetime of
-    // the record, so a display that dies without a goodbye would stay in the lists for minutes.
-    // With 30 s the cache drops it within the 35 s of spec 14.8, point 5.
-    info.set_host_ttl(RECORD_TTL_SECS);
-    info.set_other_ttl(RECORD_TTL_SECS);
-    let fullname = info.get_fullname().to_owned();
-    let daemon = ServiceDaemon::new().map_err(|e| MdnsError(e.to_string()))?;
-    if let Err(e) = daemon.register(info) {
-        let _ = daemon.shutdown();
-        return Err(MdnsError(e.to_string()));
-    }
-    Ok(Advertisement { daemon, fullname })
+    let mut seq = SeqCounter::new(0);
+    let txt = txt_records(&state, &key, seq.next(unix_ms()), AnnounceState::Live)
+        .map_err(|e| MdnsError(format!("server cannot be announced: {e}")))?;
+    let instance = instance_name(&key.id());
+    let mut backend = match &opts.host_label {
+        Some(l) => MdnsBackend::with_host_label(l.clone()),
+        None => MdnsBackend::new(),
+    };
+    backend.publish(&instance, &txt)?;
+    Ok(Advertisement {
+        fullname: format!("{instance}.{MDNS_SERVICE_TYPE}"),
+        backend,
+        key,
+        seq,
+        state,
+        instance,
+    })
 }
 
 /// Lifetime in seconds of every record of an announcement (SRV, addresses, PTR, TXT).
@@ -489,71 +466,115 @@ impl AnnouncementSource for MdnsSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::signed::sign_record;
+    use mdns_sd::ServiceInfo;
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
     }
 
-    fn parts(fullname: &str, txt: &[(&str, &str)]) -> Option<ReceiverInfo> {
+    fn key() -> DisplayKey {
+        DisplayKey::from_secret(&[9; 32]).unwrap()
+    }
+
+    /// A signed live record with the given extra fields.
+    fn signed(fields: &[(&str, &str)]) -> Vec<(String, String)> {
+        sign_record(&key(), 5, AnnounceState::Live, fields)
+    }
+
+    fn parts_txt(fullname: &str, txt: &[(String, String)]) -> Option<ReceiverInfo> {
         receiver_from_parts(
             fullname,
             9,
             [ip("fd00::2"), ip("192.168.0.9"), ip("192.168.0.9")],
-            txt.iter().copied(),
+            txt.iter().map(|(k, v)| (k.as_str(), v.as_str())),
         )
+    }
+
+    fn srv_of(fields: &[(&str, &str)]) -> Option<String> {
+        let mut f = vec![("mode", "locked")];
+        f.extend_from_slice(fields);
+        parts_txt(FULL, &signed(&f)).unwrap().announced_server
     }
 
     const FULL: &str = "Room 1._cometcast._tcp.local.";
 
     #[test]
-    fn parses_announcement() {
-        let r = parts(
+    fn parses_a_signed_announcement() {
+        let r = parts_txt(
             FULL,
-            &[
-                ("v", "1"),
+            &signed(&[
                 ("srv", "Relay.Example.org:443"),
                 ("tls", "1"),
+                ("mode", "locked"),
                 ("name", "Room 1 TV"),
-            ],
+            ]),
         )
         .unwrap();
+        // `srv` is signed as written; a name with capitals is not a valid host for the display,
+        // but a display never writes it; the checks lower-case it like for any announced server.
         assert_eq!(r.instance, "Room 1");
         assert_eq!(r.name, "Room 1 TV");
         assert_eq!(
             r.announced_server.as_deref(),
             Some("wss://relay.example.org:443")
         );
-        assert!(r.addresses.len() == 2);
         assert_eq!(r.addresses, [ip("192.168.0.9"), ip("fd00::2")]);
-        let r = parts(FULL, &[("srv", "10.0.0.5:8443")]).unwrap();
+        let r = parts_txt(
+            FULL,
+            &signed(&[("srv", "10.0.0.5:8443"), ("mode", "locked")]),
+        )
+        .unwrap();
         assert_eq!(r.announced_server.as_deref(), Some("ws://10.0.0.5:8443"));
-        assert_eq!(r.name, "Room 1");
+        assert_eq!(r.name, "Room 1", "no name: the instance name");
+    }
+
+    #[test]
+    fn unsigned_v1_and_tampered_records_give_no_server() {
+        let v1 = [("v", "1"), ("srv", "10.0.0.5:8443"), ("name", "TV")];
+        let txt: Vec<(String, String)> = v1
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        let r = parts_txt(FULL, &txt).unwrap();
+        assert_eq!(r.announced_server, None);
+        assert_eq!(r.name, "Room 1", "an unverified name is not used");
+        // Changing the server of a signed record breaks the signature.
+        let mut t = signed(&[("srv", "10.0.0.5:8443"), ("mode", "locked")]);
+        t.iter_mut().find(|(k, _)| k == "srv").unwrap().1 = "10.66.0.1:1".into();
+        assert_eq!(parts_txt(FULL, &t).unwrap().announced_server, None);
+        // A signed `gone` record names no server.
+        let g = sign_record(
+            &key(),
+            6,
+            AnnounceState::Gone,
+            &[("srv", "10.0.0.5:8443"), ("mode", "locked")],
+        );
+        assert_eq!(parts_txt(FULL, &g).unwrap().announced_server, None);
     }
 
     #[test]
     fn plain_ws_only_inside_the_local_network() {
-        let srv = |txt: &[(&str, &str)]| parts(FULL, txt).unwrap().announced_server;
         // A public name without tls=1 is refused, with tls=1 accepted.
-        assert_eq!(srv(&[("srv", "relay.example.org:443")]), None);
-        assert_eq!(srv(&[("srv", "relay.example.org:443"), ("tls", "0")]), None);
+        assert_eq!(srv_of(&[("srv", "relay.example.org:443")]), None);
         assert_eq!(
-            srv(&[("srv", "relay.example.org:443"), ("tls", "1")]).as_deref(),
+            srv_of(&[("srv", "relay.example.org:443"), ("tls", "1")]).as_deref(),
             Some("wss://relay.example.org:443")
         );
         // .local names and private literals may be plain, and tls=1 is honoured for them too.
         assert_eq!(
-            srv(&[("srv", "relay.local:80")]).as_deref(),
+            srv_of(&[("srv", "relay.local:80")]).as_deref(),
             Some("ws://relay.local:80")
         );
         assert_eq!(
-            srv(&[("srv", "192.168.0.2:80"), ("tls", "1")]).as_deref(),
+            srv_of(&[("srv", "192.168.0.2:80"), ("tls", "1")]).as_deref(),
             Some("wss://192.168.0.2:80")
         );
         // Link-local and metadata addresses are never accepted.
-        assert_eq!(srv(&[("srv", "169.254.169.254:80")]), None);
-        assert_eq!(srv(&[("srv", "169.254.10.10:80"), ("tls", "1")]), None);
+        assert_eq!(srv_of(&[("srv", "169.254.169.254:80")]), None);
+        assert_eq!(srv_of(&[("srv", "169.254.10.10:80"), ("tls", "1")]), None);
         // Numeric/hex host spellings of loopback do not get through.
-        assert_eq!(srv(&[("srv", "0x7f000001:80"), ("tls", "1")]), None);
+        assert_eq!(srv_of(&[("srv", "0x7f000001:80"), ("tls", "1")]), None);
     }
 
     fn rinfo(instance: &str, addr: &str, name: &str) -> ReceiverInfo {
@@ -614,12 +635,12 @@ mod tests {
 
     #[test]
     fn no_announcement_is_fine() {
-        let r = parts(FULL, &[]).unwrap();
+        let r = parts_txt(FULL, &[]).unwrap();
         assert_eq!(r.announced_server, None);
     }
 
     #[test]
-    fn hostile_txt_is_refused() {
+    fn hostile_servers_are_refused_even_when_signed() {
         for bad in [
             "127.0.0.1:8443",
             "localhost:8443",
@@ -632,59 +653,64 @@ mod tests {
             "x.example",
             "x.example:0",
             "x y.example:1",
-            "x.example:1\r\nHost: evil",
             "169.254.169.254:80",
             "0x7f000001:8443",
             "2130706433:8443",
-            "",
         ] {
-            let r = parts(FULL, &[("srv", bad)]).unwrap();
-            assert_eq!(r.announced_server, None, "{bad:?}");
+            assert_eq!(srv_of(&[("srv", bad)]), None, "{bad:?}");
         }
         let huge = format!("{}.example:1", "a".repeat(5000));
-        assert_eq!(
-            parts(FULL, &[("srv", &huge)]).unwrap().announced_server,
-            None
-        );
-        // A different layout version is not understood.
-        let r = parts(FULL, &[("v", "2"), ("srv", "x.example:1")]).unwrap();
-        assert_eq!(r.announced_server, None);
+        assert_eq!(srv_of(&[("srv", &huge)]), None);
     }
 
     #[test]
-    fn first_srv_wins_and_txt_is_bounded() {
-        let r = parts(FULL, &[("srv", "a.local:1"), ("srv", "b.local:2")]).unwrap();
-        assert_eq!(r.announced_server.as_deref(), Some("ws://a.local:1"));
-        // The announcement hidden behind 40 junk entries is not looked at.
+    fn txt_is_bounded() {
+        // The signed record hidden behind 40 junk entries is not looked at.
         let mut txt: Vec<(String, String)> =
             (0..40).map(|i| (format!("k{i}"), "x".into())).collect();
-        txt.push(("srv".into(), "late.example:1".into()));
-        let r = receiver_from_parts(
-            FULL,
-            1,
-            [],
-            txt.iter().map(|(k, v)| (k.as_str(), v.as_str())),
-        )
-        .unwrap();
-        assert_eq!(r.announced_server, None);
+        txt.extend(signed(&[("srv", "10.0.0.5:8443"), ("mode", "locked")]));
+        assert_eq!(parts_txt(FULL, &txt).unwrap().announced_server, None);
     }
 
     #[test]
     fn names_are_cleaned_and_bounded() {
         let long = "n".repeat(500);
-        let r = parts(FULL, &[("name", &format!("\u{1b}[31mTV{long}"))]).unwrap();
+        let name = format!("\u{1b}[31mTV{long}");
+        let t = signed(&[
+            ("srv", "10.0.0.5:8443"),
+            ("mode", "locked"),
+            ("name", &name),
+        ]);
+        // A value over 255 bytes is not accepted at all (and the record then has no server).
+        let r = parts_txt(FULL, &t).unwrap();
+        assert_eq!(r.announced_server, None);
+        let name = format!("\u{1b}[31mTV{}", "n".repeat(100));
+        let t = signed(&[
+            ("srv", "10.0.0.5:8443"),
+            ("mode", "locked"),
+            ("name", &name),
+        ]);
+        let r = parts_txt(FULL, &t).unwrap();
         assert!(!r.name.contains('\u{1b}'));
         assert!(r.name.chars().count() <= MAX_NAME_CHARS);
-        let r = parts(FULL, &[("name", "\u{7}\u{7}")]).unwrap();
-        assert_eq!(r.name, "Room 1", "an empty name falls back to the instance");
+        let t = signed(&[
+            ("srv", "10.0.0.5:8443"),
+            ("mode", "locked"),
+            ("name", "\u{7}\u{7}"),
+        ]);
+        assert_eq!(
+            parts_txt(FULL, &t).unwrap().name,
+            "Room 1",
+            "an empty name falls back to the instance"
+        );
     }
 
     #[test]
     fn foreign_or_empty_instance_is_dropped() {
-        assert!(parts("x._http._tcp.local.", &[]).is_none());
-        assert!(parts("._cometcast._tcp.local.", &[]).is_none());
-        assert!(parts("_cometcast._tcp.local.", &[]).is_none());
-        assert!(parts("", &[]).is_none());
+        assert!(parts_txt("x._http._tcp.local.", &[]).is_none());
+        assert!(parts_txt("._cometcast._tcp.local.", &[]).is_none());
+        assert!(parts_txt("_cometcast._tcp.local.", &[]).is_none());
+        assert!(parts_txt("", &[]).is_none());
         let many: Vec<IpAddr> = (1..=50).map(|i| ip(&format!("10.0.0.{i}"))).collect();
         let r = receiver_from_parts(FULL, 1, many, []).unwrap();
         assert_eq!(r.addresses.len(), MAX_ADDRESSES);
@@ -727,11 +753,19 @@ mod tests {
             };
             assert!(advertise_receiver(&o).is_err(), "{bad}");
         }
+        // A signed record names a server: none given is an error.
         let o = AdvertiseOptions {
             instance_name: "".into(),
             port: 9,
             preferred_server: None,
             host_label: None,
+        };
+        assert!(advertise_receiver(&o).is_err());
+        let o = AdvertiseOptions {
+            instance_name: "T".into(),
+            port: 9,
+            preferred_server: Some("10.0.0.5:8443".into()),
+            host_label: Some("a.b".into()),
         };
         assert!(advertise_receiver(&o).is_err());
     }

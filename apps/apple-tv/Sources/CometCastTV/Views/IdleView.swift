@@ -137,7 +137,14 @@ struct IdleView: View {
 
     private var footer: some View {
         HStack(spacing: ref(16)) {
-            Text(appLine).dtype(DisplayType.footer).foregroundStyle(p.mut)
+            // The server line and, small in the secondary colour next to it (not near the code), the short tag of this
+            // display's id (`display.tag`).
+            VStack(alignment: .leading, spacing: ref(2)) {
+                Text(appLine).dtype(DisplayType.footer).foregroundStyle(p.mut)
+                Text(L.t("display.tag", ["tag": ConfigStore.displayTag]))
+                    .dtype(DisplayType.hint).foregroundStyle(p.mut)
+                    .accessibilityIdentifier("idle-tag")
+            }
             Spacer(minLength: 0)
             DButton(kind: .menu, action: { model.openSettings() }) {
                 HStack(spacing: ref(8)) {

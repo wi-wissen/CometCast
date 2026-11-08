@@ -1953,28 +1953,75 @@ pub enum AnnounceStatus {
     WaitingForRoom,
     /// The administrator's policy forbids announcements (or the policy file is unusable).
     ForbiddenByPolicy,
-    /// The instance id is not 8 to 32 lower-case hex digits.
-    BadId,
+    /// The key is not 32 bytes: nothing is announced.
+    BadKey,
 }
 
 /// Tell the core whether the display may announce itself on the local network.
 ///
 /// `active` is true while the display shows Idle or Presenting in the foreground and false in
 /// setup, offline, in the background and on every other page; the announcement is withdrawn
-/// (goodbye) when it turns false. `instance_id` is the stable random id of this installation
-/// (8 to 32 lower-case hex digits, created and persisted by the app, new after a data reset).
+/// when it turns false (a signed `gone` record first, then the goodbye). `secret_key` is the
+/// 32-byte Ed25519 secret of this installation (made by [`new_display_secret`], stored by the
+/// app next to its settings, new after a data reset; the core never writes it anywhere). The id
+/// of the display derives from the key ([`display_identity`]). `seq_floor` is the value the
+/// app persisted from [`display_seq_to_persist`] (0 for a new key): every record gets a `seq`
+/// above it, so a clock that went back after a restart cannot reuse values.
 /// What is announced (server, room name, join mode, the current code; no code while Locked)
 /// is taken from the running receiver ([`start_receiver`]), so it cannot differ from what the
 /// screen shows, and it is updated at once when the mode changes. A policy that forbids
 /// announcements wins over `active`.
-pub async fn set_display_announcing(active: bool, instance_id: String) -> AnnounceStatus {
-    match nearby::set_enabled(active, instance_id) {
+pub async fn set_display_announcing(
+    active: bool,
+    secret_key: Vec<u8>,
+    seq_floor: i64,
+) -> AnnounceStatus {
+    let floor = u64::try_from(seq_floor).unwrap_or(0);
+    match nearby::set_enabled(active, &secret_key, floor) {
         nearby::Wanted::Yes => AnnounceStatus::Announcing,
         nearby::Wanted::NotEnabled => AnnounceStatus::Off,
         nearby::Wanted::NoReceiver => AnnounceStatus::WaitingForRoom,
         nearby::Wanted::Forbidden => AnnounceStatus::ForbiddenByPolicy,
-        nearby::Wanted::BadId => AnnounceStatus::BadId,
+        nearby::Wanted::BadKey => AnnounceStatus::BadKey,
     }
+}
+
+/// Make a new display key: 32 random bytes from the operating system. The app stores them
+/// (with its settings) and passes them to [`set_display_announcing`] and [`display_identity`].
+#[frb(sync)]
+pub fn new_display_secret() -> Vec<u8> {
+    cc_discovery::DisplayKey::generate_secret().to_vec()
+}
+
+/// Who a display is: derived from its key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayIdentity {
+    /// The id: first 16 bytes of SHA-256(public key), 32 lower-case hex digits.
+    pub id: String,
+    /// The short tag shown to people: the first 4 characters of the id in upper case.
+    pub tag: String,
+    /// The public key, base64url without padding.
+    pub public_key: String,
+}
+
+/// The identity of a key, or `None` when `secret_key` is not 32 bytes.
+#[frb(sync)]
+pub fn display_identity(secret_key: Vec<u8>) -> Option<DisplayIdentity> {
+    let key = cc_discovery::DisplayKey::from_secret(&secret_key).ok()?;
+    Some(DisplayIdentity {
+        id: key.id(),
+        tag: key.tag(),
+        public_key: key.public_key_b64(),
+    })
+}
+
+/// What the app should persist with the key so that the next start continues above every `seq`
+/// used so far: call it now and then while announcing (every minute or so) and when the
+/// announcement stops, and pass the last value back as `seq_floor`. It includes a reserve, so a
+/// persist that lags a little behind is still safe.
+#[frb(sync)]
+pub fn display_seq_to_persist() -> i64 {
+    i64::try_from(nearby::seq_to_persist()).unwrap_or(i64::MAX)
 }
 
 /// What a platform that announces the screen itself must do (iPadOS: `NWListener`; there the
@@ -2047,8 +2094,11 @@ impl From<cc_discovery::ScreenMode> for NearbyMode {
 /// the person has confirmed it (spec 14.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NearbyScreenInfo {
-    /// The stable instance id of the screen; rows are merged by it.
+    /// The verified id of the screen (derived from its public key); rows are keyed by it.
     pub id: String,
+    /// The short tag of the id (4 characters, upper case). The app shows it only on rows that
+    /// carry a note ([`NearbyScreenInfo::same_name`], [`NearbyScreenInfo::new_device`]).
+    pub tag: String,
     /// The room name, cleaned, at most 32 characters; empty when the screen has none.
     pub name: String,
     /// The announced server with scheme (`ws://host:port` or `wss://host:port`).
@@ -2061,12 +2111,19 @@ pub struct NearbyScreenInfo {
     /// `TvUiEvent::Seen.addresses`; may be empty: Apple's browser hands over no addresses). Used
     /// only to hide TV rows of the same device (decision N105); never shown.
     pub addresses: Vec<String>,
+    /// Another screen on the network uses the same room name (compared without case).
+    pub same_name: bool,
+    /// The app remembers a screen with this name but another id ([`set_remembered_screens`]).
+    pub new_device: bool,
 }
 
 impl From<cc_discovery::NearbyScreen> for NearbyScreenInfo {
     fn from(s: cc_discovery::NearbyScreen) -> Self {
         Self {
             id: s.id,
+            tag: s.tag,
+            same_name: s.same_name,
+            new_device: s.new_device,
             name: s.name,
             server: s.server,
             mode: s.mode.into(),
@@ -2225,6 +2282,26 @@ pub fn nearby_native_reset() {
 #[frb(sync)]
 pub fn nearby_native_permission(state: NearbyPermission) {
     nearby::native_event(NearbyUiEvent::Permission { state });
+}
+
+/// A screen the person joined before: its room name and verified id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RememberedScreen {
+    /// The room name as it was listed (cleaned).
+    pub name: String,
+    /// The verified id.
+    pub id: String,
+}
+
+/// The app tells the core which screens the person joined before (trust on first use): at most
+/// 50 `(room name, id)` pairs, newest first or last as the app likes; only the first 50 count.
+/// A row whose name is remembered but whose id is not is reported with `new_device`. The core
+/// keeps no list of its own and writes nothing: the app stores the pairs and passes them again
+/// whenever they change (also before [`watch_nearby_screens`] starts). Rows of a running
+/// search are updated at once.
+#[frb(sync)]
+pub fn set_remembered_screens(screens: Vec<RememberedScreen>) {
+    nearby::set_remembered(screens.into_iter().map(|r| (r.name, r.id)).collect());
 }
 
 /// Does this machine have a local network (a non-loopback interface with a private address)?
@@ -3882,5 +3959,65 @@ mod tests {
             map_sender_event(SenderEvent::ConnectionCode("123 456".into())),
             None
         );
+    }
+    #[test]
+    fn display_keys_give_a_derived_id_and_a_tag() {
+        let a = new_display_secret();
+        assert_eq!(a.len(), 32);
+        assert_ne!(a, new_display_secret());
+        let ident = display_identity(a.clone()).unwrap();
+        assert_eq!(ident.id.len(), 32);
+        assert_eq!(ident.tag, ident.id[..4].to_uppercase());
+        assert_eq!(ident.public_key.len(), 43);
+        assert_eq!(display_identity(a.clone()), Some(ident));
+        // Not 32 bytes: no identity.
+        assert_eq!(display_identity(vec![1; 31]), None);
+        assert_eq!(display_identity(Vec::new()), None);
+        // The fixed vector of tests/fixtures/announce-v2.json (seed 00 01 02 ... 1f).
+        let fixed = display_identity((0u8..32).collect()).unwrap();
+        assert_eq!(fixed.id, "56475aa75463474c0285df5dbf2bcab7");
+        assert_eq!(fixed.tag, "5647");
+    }
+
+    #[test]
+    fn announcing_needs_a_32_byte_key_and_never_without_a_receiver() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let key = new_display_secret();
+        // A bad key is reported and nothing starts.
+        let s = rt.block_on(set_display_announcing(true, vec![1; 5], 0));
+        assert_eq!(s, AnnounceStatus::BadKey);
+        // Not active: off.
+        let s = rt.block_on(set_display_announcing(false, key.clone(), 0));
+        assert_eq!(s, AnnounceStatus::Off);
+        // Active but no room: waits (nothing is published without a receiver).
+        let s = rt.block_on(set_display_announcing(true, key.clone(), 5));
+        assert!(matches!(
+            s,
+            AnnounceStatus::WaitingForRoom | AnnounceStatus::ForbiddenByPolicy
+        ));
+        // The persisted value is at least the floor (it carries a reserve once announcing).
+        assert!(display_seq_to_persist() >= 5);
+        let _ = rt.block_on(set_display_announcing(false, key, 0));
+    }
+
+    #[test]
+    fn rows_carry_the_tag_and_the_marks() {
+        let s = cc_discovery::NearbyScreen {
+            id: "56475aa75463474c0285df5dbf2bcab7".into(),
+            tag: "5647".into(),
+            name: "Room".into(),
+            server: "ws://10.0.0.5:8443".into(),
+            mode: cc_discovery::ScreenMode::Open,
+            code: Some("P4X9TR".into()),
+            addresses: vec![],
+            same_name: true,
+            new_device: true,
+        };
+        let info = NearbyScreenInfo::from(s);
+        assert_eq!(info.tag, "5647");
+        assert!(info.same_name && info.new_device);
     }
 }

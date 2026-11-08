@@ -40,6 +40,7 @@ struct AboutView: View {
             }
             VStack(alignment: .leading, spacing: ref(6)) {
                 Text(L.t("about.version", ["version": version]))
+                Text(L.t("display.tag", ["tag": ConfigStore.displayTag]))
                 Text(L.s("about.licence"))
                 // "Publisher: {name}", as written; not shown when the branding file has no name (N108).
                 if !Branding.publisherName.isEmpty {

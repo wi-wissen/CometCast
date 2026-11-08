@@ -3,6 +3,7 @@
 // file (see [PrefsSettingsStore]).
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,6 +41,13 @@ abstract class SettingsStore {
 
   /// Remember it. Failures are ignored.
   Future<void> saveDisplayName(String name) async {}
+
+  /// The screens the person joined from the nearby list (room name and verified id; trust on
+  /// first use, docs/design/signed-announcements.md). At most 50, oldest first.
+  Future<List<RememberedScreen>> loadRememberedScreens() async => const [];
+
+  /// Save the remembered screens.
+  Future<void> saveRememberedScreens(List<RememberedScreen> screens) async {}
 
   /// The servers the person confirmed on this device (the relay confirmation page, spec 7.2),
   /// as canonical addresses.
@@ -97,6 +105,15 @@ class MemorySettingsStore implements SettingsStore {
   Future<void> saveDisplayName(String name) async => displayName = name;
 
   List<String> confirmedServers = const [];
+  List<RememberedScreen> rememberedScreens = const [];
+
+  @override
+  Future<List<RememberedScreen>> loadRememberedScreens() async =>
+      rememberedScreens;
+
+  @override
+  Future<void> saveRememberedScreens(List<RememberedScreen> screens) async =>
+      rememberedScreens = screens;
   bool referrerRead = false;
 
   @override
@@ -190,6 +207,40 @@ class PrefsSettingsStore implements SettingsStore {
   @override
   Future<void> saveDisplayName(String name) =>
       _setString(_displayNameKey, name);
+
+  static const _rememberedKey = 'rememberedScreens';
+
+  @override
+  Future<List<RememberedScreen>> loadRememberedScreens() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_rememberedKey);
+      if (raw == null) return const [];
+      final list = jsonDecode(raw) as List<dynamic>;
+      return [
+        for (final e in list)
+          if (e is Map<String, dynamic> && e['n'] is String && e['i'] is String)
+            RememberedScreen(name: e['n'] as String, id: e['i'] as String),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> saveRememberedScreens(List<RememberedScreen> screens) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _rememberedKey,
+        jsonEncode([
+          for (final s in screens) {'n': s.name, 'i': s.id},
+        ]),
+      );
+    } catch (_) {
+      // Not saved; the screens are marked as new again next time.
+    }
+  }
 
   static const _confirmedKey = 'confirmedServers';
   static const _referrerReadKey = 'installReferrerRead';
@@ -445,6 +496,41 @@ class AppSettings extends ChangeNotifier {
   Future<void> loadConfirmedServers() async {
     final saved = await store?.loadConfirmedServers() ?? const <String>[];
     _confirmed = {..._confirmed, ...saved};
+  }
+
+  /// The most remembered screens (the core looks at the first 50 as well).
+  static const maxRemembered = 50;
+
+  List<RememberedScreen> _remembered = [];
+
+  /// The screens the person joined from the nearby list, oldest first.
+  List<RememberedScreen> get rememberedScreens =>
+      List.unmodifiable(_remembered);
+
+  /// Read the remembered screens from the store.
+  Future<void> loadRememberedScreens() async {
+    final saved = await store?.loadRememberedScreens() ?? const [];
+    _remembered = saved.length > maxRemembered
+        ? saved.sublist(saved.length - maxRemembered)
+        : List.of(saved);
+  }
+
+  /// The person joined the screen [id] (named [name]) from the nearby list: remember the pair
+  /// (trust on first use). A screen without a name is not remembered (there is nothing to
+  /// compare). The newest pair goes last; beyond [maxRemembered] the oldest is dropped.
+  Future<void> rememberScreen(String name, String id) async {
+    if (name.isEmpty) return;
+    final pair = RememberedScreen(name: name, id: id);
+    _remembered = [
+      for (final r in _remembered)
+        if (!(r.name == name && r.id == id)) r,
+      pair,
+    ];
+    if (_remembered.length > maxRemembered) {
+      _remembered = _remembered.sublist(_remembered.length - maxRemembered);
+    }
+    await store?.saveRememberedScreens(_remembered);
+    notifyListeners();
   }
 
   /// The person pressed "Use this relay": remember [server] (canonical address) as confirmed.

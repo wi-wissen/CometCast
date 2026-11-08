@@ -7,11 +7,17 @@
 
 use std::time::Duration;
 
-use cc_discovery::{DisplayAnnouncement, DisplayState, NearbyChange, NearbySearch, ScreenMode};
+use cc_discovery::{
+    DisplayAnnouncement, DisplayKey, DisplayState, NearbyChange, NearbySearch, ScreenMode,
+};
 
-fn state(id: &str, code: &str, mode: ScreenMode) -> DisplayState {
+/// A key that is new for every test run (the id derives from it).
+fn new_key() -> DisplayKey {
+    DisplayKey::from_secret(&DisplayKey::generate_secret()).unwrap()
+}
+
+fn state(code: &str, mode: ScreenMode) -> DisplayState {
     DisplayState {
-        id: id.into(),
         room_name: "Loopback room".into(),
         server: "10.99.0.5:8443".into(),
         mode,
@@ -44,10 +50,8 @@ async fn next_for(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn announced_display_is_listed_updated_and_removed() {
-    let id = format!(
-        "{:016x}",
-        u64::from(std::process::id()) * 7919 + 0xabc0_0000_0000
-    );
+    let key = new_key();
+    let id = key.id();
     let mut search = match NearbySearch::with_mdns() {
         Ok(s) => s,
         Err(e) => {
@@ -55,8 +59,8 @@ async fn announced_display_is_listed_updated_and_removed() {
             return;
         }
     };
-    let ann = DisplayAnnouncement::start_mdns();
-    ann.set(Some(state(&id, "P4X9TR", ScreenMode::Open)));
+    let ann = DisplayAnnouncement::start_mdns(key, 0);
+    ann.set(Some(state("P4X9TR", ScreenMode::Open)));
     let Some(NearbyChange::Added(s)) = next_for(&mut search, &id, 10, |_| true).await else {
         eprintln!("SKIPPED: own announcement not seen within 10 s (no multicast loopback?)");
         return;
@@ -65,15 +69,13 @@ async fn announced_display_is_listed_updated_and_removed() {
     assert_eq!(s.name, "Loopback room");
     assert_eq!(s.server, "ws://10.99.0.5:8443");
 
-    // A new code is seen as an update. The list takes other content for an id only once the
-    // old content has not been announced for `CHANGE_HOLD` (15 s), so this takes 15 to 25 s here;
-    // the spec's 1 s is the publishing side, and is tested with the fake backend.
-    ann.set(Some(state(&id, "K7Q2MW", ScreenMode::Approval)));
+    // A new code is a newer signed record: the list applies it at once.
+    ann.set(Some(state("K7Q2MW", ScreenMode::Approval)));
     // (An update of the addresses alone may come first; wait for the one with the new code.)
     let upd = next_for(
         &mut search,
         &id,
-        35,
+        15,
         |c| matches!(c, NearbyChange::Updated(s) if s.code.as_deref() == Some("K7Q2MW")),
     )
     .await;
@@ -86,7 +88,7 @@ async fn announced_display_is_listed_updated_and_removed() {
     }
 
     // Locked: the row stays, without a code (withdrawing the code is shown at once).
-    ann.set(Some(state(&id, "K7Q2MW", ScreenMode::Locked)));
+    ann.set(Some(state("K7Q2MW", ScreenMode::Locked)));
     let upd = next_for(
         &mut search,
         &id,
@@ -99,7 +101,7 @@ async fn announced_display_is_listed_updated_and_removed() {
         other => panic!("no locked update seen: {other:?}"),
     }
 
-    // Goodbye: the row leaves.
+    // Goodbye: the signed `gone` record removes the row.
     ann.stop().await;
     let gone = next_for(&mut search, &id, 10, |c| {
         matches!(c, NearbyChange::Removed(_))
@@ -114,16 +116,14 @@ async fn announced_display_is_listed_updated_and_removed() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "takes 45 s"]
 async fn refreshed_row_does_not_expire() {
-    let id = format!(
-        "{:016x}",
-        u64::from(std::process::id()) * 104_729 + 0xdef0_0000_0000
-    );
+    let key = new_key();
+    let id = key.id();
     let Ok(mut search) = NearbySearch::with_mdns() else {
         eprintln!("SKIPPED: cannot browse here");
         return;
     };
-    let ann = DisplayAnnouncement::start_mdns();
-    ann.set(Some(state(&id, "P4X9TR", ScreenMode::Open)));
+    let ann = DisplayAnnouncement::start_mdns(key, 0);
+    ann.set(Some(state("P4X9TR", ScreenMode::Open)));
     if next_for(&mut search, &id, 10, |_| true).await.is_none() {
         eprintln!("SKIPPED: own announcement not seen");
         return;
