@@ -45,7 +45,7 @@ jobs:
       # crates/cc-ffi/Cargo.toml and apps/flutter/pubspec.yaml (2.13.0 today).
       - name: Cache the code generator
         id: codegen-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/flutter_rust_bridge_codegen
           key: frb-codegen-2.13.0-${{ runner.os }}
