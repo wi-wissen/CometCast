@@ -28,7 +28,8 @@ export const SCREENS = [
   { id: 'googletv', icon: 'googletv', en: ['Google TV', 'or Android TV'], de: ['Google TV', 'oder Android TV'] },
   { id: 'chromecast', icon: 'chromecast', en: ['Chromecast', ''], de: ['Chromecast', ''] },
   { id: 'winpc', icon: 'desktop', en: ['Windows PC', ''], de: ['Windows-PC', ''] },
-  { id: 'macpc', icon: 'desktop', en: ['Mac or Linux computer', ''], de: ['Mac oder Linux-Computer', ''] },
+  { id: 'macscreen', icon: 'desktop', en: ['Mac', 'iMac, Mac mini'], de: ['Mac', 'iMac, Mac mini'] },
+  { id: 'linuxpc', icon: 'desktop', en: ['Linux PC', 'mini PC'], de: ['Linux-PC', 'Mini-PC'] },
   { id: 'board', icon: 'board', en: ['Interactive board', 'Android'], de: ['Interaktive Tafel', 'Android'] },
 ];
 /** How the two are connected; the default is the middle one. */
@@ -54,19 +55,22 @@ const NOTHING = N('Nothing to install on either side.', 'Auf keiner Seite etwas 
 const WINONLY = N('Works when the computer at the screen runs Windows.', 'Geht, wenn der Computer am Bildschirm Windows hat.');
 const DELAY = N('Photos and videos right away; your screen with a short delay.', 'Fotos und Videos sofort, dein Bildschirm mit kurzer Verzögerung.');
 const MAC_ALONE = N('A Mac can do this on its own.', 'Ein Mac kann das auch ganz allein.');
+const MAC_SCREEN = N('A Mac with macOS 12 or newer can show this on its own. You do not need Comet Cast for it.', 'Ein Mac ab macOS 12 kann das schon selbst zeigen. Dafür brauchst du Comet Cast nicht.');
 
 const laptopTo = (cast, extra = []) => ({
   googletv: [W(cast, 'none', BROWSER_ALONE), W('web', 'app', ASK), W('app', 'none')],
   chromecast: [W(cast, 'none', BROWSER_NEEDLESS), W('app', 'none')],
   appletv: [W('web', 'app'), W('app', 'none', DELAY)],
   winpc: [W('web', 'web', NOTHING), ...extra],
-  macpc: [W('web', 'web', NOTHING)],
+  macscreen: [W('web', 'web', NOTHING)],
+  linuxpc: [W('web', 'web', NOTHING)],
   board: [W('web', 'web', NOTHING), W('web', 'app')],
 });
 const win = laptopTo(castW, [W(winK, 'app', WINONLY)]);
 const mac = laptopTo(castW);
 mac.appletv = [W(airMac, 'none', MAC_ALONE), ...mac.appletv];
-mac.macpc = [W('web', 'web', NOTHING), W(airMac, 'app')];
+mac.macscreen = [W(airMac, 'none', MAC_SCREEN), W('web', 'web', NOTHING)];
+mac.linuxpc = [W('web', 'web', NOTHING), W(airMac, 'app')];
 const linux = laptopTo(castL);
 
 export const M = {
@@ -78,7 +82,8 @@ export const M = {
     googletv: [W('app', 'app'), W('web', 'app', PHOTOS)],
     chromecast: [],
     winpc: [W('app', 'web'), W('web', 'web', PHOTOS)],
-    macpc: [W(airIos, 'app'), W('app', 'web')],
+    macscreen: [W(airIos, 'none', MAC_SCREEN), W('app', 'web')],
+    linuxpc: [W(airIos, 'app'), W('app', 'web')],
     board: [W('app', 'web'), W('app', 'app'), W('web', 'web', PHOTOS)],
   },
   android: {
@@ -86,7 +91,8 @@ export const M = {
     googletv: [W(castBtn, 'none', N('Most Android phones can do this on their own.', 'Die meisten Android-Handys können das schon selbst.')), W('app', 'app', ASK)],
     chromecast: [W(castBtn, 'none', N('Your phone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein Handy schon selbst. Dafür brauchst du Comet Cast nicht.'))],
     winpc: [W(smart, 'app', WINONLY), W('app', 'web')],
-    macpc: [W('app', 'web')],
+    macscreen: [W('app', 'web')],
+    linuxpc: [W('app', 'web')],
     board: [W('app', 'web'), W('app', 'app')],
   },
 };
@@ -144,7 +150,7 @@ export function renderFinder(lang, t, domain) {
     `<div class="picker" hidden>` +
     `<div class="ask"><h3>${esc(t.qHave)}</h3>${picks(SENDERS, lang, t.qHave, ' five')}</div>` +
     `<div class="ask"><h3>${esc(t.qNet)}</h3><div class="nets" role="group" aria-label="${esc(t.qNet)}">${netBtns}</div></div>` +
-    `<div class="ask"><h3>${esc(t.qScreen)}</h3>${picks(SCREENS, lang, t.qScreen, ' six')}</div>` +
+    `<div class="ask"><h3>${esc(t.qScreen)}</h3>${picks(SCREENS, lang, t.qScreen, ' seven')}</div>` +
     `<div class="answer" id="answer" aria-live="polite"></div>` +
     `</div>`;
   const rows = SENDERS.map(

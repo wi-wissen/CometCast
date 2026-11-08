@@ -119,7 +119,8 @@ Decided by the product owner after the pitch; they replace the matching parts ab
        Comet Cast ways carry "Also works across networks" and are listed first, then the built-in ones.
      * *Different networks, e.g. mobile data*: built-in ways are left out; Comet Cast ways stay with "Also works across networks".
      There is no "Not sure" choice. If nothing remains, the answer says so plainly (and that the same Wi-Fi would help).
-   * **The screen is connected to:** Apple TV, Google TV / Android TV, Chromecast, Windows PC, Mac or Linux computer, Interactive board (Android).
+   * **The screen is connected to:** Apple TV, Google TV / Android TV, Chromecast, Windows PC, Mac, Linux PC, Interactive board (Android).
+     Mac and Linux PC are separate screens: a Mac (macOS 12 or newer) receives AirPlay on its own, a Linux PC only with the Comet Cast app. Google TV and Android TV stay one choice (the same system); the interactive board stays separate (plain Android, usually no built-in Cast receiver).
      There is no TV / projector distinction.
    * Facts of the matrix (`tools/site/finder.mjs`, easiest first, plain notes as in the pitch): Windows and Linux laptops reach Chromecast and Google TV with the
      browser's built-in Cast (Chrome or Edge; Chrome or Chromium on Linux) or with Comet Cast, Apple TV with browser + app on the Apple TV or the laptop app without an app on the TV
