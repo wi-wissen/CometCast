@@ -32,8 +32,11 @@ itself with "first content wins" and a 15 s change hold, but:
   the **verified id only**; the instance name is never used to match or remove a row (a name
   conflict, renamed by mDNS to `... (2)`, does not matter).
 * The **short tag** of a display is the first 4 characters of the id in upper case, shown as
-  `ID 3F7A`. The display shows it small on its idle screen next to the code and in its About /
-  Settings; the presenter list shows it under the room name of every row.
+  `ID 3F7A`. The tag stays discreet so it does not confuse ordinary users. The display shows it
+  small, in the secondary text colour, in the footer of its idle screen next to the server line
+  (not next to the room code), and in its About / Settings. The presenter list shows the tag
+  **only on rows that carry a note** (same name, or "new device with a known name"); rows
+  without a note show no tag.
 
 ### Record (TXT, v=2)
 
@@ -85,7 +88,7 @@ the first record" is dropped too: a signed newer record may change it.
 ### Same name, different id
 
 * When two rows have the same room name (after cleaning, case-insensitive), both rows show the
-  tag prominently and a note "Two screens use this name. Compare the ID with the screen."
+  tag and a note "Two screens use this name. Compare the ID with the screen."
 * **Remembered screens (trust on first use):** when a presenter joins a room from a row, the app
   stores `(room name, id)` locally (at most 50 entries, oldest dropped). A later row with a stored
   name but a different id is marked "New device with a known name. Compare the ID with the
@@ -107,8 +110,8 @@ the first record" is dropped too: a signed newer record may change it.
 | `crates/cc-discovery` | `display.rs`: key, id derivation, seq, signing, `state=gone` before goodbye; `nearby.rs`: checks above, seq memory, removal rules, same-name marking; `announce.rs` (older `advertise_receiver` record used by the server ladder): sign and check it the same way, or remove that record if nothing needs it any more (check `cometcast-cli discover --announce` and the server ladder) |
 | `crates/cc-ffi` | API to create/load the key (the app stores 32 secret bytes; the core never writes files), pass it to the announcement, expose the tag, the same-name and remembered-screen marks on rows; regenerate bindings (flutter_rust_bridge_codegen 2.13.0, Flutter 3.47.9 at `/home/user/tools/flutter/bin`) |
 | iPad announce path (`AnnounceBridge.swift`) | the core builds the signed record; Swift only publishes it (no crypto in Swift there) |
-| `apps/flutter` | store the key with the settings (replacing the stored random id); show the tag on the display idle screen and About; show tag, same-name note and "new device" note in the nearby list; remember joined screens |
-| `apps/apple-tv` | `Announcer.swift` / `displayAnnouncementTxt`: CryptoKit `Curve25519.Signing` (Ed25519) key in the Keychain, same id derivation, seq and signed bytes, `state=gone` before stopping; show the tag on the idle screen. Cannot be compiled here: keep it small and test it with the shared vectors |
+| `apps/flutter` | store the key with the settings (replacing the stored random id); show the tag in the display idle screen footer (next to the server line) and About; show the same-name note and "new device" note, each with the tag, in the nearby list (no tag on rows without a note); remember joined screens |
+| `apps/apple-tv` | `Announcer.swift` / `displayAnnouncementTxt`: CryptoKit `Curve25519.Signing` (Ed25519) key in the Keychain, same id derivation, seq and signed bytes, `state=gone` before stopping; show the tag in the idle screen footer next to the server line (small, secondary colour). Cannot be compiled here: keep it small and test it with the shared vectors |
 | Shared vectors | new `tests/fixtures/announce-v2.json`: fixed seeds → public key, id, signed bytes, signature, TXT; and records that must be refused (bad sig, id mismatch, wrong key order, removed `code`, lower seq). Ed25519 is deterministic, so Rust and Swift must produce identical bytes |
 | Docs | rewrite `docs/discovery.md` section 3 and "Nearby screens" for v2 (trust policy, what is and is not protected); `docs/design/first-run-and-display.md` (tag, notes); copy tables for new strings |
 
@@ -117,7 +120,7 @@ the first record" is dropped too: a signed newer record may change it.
 * `nearby.tag` ID {tag} / ID {tag} / ID {tag}
 * `nearby.sameName` Two screens use this name. Compare the ID with the screen. / Zwei Bildschirme haben diesen Namen. Vergleiche die ID mit dem Bildschirm. / Zwei Bildschirme haben diesen Namen. Vergleichen Sie die ID mit dem Bildschirm.
 * `nearby.newDevice` New device with a known name. Compare the ID with the screen. / Neues Gerät mit bekanntem Namen. Vergleiche die ID mit dem Bildschirm. / Neues Gerät mit bekanntem Namen. Vergleichen Sie die ID mit dem Bildschirm.
-* `display.tag` ID {tag} (display idle screen and About)
+* `display.tag` ID {tag} (display idle screen footer, next to the server line, and About)
 
 ## Acceptance
 
