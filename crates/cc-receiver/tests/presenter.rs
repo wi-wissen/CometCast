@@ -507,6 +507,7 @@ async fn a_presenter_with_a_broken_offer_does_not_end_the_room() {
         code: d.code(),
         name: Some("Mallory".into()),
         handover: None,
+        device: None,
     })
     .await
     .unwrap();

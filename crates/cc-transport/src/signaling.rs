@@ -202,6 +202,7 @@ pub async fn join_room_with(
         code,
         name,
         handover,
+        device: None,
     })
     .await?;
     let mut deadline = tokio::time::Instant::now() + JOIN_ANSWER_TIMEOUT;

@@ -161,6 +161,84 @@ pub const MAX_ROOM_NAME_CHARS: usize = 32;
 /// is 128 random bits as base64url (22 characters); the bound leaves room for longer ones.
 pub const MAX_HANDOVER_CHARS: usize = 64;
 
+/// Length of `device.pk` (32 bytes as base64url without padding).
+pub const DEVICE_PK_CHARS: usize = 43;
+/// Length of `device.sig` (64 bytes as base64url without padding).
+pub const DEVICE_SIG_CHARS: usize = 86;
+
+/// The device proof of `join_room` (docs/design/presenter-identity.md): the public key of the
+/// presenter installation and its Ed25519 signature over the room code and `ts` (see
+/// `device::join_signed_bytes`). The name is not signed. The server checks only the shape
+/// ([`JoinDevice::is_well_formed`]) and relays the object unchanged; the display verifies it
+/// (`device::verify_join`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JoinDevice {
+    /// Public key, 43 base64url characters (canonical, no padding).
+    pub pk: String,
+    /// Time of signing, milliseconds since the Unix epoch.
+    pub ts: u64,
+    /// Signature, 86 base64url characters (canonical, no padding).
+    pub sig: String,
+}
+
+/// `true` when `s` is the canonical unpadded base64url spelling of 32 or 64 bytes: exactly the
+/// right length, only `A-Z a-z 0-9 - _`, and no stray bits in the last character.
+fn is_canonical_b64url(s: &str, chars: usize) -> bool {
+    if s.len() != chars {
+        return false;
+    }
+    let value = |b: u8| -> Option<u8> {
+        match b {
+            b'A'..=b'Z' => Some(b - b'A'),
+            b'a'..=b'z' => Some(b - b'a' + 26),
+            b'0'..=b'9' => Some(b - b'0' + 52),
+            b'-' => Some(62),
+            b'_' => Some(63),
+            _ => None,
+        }
+    };
+    let b = s.as_bytes();
+    if !b.iter().all(|&c| value(c).is_some()) {
+        return false;
+    }
+    // 43 characters carry 258 bits for 256: 2 spare bits; 86 carry 516 for 512: 4 spare bits.
+    let spare_mask = match chars {
+        DEVICE_PK_CHARS => 0x03,
+        DEVICE_SIG_CHARS => 0x0f,
+        _ => return false,
+    };
+    value(b[chars - 1]).is_some_and(|v| v & spare_mask == 0)
+}
+
+impl JoinDevice {
+    /// Shape check (what the server enforces): `pk` and `sig` have the exact length and the
+    /// canonical base64url spelling. The signature itself is not checked here.
+    pub fn is_well_formed(&self) -> bool {
+        is_canonical_b64url(&self.pk, DEVICE_PK_CHARS)
+            && is_canonical_b64url(&self.sig, DEVICE_SIG_CHARS)
+    }
+}
+
+/// Reads an optional `device` leniently: anything that is not a well-formed [`JoinDevice`]
+/// (wrong type, unknown keys, bad lengths, a `ts` that is not a `u64`) becomes `None` instead
+/// of failing the whole message, because a bad proof must never stop a join.
+fn lenient_device<'de, D>(d: D) -> Result<Option<JoinDevice>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Shape {
+        Device(JoinDevice),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(match Option::<Shape>::deserialize(d)? {
+        Some(Shape::Device(dev)) if dev.is_well_formed() => Some(dev),
+        _ => None,
+    })
+}
+
 /// Who may join a room. Chosen by the receiver (display device) and changeable at any time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -332,6 +410,15 @@ pub enum ClientMsg {
         /// ([`sanitize_handover`]). Optional; older servers ignore the field.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         handover: Option<String>,
+        /// Proof of the presenter's device key (docs/design/presenter-identity.md). The server
+        /// checks the shape only and relays it unchanged in `join_request` / `peer_joined`;
+        /// a malformed one is dropped and the join goes on without it. Optional.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "lenient_device"
+        )]
+        device: Option<JoinDevice>,
     },
     /// Receiver (room owner) only: change who may join, at any time.
     SetJoinMode {
@@ -423,6 +510,14 @@ pub enum ServerMsg {
         /// mode `open`); see `join_room`. Absent otherwise.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         handover: Option<String>,
+        /// The device proof the sender joined with, relayed unchanged (mode `open` only; in
+        /// mode `confirm` the display keeps the one of `join_request`). Absent otherwise.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "lenient_device"
+        )]
+        device: Option<JoinDevice>,
     },
     /// Sent to a sender whose join waits for the display device's decision.
     JoinPending {
@@ -449,6 +544,14 @@ pub enum ServerMsg {
         /// for an ordinary join.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         handover: Option<String>,
+        /// The device proof of the join, relayed unchanged (shape-checked only); the display
+        /// verifies it. Absent when the joiner sent none or a malformed one.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "lenient_device"
+        )]
+        device: Option<JoinDevice>,
     },
     /// Sent to the receiver: a waiting request is gone (joiner left, cancelled, timed out,
     /// or the mode became `locked`).
@@ -571,11 +674,13 @@ mod tests {
                 code: RoomCode::parse("k7m2qx").unwrap(),
                 name: Some("Ana".into()),
                 handover: None,
+                device: None,
             },
             ClientMsg::JoinRoom {
                 code: RoomCode::parse("k7m2qx").unwrap(),
                 name: None,
                 handover: Some("x".repeat(64)),
+                device: None,
             },
             ClientMsg::SetJoinMode {
                 join_mode: JoinMode::Locked,
@@ -633,10 +738,12 @@ mod tests {
             ServerMsg::PeerJoined {
                 name: "Ana".into(),
                 handover: None,
+                device: None,
             },
             ServerMsg::PeerJoined {
                 name: "Ana".into(),
                 handover: Some("tok_en-1".into()),
+                device: None,
             },
             ServerMsg::JoinPending {
                 timeout_secs: 60,
@@ -653,12 +760,14 @@ mod tests {
                 name: "Ana".into(),
                 check: 42,
                 handover: None,
+                device: None,
             },
             ServerMsg::JoinRequest {
                 id: 2,
                 name: "Ana".into(),
                 check: 43,
                 handover: Some("tok_en-1".into()),
+                device: None,
             },
             ServerMsg::JoinRequestCancelled {
                 id: 1,
@@ -708,6 +817,7 @@ mod tests {
             code,
             name,
             handover,
+            ..
         } = serde_json::from_str(j).unwrap()
         else {
             panic!("wrong variant");
@@ -740,7 +850,8 @@ mod tests {
             j(&ClientMsg::JoinRoom {
                 code: RoomCode::parse("K7M2QX").unwrap(),
                 name: Some("Ana".into()),
-                handover: None
+                handover: None,
+                device: None,
             }),
             r#"{"type":"join_room","code":"K7M2QX","name":"Ana"}"#
         );
@@ -748,7 +859,8 @@ mod tests {
             j(&ClientMsg::JoinRoom {
                 code: RoomCode::parse("K7M2QX").unwrap(),
                 name: Some("Ana".into()),
-                handover: Some("AbC-_123".into())
+                handover: Some("AbC-_123".into()),
+                device: None,
             }),
             r#"{"type":"join_room","code":"K7M2QX","name":"Ana","handover":"AbC-_123"}"#
         );
@@ -802,7 +914,8 @@ mod tests {
                 id: 7,
                 name: "Ana".into(),
                 check: 42,
-                handover: None
+                handover: None,
+                device: None,
             }),
             r#"{"type":"join_request","id":7,"name":"Ana","check":42}"#
         );
@@ -811,7 +924,8 @@ mod tests {
                 id: 7,
                 name: "Ana".into(),
                 check: 42,
-                handover: Some("tok_en-1".into())
+                handover: Some("tok_en-1".into()),
+                device: None,
             }),
             r#"{"type":"join_request","id":7,"name":"Ana","check":42,"handover":"tok_en-1"}"#
         );
@@ -852,7 +966,8 @@ mod tests {
         assert_eq!(
             s(&ServerMsg::PeerJoined {
                 name: "Ana".into(),
-                handover: None
+                handover: None,
+                device: None,
             }),
             r#"{"type":"peer_joined","name":"Ana"}"#
         );
@@ -952,7 +1067,8 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ServerMsg::PeerJoined {
                 name: "Ana".into(),
-                handover: None
+                handover: None,
+                device: None,
             })
             .unwrap(),
             r#"{"type":"peer_joined","name":"Ana"}"#
@@ -1074,5 +1190,89 @@ mod tests {
             assert_eq!(sanitize_handover(Some(bad)), None, "{bad:?}");
         }
         assert_eq!(sanitize_handover(None), None);
+    }
+
+    // ---- device proof (docs/design/presenter-identity.md) ----
+
+    const PK: &str = "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg";
+    const SIG: &str =
+        "_IgPFHBw41LTmmUHxmNcsczKk8n5zpyC5DYBwdBgICRrVMIcjq-V3nZJuBiBqNLzCQ6MV0fXgYZ-ndx3PYTvDg";
+
+    fn join_with(device: &str) -> ClientMsg {
+        serde_json::from_str(&format!(
+            r#"{{"type":"join_room","code":"K7M2QX","name":"Ana","device":{device}}}"#
+        ))
+        .unwrap()
+    }
+
+    fn device_of(m: &ClientMsg) -> Option<&JoinDevice> {
+        match m {
+            ClientMsg::JoinRoom { device, .. } => device.as_ref(),
+            _ => panic!("not a join"),
+        }
+    }
+
+    #[test]
+    fn a_well_formed_device_is_kept_and_serialised_unchanged() {
+        let json = format!(r#"{{"pk":"{PK}","ts":1767225600000,"sig":"{SIG}"}}"#);
+        let m = join_with(&json);
+        let d = device_of(&m).expect("kept");
+        assert_eq!(
+            (d.pk.as_str(), d.ts, d.sig.as_str()),
+            (PK, 1767225600000, SIG)
+        );
+        let out = serde_json::to_string(&m).unwrap();
+        assert!(out.ends_with(&format!(r#","device":{json}}}"#)), "{out}");
+    }
+
+    #[test]
+    fn a_malformed_device_is_dropped_and_the_message_still_parses() {
+        let short_pk = &PK[..42];
+        let long_sig = format!("{SIG}A");
+        // Last character with stray bits: 'B' has the low bit set, so it is not canonical.
+        let stray_pk = format!("{}B", &PK[..42]);
+        let stray_sig = format!("{}B", &SIG[..85]);
+        let bad: Vec<String> = vec![
+            "null".into(),
+            "7".into(),
+            r#""text""#.into(),
+            "[]".into(),
+            "{}".into(),
+            format!(r#"{{"pk":"{short_pk}","ts":1,"sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","ts":1,"sig":"{long_sig}"}}"#),
+            format!(r#"{{"pk":"{stray_pk}","ts":1,"sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","ts":1,"sig":"{stray_sig}"}}"#),
+            format!(r#"{{"pk":"{}+","ts":1,"sig":"{SIG}"}}"#, &PK[..42]),
+            format!(r#"{{"pk":"{PK}","ts":-1,"sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","ts":1.5,"sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","ts":"1","sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","ts":18446744073709551616,"sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","sig":"{SIG}"}}"#),
+            format!(r#"{{"pk":"{PK}","ts":1,"sig":"{SIG}","name":"x"}}"#),
+            format!(r#"{{"pk":1,"ts":1,"sig":"{SIG}"}}"#),
+        ];
+        for b in bad {
+            assert_eq!(device_of(&join_with(&b)), None, "{b}");
+        }
+        // Absent field: also fine.
+        let m: ClientMsg = serde_json::from_str(r#"{"type":"join_room","code":"K7M2QX"}"#).unwrap();
+        assert_eq!(device_of(&m), None);
+    }
+
+    #[test]
+    fn the_largest_ts_is_accepted_and_relayed_in_server_messages() {
+        let json = format!(r#"{{"pk":"{PK}","ts":18446744073709551615,"sig":"{SIG}"}}"#);
+        assert!(device_of(&join_with(&json)).is_some());
+        let req =
+            format!(r#"{{"type":"join_request","id":1,"name":"A","check":12,"device":{json}}}"#);
+        let ServerMsg::JoinRequest { device, .. } = serde_json::from_str(&req).unwrap() else {
+            panic!()
+        };
+        assert_eq!(device.unwrap().ts, u64::MAX);
+        let joined = r#"{"type":"peer_joined","name":"A","device":{"pk":"x"}}"#;
+        let ServerMsg::PeerJoined { device, .. } = serde_json::from_str(joined).unwrap() else {
+            panic!()
+        };
+        assert_eq!(device, None);
     }
 }

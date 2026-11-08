@@ -777,7 +777,7 @@ async fn run(
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
                     break;
                 }
-                Some(ServerMsg::PeerJoined { name, handover: token }) => {
+                Some(ServerMsg::PeerJoined { name, handover: token, .. }) => {
                     // A join that needed no decision (join mode open) carries its token here;
                     // one that was allowed by us below was checked when the request came.
                     let by_token = admitted_by_token.joined(&name)
@@ -785,7 +785,7 @@ async fn run(
                     peer_name = Some(name.clone());
                     emit(ReceiverEvent::PeerJoined { name, handover: by_token });
                 }
-                Some(ServerMsg::JoinRequest { id, name, check, handover: token }) => {
+                Some(ServerMsg::JoinRequest { id, name, check, handover: token, .. }) => {
                     // A token this display issued to this person: let them in without asking.
                     // Anything else (no token, expired, used, another name, another room) is
                     // an ordinary request for the host.
