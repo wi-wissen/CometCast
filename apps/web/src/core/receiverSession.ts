@@ -88,6 +88,8 @@ export interface ReceiverState {
   transfer: { name: string; received: number; size: number } | null
   /** Last transfer problem (TransferErrorCode or bad_message), cleared by the next content. */
   contentError: TransferErrorCode | 'bad_message' | null
+  /** Counts the problems reported in `contentError`, so the same code twice in a row is told twice. */
+  contentErrorSeq?: number
   /** Connection check code once connected (compare with the sender), else absent. */
   sas?: string
   /** With `peer_failed`: how the last `GET /ice-servers` ended (decision 13.45). The display shows nothing of it; the presenter's page tells the person. */
@@ -209,8 +211,10 @@ export class ReceiverSession {
   private mode: JoinMode
   /** The mode a new room (after the session ends) starts with: the last one that was not "locked". */
   private defaultMode: JoinMode
-  /** A request was allowed and its sender is about to connect (so "connected" is not toasted a second time). */
-  private allowedPending = false
+  /** The id of a request that was allowed, while its sender is about to connect (so "connected" is not toasted a second time). */
+  private allowedPending: number | null = null
+  /** Offers of the current peer are answered in order (see the `offer` case). */
+  private answerChain: Promise<void> = Promise.resolve()
 
   constructor(private readonly deps: ReceiverDeps) {
     this.peerFactory = deps.peerFactory ?? ((h, c) => createPeer(h, c))
@@ -227,6 +231,7 @@ export class ReceiverSession {
   }
 
   private set(patch: Partial<ReceiverState>): void {
+    if (patch.contentError) patch = { ...patch, contentErrorSeq: (this.state.contentErrorSeq ?? 0) + 1 }
     this.state = { ...this.state, ...patch }
     this.deps.onChange(this.state)
     if (patch.content !== undefined) this.reportPage()
@@ -375,7 +380,7 @@ export class ReceiverSession {
     const req = this.state.requests.find((r) => r.id === id)
     if (!req) return
     this.client?.send({ type: 'join_decision', id, allow, ...(block && !allow ? { block: true } : {}) })
-    if (allow) this.allowedPending = true
+    if (allow) this.allowedPending = id
     this.emit({ kind: allow ? 'allowed' : block ? 'blocked' : 'denied', name: req.name })
     this.set({ requests: this.state.requests.filter((r) => r.id !== id) })
   }
@@ -410,7 +415,15 @@ export class ReceiverSession {
     if (run !== this.run) return
     this.iceServers = list
     this.iceReady = true
-    for (const m of this.held.splice(0)) this.onMessage(m)
+    for (const m of this.held.splice(0)) {
+      if (run !== this.run) return
+      try {
+        this.onMessage(m)
+      } catch {
+        this.fail('peer_failed')
+        return
+      }
+    }
   }
 
   /** The server wants a solved puzzle before it creates a room (open mode). */
@@ -462,8 +475,7 @@ export class ReceiverSession {
     this.peer?.close()
     this.channel = null
     this.offerId = null
-    const peer = this.peerFactory(
-      {
+    const handlers: Parameters<PeerFactory>[0] = {
         onIceCandidate: (candidate) => this.client?.send({ type: 'ice_candidate', candidate }),
         onTrack: (stream) => this.set({ stream }),
         onTrackEnded: (stream) => {
@@ -479,9 +491,15 @@ export class ReceiverSession {
           }
           else if (s === 'failed') this.fail('peer_failed')
         },
-      },
-      { iceServers: this.iceServers },
-    )
+    }
+    let peer: Peer
+    try {
+      peer = this.peerFactory(handlers, { iceServers: this.iceServers })
+    } catch {
+      // The browser refused the server's ICE list (RTCPeerConnection throws for a URI it cannot
+      // parse). A direct connection without STUN still works on one network, so try that.
+      peer = this.peerFactory(handlers, { iceServers: [] })
+    }
     this.peer = peer
     return peer
   }
@@ -532,6 +550,8 @@ export class ReceiverSession {
         })
         break
       case 'join_request_cancelled': {
+        // The allowed sender gave up before it arrived: the next one that joins is announced again.
+        if (this.allowedPending === m.id) this.allowedPending = null
         const gone = this.state.requests.find((r) => r.id === m.id)
         const requests = this.state.requests.filter((r) => r.id !== m.id)
         if (gone && m.reason === 'timeout') this.emit({ kind: 'expired', name: gone.name })
@@ -567,14 +587,14 @@ export class ReceiverSession {
         this.altchaTried = false
         // A new session starts in the default mode again ("locked" does not survive the end).
         this.mode = this.defaultMode
-        this.allowedPending = false
+        this.allowedPending = null
         this.emit({ kind: 'sessionEnded' })
         this.set({ joinMode: this.mode, phase: 'connecting', code: null, stream: null, sas: undefined, peerName: null, requests: [], blocks: [] })
         this.sendCreateRoom()
         break
       case 'peer_joined':
-        if (!this.allowedPending) this.emit({ kind: 'joined', name: m.name })
-        this.allowedPending = false
+        if (this.allowedPending === null) this.emit({ kind: 'joined', name: m.name })
+        this.allowedPending = null
         this.newPeer()
         this.set({ phase: 'negotiating', stream: null, sas: undefined, peerName: m.name })
         break
@@ -595,10 +615,23 @@ export class ReceiverSession {
         const peer = this.peer ?? this.newPeer()
         this.offerId = id
         if (this.state.phase !== 'receiving') this.set({ phase: 'negotiating' })
-        peer
-          .acceptOffer(m.sdp)
-          .then((sdp) => this.client?.send({ type: 'answer', sdp }))
-          .catch(() => this.fail('peer_failed'))
+        // A result that arrives after this peer was closed or replaced belongs to nobody: the
+        // sender left, or a new connection began. It must not answer for, or fail, the next one.
+        // Offers are answered one after another: a second offer while the first is still being
+        // answered would find the connection in the wrong state and fail it.
+        const sdpIn = m.sdp
+        this.answerChain = this.answerChain.then(() =>
+          this.peer !== peer
+            ? undefined
+            : peer
+                .acceptOffer(sdpIn)
+                .then((sdp) => {
+                  if (this.peer === peer) this.client?.send({ type: 'answer', sdp })
+                })
+                .catch(() => {
+                  if (this.peer === peer) this.fail('peer_failed')
+                }),
+        )
         break
       }
       case 'ice_candidate':
@@ -607,6 +640,7 @@ export class ReceiverSession {
         })
         break
       case 'peer_left':
+        this.allowedPending = null
         if (this.state.peerName !== null) this.emit({ kind: 'left', name: this.state.peerName })
         this.peer?.close()
         this.peer = null

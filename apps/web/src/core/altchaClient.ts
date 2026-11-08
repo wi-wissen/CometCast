@@ -156,7 +156,16 @@ export const MAX_ICE_SERVERS = 16
 export const MAX_ICE_URLS = 8
 export const MAX_ICE_FIELD = 512
 
-const urlIsSane = (u: string) => u.length <= MAX_ICE_FIELD && /^(stuns?|turns?):/i.test(u) && !/[\u0000-\u001f\u007f]/.test(u)
+/**
+ * The URI shapes RTCPeerConnection accepts (RFC 7064, RFC 7065): `stun[s]:host[:port]` and
+ * `turn[s]:host[:port][?transport=udp|tcp]`. Anything else (a query on a STUN URI, a port that is
+ * not a number) makes the constructor throw for the whole list, so it is dropped here.
+ */
+const ICE_HOST = String.raw`(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)`
+const ICE_PORT = String.raw`(?::[0-9]{1,5})?`
+const STUN_URL = new RegExp(`^stuns?:${ICE_HOST}${ICE_PORT}$`, 'i')
+const TURN_URL = new RegExp(`^turns?:${ICE_HOST}${ICE_PORT}(?:\\?transport=(?:udp|tcp))?$`, 'i')
+const urlIsSane = (u: string) => u.length <= MAX_ICE_FIELD && (STUN_URL.test(u) || TURN_URL.test(u))
 
 /**
  * Keeps only the RTCIceServer fields we use; drops entries that cannot be valid. The list is

@@ -60,6 +60,9 @@ export interface SenderDeps {
   now?: () => number
 }
 
+/** How long a renegotiation waits for its answer before the next one may go out. */
+const RENEGOTIATE_ANSWER_MS = 10_000
+
 export class SenderSession {
   private state: SenderState = { phase: 'idle', errorCode: null, channelOpen: false }
   private control: ControlSender | null = null
@@ -72,6 +75,10 @@ export class SenderSession {
   private stream: MediaStream | null = null
   private screenOn = false
   private run = 0 // invalidates async work of an earlier start()/stop()
+  /** Renegotiations run one after another: the next offer waits for the answer to the previous one. */
+  private offerChain: Promise<void> = Promise.resolve()
+  /** Called when the answer to the renegotiation offer in flight has been applied (or given up). */
+  private answered: (() => void) | null = null
   private readonly busy = new BusyMemory()
   private pdfPage: { page: number; pages: number } | undefined
   private icePromise: Promise<RTCIceServer[]> = Promise.resolve([])
@@ -175,8 +182,7 @@ export class SenderSession {
     })
     try {
       this.peer.addStream(stream)
-      const sdp = await this.peer.createOffer()
-      if (run === this.run) this.client?.send({ type: 'offer', sdp })
+      await this.renegotiate(run)
     } catch {
       if (run === this.run) this.fail('peer_failed')
       return 'failed'
@@ -199,11 +205,49 @@ export class SenderSession {
     this.state = rest
     this.deps.onChange(this.state)
     try {
-      const sdp = await this.peer?.createOffer()
-      if (sdp !== undefined && run === this.run) this.client?.send({ type: 'offer', sdp })
+      await this.renegotiate(run)
     } catch {
       /* the connection is going away anyway */
     }
+  }
+
+  /**
+   * Sends a new offer on the current connection once the previous renegotiation has its answer.
+   * Two offers in flight at once (share, then the browser's "stop sharing" right away) would be
+   * answered out of order and fail the connection.
+   */
+  private renegotiate(run: number): Promise<void> {
+    // `sent` settles once the offer is out (or creating it failed); the chain itself goes on until
+    // the answer has been applied, so the next offer waits for it.
+    let offerSent!: () => void
+    let offerFailed!: (e: unknown) => void
+    const sent = new Promise<void>((resolve, reject) => {
+      offerSent = resolve
+      offerFailed = reject
+    })
+    this.offerChain = this.offerChain.then(async () => {
+      const peer = this.peer
+      if (run !== this.run || !peer) return offerSent()
+      let sdp: string
+      try {
+        sdp = await peer.createOffer()
+      } catch (e) {
+        return offerFailed(e)
+      }
+      if (run !== this.run || this.peer !== peer) return offerSent()
+      await new Promise<void>((resolve) => {
+        // UNCERTAIN: 10 s is a placeholder; an answer that never comes must not block later offers.
+        const timer = setTimeout(done, RENEGOTIATE_ANSWER_MS)
+        function done() {
+          clearTimeout(timer)
+          resolve()
+        }
+        this.answered = done
+        this.client?.send({ type: 'offer', sdp })
+        offerSent()
+      })
+    })
+    return sent
   }
 
   /**
@@ -263,6 +307,9 @@ export class SenderSession {
   }
 
   private teardown(): void {
+    this.answered?.()
+    this.answered = null
+    this.offerChain = Promise.resolve()
     this.sas = undefined
     this.check = undefined
     this.roomName = undefined
@@ -280,7 +327,7 @@ export class SenderSession {
 
   private fail(code: string): void {
     const p = this.state.phase
-    if (p === 'error' || p === 'idle' || p === 'stopped') return
+    if (p === 'error' || p === 'idle' || p === 'stopped' || p === 'peer_left') return
     // For 60 s after a refusal a closed connection is the same refusal (the server closes it after a ban).
     const reported = this.busy.apply(code, (this.deps.now ?? Date.now)())
     this.teardown()
@@ -301,15 +348,31 @@ export class SenderSession {
         this.set('negotiating')
         void this.sendOffer()
         break
-      case 'answer':
-        this.peer?.acceptAnswer(m.sdp).catch(() => this.fail('peer_failed'))
+      case 'answer': {
+        const peer = this.peer
+        const done = this.answered
+        this.answered = null
+        if (!peer) {
+          done?.()
+          break
+        }
+        peer
+          .acceptAnswer(m.sdp)
+          .catch(() => {
+            // A peer that was closed or replaced meanwhile is not this connection's failure.
+            if (this.peer === peer) this.fail('peer_failed')
+          })
+          .finally(() => done?.())
         break
+      }
       case 'ice_candidate':
         this.peer?.addIceCandidate(m.candidate).catch(() => {
           // A single bad candidate is not fatal.
         })
         break
       case 'peer_left':
+        // Work still running for this connection (offer, answer) must not turn "ended" into an error.
+        this.run++
         this.control = null
         this.channelOpen = false
         this.peer?.close()

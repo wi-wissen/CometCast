@@ -128,6 +128,11 @@ export function ensureRelayTrusted(): Promise<boolean> {
   return done
 }
 
+/** True while a `?server=` of the page link is in use (it was not cancelled or replaced). */
+export function relayFromLink(): boolean {
+  return !ignoreQuery && new URLSearchParams(location.search).has('server')
+}
+
 /** For the confirmation dialog: the relay waiting for a decision (or null) and the two answers. */
 export function useRelayConfirmation() {
   return {

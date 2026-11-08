@@ -7,7 +7,7 @@ import { arrowDir, moveFocus } from '../core/dpad'
 import { loadSetup, saveSetup, type DisplaySetup } from '../core/displaySetup'
 import { useDisplayScale } from '../composables/useDisplayScale'
 import { useFocusRing } from '../composables/useFocusRing'
-import { useRelay } from '../composables/useRelay'
+import { relayFromLink, useRelay } from '../composables/useRelay'
 import { useTheme } from '../composables/useTheme'
 
 // The display (receiver) page at {dom}/display (docs/design/first-run-and-display.md, 4 and 7.2):
@@ -19,8 +19,14 @@ const { hidden: ringHidden } = useFocusRing()
 const { appearance, theme, setAppearance } = useTheme()
 const relay = useRelay()
 const setup = ref<DisplaySetup | null>(loadSetup())
-// The server chosen in the setup applies again after a restart (a ?server= link still wins).
-if (setup.value?.server && !new URLSearchParams(location.search).has('server')) relay.set(setup.value.server)
+// The server chosen in the setup applies again after a restart (a ?server= link still wins, unless
+// the person cancelled it: then the display goes back to its own server, not to the default).
+if (setup.value?.server && !relayFromLink()) relay.set(setup.value.server)
+else if (setup.value?.server) {
+  void relay.ensureTrusted().then((ok) => {
+    if (!ok && setup.value?.server) relay.set(setup.value.server)
+  })
+}
 
 const wizard = ref<InstanceType<typeof SetupWizard> | null>(null)
 function finish(s: DisplaySetup) {

@@ -218,6 +218,7 @@
         "empty": "This file is empty.",
         "not_open": "Not connected to the receiver.",
         "channel_closed": "The connection was closed while sending.",
+        "busy": "Another file is still being sent. Wait until it has arrived.",
         "failed": "The image could not be sent."
       }
     },
@@ -252,6 +253,7 @@
         "empty": "This file is empty.",
         "not_open": "Not connected to the receiver.",
         "channel_closed": "The connection was closed while sending.",
+        "busy": "Another file is still being sent. Wait until it has arrived.",
         "failed": "The PDF could not be sent."
       }
     }

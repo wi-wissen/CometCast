@@ -2,6 +2,8 @@
 //
 // Signalling client. Messages mirror crates/cc-proto and docs/protocol.md (version 2).
 
+import { isValidRoomCode } from './roomCode'
+
 export const PROTO_VERSION = 2
 
 /** Who may join a room (docs/protocol.md, "Join approval"). */
@@ -116,7 +118,10 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'hello':
       return typeof o.proto_version === 'number' ? { type: 'hello', proto_version: o.proto_version } : null
     case 'room_created':
-      return isStr(o.code) && isJoinMode(o.join_mode) ? { type: 'room_created', code: o.code, join_mode: o.join_mode } : null
+      // The code goes on screen and into the QR link: only a well-formed code is taken.
+      return isStr(o.code) && isValidRoomCode(o.code) && isJoinMode(o.join_mode)
+        ? { type: 'room_created', code: o.code, join_mode: o.join_mode }
+        : null
     case 'joined':
       return { type: 'joined', ...roomNameField(o) }
     case 'peer_left':
