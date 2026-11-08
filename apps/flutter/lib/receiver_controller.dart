@@ -239,6 +239,13 @@ class NoticeOpenDisabled extends ReceiverNotice {
   const NoticeOpenDisabled();
 }
 
+/// The server refused a command of the host (`no_such_request`, `block_list_full`, ...) but
+/// the room goes on.
+class NoticeServer extends ReceiverNotice {
+  const NoticeServer(this.code);
+  final String code;
+}
+
 /// How long the server lets a request wait (its default). UNCERTAIN: an operator can change it;
 /// the server decides when a request ends.
 const joinRequestSeconds = 60;
@@ -566,6 +573,9 @@ class ReceiverController extends ChangeNotifier {
           joinNote = null;
           discardedCount = 0;
         }
+      case ReceiverUiEvent_ServerNotice(:final code):
+        onNotice?.call(NoticeServer(code));
+        return;
       case ReceiverUiEvent_Blocked(:final id, :final name):
         if (blocks.every((b) => b.id != id)) {
           blocks = [...blocks, BlockedView(id: id, name: name)];

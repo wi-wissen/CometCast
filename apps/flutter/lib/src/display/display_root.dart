@@ -25,6 +25,7 @@ import '../../discovery.dart';
 import '../../receiver_controller.dart';
 import '../../settings.dart';
 import '../beta.dart';
+import '../presenter/presenter_root.dart' show errorsText;
 import '../design/tokens.dart';
 import 'about.dart';
 import 'codec_dialog.dart';
@@ -573,6 +574,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       NoticeLeft(:final name) => t.toastLeft(_quoted(t, name)),
       NoticeSessionEnded() => _silentEnd ? null : t.toastSessionEnded,
       NoticeOpenDisabled() => t.toastOpenDisabled,
+      NoticeServer(:final code) => errorsText(t, code),
     };
     if (n is NoticeJoined) _justAllowed = false;
     if (n is NoticeSessionEnded) _silentEnd = false;
