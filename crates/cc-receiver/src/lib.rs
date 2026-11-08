@@ -38,6 +38,7 @@
 //! [`ReceiverCore::next_event`].
 
 mod content;
+mod device_memory;
 mod handover;
 
 use std::sync::Arc;
@@ -46,10 +47,12 @@ use std::time::{Duration, Instant};
 pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime, PauseState};
 pub use cc_proto::JoinMode;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
+use cc_transport::device::{unix_ms, verify_join};
 use cc_transport::{
     ConnectionState, IceServerConfig, MediaSnapshot, ServerAddr, Session, SessionConfig,
     SessionEvent, SignalingClient, TlsTrust, TransportError, VideoCodec, altcha, ice,
 };
+pub use device_memory::{DeviceMemory, MAX_PAIRS as DEVICE_MEMORY_MAX_PAIRS, is_generated_name};
 pub use handover::{HANDOVER_TTL, HandoverStore};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -85,6 +88,10 @@ pub struct ReceiverOptions {
     /// How long a hand-over token of a presenter stays valid (native-apps.md 20.5). Default
     /// [`HANDOVER_TTL`] (60 s); shorter values are for tests.
     pub handover_ttl: Duration,
+    /// What the display remembers about names and devices (from the app's settings, see
+    /// [`DeviceMemory::from_json`]). Default empty. Changes come back as
+    /// [`ReceiverEvent::DeviceMemoryChanged`].
+    pub device_memory: DeviceMemory,
 }
 
 impl ReceiverOptions {
@@ -98,6 +105,7 @@ impl ReceiverOptions {
             join_mode: JoinMode::Open,
             room_name: None,
             handover_ttl: HANDOVER_TTL,
+            device_memory: DeviceMemory::new(),
         }
     }
 }
@@ -140,7 +148,17 @@ pub enum ReceiverEvent {
         /// without a dialog (native-apps.md 20.5): the person was approved before, so the app
         /// shows no "connected" notice.
         handover: bool,
+        /// The presenter's device id when it proved its key for this room (open mode: with
+        /// the join; confirm mode: with the request the host allowed), else `None`.
+        device: Option<String>,
+        /// `device` is set and this name was used here before, but only by other devices
+        /// (open mode only; docs/design/presenter-identity.md). A hint, not a warning.
+        other_device: bool,
     },
+    /// The display's memory of names and devices changed (an allowed request, or a verified
+    /// join in open mode). The app stores the text with its settings and gives it back in
+    /// [`ReceiverOptions::device_memory`] next time.
+    DeviceMemoryChanged(String),
     /// A presenter asked this display to hold a hand-over token and the display stored it
     /// (and answered `handover_ok`). If the presenter now leaves, that is not a leave for the
     /// host (no notice) until the token is used or runs out ([`ReceiverEvent::HandoverExpired`]).
@@ -161,6 +179,11 @@ pub enum ReceiverEvent {
         name: String,
         /// Two-digit check number; the sender's waiting screen shows the same number.
         check: u8,
+        /// The presenter's device id when its proof for this room verified, else `None`.
+        device: Option<String>,
+        /// `device` is set and this name was used here before, but only by other devices:
+        /// the dialog adds "This name was used here before by a different device."
+        other_device: bool,
     },
     /// A waiting request is gone: `left`, `cancelled`, `timeout`, `locked` or `room_full`.
     JoinRequestCancelled {
@@ -395,6 +418,8 @@ impl ReceiverCore {
             pause_rx,
             content,
             handover,
+            code.to_string(),
+            options.device_memory,
         ));
         Ok(Self {
             code,
@@ -588,6 +613,57 @@ impl TokenAdmission {
     }
 }
 
+/// The verified devices of join requests (docs/design/presenter-identity.md): while a request
+/// waits (by request id), and after the host allowed it until the server's `peer_joined` shows
+/// that the presenter is in (only then the pair goes into the memory). Both lists are small:
+/// the server holds at most 8 waiting requests per room.
+#[derive(Default)]
+struct RequestDevices {
+    waiting: Vec<(u64, String, String)>,
+    allowed: Vec<(String, String)>,
+}
+
+impl RequestDevices {
+    const CAP: usize = 16;
+
+    fn requested(&mut self, id: u64, name: &str, device: &str) {
+        if self.waiting.len() >= Self::CAP {
+            self.waiting.remove(0);
+        }
+        self.waiting.push((id, name.to_owned(), device.to_owned()));
+    }
+
+    /// The host (or a token) decided on request `id`.
+    fn decided(&mut self, id: u64, allow: bool) {
+        let Some(p) = self.waiting.iter().position(|(i, _, _)| *i == id) else {
+            return;
+        };
+        let (_, name, device) = self.waiting.remove(p);
+        if allow {
+            if self.allowed.len() >= Self::CAP {
+                self.allowed.remove(0);
+            }
+            self.allowed.push((name, device));
+        }
+    }
+
+    fn cancelled(&mut self, id: u64) {
+        self.waiting.retain(|(i, _, _)| *i != id);
+    }
+
+    /// A presenter named `name` joined after an allowed request: its device, if the request
+    /// had a verified one. The other allowed requests are void (one sender per room).
+    fn joined(&mut self, name: &str) -> Option<String> {
+        let found = self
+            .allowed
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, d)| d.clone());
+        self.allowed.clear();
+        found
+    }
+}
+
 /// The pause flags of the running presentation and the way to tell the presenter.
 #[derive(Default)]
 struct PauseCtl {
@@ -671,6 +747,8 @@ async fn run(
     mut display_pause: mpsc::UnboundedReceiver<bool>,
     mut content: Option<ContentSetup>,
     handover: Arc<HandoverStore>,
+    code: String,
+    mut memory: DeviceMemory,
 ) {
     let mut session = Arc::clone(&shared_session.lock().unwrap_or_else(|p| p.into_inner()));
     let mut content_task: Option<tokio::task::JoinHandle<()>> = None;
@@ -687,6 +765,9 @@ async fn run(
     // the join that was let in with a token and whose `peer_joined` is still to come.
     let mut peer_name: Option<String> = None;
     let mut admitted_by_token = TokenAdmission::default();
+    // Verified devices of the waiting requests (by request id) and of the requests that were
+    // allowed and whose `peer_joined` is still to come (docs/design/presenter-identity.md).
+    let mut request_devices = RequestDevices::default();
     // The presenter the host asked to remove, until its `peer_left` arrives.
     let mut removed_peer: Option<String> = None;
     let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<content::TaskMsg>();
@@ -715,6 +796,9 @@ async fn run(
                         ClientMsg::JoinDecision { block: true, .. } => handover.clear(),
                         _ => 0,
                     };
+                    if let ClientMsg::JoinDecision { id: Some(id), allow, .. } = cmd {
+                        request_devices.decided(*id, *allow);
+                    }
                     if withdrawn > 0 {
                         emit(ReceiverEvent::HandoverExpired);
                     }
@@ -777,29 +861,55 @@ async fn run(
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
                     break;
                 }
-                Some(ServerMsg::PeerJoined { name, handover: token }) => {
+                Some(ServerMsg::PeerJoined { name, handover: token, device }) => {
                     // A join that needed no decision (join mode open) carries its token here;
                     // one that was allowed by us below was checked when the request came.
                     let by_token = admitted_by_token.joined(&name)
                         || token.is_some_and(|t| handover.take(&t, &name, Instant::now()));
                     peer_name = Some(name.clone());
-                    emit(ReceiverEvent::PeerJoined { name, handover: by_token });
+                    // Open mode: the proof came with the join. Confirm mode: the device of the
+                    // request the host allowed. The note is for open mode only; in confirm mode
+                    // the dialog showed it.
+                    let from_join = device
+                        .as_ref()
+                        .and_then(|d| verify_join(d, &code, unix_ms()).ok());
+                    let other_device = from_join
+                        .as_deref()
+                        .is_some_and(|id| memory.used_by_other_device(&name, id));
+                    let device = from_join.or_else(|| request_devices.joined(&name));
+                    if let Some(id) = &device
+                        && memory.remember(&name, id)
+                    {
+                        emit(ReceiverEvent::DeviceMemoryChanged(memory.to_json()));
+                    }
+                    emit(ReceiverEvent::PeerJoined { name, handover: by_token, device, other_device });
                 }
-                Some(ServerMsg::JoinRequest { id, name, check, handover: token }) => {
+                Some(ServerMsg::JoinRequest { id, name, check, handover: token, device }) => {
+                    // Only a proof that verifies for this room counts; anything else is shown
+                    // as before, with no device note (never as "verified").
+                    let device = device.and_then(|d| verify_join(&d, &code, unix_ms()).ok());
+                    let other_device = device
+                        .as_deref()
+                        .is_some_and(|d| memory.used_by_other_device(&name, d));
+                    if let Some(d) = &device {
+                        request_devices.requested(id, &name, d);
+                    }
                     // A token this display issued to this person: let them in without asking.
                     // Anything else (no token, expired, used, another name, another room) is
                     // an ordinary request for the host.
                     if token.is_some_and(|t| handover.take(&t, &name, Instant::now())) {
                         admitted_by_token.admitted(id, name);
+                        request_devices.decided(id, true);
                         let _ = sig
                             .send(ClientMsg::JoinDecision { id: Some(id), allow: true, block: false })
                             .await;
                     } else {
-                        emit(ReceiverEvent::JoinRequest { id, name, check });
+                        emit(ReceiverEvent::JoinRequest { id, name, check, device, other_device });
                     }
                 }
                 Some(ServerMsg::JoinRequestCancelled { id, reason }) => {
                     admitted_by_token.cancelled(id);
+                    request_devices.cancelled(id);
                     emit(ReceiverEvent::JoinRequestCancelled { id, reason })
                 }
                 Some(ServerMsg::JoinModeChanged { join_mode }) => {

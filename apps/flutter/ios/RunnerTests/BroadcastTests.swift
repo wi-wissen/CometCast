@@ -37,6 +37,16 @@ final class BroadcastStoreTests: XCTestCase {
         let decoded = try JSONDecoder().decode(BroadcastConfig.self, from: Data(old.utf8))
         XCTAssertNil(decoded.name)
         XCTAssertNil(decoded.handover)
+        XCTAssertNil(decoded.deviceKey)
+    }
+
+    func testConfigCarriesTheDeviceKeyOfTheApp() throws {
+        let store = makeStore()
+        let key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+        let c = BroadcastConfig(code: "ABC234", relay: "r", requestedAt: 1, maxDimension: 1280, fps: 30,
+                                bitrate: 1_000_000, deviceKey: key)
+        try store.writeConfig(c)
+        XCTAssertEqual(store.readConfig()?.deviceKey, key)
     }
 
     func testStatusCarriesTheFallbackFieldsAndTheWayBack() throws {

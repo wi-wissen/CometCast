@@ -3,6 +3,7 @@
 // Signalling client. Messages mirror crates/cc-proto and docs/protocol.md (version 2).
 
 import { isValidRoomCode } from './roomCode'
+import { isWellFormedDevice, type JoinDevice } from './deviceIdentity'
 
 export const PROTO_VERSION = 2
 
@@ -20,7 +21,7 @@ export type ClientMessage =
   | { type: 'create_room'; altcha?: string; join_mode?: JoinMode; room_name?: string }
   // handover: single-use token of the iOS broadcast extension (native-apps.md 20.5); the web client
   // never sends one, the type only keeps the message shape in one place
-  | { type: 'join_room'; code: string; name?: string; handover?: string }
+  | { type: 'join_room'; code: string; name?: string; handover?: string; device?: JoinDevice }
   | { type: 'set_join_mode'; join_mode: JoinMode }
   // id absent + allow false = deny all waiting requests
   // block: with allow false and an id, also block the sender's address bucket for this room session
@@ -41,9 +42,9 @@ export type ServerMessage =
   // room_name: optional, absent when the display set none (or the server is older)
   | { type: 'joined'; room_name?: string }
   // handover: the token the sender joined with (open rooms); the web display does not use it
-  | { type: 'peer_joined'; name: string; handover?: string }
+  | { type: 'peer_joined'; name: string; handover?: string; device?: JoinDevice }
   | { type: 'join_pending'; timeout_secs: number; check: number; room_name?: string }
-  | { type: 'join_request'; id: number; name: string; check: number; handover?: string }
+  | { type: 'join_request'; id: number; name: string; check: number; handover?: string; device?: JoinDevice }
   | { type: 'join_request_cancelled'; id: number; reason: string }
   | { type: 'join_mode_changed'; join_mode: JoinMode }
   | { type: 'blocked'; id: number; name: string }
@@ -103,6 +104,15 @@ function roomNameField(o: Record<string, unknown>): { room_name?: string } {
   return isStr(o.room_name) && o.room_name.trim() !== '' ? { room_name: o.room_name } : {}
 }
 
+/**
+ * The optional `device` proof of `peer_joined` / `join_request` (docs/design/presenter-identity.md). Only a well-formed
+ * object is taken (the server checked the shape already); anything else is "no proof" and the rest of the message stays
+ * valid. The signature is checked by the display ({@link verifyJoinProof}), not here.
+ */
+function deviceField(o: Record<string, unknown>): { device?: JoinDevice } {
+  return isWellFormedDevice(o.device) ? { device: o.device } : {}
+}
+
 /** Parses one server text frame. Returns null for anything that is not a valid server message. */
 export function decodeServerMessage(text: unknown): ServerMessage | null {
   if (!isStr(text)) return null
@@ -132,14 +142,14 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'unblocked':
       return isNum(o.id) ? { type: 'unblocked', id: o.id } : null
     case 'peer_joined':
-      return isStr(o.name) ? { type: 'peer_joined', name: o.name, ...(isStr(o.handover) ? { handover: o.handover } : {}) } : null
+      return isStr(o.name) ? { type: 'peer_joined', name: o.name, ...(isStr(o.handover) ? { handover: o.handover } : {}), ...deviceField(o) } : null
     case 'join_pending':
       return isNum(o.timeout_secs) && isNum(o.check)
         ? { type: 'join_pending', timeout_secs: o.timeout_secs, check: o.check, ...roomNameField(o) }
         : null
     case 'join_request':
       return isNum(o.id) && isStr(o.name) && isNum(o.check)
-        ? { type: 'join_request', id: o.id, name: o.name, check: o.check, ...(isStr(o.handover) ? { handover: o.handover } : {}) }
+        ? { type: 'join_request', id: o.id, name: o.name, check: o.check, ...(isStr(o.handover) ? { handover: o.handover } : {}), ...deviceField(o) }
         : null
     case 'join_request_cancelled':
       return isNum(o.id) && isStr(o.reason) ? { type: 'join_request_cancelled', id: o.id, reason: o.reason } : null

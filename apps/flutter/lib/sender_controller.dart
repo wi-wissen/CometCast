@@ -4,6 +4,7 @@
 // ReplayKit broadcast extension, which makes its own connection: see [startBroadcast]).
 
 import 'dart:async';
+import 'dart:convert' show base64Url;
 
 import 'package:flutter/foundation.dart';
 
@@ -202,6 +203,7 @@ class SenderController extends ChangeNotifier {
     int bitrate = 2500000,
     String? name,
     String? handover,
+    Uint8List? deviceKey,
   }) async {
     final ios = iosBroadcast;
     if (ios == null) {
@@ -233,6 +235,9 @@ class SenderController extends ChangeNotifier {
           bitrate: bitrate,
           name: name,
           handover: handover,
+          deviceKey: deviceKey == null
+              ? null
+              : base64Url.encode(deviceKey).replaceAll('=', ''),
         ),
       );
       if (_generation != generation) return;

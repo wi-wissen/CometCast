@@ -15,6 +15,7 @@
 
 pub mod altcha;
 mod control;
+pub mod device;
 mod error;
 pub mod ice;
 mod keyframe;

@@ -31,6 +31,10 @@ struct BroadcastConfig: Codable, Equatable {
     /// Single-use hand-over token that the display issued to the app (20.5, step 1): a display
     /// that holds it lets the extension in without a dialog. Nil: an ordinary join.
     var handover: String? = nil
+    /// Secret of the app's device key, base64url without padding (docs/design/presenter-identity.md):
+    /// the extension joins with the proof of the same key, so the display sees the same device as
+    /// for the app. The file is deleted when the extension has read it. Nil: no proof.
+    var deviceKey: String? = nil
 
     /// A configuration is only used for a few minutes: the person has to start the broadcast
     /// right after pressing the button in the app. An old file must never start a broadcast

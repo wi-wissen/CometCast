@@ -143,7 +143,25 @@ void main() {
         'bitrate': 2500000,
         'name': null,
         'handover': null,
+        'deviceKey': null,
       });
+    });
+
+    test('prepare hands the device key of the app to the extension', () async {
+      MethodCall? seen;
+      messenger.setMockMethodCallHandler(method, (call) async {
+        seen = call;
+        return true;
+      });
+      const key = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
+      await const ChannelIosBroadcast().prepare(
+        const IosBroadcastRequest(
+          code: 'K7M2QX',
+          relay: 'relay.example:8443',
+          deviceKey: key,
+        ),
+      );
+      expect((seen!.arguments as Map)['deviceKey'], key);
     });
 
     test('showPicker answers false when the native side says so', () async {

@@ -4,6 +4,7 @@
 import { createPeer, type Peer, type PeerFactory, type PeerState } from './peer'
 import { CONTROL_CHANNEL_LABEL, ControlSender, type ControlCmd, type ImageSource } from './control'
 import { SignalingClient, type ServerMessage, type SocketFactory } from './signaling'
+import type { JoinDevice } from './deviceIdentity'
 import { BusyMemory } from './busyMemory'
 import type { IceFetchState } from './altchaClient'
 
@@ -70,6 +71,11 @@ export interface SenderDeps {
   iceState?: () => IceFetchState | undefined
   /** Name shown to the host when it has to approve the join (the server cleans it). */
   name?: () => string | undefined
+  /**
+   * The proof of this installation's device key for the room (docs/design/presenter-identity.md), sent as
+   * `join_room.device`. Resolve `null` (or reject) for "no proof": the join then goes out as before. Omit for none.
+   */
+  deviceProof?: (code: string, now: number) => Promise<JoinDevice | null>
   /** Test seam: the clock (default Date.now). */
   now?: () => number
 }
@@ -377,7 +383,15 @@ export class SenderSession {
         onReady: () => {
           this.set('joining')
           const name = this.deps.name?.()
-          this.client?.send({ type: 'join_room', code, ...(name ? { name } : {}) })
+          const client = this.client
+          const send = (device: JoinDevice | null) => {
+            // The session may have been stopped or restarted while the proof was made.
+            if (run !== this.run || this.client !== client) return
+            client?.send({ type: 'join_room', code, ...(name ? { name } : {}), ...(device ? { device } : {}) })
+          }
+          const proof = this.deps.deviceProof
+          if (!proof) return send(null)
+          proof(code, (this.deps.now ?? Date.now)()).then(send, () => send(null))
         },
         onMessage: (m) => this.onMessage(m),
         onClose: () => this.fail('connection_lost'),

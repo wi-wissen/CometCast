@@ -82,13 +82,17 @@ class SampleHandler: RPBroadcastSampleHandler, H264EncoderDelegate {
         // join in without a dialog (docs/design/native-apps.md 20.5). Both may be empty.
         let personName = c.name ?? ""
         let token = (c.handover.flatMap { HandoverToken.isValid($0) ? $0 : nil }) ?? ""
+        // The key of the app (App Group), so the display sees the same device (presenter-identity.md).
+        let deviceKey = c.deviceKey ?? ""
         let result = c.code.withCString { code in
             relay.withCString { relay in
                 dir.withCString { dir in
                     personName.withCString { personName in
                         token.withCString { token in
-                            cc_ios_start(code, relay, dir, personName, token, statusCallback,
-                                         Unmanaged.passUnretained(self).toOpaque())
+                            deviceKey.withCString { deviceKey in
+                                cc_ios_start(code, relay, dir, personName, token, deviceKey, statusCallback,
+                                             Unmanaged.passUnretained(self).toOpaque())
+                            }
                         }
                     }
                 }

@@ -52,7 +52,7 @@ App and extension exchange three files in the App Group container (`<container>/
 
 | File | Writer | Content | Rule |
 | --- | --- | --- | --- |
-| `config.json` | app (`prepare`) | room code, server, size/fps/bit rate limits, request time, the person's `name` and the single-use hand-over token `handover` (both optional) | The extension **deletes it after reading** and refuses one older than 5 minutes (`configExpired`). A broadcast started from Control Center without the app finds none (`noConfig`) and says what to do. Values are clamped (320..1920 px, 5..30 fps, 0.2..8 Mbit/s) |
+| `config.json` | app (`prepare`) | room code, server, size/fps/bit rate limits, request time, the person's `name`, the single-use hand-over token `handover` and the app's device key `deviceKey` (all optional; the key is the 43-character base64url secret of the installation's key, see [design/presenter-identity.md](design/presenter-identity.md)) | The extension **deletes it after reading** and refuses one older than 5 minutes (`configExpired`). A broadcast started from Control Center without the app finds none (`noConfig`) and says what to do. Values are clamped (320..1920 px, 5..30 fps, 0.2..8 Mbit/s) |
 | `status.json` | extension | state (`pending` while the host decides), error, counters, picture size, free memory (`os_proc_available_memory`), time, sequence number, and optional `check`, `timeoutSecs`, `roomName`, `sas`, `nextHandover` | At least once per second while it runs. The app calls a status older than 5 s **lost** (the extension was killed, probably by the memory limit) |
 | `stop` | app | empty flag | The extension watches the Darwin notification `<group>.broadcast.stop`, ends with `stoppedByApp` |
 
@@ -77,7 +77,7 @@ The extension is a second connection of the same person, and the host approves a
 
 **Test builds only:** option (a) of the F2 answer (no hand-over; the extension joins like any sender) is switched on with `--dart-define=COMETCAST_IOS_OPTION_A=true`. A release build ignores the define (`iosOptionAAllowed`, tested), so it cannot be turned on in a shipped app.
 
-C ABI **version 2** (`crates/cc-ios/include/cc_ios.h`): `cc_ios_start` has two new strings (`name`, `handover`), `cc_ios_request_handover` is new, `CcIosStatus` has `check`, `timeout_secs`, `room_name`, `sas` (88 bytes on 64-bit), the state `CC_IOS_STATE_PENDING` (7) and the error numbers 9 to 11 are new. Tests: `cargo test -p cc-ios` (the loopback test of the extension engine with a real display), `BroadcastTests.swift` (token format, config and status with and without the new fields; never run, no Xcode here).
+C ABI **version 4** (`device_key`, the secret of the app's device key, is a new string of `cc_ios_start` after `handover`: the join carries the proof of that key, so the display sees the extension as the device of the app; version 3 added the share functions). Version 2 (`crates/cc-ios/include/cc_ios.h`): `cc_ios_start` has two new strings (`name`, `handover`), `cc_ios_request_handover` is new, `CcIosStatus` has `check`, `timeout_secs`, `room_name`, `sas` (88 bytes on 64-bit), the state `CC_IOS_STATE_PENDING` (7) and the error numbers 9 to 11 are new. Tests: `cargo test -p cc-ios` (the loopback test of the extension engine with a real display), `BroadcastTests.swift` (token format, config and status with and without the new fields; never run, no Xcode here).
 
 ## State machine
 

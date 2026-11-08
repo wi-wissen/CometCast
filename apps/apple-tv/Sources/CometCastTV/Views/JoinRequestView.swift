@@ -39,6 +39,14 @@ struct JoinRequestView: View {
                 VStack(alignment: .leading, spacing: ref(4)) {
                     Text(shownName).dtype(DisplayType.heading).foregroundStyle(p.fg).fixedSize(horizontal: false, vertical: true)
                     Text(L.s("request.subtitle")).dtype(DisplayType.wizardBody).foregroundStyle(p.mut)
+                    // Neutral information, not a warning: secondary text with an info icon (presenter-identity.md).
+                    if request.otherDevice {
+                        HStack(alignment: .firstTextBaseline, spacing: ref(6)) {
+                            IconView(name: "info", size: 16, color: p.mut)
+                            Text(L.s("request.otherDevice")).dtype(DisplayType.queue).foregroundStyle(p.mut)
+                        }
+                        .padding(.top, ref(2))
+                    }
                 }
                 Spacer(minLength: 0)
                 checkBox

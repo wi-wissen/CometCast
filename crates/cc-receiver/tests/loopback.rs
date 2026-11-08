@@ -118,6 +118,7 @@ async fn dropping_the_receiver_closes_its_connection() {
         code,
         name: None,
         handover: None,
+        device: None,
     })
     .await
     .unwrap();

@@ -568,9 +568,13 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
             code,
             name,
             handover,
+            device,
         } => {
             // The display checks the token; the server only passes on a well-formed one.
             let handover = cc_proto::sanitize_handover(handover.as_deref());
+            // Shape only, checked while the message was parsed (a malformed `device` is
+            // already `None`); the display verifies the signature.
+            let device = device.filter(cc_proto::JoinDevice::is_well_formed);
             if role != Role::Sender {
                 return strike(conn, state, "wrong_role", "only a sender can join a room");
             } else if conn.room.is_some() || conn.pending.is_some() {
@@ -596,7 +600,11 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     }) => {
                         conn.room = Some(code);
                         conn.send(ServerMsg::Joined { room_name });
-                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined { name, handover }));
+                        receiver.send(Outgoing::Msg(ServerMsg::PeerJoined {
+                            name,
+                            handover,
+                            device,
+                        }));
                     }
                     Ok(Joined::Pending {
                         owner,
@@ -620,6 +628,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                             name,
                             check,
                             handover,
+                            device,
                         }));
                     }
                     Err(JoinError::NotFound) => {
@@ -752,6 +761,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                         owner.send(Outgoing::Msg(ServerMsg::PeerJoined {
                             name,
                             handover: None,
+                            device: None,
                         }));
                     }
                     for (tx, req, code, reason, ip) in d.dropped {

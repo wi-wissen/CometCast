@@ -75,6 +75,7 @@ fn config(server: &str, code: &str) -> Config {
         udp_bind: Some("127.0.0.1:0".into()),
         name: None,
         handover: None,
+        device_key: None,
     }
 }
 
@@ -233,6 +234,7 @@ fn the_c_functions_work_without_a_running_sender() {
             std::ptr::null(),
             std::ptr::null(),
             std::ptr::null(),
+            std::ptr::null(),
             None,
             std::ptr::null_mut(),
         )
@@ -295,8 +297,16 @@ fn the_extension_joins_with_a_handover_token_and_asks_for_the_way_back() {
                         rx.lock().await.decide_join(id, true);
                     }
                 }
-                Some(ReceiverEvent::PeerJoined { name, handover }) => {
+                Some(ReceiverEvent::PeerJoined {
+                    name,
+                    handover,
+                    device,
+                    ..
+                }) => {
                     ev.lock().unwrap().push(format!("joined {name} {handover}"));
+                    if let Some(device) = device {
+                        ev.lock().unwrap().push(format!("device {name} {device}"));
+                    }
                 }
                 Some(ReceiverEvent::HandoverStored { name }) => {
                     ev.lock().unwrap().push(format!("stored {name}"));
@@ -326,6 +336,12 @@ fn the_extension_joins_with_a_handover_token_and_asks_for_the_way_back() {
     let mut cfg = config(&server, &code);
     cfg.name = Some("Ana".into());
     cfg.handover = Some(OUT.into());
+    // The app's key through the App Group: the display sees the extension as this device.
+    let key_b64 = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([9u8; 32])
+    };
+    cfg.device_key = Some(key_b64);
     engine::start(cfg, sink).expect("start");
     assert!(
         wait_for(Duration::from_secs(25), || {
@@ -338,6 +354,12 @@ fn the_extension_joins_with_a_handover_token_and_asks_for_the_way_back() {
             .map(|s| (s.state, s.error, s.message.clone()))
     );
     assert!(log_has("joined Ana true"), "{:?}", events.lock().unwrap());
+    let want = cc_transport::device::device_id_of_secret(&[9u8; 32]);
+    assert!(
+        log_has(&format!("device Ana {want}")),
+        "{:?}",
+        events.lock().unwrap()
+    );
     // Exactly one request ever reached the host: the app's own first join.
     assert_eq!(
         events

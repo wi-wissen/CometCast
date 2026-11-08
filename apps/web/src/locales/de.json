@@ -368,7 +368,8 @@
     "yes": "Ja",
     "no": "Nein",
     "noBlock": "Nein und sperren",
-    "aria": "Anfrage: {name}"
+    "aria": "Anfrage: {name}",
+    "otherDevice": "Dieser Name wurde hier schon von einem anderen Gerät benutzt."
   },
   "present": {
     "byline": "{name} zeigt",

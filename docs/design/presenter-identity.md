@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Presenter device identity in join requests
 
-Status: specification, to be built after `signed-announcements.md` and `pause.md` are merged.
+Status: built (see "As built" at the end); it came after `signed-announcements.md` and `pause.md`.
 Not in production yet: no compatibility needed beyond "a join without the new field still works".
 
 ## Problem
@@ -96,3 +96,42 @@ and ts; refused cases (wrong code, ts outside the window, bad sig, malformed sha
   not for `Guest N`, not without a proof; memory bound.
 * `cargo clippy --workspace --all-targets -- -D warnings`, `flutter analyze`, `flutter test`,
   web typecheck + vitest + i18n check.
+
+## As built
+
+| Part | Built |
+| --- | --- |
+| `cc-proto` | `JoinDevice {pk, ts, sig}` (`deny_unknown_fields`), `JoinDevice::is_well_formed` (43 / 86 canonical base64url characters, spare bits zero, no crate needed), optional `device` in `ClientMsg::JoinRoom`, `ServerMsg::PeerJoined` and `ServerMsg::JoinRequest`. The field is read **leniently** (`lenient_device`): a value that is not a well-formed device (wrong type, extra key, bad length or spelling, `ts` negative, fractional, a string or above `u64`) becomes `None` and the message still parses |
+| `cc-server` | Passes `device` on in `join_request` and (open mode) `peer_joined`; nothing is stored. After an allow in `confirm` mode `peer_joined` has no `device` (the display keeps the request's). Tests in `crates/cc-server/tests/join_approval.rs`: relayed unchanged (both messages), a dozen malformed shapes dropped with the join going on, a 4000-character `sig` dropped (larger frames are closed by the 64 KiB frame limit as for every message) |
+| Core crypto | `cc_transport::device` (not `cc-proto`, whose dependency list stays serde and thiserror for WebAssembly): `join_signed_bytes`, `sign_join`, `verify_join` (strict, `verify_strict`), `device_id`, `DeviceKey` (32 secret bytes, `Debug` shows the id only), `unix_ms`. `cc-discovery`'s `DisplayKey` was left as it is; the two id derivations are the same SHA-256 rule and the shared vectors check both |
+| Vectors | `tests/fixtures/join-proof.json` by `tools/gen-join-proof-vectors.py` (Python `cryptography`): 2 keys, 7 valid, 26 refused (wrong code, ts 121 s away, ts changed, bad and foreign signatures, name or domain or lower-case code in the signed bytes, small-order key, S + L, malformed shapes). Read by Rust (`cc-transport/tests/join_proof_vectors.rs`, also byte for byte against the signatures), web (`joinProof.test.ts`, also signing from the seed through PKCS#8) and Swift (`JoinProofTests.swift`) |
+| `cc-sender`, `cc-transport` | `join_room_with(.., device: Option<&DeviceKey>, ..)` signs the room code and the current time just before it sends; `SenderOptions`, `PresenterOptions` and `ContentSenderOptions` have `device_key` |
+| `cc-ios` | `Config::device_key` (base64url secret), `cc_ios_start(..., device_key, ...)`, C ABI 4. The app puts the secret into `config.json` in the App Group (`BroadcastConfig.deviceKey`; the extension deletes the file after reading it, as for the hand-over token). The iOS **share** extension joins without a proof (not part of this work) |
+| `cc-receiver` | The core verifies the proof of `join_request` and of an open-mode `peer_joined` for its own room code and clock; `ReceiverEvent::JoinRequest` and `PeerJoined` carry `device` and `other_device`; `DeviceMemory` (`device_memory.rs`: pairs, LRU, 200, `Guest N` skipped, `to_json` / `from_json`) lives in the core; `ReceiverEvent::DeviceMemoryChanged(json)` after every change; `ReceiverOptions::device_memory` is the start state. A pair of an **allowed** request is remembered when the server's `peer_joined` shows the presenter is in (not at the click, so a `room_full` refusal remembers nothing); a pair of a request let in by a hand-over token is remembered the same way |
+| `cc-ffi` | `set_presenter_device_key(secret)` and `set_display_device_memory(json)` (sync; process-wide, the apps call them before they start a presenter or a receiver), `ReceiverUiEvent::DeviceMemoryChanged`, `device` and `other_device` (default `false` in Dart) on `PeerJoined` and `JoinRequest`. Bindings regenerated |
+| `apps/web` | `core/deviceIdentity.ts` (WebCrypto Ed25519, non-extractable key pair in IndexedDB database `cometcast-device`, feature detection by trying `generateKey`; no proof where that fails; every storage access in try/catch; verification with WebCrypto plus explicit small-order and S < L checks), `core/deviceMemory.ts` (localStorage key `cometcast.deviceMemory`, loaded at every use), `SenderSession` dependency `deviceProof`, `ReceiverSession` dependencies `deviceMemory` and `verifyDevice`, `request.otherDevice` in `RequestDialog.vue` (info icon, `--mut` text) and in the open-mode "connected" toast |
+| `apps/flutter` | `AppShell` loads the stored display key (or makes and stores it the same way) and gives it to the core (`setPresenterDeviceKey`) and to `PresenterRoot` for the iOS broadcast (`IosBroadcastRequest.deviceKey`, base64url); `DisplayStore.loadDeviceMemory` / `saveDeviceMemory` (`display.deviceMemory`, forgotten by reset); `RequestDialog` note with the design's info icon; `NoticeJoined.otherDevice` appended to the toast; ARB `requestOtherDevice` (en, de, sie) |
+| `apps/apple-tv` | `JoinProof.swift` (parse, strict verify with small-order and S checks of its own, `DeviceMemory`), `ReceiverMachine` verifies at `join_request` and open-mode `peer_joined`, remembers on the presenter's arrival, `HostEvent.senderJoined(.., otherDevice:)`, `takeDeviceMemoryChange()`; `ConfigStore.deviceMemory` (UserDefaults), `JoinRequestView` note, `request.otherDevice` in both catalogs (`tools/gen-appletv-strings.mjs`). The Apple TV app is display only, so it has no presenter key. Not compiled here |
+| `cometcast-cli` | Presents without a proof (it has no stored key); as a display it ignores `DeviceMemoryChanged` and keeps no memory |
+| Docs | `docs/protocol.md` (fields and "Presenter device proof"), `docs/ios.md`, `tests/fixtures/README.md`, `docs/measurement-points.md` (A25) |
+
+### Decisions
+
+* **Where the memory lives.** One implementation per language, because the three displays are written in three languages: Rust (`cc-receiver`, used by the Flutter apps through the FFI), TypeScript (web) and Swift (Apple TV). The rules are the same word for word (case-insensitive name, ids of 32 hex digits, `Guest ` plus digits is never stored, 200 pairs, LRU by "allowed again").
+* **When a request is "allowed".** Remembered when the presenter arrives (`peer_joined`), not at the click. A denied request is never remembered; the note for a later request therefore compares with devices the host really let in.
+* **A name that is stored with this id as well as with another.** No note (the display has seen this device under this name).
+* **Generated names.** The server's `Guest N` cannot be told from a person who typed exactly that text; both are treated as generated (never stored, never compared).
+* **Verification on the web is asynchronous.** The request dialog opens at once and gets its note a few milliseconds later; the toast of an open-mode join is shown after the check. A proof that cannot be checked (no WebCrypto) is a request without a note.
+* **`ts` range.** `u64` on the wire; JavaScript and Swift (JSON numbers as `Double`) accept 0 to 2^53 - 1, which is far beyond any real time. The vector for the largest value is 2^53 - 1 for that reason; Rust has its own unit test for `u64::MAX`.
+* **Strict verification outside Rust.** The vector file contains a small-order key and a signature with S + L. Node's WebCrypto refused both without help; the web and Swift code check them explicitly anyway, because that is not documented behaviour of the libraries.
+* **Key on the web.** The key pair is made on the first join, not at page load. If IndexedDB can read but not write, no proof is sent (a key that would be new on every visit is no identity). A browser that clears site data gets a new key: a new device for the display.
+* **One key per installation.** Flutter apps: the display key slot of `DisplayStore.key()` serves both roles; the presenter never makes a second key. The web has two separate keys (display: none, it only verifies; presenter: IndexedDB).
+* **Strings.** One sentence, du and Sie identical, so no row in the copy tables of `first-run-and-display.md` was needed.
+* **Style.** The note is secondary text (`--mut` / `s.tokens.mut`, `p.mut`) with the design's `info` icon, no warning colour; the toast appends the sentence after a space.
+
+### UNCERTAIN
+
+* Support of WebCrypto `Ed25519` and persistence of a non-extractable key pair in IndexedDB in the browsers people use, and whether CryptoKit / swift-crypto `isValidSignature` agrees with the vectors: see A25 in [../measurement-points.md](../measurement-points.md). Rust and the web code (Node's WebCrypto) ran against the vectors; the Swift code and the Swift tests were never compiled.
+* No browser end-to-end test was run (the vitest suites use Node's WebCrypto and an in-memory key store; IndexedDB itself is covered only by code reading).
+* The iOS broadcast extension was not run on a device with the new `config.json` field; the Rust side is covered by the loopback test of `cc-ios` (the display sees the extension's device id).
+* Keeping the key in app preferences (Flutter) rather than a keystore is the same open question as for the display key (A8).

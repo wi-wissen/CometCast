@@ -990,3 +990,105 @@ async fn a_token_from_one_room_does_not_open_another_room() {
     silent(&mut a).await;
     let _ = code_a;
 }
+
+// --- presenter device proof (docs/design/presenter-identity.md) ---
+// The server checks only the shape and relays the object; the display verifies it.
+
+fn device_json(ts: u64) -> serde_json::Value {
+    json!({
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": ts,
+        "sig": "_IgPFHBw41LTmmUHxmNcsczKk8n5zpyC5DYBwdBgICRrVMIcjq-V3nZJuBiBqNLzCQ6MV0fXgYZ-ndx3PYTvDg",
+    })
+}
+
+#[tokio::test]
+async fn device_proof_is_relayed_unchanged_in_join_request() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("confirm")).await;
+    let mut s = sender(addr).await;
+    let device = device_json(1767225600000);
+    send(
+        &mut s,
+        json!({"type":"join_room","code":code,"name":"Ana","device":device}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "join_pending");
+    let req = recv(&mut r).await;
+    assert_eq!(req["device"], device);
+    // After the decision the display keeps the proof of the request: peer_joined has none.
+    send(
+        &mut r,
+        json!({"type":"join_decision","id":req["id"],"allow":true}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "joined");
+    assert_eq!(
+        recv(&mut r).await,
+        json!({"type":"peer_joined","name":"Ana"})
+    );
+}
+
+#[tokio::test]
+async fn device_proof_is_relayed_in_peer_joined_in_open_rooms() {
+    let addr = start(ServerConfig::default()).await;
+    let (mut r, code) = room(addr, Some("open")).await;
+    let mut s = sender(addr).await;
+    let device = device_json(u64::MAX);
+    send(
+        &mut s,
+        json!({"type":"join_room","code":code,"name":"Ana","device":device}),
+    )
+    .await;
+    assert_eq!(recv(&mut s).await["type"], "joined");
+    assert_eq!(
+        recv(&mut r).await,
+        json!({"type":"peer_joined","name":"Ana","device":device})
+    );
+}
+
+#[tokio::test]
+async fn malformed_device_proofs_are_dropped_and_the_join_goes_on() {
+    let addr = start(ServerConfig::default()).await;
+    let good = device_json(5);
+    let mut extra = good.clone();
+    extra["name"] = json!("Mallory");
+    let mut short = good.clone();
+    short["pk"] = json!("abc");
+    let mut huge = good.clone();
+    huge["sig"] = json!("A".repeat(4_000)); // within the frame limit; larger frames are closed by the transport
+    let mut stray = good.clone();
+    stray["pk"] = json!("A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbh");
+    let mut negative = good.clone();
+    negative["ts"] = json!(-5);
+    let mut float = good.clone();
+    float["ts"] = json!(1.5);
+    let mut text = good.clone();
+    text["ts"] = json!("5");
+    for bad in [
+        json!(null),
+        json!("device"),
+        json!(7),
+        json!([]),
+        json!({}),
+        extra,
+        short,
+        huge,
+        stray,
+        negative,
+        float,
+        text,
+    ] {
+        let (mut r, code) = room(addr, Some("confirm")).await;
+        let mut s = sender(addr).await;
+        send(
+            &mut s,
+            json!({"type":"join_room","code":code,"name":"Ana","device":bad}),
+        )
+        .await;
+        assert_eq!(recv(&mut s).await["type"], "join_pending", "{bad}");
+        let req = recv(&mut r).await;
+        assert_eq!(req["type"], "join_request");
+        assert!(req.get("device").is_none(), "dropped: {req}");
+    }
+}

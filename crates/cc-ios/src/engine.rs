@@ -201,6 +201,11 @@ pub struct Config {
     /// The single-use hand-over token the app got from the display (native-apps.md 20.5): the
     /// display admits the join without a dialog. `None` = an ordinary join.
     pub handover: Option<String>,
+    /// The secret of the app's device key as base64url without padding (43 characters),
+    /// handed over through the App Group (docs/design/presenter-identity.md): the join carries
+    /// the proof of this key, so the display sees the same device as for the app. `None` or an
+    /// invalid value: no proof.
+    pub device_key: Option<String>,
 }
 
 struct Running {
@@ -399,6 +404,10 @@ async fn run(
     options.control = true;
     options.name = config.name.clone();
     options.handover = config.handover.clone();
+    options.device_key = config
+        .device_key
+        .as_deref()
+        .and_then(cc_transport::device::DeviceKey::from_secret_b64);
     if let Some(bind) = config.udp_bind {
         options.session.udp_bind = vec![bind];
     }

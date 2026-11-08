@@ -29,6 +29,7 @@
 use std::time::Duration;
 
 use cc_proto::{ControlCmd, Role, RoomCode, ServerMsg};
+use cc_transport::device::DeviceKey;
 use cc_transport::{
     ConnectionState, JoinProgress, ServerAddr, SessionConfig, SignalingClient, TlsTrust,
     TransportError, ice, join_room_with,
@@ -71,6 +72,10 @@ pub struct PresenterOptions {
     /// A single-use hand-over token the display issued to this person (iOS, native-apps.md
     /// 20.5): the display admits the join without asking. `None` = an ordinary join.
     pub handover: Option<String>,
+    /// The key of this installation: the join carries its proof, so the display can tell
+    /// whether this name was used by a different device before
+    /// (docs/design/presenter-identity.md). `None` = no proof.
+    pub device_key: Option<DeviceKey>,
 }
 
 impl PresenterOptions {
@@ -84,6 +89,7 @@ impl PresenterOptions {
             name: None,
             join_progress: None,
             handover: None,
+            device_key: None,
         }
     }
 }
@@ -244,6 +250,7 @@ impl PresenterSession {
             options.code.clone(),
             options.name.clone(),
             options.handover.clone(),
+            options.device_key.as_ref(),
             options.join_progress.as_ref(),
         )
         .await?;

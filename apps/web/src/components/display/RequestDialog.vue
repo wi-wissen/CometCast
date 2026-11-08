@@ -59,6 +59,14 @@ function guarded(fn: () => void) {
         <div>
           <h2 data-testid="request-name" :title="full">{{ shown }}</h2>
           <p data-testid="request-sub">{{ sub }}</p>
+          <!-- Neutral information, not a warning: many devices carry the same name (docs/design/presenter-identity.md). -->
+          <p v-if="request.otherDevice" class="cd-note" data-testid="request-device-note">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+              <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+              <path d="M8 7.2v4M8 4.6v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <span>{{ t('request.otherDevice') }}</span>
+          </p>
         </div>
         <div class="cd-chk">
           <span>{{ t('request.check') }}</span>

@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define CC_IOS_ABI_VERSION 3
+#define CC_IOS_ABI_VERSION 4
 
 /* Broadcast state (CcIosStatus.state). */
 enum {
@@ -87,13 +87,15 @@ typedef void (*CcIosStatusCallback)(const CcIosStatus *status, void *user);
  * (the App Group container); NULL = no log. `name` is the person's name for the display's
  * request (NULL or "" = "Guest N"); `handover` is the single-use token that the app got from
  * the display (docs/design/native-apps.md 20.5): a display that issued it admits the join
- * without a dialog (NULL or "" = an ordinary join). All strings are NUL-terminated UTF-8 and
+ * without a dialog (NULL or "" = an ordinary join); `device_key` is the secret of the app's
+ * device key as 43 characters of base64url (docs/design/presenter-identity.md): the join then
+ * carries the proof of that key (NULL, "" or invalid = no proof). All strings are NUL-terminated UTF-8 and
  * copied. Returns 0 when started, else an error number (1, 2, 7 or 8). `user` must stay valid
  * until cc_ios_stop returned.
  */
 int32_t cc_ios_start(const char *room_code, const char *relay_url, const char *app_group_path,
-                     const char *name, const char *handover, CcIosStatusCallback callback,
-                     void *user);
+                     const char *name, const char *handover, const char *device_key,
+                     CcIosStatusCallback callback, void *user);
 
 /*
  * Ask the display to hold `token` (1 to 64 characters of A-Z a-z 0-9 - _, made by the caller

@@ -869,7 +869,13 @@ class RequestDialog extends StatefulWidget {
     this.subtitle,
     this.showCheck = true,
     this.showBlock = true,
+    this.otherDevice = false,
   });
+
+  /// The name was used here before, but only by other devices
+  /// (docs/design/presenter-identity.md): a neutral note under the name, with an info icon and
+  /// in the secondary text style. Information, not a warning.
+  final bool otherDevice;
 
   /// AirPlay and Miracast (spec 15.4): the name line as it is (AirPlay: `request.airplayDevice`,
   /// no quotes; Miracast: the cleaned, quoted device name), the subtitle of that way, no
@@ -972,6 +978,30 @@ class _RequestDialogState extends State<RequestDialog> {
                               height: 1.3,
                             ),
                           ),
+                          if (widget.otherDevice) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              key: const Key('request-device-note'),
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: CcIcon(
+                                    CcIconName.info,
+                                    size: 16,
+                                    color: s.tokens.mut,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    t.requestOtherDevice,
+                                    style: s.type.description,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

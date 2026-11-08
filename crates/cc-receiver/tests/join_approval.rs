@@ -62,7 +62,9 @@ async fn confirm_allow_and_deny_with_native_cores() {
     o.join_progress = Some(ptx);
     let denied = tokio::spawn(SenderCore::start(o));
     let (id, name, check) = next_matching(&mut rx, |e| match e {
-        ReceiverEvent::JoinRequest { id, name, check } => Some((id, name, check)),
+        ReceiverEvent::JoinRequest {
+            id, name, check, ..
+        } => Some((id, name, check)),
         _ => None,
     })
     .await;

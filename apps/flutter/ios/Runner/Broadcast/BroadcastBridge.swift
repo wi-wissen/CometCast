@@ -51,7 +51,8 @@ final class BroadcastBridge: NSObject, FlutterStreamHandler {
                 code: code, relay: relay, requestedAt: Date().timeIntervalSince1970,
                 maxDimension: a["maxDimension"] as? Int ?? 1280, fps: a["fps"] as? Int ?? 30,
                 bitrate: a["bitrate"] as? Int ?? 2_500_000,
-                name: a["name"] as? String, handover: token).clamped
+                name: a["name"] as? String, handover: token,
+                deviceKey: a["deviceKey"] as? String).clamped
             store.clearStopRequest()
             store.deleteStatus()
             do { try store.writeConfig(config); lastSeq = -1; reportedLost = false; result(true) }

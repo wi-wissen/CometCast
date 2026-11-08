@@ -115,6 +115,7 @@ pub(crate) async fn join(
     stop: &mut oneshot::Receiver<()>,
 ) -> Option<PresenterSession> {
     let mut options = PresenterOptions::new(j.server, j.code);
+    options.device_key = crate::device::presenter_key();
     if let Some(b) = j.udp_bind {
         options.session.udp_bind = vec![b];
     }

@@ -1,0 +1,401 @@
+{
+  "about": "Shared vectors for the presenter device proof of join_room. Made by tools/gen-join-proof-vectors.py with an independent implementation. Signed bytes: 'cometcast-join-v1', 0x00, room code in upper case, 0x00, ts in decimal. The name is not signed. The proof is accepted when |ts - now_ms| <= window_ms and the signature verifies strictly. device_id = lower-case hex of the first 16 bytes of SHA-256(public key).",
+  "domain": "cometcast-join-v1",
+  "window_ms": 120000,
+  "keys": [
+    {
+      "name": "A",
+      "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "public_key_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "id": "56475aa75463474c0285df5dbf2bcab7"
+    },
+    {
+      "name": "B",
+      "seed_hex": "4242424242424242424242424242424242424242424242424242424242424242",
+      "public_key_hex": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+      "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+      "id": "3097e2dee2cb4a34b53840cdb705aed7"
+    }
+  ],
+  "valid": [
+    {
+      "name": "key A, now equals ts",
+      "key": "A",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "signed_for_code": "K7QM2W",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570031373637323235363030303030",
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      },
+      "device_id": "56475aa75463474c0285df5dbf2bcab7"
+    },
+    {
+      "name": "key B, other code",
+      "key": "B",
+      "code": "P4X9TR",
+      "now_ms": 1767225605000,
+      "signed_for_code": "P4X9TR",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631005034583954520031373637323235363030303035",
+      "device": {
+        "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+        "ts": 1767225600005,
+        "sig": "wCWbymAks4y3DdvXrzUMvRa-e4akwyChTP-U_7UTWND-SMSt-yacAX11G0_VCEKBUN1Xan8rzwNnJ4tp-osxCw"
+      },
+      "device_id": "3097e2dee2cb4a34b53840cdb705aed7"
+    },
+    {
+      "name": "lower-case code at the display is the same room",
+      "key": "A",
+      "code": "k7qm2w",
+      "now_ms": 1767225600000,
+      "signed_for_code": "K7QM2W",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570031373637323235363030303030",
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      },
+      "device_id": "56475aa75463474c0285df5dbf2bcab7"
+    },
+    {
+      "name": "ts exactly 120 s behind the clock",
+      "key": "A",
+      "code": "K7QM2W",
+      "now_ms": 1767225720000,
+      "signed_for_code": "K7QM2W",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570031373637323235363030303030",
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      },
+      "device_id": "56475aa75463474c0285df5dbf2bcab7"
+    },
+    {
+      "name": "ts exactly 120 s ahead of the clock",
+      "key": "A",
+      "code": "K7QM2W",
+      "now_ms": 1767225480000,
+      "signed_for_code": "K7QM2W",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570031373637323235363030303030",
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      },
+      "device_id": "56475aa75463474c0285df5dbf2bcab7"
+    },
+    {
+      "name": "ts zero",
+      "key": "B",
+      "code": "K7QM2W",
+      "now_ms": 60000,
+      "signed_for_code": "K7QM2W",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570030",
+      "device": {
+        "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+        "ts": 0,
+        "sig": "kAHZZLUE4-cJPFZniRwEu2GkbQyjGjmiXcz4xEpMI899u91n_z-eDCl0tRAIuZWUvj8Mp9uzUCyxlU6Dk2_2CA"
+      },
+      "device_id": "3097e2dee2cb4a34b53840cdb705aed7"
+    },
+    {
+      "name": "ts at the largest exactly representable integer",
+      "key": "B",
+      "code": "K7QM2W",
+      "now_ms": 9007199254740991,
+      "signed_for_code": "K7QM2W",
+      "signed_bytes_hex": "636f6d6574636173742d6a6f696e2d7631004b37514d32570039303037313939323534373430393931",
+      "device": {
+        "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+        "ts": 9007199254740991,
+        "sig": "ieurOj9tjID94m4sRFfPQvs9LDs_-8FUgtax9PjkP43nAMz2V2FQPgQlSD3ECRkThu2oJlIqYXBRZa5n42LhAg"
+      },
+      "device_id": "3097e2dee2cb4a34b53840cdb705aed7"
+    }
+  ],
+  "refused": [
+    {
+      "name": "wrong room code",
+      "reason": "signature",
+      "code": "K7QM2X",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "ts changed after signing",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600001,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "ts 121 s behind the clock",
+      "reason": "window",
+      "code": "K7QM2W",
+      "now_ms": 1767225720001,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "ts 121 s ahead of the clock",
+      "reason": "window",
+      "code": "K7QM2W",
+      "now_ms": 1767225479999,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "signature with a changed first character",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "AitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "signature of another key",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "0IywKA_-__Wi2YcN7xkga6Z7vNGE8rlmP0ejYxTySd7HIBLLKs3Fy0As0Kwh_OAvkoFSUSS96sO37ratHUjjAA"
+      }
+    },
+    {
+      "name": "public key of another key",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "signed bytes with a name",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "AnCzTlYlPXSgOQ4Aq8Hwl53fgPr583JA5ztRYWSRsJyOfeFHBprY-yIbtPGlGnWf5PdP0VVCQIkeipvdOeHWAA"
+      }
+    },
+    {
+      "name": "signed bytes without the domain",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "YVvlOEoA5FW2gzAnV62VxlJC4SS29DoxDcEls6g0vTfoqNUKVo7QLaikfiySggqY2W-F8uictjyZdp5P1pErAw"
+      }
+    },
+    {
+      "name": "signed with the code in lower case",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "zT5UrW6GPwb5fKDXckDsDluk7PNiEdvg3ChETgprLx49EMtADXViO8yr8LkGHdiVjhPTfT03w-BuKYpMHmj2Cw"
+      }
+    },
+    {
+      "name": "small-order public key (identity point)",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ts": 1767225600000,
+        "sig": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "name": "signature with S not reduced (S + L)",
+      "reason": "signature",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVKjga_O1vOByIJ-q0Q-oBwLT8fkOerI4gRAfareARKAGA"
+      }
+    },
+    {
+      "name": "pk 42 characters",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMb",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "pk 44 characters",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbgA",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "sig 85 characters",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKAC"
+      }
+    },
+    {
+      "name": "pk standard base64 alphabet",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "pk with padding",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMb=",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "pk non-canonical last character",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbh",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "sig non-canonical last character",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACB"
+      }
+    },
+    {
+      "name": "ts as a string",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": "1767225600000",
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "ts negative",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": -1,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "ts fractional",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000.5,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA"
+      }
+    },
+    {
+      "name": "extra key",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000,
+        "sig": "TitD4m_EkGHeLejYA-ZrEajhSHDCKDRPp2IFbGNTtVK2rblxvJBvcKzhs6Ffpj32TsfkOerI4gRAfareARKACA",
+        "name": "Ana"
+      }
+    },
+    {
+      "name": "missing sig",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": {
+        "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+        "ts": 1767225600000
+      }
+    },
+    {
+      "name": "not an object",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": "device"
+    },
+    {
+      "name": "null",
+      "reason": "malformed",
+      "code": "K7QM2W",
+      "now_ms": 1767225600000,
+      "device": null
+    }
+  ]
+}

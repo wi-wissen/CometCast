@@ -1013,6 +1013,7 @@ dependencies = [
 name = "cc-ios"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "cc-files",
  "cc-proto",
  "cc-receiver",
@@ -1084,6 +1085,7 @@ dependencies = [
  "cc-sender",
  "cc-server",
  "cc-transport",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -1145,6 +1147,7 @@ dependencies = [
  "bytes",
  "cc-proto",
  "cc-server",
+ "ed25519-dalek",
  "futures-util",
  "rtc",
  "rustls",

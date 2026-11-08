@@ -24,6 +24,7 @@ enum ConfigStore {
     private static let keyAccount = "cc.display.key.v2"
     private static let seqKey = "cc.display.seq"
     private static let displayKey = "cc.display.config"
+    private static let deviceMemoryKey = "cc.display.deviceMemory"
 
     /// The Ed25519 key of this display (signed announcements, docs/design/signed-announcements.md): made on first use
     /// and kept in the Keychain; the display's id derives from it. UNCERTAIN: whether the Keychain keeps an item for
@@ -45,6 +46,14 @@ enum ConfigStore {
     /// The id of this display (derived from the key) and its short tag (`ID 3F7A`).
     static var displayId: String { displayKeyId(publicKey: displayKey.publicKey.rawRepresentation) }
     static var displayTag: String { displayKeyTag(id: displayId) }
+
+    /// What the display remembers about names and devices (docs/design/presenter-identity.md): the text of
+    /// `DeviceMemory.json`, at most 200 pairs, kept in UserDefaults like the other display settings. Empty when nothing
+    /// is stored.
+    static var deviceMemory: DeviceMemory {
+        get { DeviceMemory(json: UserDefaults.standard.string(forKey: deviceMemoryKey)) }
+        set { UserDefaults.standard.set(newValue.json, forKey: deviceMemoryKey) }
+    }
 
     /// The highest `seq` that may have been used with the key, with a reserve (persisted by the announcer), so a clock
     /// that goes back after a restart cannot reuse values.

@@ -36,6 +36,7 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
+use cc_transport::device::DeviceKey;
 use cc_transport::{
     ConnectionState, IceServerConfig, ServerAddr, Session, SessionConfig, SessionEvent,
     SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice, join_room_with,
@@ -130,6 +131,10 @@ pub struct SenderOptions {
     /// extension, native-apps.md 20.5): the display admits the join without asking. `None` =
     /// an ordinary join.
     pub handover: Option<String>,
+    /// The key of this installation: the join carries its proof, so the display can tell
+    /// whether this name was used by a different device before
+    /// (docs/design/presenter-identity.md). `None` = no proof.
+    pub device_key: Option<DeviceKey>,
     /// Do not ask the server for its STUN/TURN list even if `session.ice_servers` is empty (the
     /// caller asked already and keeps the outcome). Default `false`.
     pub skip_ice_fetch: bool,
@@ -150,6 +155,7 @@ impl SenderOptions {
             name: None,
             join_progress: None,
             handover: None,
+            device_key: None,
             skip_ice_fetch: false,
         }
     }
@@ -249,6 +255,7 @@ impl SenderCore {
             options.code.clone(),
             options.name.clone(),
             options.handover.clone(),
+            options.device_key.as_ref(),
             options.join_progress.as_ref(),
         )
         .await?;
