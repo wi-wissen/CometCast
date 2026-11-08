@@ -559,17 +559,24 @@ final class AppModel: ObservableObject {
 
     /// Spec 14.8: announce only while the display shows Idle or Presenting with a code, in the foreground, and the
     /// policy allows it; say goodbye in every other state (setup, no code yet, error, background, `stop`). The room
-    /// name of the wizard is the announced `name`.
+    /// name of the wizard is the announced `name`. The record is signed with the key of the display; the goodbye is
+    /// a signed `state=gone` record first (the Announcer).
     private func syncAnnouncement() {
         let showing: Bool
         switch state.phase {
         case .waitingSender, .negotiating, .receiving, .peerLeft: showing = wizard == nil
         default: showing = false
         }
+        let key = ConfigStore.displayKey
+        let (mode, code, room) = (state.joinMode, state.code, config?.room)
         guard sceneActive, showing, announcementsAllowed(policy: policy), let relay = activeRelay,
-              let txt = displayAnnouncementTxt(id: ConfigStore.instanceId, wsUrl: relay.wsUrl, mode: state.joinMode, code: state.code, roomName: config?.room)
+              displayAnnouncementTxt(key: key, seq: 1, wsUrl: relay.wsUrl, mode: mode, code: code, roomName: room) != nil
         else { announcer.withdraw(); return }
-        announcer.publish(instance: announcementInstanceName(id: ConfigStore.instanceId), txt: txt)
+        let wsUrl = relay.wsUrl
+        // Every publication (also the refresh every 10 s) is signed anew with a higher `seq`.
+        announcer.publish(instance: announcementInstanceName(id: ConfigStore.displayId)) { seq, announceState in
+            displayAnnouncementTxt(key: key, seq: seq, state: announceState, wsUrl: wsUrl, mode: mode, code: code, roomName: room)
+        }
     }
 
     // MARK: statistics (debug builds only, log lines, no screen)

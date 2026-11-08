@@ -11,7 +11,9 @@
 //     servers the person confirmed.
 
 import CometCastCore
+import CryptoKit
 import Foundation
+import Security
 
 enum ConfigStore {
     static let managedKey = "com.apple.configuration.managed"
@@ -19,15 +21,59 @@ enum ConfigStore {
     private static let customKey = "cc.customRelay"
     private static let confirmedKey = "cc.confirmedRelays"
     private static let maxConfirmed = 16
-    private static let instanceKey = "cc.instanceId"
+    private static let keyAccount = "cc.display.key.v2"
+    private static let seqKey = "cc.display.seq"
     private static let displayKey = "cc.display.config"
 
-    /// The stable random id of this installation (announced; spec 14.8 point 2). Created once.
-    static var instanceId: String {
-        if let id = UserDefaults.standard.string(forKey: instanceKey), isValidInstanceId(id) { return id }
-        let id = newInstanceId()
-        UserDefaults.standard.set(id, forKey: instanceKey)
-        return id
+    /// The Ed25519 key of this display (signed announcements, docs/design/signed-announcements.md): made on first use
+    /// and kept in the Keychain; the display's id derives from it. UNCERTAIN: whether the Keychain keeps an item for
+    /// this app on tvOS between launches (it is not documented to be unavailable, but was never tried on a device);
+    /// when saving fails the key is kept in UserDefaults, and when that fails too the key lives for this run only (the
+    /// screen then shows up as a new one; nothing breaks). Not an extractable-key rule: the raw 32 bytes are stored.
+    static let displayKey: Curve25519.Signing.PrivateKey = {
+        if let raw = loadKeychain() ?? UserDefaults.standard.data(forKey: keyAccount),
+           let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {
+            return key
+        }
+        let key = Curve25519.Signing.PrivateKey()
+        if !saveKeychain(key.rawRepresentation) {
+            UserDefaults.standard.set(key.rawRepresentation, forKey: keyAccount)
+        }
+        return key
+    }()
+
+    /// The id of this display (derived from the key) and its short tag (`ID 3F7A`).
+    static var displayId: String { displayKeyId(publicKey: displayKey.publicKey.rawRepresentation) }
+    static var displayTag: String { displayKeyTag(id: displayId) }
+
+    /// The highest `seq` that may have been used with the key, with a reserve (persisted by the announcer), so a clock
+    /// that goes back after a restart cannot reuse values.
+    static var announcementSeqFloor: UInt64 {
+        get { UInt64(UserDefaults.standard.string(forKey: seqKey) ?? "") ?? 0 }
+        set { UserDefaults.standard.set(String(newValue), forKey: seqKey) }
+    }
+
+    private static func keychainQuery() -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "de.cometcast.display",
+         kSecAttrAccount as String: keyAccount]
+    }
+
+    private static func loadKeychain() -> Data? {
+        var query = keychainQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
+        return item as? Data
+    }
+
+    private static func saveKeychain(_ data: Data) -> Bool {
+        var query = keychainQuery()
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemDelete(keychainQuery() as CFDictionary)
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
     /// Room name, default join mode, server and appearance (spec 4.1 Finish, 4.3). nil until the wizard finished.

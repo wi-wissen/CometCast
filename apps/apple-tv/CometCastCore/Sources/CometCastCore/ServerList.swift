@@ -386,25 +386,17 @@ public struct AnnouncedReceiver: Equatable, Sendable {
     public var announcedServer: String?
 }
 
-/// Builds a receiver entry from what the network said: DNS-SD instance name and TXT pairs (`v`, `srv`, `tls`, `name`).
-/// Only the first 32 TXT entries are read, the first occurrence of a key wins (`tls` is true if any entry says 1).
+/// Builds a receiver entry from what the network said: DNS-SD instance name and TXT pairs. Only a signed `v=2` record
+/// that verifies (`verifyAnnouncement`: id derived from `pk`, signature) and says `live` gives a server and a name;
+/// `v=1` and unverifiable records give neither (no compatibility). The server is a suggestion of the lowest trust, as
+/// before. There is no `seq` memory here (the browse of the server list is short), so a replayed old record could name
+/// the server the display used before.
 public func announcedReceiver(instanceName: String, txt: [(String, String)]) -> AnnouncedReceiver? {
     let instance = cleanText(instanceName, maxChars: 63)
     if instance.isEmpty { return nil }
-    var version: String?, srv: String?, name: String?
-    var tls = false
-    for (k, v) in txt.prefix(32) {
-        switch k {
-        case "v": if version == nil { version = v }
-        case "srv": if srv == nil { srv = v }
-        case "tls": tls = tls || v == "1"
-        case "name": if name == nil { name = v }
-        default: break
-        }
-    }
-    var announced: String?
-    if let s = srv, version == nil || version == "1" { announced = networkServer(s, tls: tls)?.address }
-    let n = name.map { cleanText($0, maxChars: maxNameChars) }.flatMap { $0.isEmpty ? nil : $0 } ?? instance
+    let verified = verifyAnnouncement(txt).flatMap { $0.state == .live ? $0 : nil }
+    let announced = verified.flatMap { networkServer($0.srv, tls: $0.tls)?.address }
+    let n = verified.map { cleanText($0.name, maxChars: maxNameChars) }.flatMap { $0.isEmpty ? nil : $0 } ?? instance
     return AnnouncedReceiver(instance: instance, name: n, announcedServer: announced)
 }
 
