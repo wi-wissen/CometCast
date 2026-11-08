@@ -1,0 +1,12 @@
+{
+  "name": "@cometcast/site-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Font packages that tools/build-site.mjs copies into site/assets/fonts (no CDN, nothing from third parties). Install with: npm ci --prefix tools/site",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "5.3.0",
+    "@fontsource/bricolage-grotesque": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0"
+  }
+}
