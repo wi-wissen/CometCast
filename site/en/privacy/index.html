@@ -3,41 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy and self-hosting</title>
-<meta name="description" content="What the Comet Cast relay server sees, how to run your own, and what this website collects (nothing).">
-<link rel="canonical" href="https://cometcast.de/en/privacy/">
-<link rel="alternate" hreflang="de" href="https://cometcast.de/datenschutz/">
-<link rel="alternate" hreflang="en" href="https://cometcast.de/en/privacy/">
-<link rel="alternate" hreflang="x-default" href="https://cometcast.de/datenschutz/">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#eceef2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<title>This page has moved</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://cometcast.de/privacy/">
+<meta http-equiv="refresh" content="0; url=https://cometcast.de/privacy/">
+<link rel="stylesheet" href="/assets/fonts.css">
 <link rel="stylesheet" href="/assets/style.css">
 </head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
-<header class="site"><div class="wrap">
-<a class="brand" href="/en/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast logo: a comet shaped like a C" width="36" height="36"></picture><span>Comet Cast</span></a>
-<nav class="main" aria-label="Main navigation"><a href="/en/">Home</a><a href="/en/how-it-works/">How it works</a><a href="/en/downloads/">Downloads</a><a href="/en/privacy/" aria-current="page">Privacy & self-hosting</a><a href="/en/open-source/">Open source</a><a href="/en/contact/">Contact</a></nav>
-<div class="lang"><a href="/datenschutz/" hreflang="de" lang="de" title="Auf Deutsch wechseln">Deutsch</a></div>
-</div></header>
-<main id="main"><div class="wrap">
-<h1>Privacy and self-hosting</h1>
-<h2>This website</h2>
-<p>No cookies, no tracking, no fonts or scripts from third parties. The site is delivered by GitHub Pages; GitHub technically processes connection data such as the IP address (see GitHub's privacy statement). <span class="todo">TODO: have the controller review and add a full privacy notice (GDPR Art. 13) here</span></p>
-<h2>The relay server</h2>
-<p>The relay server (<code>cometcast-server</code>) mediates between sender and receiver: room codes and connection offers (signalling). It stores no images, files or media and does not forward them. Rooms live in memory only. To protect itself it sees and counts the client address (for limits and temporary bans, also in memory only). With a TURN relay (coturn, internal server only) the media stream passes through that machine when needed.</p>
-<p>A public server <code>relay.cometcast.de</code> is planned but <strong>does not exist yet</strong>. Operations files and the guide for that host live in the repository <a href="https://github.com/wi-wissen/CometCast-Relay">CometCast-Relay</a>.</p>
-<h2>Self-hosting</h2>
-<p>Your own server is a Docker image (the web app is bundled, so one container is enough, even without internet) or a single program. There are two modes: <em>open</em> (public, mediation only, ALTCHA puzzle to create a room) and <em>internal</em> (for an organisation's own devices, with TURN credentials).</p>
-<ul>
-<li><a href="https://github.com/wi-wissen/CometCast/blob/main/deploy/README.md">Quick start with Docker Compose</a></li>
-<li><a href="https://github.com/wi-wissen/CometCast/blob/main/bins/cometcast-server/README.md">Server README</a></li>
-<li><a href="https://github.com/wi-wissen/CometCast/blob/main/docs/server.md">Deep reference docs/server.md</a></li>
-</ul>
-<div class="note"><p>The server has been checked on one machine only. Not verified: two real devices over TURN, NAT, a real certificate, load. All limits are unmeasured placeholders.</p></div>
-</div></main>
-<footer class="site"><div class="wrap"><span>Comet Cast is free software (GPL-3.0-or-later). This site sets no cookies and loads nothing from third parties.</span><a href="/en/imprint/">Imprint</a><a href="https://github.com/wi-wissen/CometCast">GitHub</a></div></footer>
+<body class="redirect">
+<main id="main"><div class="wrap narrow doc"><p class="lead">This page has moved to <a href="/privacy/">cometcast.de/privacy/</a></p></div></main>
 </body>
 </html>

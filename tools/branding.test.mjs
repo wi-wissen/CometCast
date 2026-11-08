@@ -15,7 +15,7 @@ const repo = join(tools, '..');
 const official = join(repo, 'branding', 'cometcast.json');
 const tmp = mkdtempSync(join(tmpdir(), 'branding-test-'));
 const run = (script, args, env = {}) =>
-  spawnSync(process.execPath, [join(tools, script), ...args], { encoding: 'utf8', env: { ...process.env, COMETCAST_BRANDING: '', COMETCAST_PUBLIC_BUILD: '', ...env } });
+  spawnSync(process.execPath, [join(tools, script), ...args], { encoding: 'utf8', env: { ...process.env, COMETCAST_BRANDING: '', COMETCAST_PUBLIC_BUILD: '', COMETCAST_OFFLINE: '1', ...env } });
 const write = (name, obj) => {
   const f = join(tmp, name);
   writeFileSync(f, JSON.stringify(obj));
@@ -29,7 +29,7 @@ test('the shipped files are valid; the default names no publisher', () => {
   assert.deepEqual(d.privacy_url, { de: '', en: '' });
   const o = loadBrandingFile(official);
   assert.equal(o.publisher_name, 'Schulverwalter GmbH');
-  assert.equal(o.privacy_url.en, 'https://cometcast.de/en/privacy/');
+  assert.equal(o.privacy_url.en, 'https://cometcast.de/privacy/');
   assert.deepEqual(missingImprint(o), ['name', 'street', 'city', 'email']);
 });
 
@@ -55,7 +55,7 @@ test('gen-branding writes both files, --check passes, fails after an edit and fo
   assert.match(off.stderr, /out of date/);
   assert.equal(run('gen-branding.mjs', ['--root', root], { COMETCAST_BRANDING: official }).status, 0);
   assert.match(readFileSync(join(root, 'apps/flutter/lib/src/branding.g.dart'), 'utf8'), /publisherName = "Schulverwalter GmbH"/);
-  assert.match(readFileSync(join(root, 'apps/apple-tv/Sources/CometCastTV/Branding.g.swift'), 'utf8'), /privacyUrlDe: String = "https:\/\/cometcast.de\/datenschutz\/"/);
+  assert.match(readFileSync(join(root, 'apps/apple-tv/Sources/CometCastTV/Branding.g.swift'), 'utf8'), /privacyUrlDe: String = "https:\/\/cometcast.de\/de\/datenschutz\/"/);
   writeFileSync(join(root, 'apps/flutter/lib/src/branding.g.dart'), dart + '// x\n');
   assert.equal(run('gen-branding.mjs', ['--check', '--root', root], { COMETCAST_BRANDING: official }).status, 1);
 });
@@ -99,12 +99,12 @@ test('site: a filled imprint passes the public build; no placeholder wording; li
   const out = join(tmp, 'filled-site');
   const r = buildSite(out, { COMETCAST_BRANDING: write('filled.json', filled), COMETCAST_PUBLIC_BUILD: '1' });
   assert.equal(r.status, 0, r.stderr);
-  const page = readFileSync(join(out, 'impressum/index.html'), 'utf8');
+  const page = readFileSync(join(out, 'de/impressum/index.html'), 'utf8');
   assert.match(page, /<p>Muster e\.V\.<br>Weg 1<br>12345 Ort<\/p>/);
   assert.match(page, /<p>a@b\.example<\/p>/);
   assert.doesNotMatch(page, /todo|Platzhalter/);
-  assert.match(readFileSync(join(out, 'index.html'), 'utf8'), /href="\/impressum\/"/);
-  assert.match(readFileSync(join(out, 'en/index.html'), 'utf8'), /href="\/en\/imprint\/"/);
+  assert.match(readFileSync(join(out, 'de/index.html'), 'utf8'), /href="\/de\/impressum\/"/);
+  assert.match(readFileSync(join(out, 'index.html'), 'utf8'), /href="\/imprint\/"/);
   const c = spawnSync(process.execPath, [join(tools, 'check-site-links.mjs'), out, '--without-app'], { encoding: 'utf8' });
   assert.equal(c.status, 0, c.stdout + c.stderr);
 });
@@ -113,9 +113,10 @@ test('site: the empty default leaves out the imprint (pages, footer link, sitema
   const out = join(tmp, 'default-site');
   const r = buildSite(out, {});
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(existsSync(join(out, 'impressum')), false);
-  assert.equal(existsSync(join(out, 'en/imprint')), false);
-  for (const f of ['index.html', 'en/index.html', 'datenschutz/index.html', 'sitemap.xml']) assert.doesNotMatch(readFileSync(join(out, f), 'utf8'), /impressum|imprint/i);
+  assert.equal(existsSync(join(out, 'de/impressum')), false);
+  assert.equal(existsSync(join(out, 'imprint')), false);
+  assert.equal(existsSync(join(out, 'impressum')), false, 'no redirect to a page that does not exist');
+  for (const f of ['index.html', 'de/index.html', 'de/datenschutz/index.html', 'privacy/index.html', 'sitemap.xml']) assert.doesNotMatch(readFileSync(join(out, f), 'utf8'), /impressum|imprint/i);
   const c = spawnSync(process.execPath, [join(tools, 'check-site-links.mjs'), out, '--without-app'], { encoding: 'utf8' });
   assert.equal(c.status, 0, c.stdout + c.stderr);
 });
@@ -123,7 +124,7 @@ test('site: the empty default leaves out the imprint (pages, footer link, sitema
 test('site: the official file generates exactly the committed site/', () => {
   const out = join(tmp, 'official-site');
   assert.equal(buildSite(out, { COMETCAST_BRANDING: official }).status, 0);
-  for (const f of ['index.html', 'impressum/index.html', 'en/imprint/index.html', 'datenschutz/index.html', 'en/privacy/index.html', 'en/open-source/index.html', 'kontakt/index.html', 'sitemap.xml']) {
+  for (const f of ['index.html', 'de/index.html', 'de/impressum/index.html', 'imprint/index.html', 'de/datenschutz/index.html', 'privacy/index.html', 'open-source/index.html', 'de/kontakt/index.html', 'download/index.html', 'de/download/index.html', 'apk/index.html', 'sitemap.xml']) {
     assert.equal(readFileSync(join(out, f), 'utf8'), readFileSync(join(repo, 'site', f), 'utf8'), f);
   }
 });

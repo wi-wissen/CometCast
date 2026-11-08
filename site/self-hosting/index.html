@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host it yourself</title>
+<meta name="description" content="Run your own Comet Cast server, with the web app included, for your school, company or club.">
+<link rel="canonical" href="https://cometcast.de/self-hosting/">
+<link rel="alternate" hreflang="en" href="https://cometcast.de/self-hosting/">
+<link rel="alternate" hreflang="de" href="https://cometcast.de/de/selbst-hosten/">
+<link rel="alternate" hreflang="x-default" href="https://cometcast.de/self-hosting/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1126" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/assets/fonts.css">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/site.js" defer></script>
+</head>
+<body class="selfhost">
+<a class="skip" href="#main">Skip to content</a>
+<div class="langhint" lang="de" data-target="de" hidden><div class="wrap"><span>Diese Seite gibt es auch auf Deutsch.</span><a href="/de/selbst-hosten/" hreflang="de" data-hint-link>Auf Deutsch lesen</a><button type="button" aria-label="Schließen" data-hint-close>×</button></div></div>
+<header class="site-head"><div class="wrap">
+<a class="brand" href="/"><picture><source srcset="/assets/cometcast-logo-dark.svg" media="(prefers-color-scheme: dark)"><img src="/assets/cometcast-logo-light.svg" alt="Comet Cast logo: a comet shaped like a C" width="34" height="34"></picture><span>Comet Cast</span></a>
+<nav class="nav" aria-label="Main navigation">
+<div class="navlinks"><a href="/#finder">What you need</a><a href="/download/">Download</a></div>
+<a class="lang" href="/de/selbst-hosten/" hreflang="de" lang="de" title="Auf Deutsch lesen" aria-label="Auf Deutsch lesen">DE</a>
+<a class="btn btn-primary" href="/app/">Open web app</a>
+</nav>
+</div></header>
+<main id="main"><div class="doc"><div class="wrap narrow">
+<h1>Host it yourself</h1>
+<p>Your own server keeps everything inside your organisation: room codes, the web app and, if you want, the picture itself.</p>
+<p><h2 id="when">When do you need your own server?</h2></p>
+<p>Without your own server, Comet Cast uses the public relay. It only helps devices find each other; the picture goes directly between them. That is enough when devices can reach each other: in the same Wi-Fi, and often across the internet.</p>
+<p>You need your own server when people present from a **different network** than the screen, the classic case being **guest Wi-Fi versus the internal network**. These networks are usually kept apart on purpose, and many firewalls do not let the direct connection through. Your own server with a TURN relay, reachable from both networks (for example in the DMZ), carries the picture between them. It always works, the picture stays inside your organisation, and nobody has to set up their device: the screens show your server's address and QR code.</p>
+<p>Without IT, people can join the Wi-Fi of the screen instead, if they are allowed to.</p>
+<h2>One container is enough</h2>
+<p>The server is a Docker image with the web app inside, so one container works even without internet. It is also a single program you can run directly. There are two modes: <em>open</em> (public, only helps devices find each other, with a small puzzle to create a room) and <em>internal</em> (for the devices of an organisation, with TURN access so the picture stays inside your network).</p>
+<h2>Where to start</h2>
+<ul>
+<li><a href="https://github.com/wi-wissen/CometCast/blob/main/deploy/README.md">Quick start with Docker Compose</a></li>
+<li><a href="https://github.com/wi-wissen/CometCast/blob/main/bins/cometcast-server/README.md">Server README</a></li>
+<li><a href="https://github.com/wi-wissen/CometCast/blob/main/docs/server.md">Reference: docs/server.md</a></li>
+</ul>
+<p>These documents are in English. How the pieces fit together: <a href="/how-it-works/">How it works</a>.</p>
+</div></div>
+</main>
+<footer class="foot"><div class="wrap">
+<div class="cols">
+<div class="col"><p class="coltitle">Product</p><ul><li><a href="/app/">Web app</a></li><li><a href="/download/">Download</a></li><li><a href="/#finder">What you need</a></li></ul></div>
+<div class="col"><p class="coltitle">Trust</p><ul><li><a href="/privacy/">Privacy</a></li><li><a href="/self-hosting/">Host it yourself</a></li><li><a href="/open-source/">Open source</a></li><li><a href="/how-it-works/">How it works (technical)</a></li></ul></div>
+<div class="col"><p class="coltitle">Project</p><ul><li><a href="/contact/">Contact</a></li><li><a href="/imprint/">Imprint</a></li><li><a href="https://github.com/wi-wissen/CometCast">GitHub</a></li></ul></div>
+</div>
+<p class="fine">Free software · no cookies · nothing loaded from third parties</p>
+</div></footer>
+</body>
+</html>

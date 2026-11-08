@@ -27,10 +27,10 @@ class BrandingInfo {
   /// The values of `branding/cometcast.json` (the official build), for screenshots and tests.
   static const BrandingInfo official = BrandingInfo(
     publisherName: 'Schulverwalter GmbH',
-    privacyUrlDe: 'https://cometcast.de/datenschutz/',
-    privacyUrlEn: 'https://cometcast.de/en/privacy/',
-    imprintUrlDe: 'https://cometcast.de/impressum/',
-    imprintUrlEn: 'https://cometcast.de/en/imprint/',
+    privacyUrlDe: 'https://cometcast.de/de/datenschutz/',
+    privacyUrlEn: 'https://cometcast.de/privacy/',
+    imprintUrlDe: 'https://cometcast.de/de/impressum/',
+    imprintUrlEn: 'https://cometcast.de/imprint/',
     sourceUrl: 'https://github.com/wi-wissen/CometCast',
   );
 

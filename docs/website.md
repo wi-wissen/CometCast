@@ -1,36 +1,68 @@
 # Website (cometcast.de)
 
-The project website is a static site in [`site/`](../site), published with GitHub Pages. German is the
-default (`/`), English lives under `/en/`. No cookies, no trackers, no external fonts or scripts, no
-JavaScript at all.
+The project website is a static site in [`site/`](../site), published with GitHub Pages. English is the default (`/`), German
+lives under `/de/`. No cookies, no trackers, nothing loaded from third parties (fonts included). The design is specified in
+[design/website.md](design/website.md) (with the agreed look [design/website-pitch.html](design/website-pitch.html)).
 
 | Path | Content |
 | --- | --- |
-| `site/*/index.html`, `site/en/**` | Pages. **Generated** by `COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs` from the texts in that file and in `site-content/`; edit those, run it, commit both |
-| `site-content/*.md` | Text of the imprint and privacy pages (`imprint.de.md`, `imprint.en.md`, `privacy.de.md`, `privacy.en.md`): front matter, headings, paragraphs, lists, notes, inline HTML, and placeholders (`{{imprint.name\|hint}}`, `{{publisher_name}}`, `{{todo:text}}`, `{{#if ...}}`; format described at the top of the renderer in `tools/build-site.mjs`) |
-| `branding/*.json` | Publisher name, links and the imprint operator data ([branding/README.md](../branding/README.md)). Not hard-coded in the script |
-| `site/assets/style.css` | Styles (tokens from the web app, system fonts, dark mode through `prefers-color-scheme`) |
+| `site/**/index.html` | Pages. **Generated** by `COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs` from the texts below; edit those, run it, commit both |
+| `tools/site/text.en.mjs`, `text.de.mjs` | All page text of the home, download, how-it-works, open-source and contact pages and the interface strings, one file per language. The build **fails** when a key or a block of HTML is missing in one language |
+| `tools/site/finder.mjs` | The finder "What do you need?": devices, pictograms and the answer matrix (both languages side by side) |
+| `tools/site/pages.mjs` | Page list, paths in both languages, the redirect table (shared with the link checker) |
+| `site-content/*.md` | Privacy, imprint and "host it yourself" (`privacy.*.md`, `imprint.*.md`, `self-hosting.*.md`): front matter, headings, paragraphs, lists, notes, inline HTML, and placeholders (`{{imprint.name\|hint}}`, `{{publisher_name}}`, `{{todo:text}}`, `{{#if ...}}`; format described at the top of the renderer in `tools/build-site.mjs`) |
+| `branding/*.json` | Publisher name, links and the imprint operator data ([branding/README.md](../branding/README.md)). The domain shown on the display mock is the host of the legal URLs in that file |
+| `site/assets/style.css`, `site/assets/site.js` | Written by hand. Light and dark tokens (dark through `prefers-color-scheme`), and the one script of the site (language hint, finder, device highlight on the download page) |
+| `site/assets/fonts.css`, `site/assets/fonts/` | **Generated** by the build from the npm `@fontsource` packages in `tools/site/package.json` (Bricolage Grotesque 700/800, Atkinson Hyperlegible 400/700, JetBrains Mono 500/700; latin and latin-ext, woff2). Install them with `npm ci --prefix tools/site`; without them the build keeps the committed copies. OFL 1.1, listed in `THIRD_PARTY_NOTICES.md` and on the Open source page |
 | `site/assets/*.svg`, `favicon.svg`, `apple-touch-icon.png` | Copies of the logo files in `assets/logo/` |
 | `site/CNAME`, `.nojekyll`, `404.html`, `sitemap.xml`, `robots.txt` | Pages plumbing |
-| `tools/check-site-links.mjs` | Dependency-free link and metadata check; runs in the workflow before deploy (`--without-app` for `site/` alone, without flag on the staged artifact that contains `/app/`) |
-| `.github/workflows/pages.yml` | Generates the site from the branding file (public build, fails while the imprint is empty), builds the web app (`VITE_BASE=/app/`, WASM PDF renderer, `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws`), stages it under `/app/` next to `site/`, and deploys on push to `main` touching `site/**` or the web sources, and on manual start |
+| `tools/check-site-links.mjs` | Dependency-free check: internal links and anchors, hreflang pairs, both languages present, the redirects, nothing from third parties, font files. Runs in the workflow before deploy (`--without-app` for `site/` alone, without flag on the staged artifact that contains `/app/`) |
+| `tools/site-screenshots.mjs` | Playwright screenshots of home, how it works and download (EN and DE, light and dark, 1440 and 390 px): `node tools/site-screenshots.mjs OUT_DIR [--base URL]` |
+| `.github/workflows/pages.yml` | Installs the font packages, generates the site from the branding file (public build, fails while the imprint is empty), builds the web app (`VITE_BASE=/app/`, WASM PDF renderer, `VITE_DEFAULT_RELAY=wss://relay.cometcast.de/ws`), stages it under `/app/` next to `site/`, and deploys. Started by hand and when a GitHub release is published |
 
-Local preview: `COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs && node tools/check-site-links.mjs site --without-app && (cd site && python3 -m http.server 8000)`.
+Local preview: `npm ci --prefix tools/site && COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs --offline && node tools/check-site-links.mjs site --without-app && (cd site && python3 -m http.server 8000)`.
 
-The imprint (`/impressum/`, `/en/imprint/`) is a **placeholder with TODO fields** while the `imprint` section of the branding file is
-incomplete. It must be filled in by the responsible party before the site goes public; no company data was invented. Without a
-branding file (`branding/default.json`) the site has no imprint page at all: no page, no footer link, no sitemap entry. A build with
-`COMETCAST_PUBLIC_BUILD=1` (set in `pages.yml`) **fails** with a clear message while `imprint.name`, `imprint.street`, `imprint.city` or
-`imprint.email` is empty. Contact line: `contact` of the branding file. Self-hosters of the site use their own file (`COMETCAST_BRANDING`). Likewise the
-privacy page needs a proper privacy notice (TODO there). The downloads page copies its status table
-from [architecture.md](architecture.md); update both together.
+## Pages
+
+| | English | German |
+| --- | --- | --- |
+| Home (hero, finder, three steps) | `/` | `/de/` |
+| Download | `/download/` | `/de/download/` |
+| How it works (technical) | `/how-it-works/` | `/de/so-funktionierts/` |
+| Privacy | `/privacy/` | `/de/datenschutz/` |
+| Host it yourself | `/self-hosting/` | `/de/selbst-hosten/` |
+| Open source | `/open-source/` | `/de/open-source/` |
+| Contact | `/contact/` | `/de/kontakt/` |
+| Imprint | `/imprint/` | `/de/impressum/` |
+
+Every page has `hreflang` links (`en`, `de`, `x-default` = English) to its counterpart, and the language switch in the header leads to
+the counterpart page. **Language hint:** a small bar (shown by `site.js` only) when the browser's first `en` or `de` language is the other one;
+closing it or following its link is remembered in `localStorage`; there is never an automatic redirect.
+
+**Redirects** (small pages with meta refresh, canonical and a link, `noindex`; table `REDIRECTS` in `tools/site/pages.mjs`): the old German-first paths
+`/funktionsweise/`, `/downloads/`, `/datenschutz/`, `/kontakt/`, `/impressum/` lead to the `/de/` pages, the old `/en/...` paths
+(`/en/`, `/en/how-it-works/`, `/en/downloads/`, `/en/privacy/`, `/en/open-source/`, `/en/contact/`, `/en/imprint/`) to the new English paths.
+The old German `/open-source/` is the English page now and cannot redirect; the old German home `/` is English now (the language hint helps).
+Short links: `/d/` (English download page) and `/de/d/` (German), and `/apk/` (the latest Android APK of the release, else the Android card of the
+download page). None of them can collide with a join code (6 characters) or `/app/`.
+
+**Download page.** The build asks `api.github.com/repos/<owner>/<repo>/releases/latest` once (`GITHUB_TOKEN` is used when set, only against the rate limit)
+and writes the file links of that release into the page by file-name pattern (names made by `release.yml`: `cometcast-windows-*.zip|msi|exe`,
+`cometcast-macos-*.dmg|zip`, `cometcast_*_amd64.deb`, `cometcast-linux-*.tar.gz`, `cometcast-android-*.apk`; files with `debugkey`, `unsigned` or
+`unverified` in the name are left out). `--offline` (or `COMETCAST_OFFLINE=1`), no release, or a failed call: every card says "Coming soon". The visitor's browser loads nothing from GitHub
+until a download is clicked. App store links: constant `STORES` in `tools/build-site.mjs` (empty until the listings exist). `site.js` moves the card that fits the
+visitor's device to the top ("For your Mac"); without JavaScript all cards are listed. Because the page follows the latest release, `pages.yml` also runs when a release is
+published (build from the default branch). The committed `site/` is generated with `--offline`.
+
+**Finder without JavaScript.** The static HTML holds the full answer table (every device and screen pair with all ways, each way with the note about the network it needs);
+`site.js` hides it and shows the picker (device, connection, screen), in the same markup; the choice can be linked (`#win-appletv`, `#iphone-appletv-diff`).
 
 ## Before enabling Pages: fill the imprint
 
-- [ ] Fill in the `imprint` section of `branding/cometcast.json` (`/impressum/`, `/en/imprint/`; text: `site-content/imprint.*.md`). While it is
+- [ ] Fill in the `imprint` section of `branding/cometcast.json` (`/de/impressum/`, `/imprint/`; text: `site-content/imprint.*.md`). While it is
       incomplete the page is a placeholder with TODO fields, set to `noindex` and left out of `sitemap.xml`; no data was invented. The placeholder wording goes
       away by itself when the required fields are in (`noindex` stays). `pages.yml` refuses to build until then.
-- [ ] Fill in the privacy notice (`/datenschutz/`, TODO in `site-content/privacy.*.md`).
+- [ ] Fill in the privacy notice (`/de/datenschutz/`, `/privacy/`; TODO in `site-content/privacy.*.md`).
 - [ ] Regenerate (`COMETCAST_BRANDING=branding/cometcast.json node tools/build-site.mjs`), run `node tools/check-site-links.mjs site --without-app`, commit.
 
 ## What the owner must do once

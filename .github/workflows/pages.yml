@@ -7,6 +7,10 @@ on:
   # started by hand (Actions tab, Run workflow). Re-enable the push/pull_request triggers
   # (see git history of this file) before a release.
   workflow_dispatch:
+  # The download page is generated from the latest GitHub release, so the site is built again when a release is published
+  # (a person publishing the draft made by release.yml; events caused by GITHUB_TOKEN would not start this).
+  release:
+    types: [published]
     inputs:
       require_pages:
         description: 'Fail (instead of skipping the deploy) when GitHub Pages is not enabled for the repository'
@@ -35,15 +39,25 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+          # A release event checks out the release's tag; the site is always built from the default branch.
+          ref: ${{ github.event_name == 'release' && github.event.repository.default_branch || github.ref }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            tools/site/package-lock.json
+      # The website fonts come from npm @fontsource packages (tools/site/package.json): self-hosted, no CDN.
+      - name: Install the website font packages
+        run: npm ci --prefix tools/site
       # The guard "fill the imprint before enabling Pages": a public build fails while required imprint fields are empty.
+      # Also reads the latest GitHub release for the download page (GITHUB_TOKEN only for the API rate limit;
+      # without a release, or when the call fails, the page says "coming soon").
       - name: Generate the static site from the branding file (public build)
         env:
           COMETCAST_PUBLIC_BUILD: '1'
+          GITHUB_TOKEN: ${{ github.token }}
         run: node tools/build-site.mjs
       - name: Check links of the static site (the web app is added later)
         run: node tools/check-site-links.mjs site --without-app
