@@ -504,6 +504,14 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
             } else if let Err((code, text)) = check_mode(state, join_mode) {
                 conn.error(code, text);
                 return Step::Continue;
+            } else if altcha.is_none() && state.puzzle.check(None) == Err(PuzzleError::Missing) {
+                // Answered before the rate limit: the documented first step (create_room
+                // without a payload, then retry with one) costs only one token.
+                conn.error(
+                    error_codes::ALTCHA_REQUIRED,
+                    "solve the ALTCHA puzzle from /altcha/challenge first",
+                );
+                return Step::Continue;
             } else if let Err(deny) = state.guard.check_create(conn.ip, StdInstant::now()) {
                 deny_error(conn, deny);
                 return after_deny(deny);

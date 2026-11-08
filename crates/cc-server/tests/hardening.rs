@@ -440,6 +440,21 @@ async fn open_mode_requires_a_solved_puzzle_once() {
 }
 
 #[tokio::test]
+async fn altcha_required_answer_costs_no_create_token() {
+    let mut config = open_config();
+    config.limits.create_room_per_min = 1;
+    let addr = start(config).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    // The documented two steps: ask without a payload, then retry with one.
+    send(&mut r, json!({"type":"create_room"})).await;
+    assert_eq!(error_code(&recv(&mut r).await), "altcha_required");
+    let payload = solved_payload(addr).await;
+    send(&mut r, json!({"type":"create_room","altcha":payload})).await;
+    assert_eq!(recv(&mut r).await["type"], "room_created");
+}
+
+#[tokio::test]
 async fn open_mode_rejects_puzzle_from_another_server() {
     let other = start(open_config()).await;
     let addr = start(open_config()).await;
