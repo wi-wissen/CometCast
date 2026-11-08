@@ -450,6 +450,17 @@
     "nextPage": "Next page",
     "pageOf": "Page {n} of {total}"
   },
+  "pause": {
+    "presenter": {
+      "button": "Pause",
+      "resume": "Resume",
+      "banner": "Paused: the audience sees the last picture.",
+      "displayFrozen": "The display has frozen the picture."
+    },
+    "display": {
+      "byPresenter": "Paused by the presenter"
+    }
+  },
   "bye": {
     "title": "Disconnected",
     "body": "You are no longer connected. You can close this tab.",

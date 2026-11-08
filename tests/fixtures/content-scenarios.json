@@ -538,17 +538,16 @@
           "text": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}"
         },
         {
-          "t": 1030,
+          "t": 1200,
           "bin": 5
         },
         {
-          "t": 1040,
+          "t": 1210,
           "text": "{\"kind\":\"image_end\"}"
         }
       ],
       "events": [
         "progress:a.png:0:16389",
-        "progress:a.png:16384:16389",
         "cmd:\"pause\"",
         "progress:a.png:16389:16389",
         "progress:null",

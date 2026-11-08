@@ -21,6 +21,14 @@ export interface Peer {
   addStream(stream: MediaStream): void
   /** Removes the tracks of a stream that was added with addStream (the caller renegotiates with createOffer). */
   removeStream?(stream: MediaStream): void
+  /**
+   * Pauses or resumes the sending of the tracks of a stream that was added with addStream (docs/design/pause.md):
+   * `RTCRtpSender.replaceTrack(null)` stops the video at once and `replaceTrack(track)` starts it again, with no
+   * renegotiation. While paused nothing of the stream reaches the display. UNCERTAIN: whether every browser sends a key
+   * frame at once after `replaceTrack(track)` is not measured (docs/measurement-points.md); the display requests one by
+   * itself if it cannot decode.
+   */
+  setStreamPaused?(stream: MediaStream, paused: boolean): Promise<void>
   /** Creates an ordered, reliable data channel (sender side; call before createOffer). */
   openChannel(label: string): ControlChannel
   createOffer(): Promise<string>
@@ -77,13 +85,25 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
     }
   }
 
+  // The sender of every track added with addStream: a paused sender has `track === null`, so it cannot be found by its track.
+  const added = new Map<MediaStreamTrack, RTCRtpSender>()
+
   return {
     addStream(stream) {
-      for (const t of stream.getTracks()) pc.addTrack(t, stream)
+      for (const t of stream.getTracks()) added.set(t, pc.addTrack(t, stream))
     },
     removeStream(stream) {
-      const tracks = new Set(stream.getTracks())
-      for (const s of pc.getSenders()) if (s.track && tracks.has(s.track)) pc.removeTrack(s)
+      for (const t of stream.getTracks()) {
+        const s = added.get(t)
+        added.delete(t)
+        if (s) pc.removeTrack(s)
+      }
+    },
+    async setStreamPaused(stream, paused) {
+      for (const t of stream.getTracks()) {
+        const s = added.get(t)
+        if (s) await s.replaceTrack(paused ? null : t)
+      }
     },
     openChannel(label) {
       return pc.createDataChannel(label, { ordered: true })
