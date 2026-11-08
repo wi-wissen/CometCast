@@ -40,7 +40,7 @@ use cc_transport::{
     ConnectionState, IceServerConfig, ServerAddr, Session, SessionConfig, SessionEvent,
     SignalingClient, TlsTrust, TransportError, VideoCodec, VideoSender, ice, join_room_with,
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 /// The built-in test frames (IVF file with VP8 key frames).
@@ -231,6 +231,8 @@ pub struct SenderCore {
     counters: Arc<screen::Counters>,
     external: Option<ExternalInput>,
     control: Option<ControlSender>,
+    /// `true` while the presenter has paused (the task stops sending video).
+    paused: watch::Sender<bool>,
     events: mpsc::UnboundedReceiver<SenderEvent>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<(SignalingClient, RunEnd)>,
@@ -345,6 +347,7 @@ impl SenderCore {
         let external = options.external.take();
         let (events_tx, events_rx) = mpsc::unbounded_channel();
         let (stop_tx, stop_rx) = oneshot::channel();
+        let (paused_tx, paused_rx) = watch::channel(false);
         let task = tokio::spawn(run(
             sig,
             Arc::new(session),
@@ -355,6 +358,7 @@ impl SenderCore {
             session_events,
             events_tx,
             stop_rx,
+            paused_rx,
             options.duration,
         ));
         Ok(Self {
@@ -363,6 +367,7 @@ impl SenderCore {
             counters,
             external,
             control,
+            paused: paused_tx,
             events: events_rx,
             stop: Some(stop_tx),
             task,
@@ -385,6 +390,35 @@ impl SenderCore {
     /// [`ControlSender::wait_ready`] before sending.
     pub fn control(&self) -> Option<ControlSender> {
         self.control.clone()
+    }
+
+    /// Pause the presentation (docs/design/pause.md): stop sending video at once (screen mode:
+    /// no capture and no encoding; external mode: pushed units are dropped; test pattern: no
+    /// frames), then tell the display with `cmd pause` so that it keeps the last picture.
+    /// Nothing the presenter prepares from now on reaches the display device. Idempotent. The
+    /// receiver sees no frames and must not treat that as a failure (the native one does not).
+    /// Without a control channel only the video stops.
+    pub async fn pause(&self) {
+        self.paused.send_replace(true);
+        if let Some(c) = &self.control {
+            // A closed channel only means that the presentation is ending.
+            let _ = c.send_cmd(cc_proto::ControlCmd::Pause).await;
+        }
+    }
+
+    /// Resume after [`Self::pause`]: tell the display with `cmd resume`, then send video again,
+    /// beginning with a key frame (screen mode: forced; external mode: asked from the host and
+    /// delta frames are dropped until it comes). Idempotent.
+    pub async fn resume(&self) {
+        if let Some(c) = &self.control {
+            let _ = c.send_cmd(cc_proto::ControlCmd::Resume).await;
+        }
+        self.paused.send_replace(false);
+    }
+
+    /// `true` between [`Self::pause`] and [`Self::resume`].
+    pub fn is_paused(&self) -> bool {
+        *self.paused.borrow()
     }
 
     /// Counters of the screen pipeline (all zero in test pattern mode).
@@ -465,9 +499,12 @@ async fn run(
     mut session_events: mpsc::UnboundedReceiver<SessionEvent>,
     out: mpsc::UnboundedSender<SenderEvent>,
     mut stop: oneshot::Receiver<()>,
+    mut pause: watch::Receiver<bool>,
     duration: Option<Duration>,
 ) -> (SignalingClient, RunEnd) {
     let mut end = RunEnd::Stopped { by_system: false };
+    // The presenter paused: no video leaves (docs/design/pause.md).
+    let mut paused = false;
     let emit = |e: SenderEvent| {
         let _ = out.send(e);
     };
@@ -497,6 +534,28 @@ async fn run(
         };
         tokio::select! {
             _ = &mut stop => break,
+            changed = async {
+                if pause.changed().await.is_err() {
+                    // The handle is gone: the core is being dropped, `stop` follows.
+                    std::future::pending::<()>().await;
+                }
+            } => {
+                let _: () = changed;
+                let now_paused = *pause.borrow_and_update();
+                if now_paused != paused {
+                    paused = now_paused;
+                    if let Some(r) = &screen_run {
+                        r.pipeline.set_paused(paused);
+                    }
+                    if let Some(ext) = &external {
+                        if paused {
+                            ext.pause_streaming();
+                        } else if streaming_since.is_some() {
+                            ext.begin_streaming();
+                        }
+                    }
+                }
+            }
             msg = sig.recv() => match msg {
                 None => {
                     emit(SenderEvent::Error("signalling connection closed".into()));
@@ -546,6 +605,9 @@ async fn run(
                         // for a key frame; later ones come from the peer's PLI requests.
                         if let Some(ext) = external.clone() {
                             ext.begin_streaming();
+                            if paused {
+                                ext.pause_streaming();
+                            }
                             let v = Arc::clone(&video);
                             keyframe_task = Some(tokio::spawn(async move {
                                 while v.next_keyframe_request().await {
@@ -561,6 +623,9 @@ async fn run(
                             let (ended_tx, ended_rx) = mpsc::unbounded_channel();
                             let fps = p.options.fps.max(1);
                             let pipeline = screen::spawn(p, frames_tx, ended_tx);
+                            if paused {
+                                pipeline.set_paused(true);
+                            }
                             let requester = pipeline.keyframe_requester();
                             let v = Arc::clone(&video);
                             keyframe_task = Some(tokio::spawn(async move {
@@ -594,6 +659,9 @@ async fn run(
                     emit(SenderEvent::Finished { frames_sent });
                     break;
                 }
+                if paused {
+                    continue;
+                }
                 let frame = test.frames[(frames_sent as usize) % test.frames.len()].clone();
                 if let Err(e) = video.send_frame(frame, frame_time).await {
                     emit(SenderEvent::Error(format!("cannot send frame: {e}")));
@@ -609,6 +677,9 @@ async fn run(
                 }
             }, if streaming_since.is_some() => {
                 let (Some(unit), Some(ext)) = (unit, external.as_ref()) else { break };
+                if paused {
+                    continue;
+                }
                 let wall = ext_last.map_or(frame_time, |(_, t)| t.elapsed());
                 let step = external::rtp_step(ext_last.and_then(|(p, _)| p), unit.pts_us, wall);
                 ext_last = Some((unit.pts_us, Instant::now()));
@@ -624,6 +695,12 @@ async fn run(
             msg = screen_msg => match msg {
             ScreenMsg::Frame(unit) => {
                 let (Some(unit), Some(r)) = (unit, screen_run.as_mut()) else { continue };
+                if paused {
+                    // Encoded just before the pause took hold: it must not leave. The
+                    // pipeline may go on (it is paused itself and resumes with a key frame).
+                    r.pipeline.frame_taken();
+                    continue;
+                }
                 // The RTP time advances by the real time since the previous frame, so that
                 // pauses on a static screen do not make the picture play too fast later.
                 let now = Instant::now();

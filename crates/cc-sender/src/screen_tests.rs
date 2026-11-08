@@ -456,3 +456,37 @@ fn the_picker_option_goes_through_the_picker_backend_selection() {
         Ok(_) => panic!("no capture backend can work here"),
     }
 }
+
+#[test]
+fn a_paused_pipeline_does_not_look_at_the_screen_and_resumes_with_a_key_frame() {
+    let mut r = rig();
+    let first = recv_within(&mut r.frames, 3000).expect("first frame");
+    assert!(annexb_nal_types(&first.data).contains(&5));
+    r.pipeline.frame_taken();
+    // Let the refreshes of the static picture run out so that the next unit is a real one.
+    drain_for(&mut r, 1500);
+
+    r.pipeline.set_paused(true);
+    // Whatever was encoded before the pause took hold may still arrive; then it is silent.
+    drain_for(&mut r, 300);
+    let polls = r.counters.snapshot().polls;
+    let encoded = r.counters.snapshot().encoded;
+    // The presenter prepares something else.
+    *r.change.lock().unwrap() = Some(solid(20, 160, 220));
+    assert!(
+        recv_within(&mut r.frames, 1000).is_none(),
+        "no frame while paused"
+    );
+    let s = r.counters.snapshot();
+    assert_eq!(s.polls, polls, "no capture while paused");
+    assert_eq!(s.encoded, encoded, "no encoding while paused");
+
+    r.pipeline.set_paused(false);
+    let unit = recv_within(&mut r.frames, 3000).expect("a frame after the resume");
+    let types = annexb_nal_types(&unit.data);
+    assert!(
+        types.contains(&7) && types.contains(&8) && types.contains(&5),
+        "the first unit after a resume is a key frame: {types:?}"
+    );
+    r.pipeline.stop();
+}

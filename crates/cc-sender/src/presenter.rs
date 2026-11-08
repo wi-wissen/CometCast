@@ -18,6 +18,13 @@
 //!
 //! The display's `page` messages are read from the channel and reported as
 //! [`PresenterEvent::Page`]; the connection check code as [`PresenterEvent::ConnectionCode`].
+//!
+//! Pause (docs/design/pause.md): [`PresenterSession::pause`] stops the video of a media
+//! presentation at once and tells the display (`cmd pause`); [`PresenterSession::resume`]
+//! tells it and sends again, beginning with a key frame. The display's `pause_state` answers
+//! arrive as [`PresenterEvent::PauseState`] and are the truth for the UI: the presenter's own
+//! flag counts as confirmed only when the display echoes it. A content-only presentation has
+//! no screen: pause is ignored there.
 
 use std::time::Duration;
 
@@ -166,6 +173,16 @@ pub enum PresenterEvent {
         /// The page count, from 1.
         pages: u32,
     },
+    /// The display's pause flags (`pause_state`, docs/design/pause.md): sent whenever either
+    /// flag changes and once when the control channel opens (both `false`). `presenter` is the
+    /// echo of [`PresenterSession::pause`]; `display` is set when the display froze the
+    /// picture on its own. The picture is frozen while either is set.
+    PauseState {
+        /// The presenter's flag, as the display holds it.
+        presenter: bool,
+        /// The display's own flag.
+        display: bool,
+    },
     /// Frames sent so far, about once per second while streaming media.
     Streaming {
         /// Frames written to the track.
@@ -195,6 +212,8 @@ enum Cmd {
         reply: oneshot::Sender<Result<ControlSender, TransportError>>,
     },
     StopPresenting,
+    /// Pause (`true`) or resume (`false`) the running screen presentation.
+    Pause(bool),
     /// The control channel for a hand-over: the running presentation's, or a content-only one
     /// that is started for it (and stays quiet: no events for the app).
     Handover {
@@ -312,6 +331,19 @@ impl PresenterSession {
         let _ = self.cmds.send(Cmd::StopPresenting);
     }
 
+    /// Pause the running screen presentation: the video stops at once (nothing leaves the
+    /// device) and the display keeps the last picture. Ignored without a media presentation.
+    /// The display's answer is [`PresenterEvent::PauseState`]. Idempotent.
+    pub fn pause(&self) {
+        let _ = self.cmds.send(Cmd::Pause(true));
+    }
+
+    /// Resume after [`Self::pause`]: the display is told and video flows again, beginning
+    /// with a key frame. Idempotent.
+    pub fn resume(&self) {
+        let _ = self.cmds.send(Cmd::Pause(false));
+    }
+
     /// Next event, or `None` after the session ended and all events were read.
     pub async fn next_event(&mut self) -> Option<PresenterEvent> {
         self.events.recv().await
@@ -350,6 +382,17 @@ impl Core {
         match self {
             Self::Media(c) => c.next_event().await,
             Self::Content(c) => c.next_event().await,
+        }
+    }
+
+    /// Pause or resume the media (content-only presentations have none).
+    async fn set_paused(&self, paused: bool) {
+        if let Self::Media(c) = self {
+            if paused {
+                c.pause().await;
+            } else {
+                c.resume().await;
+            }
         }
     }
 
@@ -542,6 +585,17 @@ async fn run(
             }
             Next::Page(Some(DisplayMessage::Page { page, pages })) => {
                 emit(PresenterEvent::Page { page, pages });
+            }
+            Next::Cmd(Some(Cmd::Pause(paused))) => {
+                if let Some(r) = running.as_ref()
+                    && !stopping
+                    && !r.quiet
+                {
+                    r.core.set_paused(paused).await;
+                }
+            }
+            Next::Page(Some(DisplayMessage::PauseState { presenter, display })) => {
+                emit(PresenterEvent::PauseState { presenter, display });
             }
             Next::Page(Some(DisplayMessage::HandoverOk)) => {
                 acks.send_modify(|n| *n += 1);
