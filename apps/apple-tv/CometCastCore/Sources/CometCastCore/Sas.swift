@@ -12,36 +12,44 @@ import CryptoKit
 import Crypto
 #endif
 
-/// First `a=fingerprint:sha-256 XX:..` of an SDP, normalised to lower case hex, or nil.
-/// Lines end at CR, LF, U+2028 or U+2029 (what the web client's multi-line regular expression treats as line ends).
+/// The `a=fingerprint:sha-256 XX:..` of an SDP, normalised to lower case hex, or nil. Same rule as
+/// `sdp_fingerprint` in crates/cc-transport/src/sas.rs (vectors: tests/fixtures/sas.json): lines end at LF, one CR
+/// right before it belongs to the line end; an SDP with any other CR or with U+2028 / U+2029 is refused; every
+/// `a=fingerprint:` line whose algorithm is `sha-256` (in any case) must hold 32 hex pairs and all must agree.
 public func sdpFingerprint(_ sdp: String) -> String? {
-    var line = String.UnicodeScalarView()
-    func check(_ l: String.UnicodeScalarView) -> String? {
-        let s = String(l)
-        let prefix = "a=fingerprint:sha-256"
-        guard s.hasPrefix(prefix) else { return nil }
-        var rest = Substring(s.dropFirst(prefix.count))
-        let ws = rest.prefix(while: { $0 == " " || $0 == "\t" })
-        if ws.isEmpty { return nil }
-        rest = rest.dropFirst(ws.count)
-        let fp = rest.prefix(95)
-        guard fp.count == 95 else { return nil }
-        let tail = rest.dropFirst(95)
-        if !tail.allSatisfy({ $0 == " " || $0 == "\t" }) { return nil }
-        let chars = Array(fp.unicodeScalars)
+    let scalars = Array(sdp.unicodeScalars)
+    if scalars.contains(where: { $0 == "\u{2028}" || $0 == "\u{2029}" }) { return nil }
+    var lines: [ArraySlice<Unicode.Scalar>] = []
+    var start = 0
+    for (i, u) in scalars.enumerated() where u == "\n" {
+        lines.append(scalars[start..<i])
+        start = i + 1
+    }
+    lines.append(scalars[start..<scalars.count])
+    var found: String?
+    for raw in lines {
+        var line = raw
+        if line.last == "\r" { line = line.dropLast() }
+        if line.contains("\r") { return nil }
+        let prefix = Array("a=fingerprint:".unicodeScalars)
+        guard line.count >= prefix.count, Array(line.prefix(prefix.count)) == prefix else { continue }
+        let rest = line.dropFirst(prefix.count)
+        let alg = rest.prefix(while: { $0 != " " && $0 != "\t" })
+        guard String(String.UnicodeScalarView(alg)).lowercased() == "sha-256" else { continue }
+        var value = rest.dropFirst(alg.count)
+        while let f = value.first, f == " " || f == "\t" { value = value.dropFirst() }
+        while let l = value.last, l == " " || l == "\t" { value = value.dropLast() }
+        let chars = Array(value)
+        guard chars.count == 95 else { return nil }
         for (i, c) in chars.enumerated() {
             if i % 3 == 2 { if c != ":" { return nil } }
             else if !(c.isASCII && Character(c).isHexDigit) { return nil }
         }
-        return fp.lowercased()
+        let fp = String(String.UnicodeScalarView(chars)).lowercased()
+        if let f = found, f != fp { return nil }
+        found = fp
     }
-    for u in sdp.unicodeScalars {
-        if u == "\n" || u == "\r" || u == "\u{2028}" || u == "\u{2029}" {
-            if let r = check(line) { return r }
-            line = String.UnicodeScalarView()
-        } else { line.append(u) }
-    }
-    return check(line)
+    return found
 }
 
 private let sasDomain = "cometcast/connection-check/v1"

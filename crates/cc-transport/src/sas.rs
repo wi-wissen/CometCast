@@ -6,32 +6,58 @@
 //! the result; if a relay swapped the fingerprints during the key exchange the two codes
 //! differ. It only helps when people really compare the codes (not enforced). A short code can
 //! in principle be ground by an active attacker who has time to try many certificates, so it is
-//! a check, not a proof. Test vectors: `tests/fixtures/sas.json` (shared with the web client).
+//! a check, not a proof. Test vectors: `tests/fixtures/sas.json` (shared with the web client and
+//! the Swift core).
 
 use sha2::{Digest, Sha256};
 
 const DOMAIN: &str = "cometcast/connection-check/v1";
 
-/// The first `a=fingerprint:sha-256 XX:..` of an SDP, as lowercase hex with colons, or `None`.
-/// Same rule as `sdpFingerprint` in the web client: the line must have exactly 32 hex pairs.
+/// The `a=fingerprint:sha-256 XX:..` of an SDP, as lowercase hex with colons, or `None`.
+///
+/// The lines are read the way the DTLS stack's SDP parser reads them, so that the code is
+/// made from the fingerprint the connection is checked against and a relay cannot show one
+/// fingerprint here and another one to DTLS:
+///
+/// * a line ends at LF; one CR right before it belongs to the line end;
+/// * an SDP with any other CR, or with U+2028 / U+2029, is refused (a bare CR would hide a
+///   line inside another attribute for one reader and not for the other);
+/// * every `a=fingerprint:` line whose algorithm is `sha-256` (in any case), at session and
+///   at media level, must hold exactly 32 hex pairs separated by colons (after spaces or
+///   tabs) and all of them must agree; otherwise the SDP is refused.
+///
+/// Same rule as `sdpFingerprint` in the web client and the Swift core (vectors:
+/// `tests/fixtures/sas.json`).
 pub fn sdp_fingerprint(sdp: &str) -> Option<String> {
-    // JavaScript's multiline `^`/`$` treat these four as line ends.
-    for line in sdp.split(['\n', '\r', '\u{2028}', '\u{2029}']) {
-        let Some(rest) = line.strip_prefix("a=fingerprint:sha-256") else {
+    if sdp.contains(['\u{2028}', '\u{2029}']) {
+        return None;
+    }
+    let mut found: Option<String> = None;
+    for line in sdp.split('\n') {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if line.contains('\r') {
+            return None;
+        }
+        let Some(rest) = line.strip_prefix("a=fingerprint:") else {
             continue;
         };
-        // One or more spaces or tabs, the fingerprint, optional trailing spaces or tabs.
-        let rest_trimmed = rest.trim_start_matches([' ', '\t']);
-        if rest_trimmed.len() == rest.len() {
+        let alg_end = rest.find([' ', '\t']).unwrap_or(rest.len());
+        if !rest[..alg_end].eq_ignore_ascii_case("sha-256") {
             continue;
         }
-        let fp = rest_trimmed.trim_end_matches([' ', '\t']);
-        if is_fingerprint(fp) {
-            return Some(fp.to_ascii_lowercase());
+        // One or more spaces or tabs, the fingerprint, optional trailing spaces or tabs.
+        let fp = rest[alg_end..].trim_matches([' ', '\t']);
+        if !is_fingerprint(fp) {
+            return None;
         }
-        // The web regex looks for the first line that matches; keep looking.
+        let fp = fp.to_ascii_lowercase();
+        match &found {
+            Some(f) if *f != fp => return None,
+            Some(_) => {}
+            None => found = Some(fp),
+        }
     }
-    None
+    found
 }
 
 fn is_fingerprint(s: &str) -> bool {

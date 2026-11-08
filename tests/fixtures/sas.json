@@ -1,5 +1,5 @@
 {
-  "description": "Connection check code (apps/web/src/core/sas.ts): `code` = connectionCode(local_sdp, remote_sdp); `fingerprint` = sdpFingerprint(sdp).",
+  "description": "Connection check code (apps/web/src/core/sas.ts, crates/cc-transport/src/sas.rs, apps/apple-tv Sas.swift): `code` = connectionCode(local_sdp, remote_sdp); `fingerprint` = sdpFingerprint(sdp). Lines end at LF with an optional CR before it, as for the DTLS stack's SDP parser; an SDP with a bare CR, U+2028 or U+2029 is refused (null), and so is one whose sha-256 fingerprint lines (session and media level, algorithm name in any case) do not all agree or are malformed.",
   "code": [
     {
       "name": "two simple fingerprints",
@@ -98,10 +98,10 @@
       "expect": null
     },
     {
-      "name": "first fingerprint wins",
+      "name": "two different fingerprints are refused",
       "local_sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
       "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
-      "expect": "418 683"
+      "expect": null
     },
     {
       "name": "sha-1 line before the sha-256 line",
@@ -134,8 +134,62 @@
       "expect": null
     },
     {
-      "name": "line separator U+2028 as line end",
+      "name": "line separator U+2028 is refused",
       "local_sdp": "v=0 a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB a=setup:actpass",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "session and media level agree",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=fingerprint:sha-256 ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": "418 683"
+    },
+    {
+      "name": "media level fingerprint differs",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=fingerprint:sha-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "bare CR hides a fingerprint inside another line",
+      "local_sdp": "v=0\r\na=tool:x\ra=fingerprint:sha-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "bare CR elsewhere",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=tool:x\ry\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "CR CR LF",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "paragraph separator U+2029 is refused",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=tool:x y\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "malformed second sha-256 line is refused",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 AB:CD\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "upper case algorithm name counts",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:SHA-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "upper case algorithm name alone",
+      "local_sdp": "v=0\r\na=fingerprint:SHA-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
       "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
       "expect": "418 683"
     },
@@ -228,9 +282,9 @@
       "expect": null
     },
     {
-      "name": "first fingerprint wins",
+      "name": "two different fingerprints are refused",
       "sdp": "a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
-      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+      "expect": null
     },
     {
       "name": "sha-1 line before the sha-256 line",
@@ -258,8 +312,53 @@
       "expect": null
     },
     {
-      "name": "line separator U+2028 as line end",
+      "name": "line separator U+2028 is refused",
       "sdp": "v=0 a=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB a=setup:actpass",
+      "expect": null
+    },
+    {
+      "name": "session and media level agree",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=fingerprint:sha-256 ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab\r\na=setup:actpass\r\n",
+      "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
+    },
+    {
+      "name": "media level fingerprint differs",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=fingerprint:sha-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\n",
+      "expect": null
+    },
+    {
+      "name": "bare CR hides a fingerprint inside another line",
+      "sdp": "v=0\r\na=tool:x\ra=fingerprint:sha-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "bare CR elsewhere",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=tool:x\ry\r\n",
+      "expect": null
+    },
+    {
+      "name": "CR CR LF",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\r\n",
+      "expect": null
+    },
+    {
+      "name": "paragraph separator U+2029 is refused",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=tool:x y\r\n",
+      "expect": null
+    },
+    {
+      "name": "malformed second sha-256 line is refused",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 AB:CD\r\n",
+      "expect": null
+    },
+    {
+      "name": "upper case algorithm name counts",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:SHA-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\n",
+      "expect": null
+    },
+    {
+      "name": "upper case algorithm name alone",
+      "sdp": "v=0\r\na=fingerprint:SHA-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
       "expect": "ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab"
     },
     {
