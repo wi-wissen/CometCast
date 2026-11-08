@@ -951,6 +951,9 @@ async fn receive(common: Common, decode: bool, join_mode: cc_proto::JoinMode) ->
                     core.stop().await;
                     return if got_video || got_content { ExitCode::SUCCESS } else { ExitCode::from(3) };
                 }
+                Some(ReceiverEvent::ServerNotice { code, message }) => {
+                    println!("The server refused a command ({code}: {message}); the room stays.");
+                }
                 Some(ReceiverEvent::Error(e)) => {
                     eprintln!("error: {e}");
                     core.stop().await;

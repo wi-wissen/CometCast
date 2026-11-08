@@ -439,8 +439,9 @@ fn stats_event(s: MediaSnapshot) -> ReceiverUiEvent {
     }
 }
 
-fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
-    match e {
+/// The UI event for a core event, or `None` for one the UI does not get.
+fn map_receiver_event(e: ReceiverEvent) -> Option<ReceiverUiEvent> {
+    Some(match e {
         ReceiverEvent::PeerJoined { name, handover } => {
             ReceiverUiEvent::PeerJoined { name, handover }
         }
@@ -470,7 +471,13 @@ fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
             code: cc_receiver::error_code(&message),
             message,
         },
-    }
+        // A server error that does not end the room (e.g. `no_such_request` after the host
+        // decided on a request that was cancelled at the same moment). `ReceiverUiEvent` has
+        // no variant for a note that keeps the stream going, and adding one needs the Dart
+        // bindings generated again; until then it is not passed on (the room simply stays).
+        // It must not become `Error`: the UI ends the room on that.
+        ReceiverEvent::ServerNotice { .. } => return None,
+    })
 }
 
 /// Bookkeeping for "the one running receiver (or sender)".
@@ -735,7 +742,7 @@ pub async fn start_receiver(
                         let is_stats = matches!(ev, ReceiverEvent::Stats(_));
                         let left = matches!(ev, ReceiverEvent::PeerLeft);
                         // If Dart stopped listening, `add` fails: shut down.
-                        if events.add(map_receiver_event(ev)).is_err()
+                        if map_receiver_event(ev).is_some_and(|ui| events.add(ui).is_err())
                             || (is_stats && events.add(video_stats_event()).is_err())
                         {
                             core.stop().await;
@@ -3501,7 +3508,7 @@ mod tests {
     #[test]
     fn receiver_events_are_mapped() {
         assert_eq!(
-            map_receiver_event(ReceiverEvent::State(ConnectionState::Connected)),
+            map_receiver_event(ReceiverEvent::State(ConnectionState::Connected)).unwrap(),
             ReceiverUiEvent::ConnectionState {
                 state: UiConnectionState::Connected
             }
@@ -3512,7 +3519,8 @@ mod tests {
                 bytes: 2,
                 frames: 3,
                 keyframes: 4
-            })),
+            }))
+            .unwrap(),
             ReceiverUiEvent::Stats {
                 packets: 1,
                 bytes: 2,
@@ -3524,7 +3532,8 @@ mod tests {
             map_receiver_event(ReceiverEvent::VideoTrack {
                 mime: "video/VP8".into(),
                 codec: Some(cc_transport::VideoCodec::Vp8)
-            }),
+            })
+            .unwrap(),
             ReceiverUiEvent::VideoTrack {
                 mime: "video/VP8".into(),
                 codec: Some("vp8".into())
@@ -3815,28 +3824,37 @@ mod tests {
     #[test]
     fn the_new_receiver_events_are_mapped() {
         assert_eq!(
-            map_receiver_event(ReceiverEvent::ConnectionCode("123 456".into())),
+            map_receiver_event(ReceiverEvent::ConnectionCode("123 456".into())).unwrap(),
             ReceiverUiEvent::ConnectionCode {
                 sas: "123 456".into()
             }
         );
         assert_eq!(
-            map_receiver_event(ReceiverEvent::PresentationStopped),
+            map_receiver_event(ReceiverEvent::PresentationStopped).unwrap(),
             ReceiverUiEvent::PresentationStopped
         );
         assert_eq!(
             map_receiver_event(ReceiverEvent::Error(
                 "server error room_full: the room is full".into()
-            )),
+            ))
+            .unwrap(),
             ReceiverUiEvent::Error {
                 code: "room_full".into(),
                 message: "server error room_full: the room is full".into()
             }
         );
         assert!(matches!(
-            map_receiver_event(ReceiverEvent::Error("signalling connection closed".into())),
+            map_receiver_event(ReceiverEvent::Error("signalling connection closed".into())).unwrap(),
             ReceiverUiEvent::Error { code, .. } if code == "connection_lost"
         ));
+        // A server error that keeps the room never reaches the UI as an `Error`.
+        assert_eq!(
+            map_receiver_event(ReceiverEvent::ServerNotice {
+                code: "no_such_request".into(),
+                message: "no such waiting request".into()
+            }),
+            None
+        );
     }
 
     #[test]

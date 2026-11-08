@@ -21,8 +21,10 @@
 //! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well. So
 //! is a presenter whose connection fails (an offer that cannot be answered, WebRTC `failed`,
 //! no connection in time): a joiner must not be able to end the room.
-//! The core stops on [`ReceiverEvent::RoomEnded`], an error (signalling or server) or
-//! [`ReceiverCore::stop`].
+//! The core stops on [`ReceiverEvent::RoomEnded`], an error (the signalling connection, a
+//! server error that closes the connection) or [`ReceiverCore::stop`]. A server error that
+//! leaves the connection open (for example `no_such_request`) is a
+//! [`ReceiverEvent::ServerNotice`] and the room stays.
 //!
 //! Use: [`ReceiverCore::start`] -> show [`ReceiverCore::room_code`] -> loop on
 //! [`ReceiverCore::next_event`].
@@ -199,10 +201,37 @@ pub enum ReceiverEvent {
     /// The connection check code (`"123 456"`) of the sender's connection, once per connection,
     /// as soon as it is connected. Identical to the one the sender shows (`cc_transport::sas`).
     ConnectionCode(String),
-    /// Something failed that ends the room (the signalling connection, a server error, no
-    /// new session). The core stops after this event. A failure of the presenter's own
-    /// connection is not an error: it is [`ReceiverEvent::PresentationStopped`].
+    /// The server refused one of the host's commands, or a relay message, with an error that
+    /// does **not** end the room (docs/protocol.md, "Error codes": the connection stays
+    /// open), e.g. `no_such_request` when the host decided on a request that was cancelled
+    /// at the same moment, `block_list_full`, `not_in_room`, `rate_limited`. The room, its
+    /// code and the connected sender stay; the app may show a short note. If the server
+    /// closes the connection after the error, [`ReceiverEvent::Error`] follows.
+    ServerNotice {
+        /// The protocol error code.
+        code: String,
+        /// The server's message in English (for logs only).
+        message: String,
+    },
+    /// Something failed that ends the room (the signalling connection, a server error that
+    /// closes the connection, no new session). The core stops after this event. A failure
+    /// of the presenter's own connection is not an error: it is
+    /// [`ReceiverEvent::PresentationStopped`].
     Error(String),
+}
+
+/// Does a server `error` with this code end the room? Only the codes after which the server
+/// closes the connection do (docs/protocol.md, "Error codes", column "closes": `bad_hello`,
+/// `proto_mismatch`, `banned`). Every other code answers one message and the connection and
+/// the room stay; when the server does close the connection after such an error (a
+/// connection that sends too fast gets `rate_limited` and is closed), the closed connection
+/// itself ends the room. So a joiner that makes a host command fail at the right moment (for
+/// example by cancelling its request while the host decides) cannot end the room.
+fn server_error_ends_room(code: &str) -> bool {
+    matches!(
+        code,
+        "bad_hello" | "proto_mismatch" | cc_proto::error_codes::BANNED
+    )
 }
 
 /// The code of a [`ReceiverEvent::Error`] message, for the apps (native-apps.md 20.2): the
@@ -745,8 +774,11 @@ async fn run(
                     reset = true;
                 }
                 Some(ServerMsg::Error { code, message }) => {
-                    emit(ReceiverEvent::Error(format!("server error {code}: {message}")));
-                    break;
+                    if server_error_ends_room(&code) {
+                        emit(ReceiverEvent::Error(format!("server error {code}: {message}")));
+                        break;
+                    }
+                    emit(ReceiverEvent::ServerNotice { code, message });
                 }
                 // hello/room_created/joined/answer/control: nothing to do here yet.
                 Some(_) => {}
@@ -855,6 +887,27 @@ mod tests {
         );
         assert_eq!(error_code("cannot answer offer: x"), "peer_failed");
         assert_eq!(error_code("something else"), "unknown");
+    }
+
+    #[test]
+    fn only_server_errors_that_close_the_connection_end_the_room() {
+        for code in ["bad_hello", "proto_mismatch", "banned"] {
+            assert!(server_error_ends_room(code), "{code}");
+        }
+        for code in [
+            "no_such_request",
+            "no_such_block",
+            "block_list_full",
+            "not_in_room",
+            "rate_limited",
+            "wrong_role",
+            "bad_message",
+            "open_rooms_disabled",
+            "join_pending",
+            "something_new",
+        ] {
+            assert!(!server_error_ends_room(code), "{code}");
+        }
     }
 
     #[test]

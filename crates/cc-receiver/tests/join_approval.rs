@@ -223,3 +223,55 @@ async fn room_name_reaches_native_senders_through_pending_and_joined() {
     drop(sender);
     rx.stop().await;
 }
+
+/// A host command the server refuses without closing the connection (here a decision on a
+/// request that is no longer waiting, as when the joiner cancels at the same moment) is a
+/// notice: the room, its code and the connected presenter stay.
+#[tokio::test]
+async fn no_such_request_keeps_the_room() {
+    let server = start(ServerConfig::default()).await;
+    let mut rx = receiver(&server, JoinMode::Confirm).await;
+    let code = rx.room_code().clone();
+
+    // A presenter is in the room.
+    let mut o = SenderOptions::new(&server, code.clone());
+    o.session = local_session();
+    let allowed = tokio::spawn(SenderCore::start(o));
+    let id = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinRequest { id, .. } => Some(id),
+        _ => None,
+    })
+    .await;
+    rx.decide_join(id, true);
+    let sender = allowed.await.unwrap().expect("allowed");
+    next_matching(&mut rx, |e| match e {
+        ReceiverEvent::PeerJoined { .. } => Some(()),
+        _ => None,
+    })
+    .await;
+
+    // Deciding on the same request again: it is not waiting any more.
+    rx.decide_join(id, false);
+    let notice = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::ServerNotice { code, .. } => Some(code),
+        ReceiverEvent::Error(e) => panic!("the room ended: {e}"),
+        ReceiverEvent::PeerLeft => panic!("the presenter was dropped"),
+        _ => None,
+    })
+    .await;
+    assert_eq!(notice, "no_such_request");
+
+    // The room still answers commands, with the same code, and the presenter is still in it.
+    rx.set_join_mode(JoinMode::Locked);
+    let m = next_matching(&mut rx, |e| match e {
+        ReceiverEvent::JoinModeChanged(m) => Some(m),
+        ReceiverEvent::Error(e) => panic!("the room ended: {e}"),
+        ReceiverEvent::PeerLeft => panic!("the presenter was dropped"),
+        _ => None,
+    })
+    .await;
+    assert_eq!(m, JoinMode::Locked);
+    assert_eq!(rx.room_code(), &code);
+    drop(sender);
+    rx.stop().await;
+}
