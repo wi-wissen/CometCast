@@ -225,7 +225,13 @@ impl Guard {
         {
             return;
         }
-        for l in [&self.connections, &self.create, &self.join, &self.http] {
+        for l in [
+            &self.connections,
+            &self.create,
+            &self.join,
+            &self.http,
+            &self.ice,
+        ] {
             l.retain_recent();
             l.shrink_to_fit();
         }
