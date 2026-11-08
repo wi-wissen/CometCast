@@ -18,7 +18,8 @@ Deep reference and test notes: [docs/server.md](../docs/server.md).
 
 ## Quick start with Docker Compose
 
-Run from this folder. The UIDs matter: the server image runs as 65532, the coturn image as `nobody` (65534);
+Run from this folder. The UIDs matter: the server image runs as 65532, coturn as `COTURN_UID:COTURN_GID` from `.env`
+(default `3478:3478`, a group of its own; not the image's `nobody:nogroup` 65534, see "coturn user and group" below);
 neither runs as root. The same steps are in the header of `docker-compose.yml`.
 
 ```sh
@@ -34,10 +35,10 @@ sudo chown root:65532 secrets/*; sudo chmod 640 secrets/*
 
 # 3. certificate and key (never commit them); both programs read the key
 cp /path/fullchain.pem certs/fullchain.pem; cp /path/privkey.pem certs/privkey.pem
-sudo chown 65532:65534 certs/privkey.pem; sudo chmod 640 certs/privkey.pem
+sudo chown 65532:3478 certs/privkey.pem; sudo chmod 640 certs/privkey.pem   # owner: server, group: coturn (COTURN_GID)
 
 # 4. coturn configuration (holds the TURN secret)
-sudo TURN_CONF_GROUP=65534 ./coturn/render.sh
+sudo TURN_CONF_GROUP=3478 ./coturn/render.sh   # = COTURN_GID; also sets group and mode 640 on certs/privkey.pem
 
 # 5. build and start (repository root is the build context)
 docker build -f Dockerfile -t cometcast-server:local ..
@@ -138,7 +139,7 @@ Secrets: `secret_file` (`/run/secrets/turn_secret`, `/run/secrets/altcha_secret`
 
 | Variable | Meaning |
 | --- | --- |
-| `COTURN_VERSION` | coturn image tag; `4.18.0` is the one that was run |
+| `COTURN_UID`, `COTURN_GID` | User and group of the coturn container, default `3478`. The group reads `turnserver.conf` and the TLS key; never `65534` |
 | `TURN_REALM` | TURN realm, usually the host name |
 | `TURN_EXTERNAL_IP` | Public IP; behind NAT `public/private` (never run behind a real NAT) |
 | `TURN_LISTENING_IP` | Optional: listen only on this address (else all host addresses) |
@@ -187,10 +188,28 @@ To unban an address now: restart the server (there is no admin interface; UNCERT
 - coturn: a STUN request over UDP (`turnutils_stunclient`). It does not test TLS on 5349 or relaying.
 - Logs: `docker compose logs cometcast-server coturn`. The server has no log levels, no access log and no metrics endpoint.
 
+## coturn user and group
+
+The coturn image runs as `nobody:nogroup` (65534:65534) by default. On Debian and Ubuntu hosts GID 65534 is the
+host's shared `nogroup`: other daemons run with it too. Giving `turnserver.conf` (it holds `static-auth-secret`,
+the key that mints TURN credentials) and the TLS private key to group 65534 would let every such process read them.
+So `docker-compose.yml` runs coturn as `COTURN_UID:COTURN_GID` (default `3478:3478`), and `render.sh` gives the
+config file and `certs/privkey.pem` to that group with mode 640 (`TURN_CONF_GROUP`, which must equal `COTURN_GID`;
+65534, `nogroup` and `nobody` are refused).
+
+- Choose IDs no host user or group has: `getent passwd 3478; getent group 3478` should print nothing. Do not add
+  host users to that group.
+- coturn needs no particular UID (the binary's file capability works for any user, and it needs no passwd entry).
+- Changing from an older setup with 65534: set `COTURN_UID`/`COTURN_GID` in `.env` (or keep the defaults), run
+  `sudo TURN_CONF_GROUP=3478 ./coturn/render.sh`, `sudo chown 65532:3478 certs/privkey.pem`, then
+  `docker compose up -d` (recreates coturn with the new user).
+- **Uncertain:** not run yet with the new user (the change was made where no Docker daemon was available); the first
+  run used `nobody`. Check `docker compose logs coturn` for `Cannot find config file` or TLS errors after the change.
+
 ## Upgrade and backup
 
 No state on disk. Backup: `config/`, `.env`, `secrets/`, `certs/` (keep them private). Upgrade:
-`git pull`, rebuild the image, `docker compose up -d`; all rooms end during the restart. Pin base images by digest before a production build (they are plain tags now).
+`git pull`, rebuild the image, `docker compose up -d`; all rooms end during the restart. Base images (`Dockerfile`) and the coturn image are pinned by tag and digest; Dependabot proposes digest updates (`.github/dependabot.yml`). Rebuild after such an update to pick up security fixes.
 
 ## Security hardening checklist
 
@@ -200,7 +219,8 @@ No state on disk. Backup: `config/`, `.env`, `secrets/`, `certs/` (keep them pri
 - [ ] `trusted_proxies` only the proxy's address; proxy overwrites `X-Forwarded-For`
 - [ ] Only needed ports open; relay range narrow; 5766 closed
 - [ ] coturn relay address without other UDP services, or firewalled
-- [ ] Base images pinned by digest; image rebuilt for security updates
+- [ ] Base images pinned by digest (they are, in `Dockerfile` and `docker-compose.yml`); image rebuilt for security updates
+- [ ] coturn runs with a group of its own (`COTURN_GID`, not 65534); nothing else on the host is in that group
 - [ ] Containers keep `read_only`, `cap_drop: ALL`, `no-new-privileges`, memory and pid limits
 - [ ] Restart planned after certificate renewal
 
@@ -210,8 +230,8 @@ Real pitfalls found in the first run and review ([docs/server.md](../docs/server
 
 | Symptom | Cause and fix |
 | --- | --- |
-| coturn log `Cannot find config file ... Default and command-line settings will be used` | `turnserver.conf` is mode 600 root; coturn runs as `nobody`. Re-run `TURN_CONF_GROUP=65534 ./coturn/render.sh`. coturn does **not** stop; no TURN auth and no hardening until fixed. |
-| coturn log `cannot start TLS and DTLS listeners` | coturn cannot read the key. `chown 65532:65534 certs/privkey.pem; chmod 640`. Runs without 5349. |
+| coturn log `Cannot find config file ... Default and command-line settings will be used` | `turnserver.conf` is mode 600 root, or its group is not `COTURN_GID`. Re-run `sudo TURN_CONF_GROUP=3478 ./coturn/render.sh` (the value of `COTURN_GID`). coturn does **not** stop; no TURN auth and no hardening until fixed. |
+| coturn log `cannot start TLS and DTLS listeners` | coturn cannot read the key. `chown 65532:3478 certs/privkey.pem; chmod 640` (group = `COTURN_GID`). Runs without 5349. |
 | Server restarts in a loop | Cannot read the TLS key (clear message in the log). Same fix. |
 | coturn: `/usr/bin/turnserver: Operation not permitted` | `cap_drop: ALL` without `cap_add: NET_BIND_SERVICE`. Keep the compose file's setting. |
 | `Bad configuration format` in coturn | A template option not valid in your coturn version (`no-cli`, `no-tlsv1` are invalid in 4.18); use 4.18.0. |

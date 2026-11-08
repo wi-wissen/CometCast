@@ -47,7 +47,7 @@ Details: [docs/server.md "First real run"](https://github.com/wi-wissen/CometCas
 
 ### Changes to make in `docs/SETUP.md` to keep both consistent
 
-1. Replace "Docker and coturn have never been run" with the status above and link to deploy/README.md for the exact steps (UIDs, `TURN_CONF_GROUP=65534 render.sh`, key owner `65532:65534`, mode 640).
+1. Replace "Docker and coturn have never been run" with the status above and link to deploy/README.md for the exact steps (UIDs, `TURN_CONF_GROUP=3478 render.sh` with `COTURN_GID`, key owner `65532:3478`, mode 640).
 2. Resolve the open/TURN decision above and state the chosen mode.
 3. State the real ports: server 8443 behind a proxy on 443 (or direct), coturn 3478 udp+tcp, 5349 tcp, relay range from `.env`.
 4. Add: set `network.trusted_proxies` when a proxy is in front; restart after certificate renewal; the health check is `/healthz`.
