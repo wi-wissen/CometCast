@@ -1,0 +1,502 @@
+<title>Comet Cast Website Pitch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: a calm page on "paper", one bold moment per page. Home: the real display screen, then the
+   "what do I need?" finder right below. Tech details live on their own page, linked from the footer. */
+:root {
+  --sky: #0e1630;        /* the display's own background (apps/web display.css) */
+  --sky-2: #17213f;
+  --sky-line: #2e3c68;
+  --comet: #f2a33a;      /* comet amber: buttons, focus, the one accent */
+  --comet-glow: #ffc766;
+  --paper: #f6f7fb;
+  --card: #ffffff;
+  --ink: #111830;
+  --ink-2: #4a5470;
+  --rule: #e1e5ef;
+  --ok: #2f8a5b;
+  --ok-bg: #e7f4ec;
+  --app-bg: #fff3dc;
+  --app-ink: #7a4300;
+  --none-bg: #eef1f8;
+  --beta: #7a4300;
+  --beta-bg: #fff3dc;
+  --link: #2b4fb3;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #0b1126; --card: #131b36; --ink: #eef1f8; --ink-2: #aeb7cf; --rule: #24305a;
+  --ok: #5cc48f; --ok-bg: #12301f; --app-bg: #2a2410; --app-ink: #ffc766; --none-bg: #1b2546;
+  --beta: #ffc766; --beta-bg: #2a2410; --link: #9db6ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #0b1126; --card: #131b36; --ink: #eef1f8; --ink-2: #aeb7cf; --rule: #24305a;
+  --ok: #5cc48f; --ok-bg: #12301f; --app-bg: #2a2410; --app-ink: #ffc766; --none-bg: #1b2546;
+  --beta: #ffc766; --beta-bg: #2a2410; --link: #9db6ff; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--paper); color: var(--ink); font: 17px/1.6 var(--body) }
+a { color: var(--link) }
+:focus-visible { outline: 3px solid var(--comet); outline-offset: 2px; border-radius: 6px }
+h1, h2, h3 { font-family: var(--display); line-height: 1.1; text-wrap: balance; margin: 0 }
+p { margin: 0 }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+.eyebrow { font: 700 12px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--comet) }
+
+/* --- pitch frame (not part of the site) --- */
+.pitch .wrap { padding-block: 28px 8px; display: grid; gap: 12px }
+.pitch h1 { font-size: clamp(28px, 4vw, 40px) }
+.pitch p { color: var(--ink-2); max-width: 72ch }
+.changes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 6px }
+.changes div { border-left: 3px solid var(--comet); padding: 2px 0 2px 12px; font-size: 15px; color: var(--ink-2); min-width: 0 }
+.changes b { color: var(--ink); display: block; font-family: var(--display); font-size: 16px }
+.board-label { font: 700 13px/1 var(--mono); color: var(--ink-2); padding-block: 26px 10px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap }
+.tabs { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden }
+.tabs button { font: 700 12px var(--mono); border: 0; background: var(--card); color: var(--ink-2); padding: 7px 12px; cursor: pointer }
+.tabs button[aria-pressed="true"] { background: var(--sky); color: #fff }
+.board { border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: var(--paper); box-shadow: 0 20px 50px -30px rgba(14, 22, 48, .45) }
+
+/* --- site: language hint (only when the browser prefers the other language) --- */
+.langhint { background: var(--card); border-bottom: 1px solid var(--rule); font-size: 15px }
+.langhint .wrap { display: flex; gap: 12px; align-items: center; padding-block: 8px; flex-wrap: wrap }
+.langhint a { font-weight: 700 }
+.langhint button { margin-left: auto; background: none; border: 0; color: var(--ink-2); font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 6px }
+
+/* --- site: header --- */
+.site-head .wrap { display: flex; align-items: center; gap: 24px; padding-block: 18px; flex-wrap: wrap }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font: 800 21px var(--display) }
+.nav { display: flex; gap: 22px; margin-left: auto; align-items: center; flex-wrap: wrap }
+.nav a { color: var(--ink); text-decoration: none; font-weight: 700; font-size: 16px }
+.nav a:hover { color: var(--link) }
+.nav .lang { font: 700 13px var(--mono); color: var(--ink-2); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 8px }
+.btn { display: inline-flex; align-items: center; gap: 8px; font: 700 16px var(--body); padding: 12px 20px; border-radius: 10px; text-decoration: none; border: 1px solid transparent; cursor: pointer }
+.btn-primary { background: var(--comet); color: #1a1205 }
+.btn-primary:hover { background: var(--comet-glow) }
+.btn-ghost { border-color: var(--rule); color: var(--ink); background: var(--card) }
+.nav .btn { padding: 9px 16px; font-size: 15px }
+
+/* --- site: hero with a starry backdrop behind the real display screen --- */
+.hero { position: relative; overflow: hidden }
+.hero .sky-bg { position: absolute; inset: 0; pointer-events: none; opacity: .55 }
+.hero .wrap { position: relative; display: grid; grid-template-columns: 1fr 1.1fr; gap: 44px; align-items: center; padding-block: 36px 56px }
+.hero h1 { font-size: clamp(38px, 5.6vw, 64px); font-weight: 800; letter-spacing: -0.02em }
+.hero h1 em { font-style: normal; color: var(--comet) }
+.hero .lead { font-size: 20px; color: var(--ink-2); margin-top: 18px; max-width: 34ch }
+.hero .ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px }
+.hero .small { font-size: 14px; color: var(--ink-2); margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.beta { font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--beta); background: var(--beta-bg); border-radius: 4px; padding: 4px 6px }
+
+/* the display, drawn like the real web display (idle screen) */
+.tv { position: relative; max-width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; border: 9px solid #070b18; background: var(--sky); box-shadow: 0 30px 60px -25px rgba(7, 11, 24, .6); color: #f3f5fa; container-type: inline-size; overflow: hidden }
+.tv .top { position: absolute; left: 4.5cqw; right: 4.5cqw; top: 4.5cqw; display: flex; align-items: center; gap: 2cqw }
+.tv .room { font: 700 3.6cqw/1 var(--display); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.tv .pill { font: 700 1.9cqw/1 var(--body); background: var(--sky-2); border: 1px solid var(--sky-line); border-radius: 999px; padding: 1.4cqw 2cqw; white-space: nowrap }
+.tv .steps { position: absolute; left: 4.5cqw; top: 31%; display: grid; gap: 2.4cqw }
+.tv .st { display: grid; grid-template-columns: 4.2cqw 1fr; gap: 1.8cqw; align-items: start }
+.tv .num { width: 4.2cqw; height: 4.2cqw; border-radius: 50%; background: var(--comet-glow); color: #1a1205; font: 700 2.2cqw/4.2cqw var(--body); text-align: center; margin-top: .6cqw }
+.tv .lbl { font: 400 1.8cqw/1.2 var(--body); color: #b9c2d8 }
+.tv .big { font: 700 5.6cqw/1.05 var(--body); letter-spacing: -.01em }
+.tv .code { font: 700 9.2cqw/1 var(--body); letter-spacing: .06em; word-spacing: .3em }
+.tv .qr { position: absolute; right: 5.3cqw; top: 28%; width: 22cqw; aspect-ratio: 1; background: #fff; border-radius: 1.4cqw; padding: 2cqw }
+.tv .qr canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated }
+.tv .scan { position: absolute; right: 5.3cqw; width: 22cqw; top: 68%; text-align: center; font: 400 1.6cqw var(--body); color: #b9c2d8 }
+.tv .foot { position: absolute; left: 4.5cqw; bottom: 3.6cqw; font: 400 1.6cqw var(--body); color: #b9c2d8 }
+.tv .gear { position: absolute; right: 4.5cqw; bottom: 2.8cqw; font: 700 1.8cqw var(--body); background: var(--sky-2); border: 1px solid var(--sky-line); border-radius: 1cqw; padding: 1.2cqw 2cqw }
+
+/* --- site: the finder --- */
+.section { padding-block: 56px }
+.section h2 { font-size: clamp(28px, 3.6vw, 40px) }
+.section .intro { color: var(--ink-2); margin-top: 10px; max-width: 60ch; font-size: 18px }
+.finder { margin-top: 28px; display: grid; gap: 22px }
+.ask { display: grid; gap: 10px }
+.ask h3 { font: 700 13px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2) }
+.picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px }
+.picks.three { grid-template-columns: repeat(3, 1fr) }
+.pick { display: grid; justify-items: center; gap: 6px; padding: 14px 10px; background: var(--card); border: 1.5px solid var(--rule); border-radius: 14px; cursor: pointer; font: 700 15px/1.25 var(--body); color: var(--ink); text-align: center; min-width: 0 }
+.pick small { font: 400 13px/1.3 var(--body); color: var(--ink-2) }
+.pick svg { width: 56px; height: 44px }
+.pick[aria-pressed="true"] { border-color: var(--comet); box-shadow: 0 0 0 3px color-mix(in srgb, var(--comet) 25%, transparent) }
+.dev-line { stroke: var(--ink); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round }
+.dev-fill { fill: var(--comet) }
+
+.answer { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 22px; display: grid; gap: 16px }
+.verdict { font: 800 24px/1.2 var(--display) }
+.verdict.yes { color: var(--ok) }
+.verdict.no { color: var(--ink-2) }
+.ways { display: grid; gap: 12px }
+.way { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper) }
+.way .side { display: grid; gap: 6px; justify-items: start; min-width: 0 }
+.way .side.right { justify-items: end; text-align: right }
+.way .who { font: 700 12px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2) }
+.need { font: 700 15px/1.3 var(--body); border-radius: 8px; padding: 6px 10px }
+.need.none { background: var(--ok-bg); color: var(--ok) }
+.need.app { background: var(--app-bg); color: var(--app-ink) }
+.need.web { background: var(--none-bg); color: var(--ink) }
+.need.own { background: var(--ok-bg); color: var(--ok) }
+.arrow { width: 70px; height: 20px }
+.arrow path { stroke: var(--comet); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round }
+.way .note { grid-column: 1 / -1; font-size: 15px; color: var(--ink-2) }
+.badge-best { font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); margin-left: 6px }
+
+/* --- site: steps --- */
+.steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 28px; counter-reset: s }
+.step { min-width: 0; display: grid; gap: 8px; align-content: start }
+.step::before { counter-increment: s; content: counter(s); font: 800 40px/1 var(--display); color: var(--comet) }
+.step h3 { font-size: 21px }
+.step p { color: var(--ink-2) }
+
+/* --- site: footer, quiet --- */
+.foot { border-top: 1px solid var(--rule); font-size: 14px; color: var(--ink-2) }
+.foot .wrap { padding-block: 22px 26px; display: flex; gap: 10px 28px; flex-wrap: wrap; align-items: baseline }
+.foot nav { display: flex; gap: 6px 18px; flex-wrap: wrap }
+.foot a { color: var(--ink-2); text-decoration: none }
+.foot a:hover { color: var(--ink); text-decoration: underline }
+.foot .fine { margin-left: auto }
+
+/* --- tech page (excerpt) --- */
+.doc-head .wrap { padding-block: 40px 4px; display: grid; gap: 12px }
+.doc-head h1 { font-size: clamp(32px, 4.6vw, 48px) }
+.doc-head p { color: var(--ink-2); max-width: 62ch; font-size: 19px }
+.path { margin-top: 22px; background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; overflow-x: auto }
+.path svg { display: block; min-width: 640px; width: 100%; height: auto }
+.path text { font-family: var(--body); fill: var(--ink) }
+.path .mut { fill: var(--ink-2) }
+.libs { margin-top: 22px; overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--card) }
+.libs table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 15px }
+.libs th, .libs td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top }
+.libs th { font: 700 12px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2) }
+.libs tr:last-child td { border-bottom: 0 }
+.libs code { font: 500 14px var(--mono) }
+.stays { font-weight: 700; color: var(--ok) }
+.leaves { font-weight: 700; color: var(--app-ink) }
+
+@media (max-width: 900px) {
+  .hero .wrap { grid-template-columns: 1fr }
+  .picks { grid-template-columns: repeat(2, 1fr) }
+  .picks.three { grid-template-columns: repeat(3, 1fr) }
+  .steps3 { grid-template-columns: 1fr }
+  .nav { margin-left: 0; gap: 14px }
+  .foot .fine { margin-left: 0 }
+}
+@media (max-width: 560px) {
+  .picks.three { grid-template-columns: 1fr }
+  .way { grid-template-columns: 1fr }
+  .way .side.right { justify-items: start; text-align: left }
+  .arrow { transform: rotate(90deg); margin: -4px 0 -4px 10px }
+}
+</style>
+
+<header class="pitch">
+  <div class="wrap">
+    <span class="eyebrow">Pitch · cometcast.de · Runde 2</span>
+    <h1>Startseite für alle, Technik auf eigener Seite</h1>
+    <p>Die Startseite beantwortet eine Frage: Was brauche ich, um von meinem Gerät auf diesen Bildschirm zu senden? Die Technik (Datenwege, Bibliotheken) hat eine eigene Seite, die im Footer verlinkt ist. Oben schaltest du zwischen Englisch und Deutsch um.</p>
+    <div class="changes">
+      <div><b>Bildschirm wie in echt</b>Nachgebaut nach dem echten Display der Web-App: Raumname, zwei Schritte, Code, QR-Code. Die Sterne liegen jetzt im Hintergrund der Seite.</div>
+      <div><b>„Was brauche ich?“ auf der Startseite</b>Zwei Fragen, dann nur: geht es, was kommt auf dein Gerät, was auf den Bildschirm. Wenn dein Gerät es schon selbst kann, steht das auch da.</div>
+      <div><b>Ruhiger Footer</b>Kleine Schrift, eine Zeile mit Links. Kein dunkles Band mehr.</div>
+      <div><b>Sprachhinweis nur bei Bedarf</b>Nur wenn dein Browser die andere Sprache bevorzugt. Hier vorgeführt als „deutscher Browser auf der englischen Seite“.</div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="board-label">01 · STARTSEITE
+    <span class="tabs" role="group" aria-label="Sprache der Ausschnitte">
+      <button type="button" data-lang="en" aria-pressed="true">EN  /</button>
+      <button type="button" data-lang="de" aria-pressed="false">DE  /de/</button>
+    </span>
+  </div>
+  <section class="board" aria-label="Home page">
+    <div class="langhint" id="langhint">
+      <div class="wrap">
+        <span>Diese Seite gibt es auch auf Deutsch.</span>
+        <a href="#" id="hintlink">Auf Deutsch lesen</a>
+        <button type="button" aria-label="Schließen" id="closehint">×</button>
+      </div>
+    </div>
+    <div class="site-head">
+      <div class="wrap">
+        <a class="brand" href="#"><svg width="32" height="32" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc766"/><stop offset=".55" stop-color="#f2a33a"/><stop offset="1" stop-color="#3a2a6a"/></linearGradient></defs><path d="M44 14a22 22 0 1 0 6 32" fill="none" stroke="url(#cg)" stroke-width="9" stroke-linecap="round"/><circle cx="48" cy="15" r="5" fill="#fff8e6"/></svg>Comet Cast</a>
+        <nav class="nav" aria-label="Main">
+          <a href="#finder" data-en="What you need" data-de="Was du brauchst">What you need</a>
+          <a href="#" data-en="Download" data-de="Download">Download</a>
+          <a href="#" class="lang" data-en="DE" data-de="EN">DE</a>
+          <a href="#" class="btn btn-primary" data-en="Open web app" data-de="Web-App öffnen">Open web app</a>
+        </nav>
+      </div>
+    </div>
+    <div class="hero">
+      <canvas class="sky-bg" id="skybg" aria-hidden="true"></canvas>
+      <div class="wrap">
+        <div>
+          <h1 data-en="Show your screen on <em>any</em> screen in the room." data-de="Zeig deinen Bildschirm auf <em>jedem</em> Bildschirm im Raum.">Show your screen on <em>any</em> screen in the room.</h1>
+          <p class="lead" data-en="From a laptop, phone or tablet to the TV or projector. Often without installing anything." data-de="Vom Laptop, Handy oder Tablet auf Fernseher oder Beamer. Oft ganz ohne etwas zu installieren.">From a laptop, phone or tablet to the TV or projector. Often without installing anything.</p>
+          <div class="ctas">
+            <a href="#finder" class="btn btn-primary" data-en="What do I need?" data-de="Was brauche ich?">What do I need?</a>
+            <a href="#" class="btn btn-ghost" data-en="Open web app" data-de="Web-App öffnen">Open web app</a>
+          </div>
+          <p class="small"><span class="beta">Beta</span><span data-en="Try it out. Free, no account." data-de="Einfach ausprobieren. Kostenlos, ohne Konto.">Try it out. Free, no account.</span></p>
+        </div>
+        <div class="tv" role="img" aria-label="A screen showing Comet Cast: open cometcast.de and enter the code DXZ PNJ">
+          <div class="top">
+            <svg width="40" height="40" viewBox="0 0 64 64" aria-hidden="true" style="width:5cqw;height:5cqw"><path d="M44 14a22 22 0 1 0 6 32" fill="none" stroke="url(#cg)" stroke-width="9" stroke-linecap="round"/><circle cx="48" cy="15" r="5" fill="#fff8e6"/></svg>
+            <span class="room" data-en="Meeting room Elbe" data-de="Besprechungsraum Elbe">Meeting room Elbe</span>
+            <span class="pill" data-en="Approval on" data-de="Mit Freigabe">Approval on</span>
+          </div>
+          <div class="steps">
+            <div class="st"><span class="num">1</span><div><div class="lbl" data-en="Open in your browser" data-de="Im Browser öffnen">Open in your browser</div><div class="big">cometcast.de</div></div></div>
+            <div class="st"><span class="num">2</span><div><div class="lbl" data-en="Enter this code" data-de="Diesen Code eingeben">Enter this code</div><div class="code">DXZ PNJ</div></div></div>
+          </div>
+          <div class="qr"><canvas id="qr" width="29" height="29"></canvas></div>
+          <div class="scan" data-en="Or scan" data-de="Oder scannen">Or scan</div>
+          <div class="foot" data-en="No download needed." data-de="Kein Download nötig.">No download needed.</div>
+          <div class="gear" data-en="Settings" data-de="Einstellungen">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="finder" style="padding-top:24px">
+      <div class="wrap">
+        <h2 data-en="What do you need?" data-de="Was brauchst du?">What do you need?</h2>
+        <p class="intro" data-en="Choose your device and the screen. You see right away whether it works and what to install." data-de="Wähle dein Gerät und den Bildschirm. Du siehst sofort, ob es geht und was du installieren musst.">Choose your device and the screen. You see right away whether it works and what to install.</p>
+        <div class="finder">
+          <div class="ask">
+            <h3 data-en="I have" data-de="Ich habe">I have</h3>
+            <div class="picks three" role="group" id="senders"></div>
+          </div>
+          <div class="ask">
+            <h3 data-en="I want to show it on" data-de="Ich will es zeigen auf">I want to show it on</h3>
+            <div class="picks" role="group" id="screens"></div>
+          </div>
+          <div class="answer" aria-live="polite">
+            <div class="verdict" id="verdict"></div>
+            <div class="ways" id="ways"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" style="padding-top:8px">
+      <div class="wrap">
+        <h2 data-en="Then it is three steps" data-de="Dann sind es drei Schritte">Then it is three steps</h2>
+        <div class="steps3">
+          <div class="step"><h3 data-en="The screen shows a code" data-de="Der Bildschirm zeigt einen Code">The screen shows a code</h3><p data-en="And a QR code, and the address to open." data-de="Dazu einen QR-Code und die Adresse zum Öffnen.">And a QR code, and the address to open.</p></div>
+          <div class="step"><h3 data-en="You enter it or scan it" data-de="Du gibst ihn ein oder scannst ihn" >You enter it or scan it</h3><p data-en="Or tap the screen in the app's list of screens nearby." data-de="Oder du tippst in der App auf den Bildschirm in der Liste in der Nähe.">Or tap the screen in the app's list of screens nearby.</p></div>
+          <div class="step"><h3 data-en="You present" data-de="Du präsentierst">You present</h3><p data-en="Your screen, a PDF, a photo or a link. Need a moment? Press pause and the room keeps the last picture." data-de="Deinen Bildschirm, ein PDF, ein Foto oder einen Link. Brauchst du kurz Zeit? Drück Pause, und der Raum sieht das letzte Bild.">Your screen, a PDF, a photo or a link. Need a moment? Press pause and the room keeps the last picture.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap">
+        <nav aria-label="Footer">
+          <a href="#tech" data-en="How it works (technical)" data-de="Wie es technisch funktioniert">How it works (technical)</a>
+          <a href="#" data-en="Privacy" data-de="Datenschutz">Privacy</a>
+          <a href="#" data-en="Host it yourself" data-de="Selbst hosten">Host it yourself</a>
+          <a href="#">Open Source</a>
+          <a href="#" data-en="Contact" data-de="Kontakt">Contact</a>
+          <a href="#" data-en="Imprint" data-de="Impressum">Imprint</a>
+          <a href="#">GitHub</a>
+        </nav>
+        <span class="fine" data-en="Free software · no cookies · nothing loaded from third parties" data-de="Freie Software · keine Cookies · nichts von Dritten geladen">Free software · no cookies · nothing loaded from third parties</span>
+      </div>
+    </footer>
+  </section>
+
+  <div class="board-label" id="tech">02 · UNTERSEITE „WIE ES TECHNISCH FUNKTIONIERT“ (Ausschnitt)</div>
+  <section class="board" aria-label="Technical page" style="margin-bottom:48px">
+    <div class="doc-head">
+      <div class="wrap">
+        <span class="eyebrow" data-en="For IT and the curious" data-de="Für IT und Neugierige">For IT and the curious</span>
+        <h1 data-en="Where your data goes" data-de="Wohin deine Daten gehen">Where your data goes</h1>
+        <p data-en="The picture goes straight from your device to the screen. A small server only helps the two find each other." data-de="Das Bild geht direkt von deinem Gerät zum Bildschirm. Ein kleiner Server hilft nur dabei, dass sich die beiden finden.">The picture goes straight from your device to the screen. A small server only helps the two find each other.</p>
+      </div>
+    </div>
+    <div class="section" style="padding-top:8px">
+      <div class="wrap">
+        <div class="path">
+          <svg viewBox="0 0 900 190" role="img" aria-label="Data path">
+            <rect x="10" y="60" width="170" height="70" rx="12" fill="var(--paper)" stroke="var(--rule)"/>
+            <text x="95" y="100" text-anchor="middle" font-weight="700" data-en="Your device" data-de="Dein Gerät">Your device</text>
+            <rect x="720" y="60" width="170" height="70" rx="12" fill="var(--paper)" stroke="var(--rule)"/>
+            <text x="805" y="100" text-anchor="middle" font-weight="700" data-en="The screen" data-de="Der Bildschirm">The screen</text>
+            <rect x="350" y="4" width="200" height="44" rx="10" fill="var(--paper)" stroke="var(--rule)"/>
+            <text x="450" y="31" text-anchor="middle" font-size="14" font-weight="700" data-en="Relay: code and handshake" data-de="Relay: Code und Verbindungsaufbau">Relay: code and handshake</text>
+            <path d="M180 82 C 260 30, 290 26, 350 26" fill="none" stroke="var(--ink-2)" stroke-width="2" stroke-dasharray="5 5"/>
+            <path d="M550 26 C 610 26, 640 30, 720 82" fill="none" stroke="var(--ink-2)" stroke-width="2" stroke-dasharray="5 5"/>
+            <path d="M180 108 L 720 108" fill="none" stroke="var(--comet)" stroke-width="4" stroke-linecap="round"/>
+            <text x="450" y="98" text-anchor="middle" font-weight="700" data-en="Picture, files, links: directly (WebRTC, encrypted)" data-de="Bild, Dateien, Links: direkt (WebRTC, verschlüsselt)">Picture, files, links: directly (WebRTC, encrypted)</text>
+            <text x="450" y="160" text-anchor="middle" class="mut" font-size="14" data-en="If the direct way is blocked: your organisation's own TURN server. The public relay never carries the picture." data-de="Ist der direkte Weg gesperrt: der eigene TURN-Server der Organisation. Das öffentliche Relay trägt nie das Bild.">If the direct way is blocked: your organisation's own TURN server. The public relay never carries the picture.</text>
+          </svg>
+        </div>
+        <div class="libs">
+          <table>
+            <thead><tr><th data-en="Part" data-de="Teil">Part</th><th data-en="Built on (open source)" data-de="Aufgebaut auf (Open Source)">Built on (open source)</th><th data-en="Where the data goes" data-de="Wohin die Daten gehen">Where the data goes</th></tr></thead>
+            <tbody>
+              <tr><td data-en="Picture and sound" data-de="Bild und Ton">Picture and sound</td><td><code>webrtc-rs</code>, <code>OpenH264</code></td><td><span class="stays" data-en="Stays in your network" data-de="Bleibt in deinem Netz">Stays in your network</span></td></tr>
+              <tr><td data-en="Finding each other" data-de="Sich finden">Finding each other</td><td><code>cometcast-server</code> (<code>axum</code>), <code>ALTCHA</code></td><td><span class="leaves" data-en="Room code to the relay, nothing stored" data-de="Raumcode zum Relay, nichts gespeichert">Room code to the relay, nothing stored</span></td></tr>
+              <tr><td data-en="Screens nearby" data-de="Bildschirme in der Nähe">Screens nearby</td><td><code>mdns-sd</code>, <code>ed25519-dalek</code></td><td><span class="stays" data-en="Stays in your network, signed" data-de="Bleibt in deinem Netz, signiert">Stays in your network, signed</span></td></tr>
+              <tr><td data-en="PDF pages" data-de="PDF-Seiten">PDF pages</td><td><code>hayro</code></td><td><span class="stays" data-en="Opened on the screen device" data-de="Wird auf dem Anzeigegerät geöffnet">Opened on the screen device</span></td></tr>
+              <tr><td data-en="iPhone via AirPlay" data-de="iPhone per AirPlay">iPhone via AirPlay</td><td><code>UxPlay</code></td><td><span class="stays" data-en="Stays in your network" data-de="Bleibt in deinem Netz">Stays in your network</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const ICON = {
+    laptop: '<rect class="dev-line" x="12" y="6" width="32" height="22" rx="2"/><path class="dev-line" d="M6 34h44l-3-6H9z"/><circle class="dev-fill" cx="28" cy="17" r="3"/>',
+    iphone: '<rect class="dev-line" x="18" y="3" width="20" height="38" rx="4"/><path class="dev-line" d="M25 8h6"/><circle class="dev-fill" cx="28" cy="22" r="3"/>',
+    android: '<rect class="dev-line" x="18" y="3" width="20" height="38" rx="3"/><path class="dev-line" d="M24 36h8"/><circle class="dev-fill" cx="28" cy="20" r="3"/>',
+    appletv: '<rect class="dev-line" x="4" y="4" width="48" height="28" rx="2"/><rect class="dev-line" x="20" y="35" width="16" height="6" rx="2"/><circle class="dev-fill" cx="28" cy="18" r="3"/>',
+    googletv: '<rect class="dev-line" x="4" y="4" width="48" height="28" rx="2"/><path class="dev-line" d="M20 40h16M28 32v8"/><circle class="dev-fill" cx="28" cy="18" r="3"/>',
+    chromecast: '<rect class="dev-line" x="4" y="4" width="48" height="28" rx="2"/><circle class="dev-line" cx="44" cy="38" r="4"/><path class="dev-line" d="M10 26a5 5 0 0 1 5 5M10 20a11 11 0 0 1 11 11"/>',
+    projector: '<rect class="dev-line" x="6" y="18" width="34" height="16" rx="3"/><circle class="dev-line" cx="16" cy="26" r="4"/><path class="dev-line" d="M40 22l12-12M40 30l12 6"/><circle class="dev-fill" cx="32" cy="26" r="2.5"/>',
+  }
+  const S = [
+    { id: 'laptop', en: ['Laptop', 'Windows, Mac, Linux'], de: ['Laptop', 'Windows, Mac, Linux'] },
+    { id: 'iphone', en: ['iPhone or iPad', ''], de: ['iPhone oder iPad', ''] },
+    { id: 'android', en: ['Android phone', 'or tablet'], de: ['Android-Handy', 'oder Tablet'] },
+  ]
+  const R = [
+    { id: 'appletv', en: ['TV with Apple TV', ''], de: ['Fernseher mit Apple TV', ''] },
+    { id: 'googletv', en: ['TV with Google TV', 'or Android TV'], de: ['Fernseher mit Google TV', 'oder Android TV'] },
+    { id: 'chromecast', en: ['Chromecast', ''], de: ['Chromecast', ''] },
+    { id: 'projector', en: ['Projector or TV with a computer', 'mini PC or laptop'], de: ['Beamer oder Fernseher mit Computer', 'Mini-PC oder Laptop'] },
+  ]
+  // What goes on each side: none, web (cometcast.de in the browser), app (Comet Cast app), own (built into the device).
+  const T = {
+    none: { en: 'Nothing to install', de: 'Nichts installieren' },
+    web: { en: 'Open cometcast.de', de: 'cometcast.de öffnen' },
+    app: { en: 'Comet Cast app', de: 'Comet-Cast-App' },
+  }
+  const own = (en, de) => ({ kind: 'own', en, de })
+  const W = (you, screen, note) => ({ you, screen, note })
+  const N = (en, de) => ({ en, de })
+  const M = {
+    laptop: {
+      appletv: [W('web', 'app'), W('app', 'none', N('Photos and videos right away; your screen with a short delay.', 'Fotos und Videos sofort, dein Bildschirm mit kurzer Verzögerung.')), W(own('Mac: AirPlay, built in', 'Mac: AirPlay, schon eingebaut'), 'none', N('A Mac can do this on its own.', 'Ein Mac kann das auch ganz allein.'))],
+      googletv: [W(own('Chrome or Edge: Cast, built in', 'Chrome oder Edge: Streamen, schon eingebaut'), 'none', N('Your browser can do this on its own.', 'Dein Browser kann das schon selbst.')), W('web', 'app', N('With Comet Cast the screen can ask before it shows anything, and you can send PDFs and links.', 'Mit Comet Cast kann der Bildschirm vorher um Erlaubnis fragen, und du kannst PDFs und Links schicken.')), W('app', 'none')],
+      chromecast: [W(own('Chrome or Edge: Cast, built in', 'Chrome oder Edge: Streamen, schon eingebaut'), 'none', N('Your browser can do this on its own. You do not need Comet Cast for it.', 'Dein Browser kann das schon selbst. Dafür brauchst du Comet Cast nicht.')), W('app', 'none')],
+      projector: [W('web', 'web', N('Nothing to install on either side.', 'Auf keiner Seite etwas installieren.')), W(own('Windows: Win + K, built in', 'Windows: Win + K, schon eingebaut'), 'app', N('Works when the computer at the screen runs Windows.', 'Geht, wenn der Computer am Bildschirm Windows hat.')), W(own('Mac: AirPlay, built in', 'Mac: AirPlay, schon eingebaut'), 'app')],
+    },
+    iphone: {
+      appletv: [W(own('AirPlay, built in', 'AirPlay, schon eingebaut'), 'none', N('Your iPhone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein iPhone schon selbst. Dafür brauchst du Comet Cast nicht.')), W('app', 'app', N('Also sends PDFs and links, and the screen can ask before it shows anything.', 'Schickt auch PDFs und Links, und der Bildschirm kann vorher um Erlaubnis fragen.'))],
+      googletv: [W('app', 'app'), W('web', 'app', N('Photos, PDFs and links only, not your screen.', 'Nur Fotos, PDFs und Links, nicht dein Bildschirm.'))],
+      chromecast: [],
+      projector: [W(own('AirPlay, built in', 'AirPlay, schon eingebaut'), 'app'), W('app', 'web'), W('web', 'web', N('Photos, PDFs and links only, not your screen.', 'Nur Fotos, PDFs und Links, nicht dein Bildschirm.'))],
+    },
+    android: {
+      appletv: [W('app', 'app'), W('web', 'app', N('Photos, PDFs and links only, not your screen.', 'Nur Fotos, PDFs und Links, nicht dein Bildschirm.'))],
+      googletv: [W(own('Cast button, built in', 'Übertragen-Knopf, schon eingebaut'), 'none', N('Most Android phones can do this on their own.', 'Die meisten Android-Handys können das schon selbst.')), W('app', 'app', N('With Comet Cast the screen can ask before it shows anything, and you can send PDFs and links.', 'Mit Comet Cast kann der Bildschirm vorher um Erlaubnis fragen, und du kannst PDFs und Links schicken.'))],
+      chromecast: [W(own('Cast button, built in', 'Übertragen-Knopf, schon eingebaut'), 'none', N('Your phone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein Handy schon selbst. Dafür brauchst du Comet Cast nicht.'))],
+      projector: [W(own('Smart View or Cast, built in', 'Smart View oder Übertragen, schon eingebaut'), 'app', N('Works when the computer at the screen runs Windows.', 'Geht, wenn der Computer am Bildschirm Windows hat.')), W('app', 'web'), W('web', 'web', N('Photos, PDFs and links only, not your screen.', 'Nur Fotos, PDFs und Links, nicht dein Bildschirm.'))],
+    },
+  }
+  let lang = 'en', s = 'laptop', r = 'appletv'
+  const $ = (id) => document.getElementById(id)
+  function picks(el, items, cur, set) {
+    el.innerHTML = ''
+    for (const it of items) {
+      const b = document.createElement('button')
+      b.type = 'button'; b.className = 'pick'; b.setAttribute('aria-pressed', String(it.id === cur))
+      b.innerHTML = `<svg viewBox="0 0 56 44" aria-hidden="true">${ICON[it.id]}</svg><span></span><small></small>`
+      b.querySelector('span').textContent = it[lang][0]
+      b.querySelector('small').textContent = it[lang][1]
+      b.addEventListener('click', () => { set(it.id); render() })
+      el.appendChild(b)
+    }
+  }
+  function chip(v, side) {
+    const span = document.createElement('span')
+    if (typeof v === 'object') { span.className = 'need own'; span.textContent = v[lang] }
+    else { span.className = 'need ' + v; span.textContent = side === 'screen' && v === 'app' ? (lang === 'en' ? 'Comet Cast app on it' : 'Comet-Cast-App darauf') : T[v][lang] }
+    return span
+  }
+  function render() {
+    picks($('senders'), S, s, (v) => { s = v })
+    picks($('screens'), R, r, (v) => { r = v })
+    const ways = M[s][r]
+    const v = $('verdict'), box = $('ways')
+    box.innerHTML = ''
+    if (!ways.length) {
+      v.className = 'verdict no'
+      v.textContent = lang === 'en' ? 'Not possible with Comet Cast yet.' : 'Mit Comet Cast geht das noch nicht.'
+      return
+    }
+    v.className = 'verdict yes'
+    v.textContent = lang === 'en' ? (ways.length === 1 ? 'Works. Here is how:' : `Works. ${ways.length} ways, the easiest first:`) : (ways.length === 1 ? 'Geht. So:' : `Geht. ${ways.length} Wege, der einfachste zuerst:`)
+    const sName = S.find((x) => x.id === s)[lang][0], rName = R.find((x) => x.id === r)[lang][0]
+    ways.forEach((w, i) => {
+      const row = document.createElement('div')
+      row.className = 'way'
+      const left = document.createElement('div'); left.className = 'side'
+      left.innerHTML = '<span class="who"></span>'
+      left.querySelector('.who').textContent = lang === 'en' ? 'On your device' : 'Auf deinem Gerät'
+      left.appendChild(chip(w.you, 'you'))
+      const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      arrow.setAttribute('viewBox', '0 0 70 20'); arrow.setAttribute('class', 'arrow'); arrow.setAttribute('aria-hidden', 'true')
+      arrow.innerHTML = '<path d="M4 10h58M54 3l8 7-8 7"/>'
+      const right = document.createElement('div'); right.className = 'side right'
+      right.innerHTML = '<span class="who"></span>'
+      right.querySelector('.who').textContent = (lang === 'en' ? 'On the screen · ' : 'Auf dem Bildschirm · ') + rName
+      right.appendChild(chip(w.screen, 'screen'))
+      row.append(left, arrow, right)
+      if (w.note) {
+        const n = document.createElement('p'); n.className = 'note'
+        n.textContent = w.note[lang]
+        row.appendChild(n)
+      }
+      box.appendChild(row)
+    })
+  }
+  function setLang(l) {
+    lang = l
+    document.querySelectorAll('[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === l)))
+    document.querySelectorAll('[data-en]').forEach((el) => { const v = el.dataset[l]; if (v !== undefined) el.innerHTML = v })
+    // The hint shows only when the browser prefers the other language; here: a German browser.
+    $('langhint').hidden = l === 'de' || hintClosed
+    render()
+  }
+  let hintClosed = false
+  $('closehint').addEventListener('click', () => { hintClosed = true; $('langhint').hidden = true })
+  $('hintlink').addEventListener('click', (e) => { e.preventDefault(); setLang('de') })
+  document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)))
+  render()
+
+  // QR code look-alike (finder patterns + seeded modules), drawn like the display's QR
+  const q = $('qr'), qx = q.getContext('2d'), n = 29
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  qx.fillStyle = '#ffffff'; qx.fillRect(0, 0, n, n); qx.fillStyle = '#0e1630'
+  const finder = (x, y) => { qx.fillRect(x, y, 7, 7); qx.clearRect(x + 1, y + 1, 5, 5); qx.fillStyle = '#ffffff'; qx.fillRect(x + 1, y + 1, 5, 5); qx.fillStyle = '#0e1630'; qx.fillRect(x + 2, y + 2, 3, 3) }
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const inF = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9)
+    if (!inF && rnd() < .48) qx.fillRect(x, y, 1, 1)
+  }
+  finder(0, 0); finder(n - 7, 0); finder(0, n - 7)
+
+  // quiet stars behind the hero
+  const c = $('skybg')
+  function stars() {
+    const b = c.getBoundingClientRect(), d = window.devicePixelRatio || 1
+    c.width = b.width * d; c.height = b.height * d
+    const x = c.getContext('2d'); x.scale(d, d)
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark'
+    let sd = 5; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647
+    for (let i = 0; i < 70; i++) {
+      x.globalAlpha = .2 + rr() * .5
+      x.fillStyle = dark ? '#ffffff' : (rr() < .3 ? '#f2a33a' : '#7d89aa')
+      x.beginPath(); x.arc(rr() * b.width, rr() * b.height, rr() * 1.4 + .3, 0, 7); x.fill()
+    }
+  }
+  stars(); addEventListener('resize', stars)
+})()
+</script>
