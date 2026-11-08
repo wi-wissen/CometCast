@@ -104,3 +104,36 @@ and the board labels are not part of the site). Where this file and the pitch di
   the public build still refuses an empty imprint.
 * `node tools/branding.test.mjs`, web `npx vitest run`, Flutter tests that touch branding pass.
 * The screenshots look like the pitch in both themes and both widths; no horizontal scrolling at 390 px.
+
+## Amendments (round 3)
+
+Decided by the product owner after the pitch; they replace the matching parts above.
+
+1. **Hero buttons.** The primary hero button is **Download** (to the download page), the secondary one "Open web app". "What do I need?" is no
+   longer a hero button (the finder is right below). The header keeps "What you need" as a link and "Open web app" as its primary (amber) button.
+2. **Finder, new structure** (three questions, in this order):
+   * **I have:** Windows laptop, Mac, Linux laptop, iPhone or iPad, Android phone or tablet.
+   * **How are you connected?** (between the two device questions), three choices, default **Office or school**:
+     * *Same Wi-Fi, e.g. at home*: built-in ways (AirPlay, Miracast, Cast, browser Cast) are shown normally.
+     * *Office or school* (own device, guest Wi-Fi): built-in ways stay but carry the chip "Often blocked in school and office networks";
+       Comet Cast ways carry "Also works across networks" and are listed first, then the built-in ones.
+     * *Different networks, e.g. mobile data*: built-in ways are left out; Comet Cast ways stay with "Also works across networks".
+     There is no "Not sure" choice. If nothing remains, the answer says so plainly (and that the same Wi-Fi would help).
+   * **The screen is connected to:** Apple TV, Google TV / Android TV, Chromecast, Windows PC, Mac or Linux computer, Interactive board (Android).
+     There is no TV / projector distinction.
+   * Facts of the matrix (`tools/site/finder.mjs`, easiest first, plain notes as in the pitch): Windows and Linux laptops reach Chromecast and Google TV with the
+     browser's built-in Cast (Chrome or Edge; Chrome or Chromium on Linux) or with Comet Cast, Apple TV with browser + app on the Apple TV or the laptop app without an app on the TV
+     (photos and videos right away, the screen with a short delay), a Windows PC with the browser on both sides (Windows laptops also with Win + K and the Comet Cast app on the PC),
+     a Mac or Linux computer and an interactive board with the browser on both sides (the board also with the app on it). A Mac adds built-in AirPlay to Apple TV (first, nothing to install)
+     and to a Mac or Linux computer running the Comet Cast app. An iPhone or iPad uses AirPlay or the app with Apple TV, app or browser (photos, PDFs and links only) with Google TV, a Windows PC and
+     an interactive board, AirPlay + app or app + browser with a Mac or Linux computer, and cannot send to a Chromecast with Comet Cast. An Android device uses the Cast button for Google TV and Chromecast
+     (Google TV also app + app), app + app or browser + app (photos, PDFs and links only) for Apple TV, Smart View or Cast (Miracast) + the app on a Windows PC or app + browser, app + browser for a Mac or Linux computer,
+     and app + browser or app on the board. **A browser on a phone cannot share the screen:** its ways always say "Photos, PDFs and links only".
+   * The no-JavaScript fallback is still the full table, now with a note on the network each way needs.
+3. **Download page** (`/download/`, `/de/download/`):
+   * Generated at build time from the latest GitHub release of the source repository (`api.github.com/repos/.../releases/latest`); asset links are the release asset URLs, mapped to Windows, macOS,
+     Linux and Android by file-name pattern (names from `.github/workflows/release.yml`). `--offline`, no release or a failed call means "Coming soon" on every card. The visitor's browser loads nothing from GitHub until a download is clicked.
+     App Store and Google Play links are placeholders ("coming soon") until the listings exist.
+   * A tiny script (`userAgentData` / `userAgent`) moves the matching card to the top as "For your Mac" and so on; without JavaScript all cards are listed.
+   * Short links: `/d/` (English download page) and `/de/d/` (German); `/apk/` leads to the latest Android APK (build-time meta refresh and link), else to the Android card of the download page. They do not collide with join codes or `/app/`.
+   * The Pages workflow also runs when a release is published, so the page follows the latest release (`docs/website.md`).
