@@ -492,6 +492,30 @@ struct Conn {
     offer_at: Option<tokio::time::Instant>,
 }
 
+/// A join that was let in with a hand-over token and whose `peer_joined` is still to come:
+/// the request id and the name. The server answers an allowed request with `peer_joined`, or
+/// with `join_request_cancelled` for the same id (the joiner left, the room was full); only
+/// that join is reported as a hand-over, never a later ordinary join of the same name.
+#[derive(Default)]
+struct TokenAdmission(Option<(u64, String)>);
+
+impl TokenAdmission {
+    fn admitted(&mut self, id: u64, name: String) {
+        self.0 = Some((id, name));
+    }
+
+    fn cancelled(&mut self, id: u64) {
+        if self.0.as_ref().is_some_and(|(i, _)| *i == id) {
+            self.0 = None;
+        }
+    }
+
+    /// Was the join of `name` that just arrived the one let in with a token?
+    fn joined(&mut self, name: &str) -> bool {
+        self.0.take().is_some_and(|(_, n)| n == name)
+    }
+}
+
 /// Close the session of a sender that is gone and make a fresh one for the next sender.
 /// The new session is also published for [`ReceiverCore::stats`] and the key frame requests.
 async fn fresh_session(
@@ -531,9 +555,9 @@ async fn run(
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut conn = Conn::default();
     // The name of the connected presenter (the content task needs it for hand-over tokens) and
-    // the name of a join that was let in with a token and whose `peer_joined` is still to come.
+    // the join that was let in with a token and whose `peer_joined` is still to come.
     let mut peer_name: Option<String> = None;
-    let mut admitted_by_token: Option<String> = None;
+    let mut admitted_by_token = TokenAdmission::default();
     // The presenter the host asked to remove, until its `peer_left` arrives.
     let mut removed_peer: Option<String> = None;
     let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<ReceiverEvent>();
@@ -606,7 +630,7 @@ async fn run(
                 Some(ServerMsg::PeerJoined { name, handover: token }) => {
                     // A join that needed no decision (join mode open) carries its token here;
                     // one that was allowed by us below was checked when the request came.
-                    let by_token = admitted_by_token.take().is_some_and(|n| n == name)
+                    let by_token = admitted_by_token.joined(&name)
                         || token.is_some_and(|t| handover.take(&t, &name, Instant::now()));
                     peer_name = Some(name.clone());
                     emit(ReceiverEvent::PeerJoined { name, handover: by_token });
@@ -616,7 +640,7 @@ async fn run(
                     // Anything else (no token, expired, used, another name, another room) is
                     // an ordinary request for the host.
                     if token.is_some_and(|t| handover.take(&t, &name, Instant::now())) {
-                        admitted_by_token = Some(name);
+                        admitted_by_token.admitted(id, name);
                         let _ = sig
                             .send(ClientMsg::JoinDecision { id: Some(id), allow: true, block: false })
                             .await;
@@ -625,6 +649,7 @@ async fn run(
                     }
                 }
                 Some(ServerMsg::JoinRequestCancelled { id, reason }) => {
+                    admitted_by_token.cancelled(id);
                     emit(ReceiverEvent::JoinRequestCancelled { id, reason })
                 }
                 Some(ServerMsg::JoinModeChanged { join_mode }) => {
@@ -808,5 +833,23 @@ mod tests {
         );
         assert_eq!(error_code("cannot answer offer: x"), "peer_failed");
         assert_eq!(error_code("something else"), "unknown");
+    }
+
+    #[test]
+    fn a_cancelled_token_join_does_not_mark_a_later_join_as_a_handover() {
+        let mut a = TokenAdmission::default();
+        a.admitted(7, "Ada".into());
+        // Another request going away does not matter.
+        a.cancelled(8);
+        assert!(a.joined("Ada"), "the admitted join itself");
+        assert!(!a.joined("Ada"), "used once");
+
+        a.admitted(9, "Ada".into());
+        a.cancelled(9);
+        assert!(!a.joined("Ada"), "a later ordinary join is no hand-over");
+
+        a.admitted(10, "Ada".into());
+        assert!(!a.joined("Ben"));
+        assert!(!a.joined("Ada"), "cleared by the join that did arrive");
     }
 }
