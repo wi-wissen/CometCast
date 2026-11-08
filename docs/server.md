@@ -311,6 +311,13 @@ Control frames are not free: every ping and pong frame a client sends uses the s
 per-connection message budget as a text message, so a flood of them is cut off like any other
 flood (`rate_limited`, closed, counted as a failure).
 
+**Slow HTTP clients:** a new connection must send a complete request head within 15 s
+(before that, nothing is answered and the connection is closed), and on a kept-alive
+connection each further request head must arrive within 15 s too. Plain HTTP and HTTPS
+behave the same; with HTTPS the TLS handshake has its own 10 s limit first. An upgraded
+WebSocket is not affected (liveness above applies). UNCERTAIN: 15 s is a placeholder and not
+configurable.
+
 **Per-address caps:** open connections (`max_connections_per_ip`) and rooms
 (`max_rooms_per_ip`) per client address.
 
