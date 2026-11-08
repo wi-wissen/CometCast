@@ -350,7 +350,11 @@ void main() {
       }
       core.setDocsWorker(worker.absolute.path);
       addTearDown(() => core.setDocsWorker(null));
-      expect(core.docsWorkerPath(), worker.absolute.path);
+      // The core may hand back the resolved path (no `..`); compare the files, not the spelling.
+      expect(
+        File(core.docsWorkerPath()!).resolveSymbolicLinksSync(),
+        worker.resolveSymbolicLinksSync(),
+      );
       // No server on port 1: the file is checked first, then the connection fails.
       final events = await core
           .startContentSender(
