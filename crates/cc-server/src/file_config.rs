@@ -705,6 +705,9 @@ mod tests {
         assert!(bad("limits.max_rooms", "0"));
         assert!(bad("mode", "sideways"));
         assert!(bad("tls.cert_file", "/x/cert.pem"), "cert without key");
+        // Each waiting request needs its own check number (10..=99).
+        assert!(bad("limits.max_pending_per_room", "91"));
+        assert!(!bad("limits.max_pending_per_room", "90"));
     }
 
     #[test]

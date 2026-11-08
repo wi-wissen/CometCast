@@ -527,6 +527,13 @@ impl ServerConfig {
                 crate::limits::EVENT_CAP
             )));
         }
+        if l.max_pending_per_room > crate::rooms::MAX_CHECK_NUMBERS {
+            // Each waiting request needs its own two-digit check number (10..=99).
+            return Err(ConfigError::new(format!(
+                "limits.max_pending_per_room must be at most {}",
+                crate::rooms::MAX_CHECK_NUMBERS
+            )));
+        }
         if self.default_join_mode == JoinMode::Locked {
             return Err(ConfigError::new(
                 "default_join_mode must be \"open\" or \"confirm\" (a room that is locked from the start could never be joined)",

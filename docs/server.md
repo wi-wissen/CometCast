@@ -112,7 +112,7 @@ UNCERTAIN: every number is a placeholder.
 | `limits.max_room_relay_bytes` | 8388608 | 67108864 | Total bytes relayed through one room. |
 | `limits.max_bad_messages` | 20 | 50 | Garbage or wrong-role messages before the connection is closed. |
 | `limits.global_failed_joins_per_min` | 300 | 1000 | Emergency brake: more failed joins than this in a minute (whole server) slow down every `join_room`. Only failed joins count (unknown, malformed or full room code); bad messages, floods and denied or timed-out join requests count toward the address ban only. At most 10000 (the server remembers only that many events; a higher value is refused at start because the brake could never trigger). |
-| `limits.max_pending_per_room` | 8 | 8 | Senders that may wait for approval in one room at the same time; more get `rate_limited`. |
+| `limits.max_pending_per_room` | 8 | 8 | Senders that may wait for approval in one room at the same time; more get `rate_limited`. At most 90 (each waiting sender gets its own two-digit check number). |
 | `limits.max_pending_per_ip` | 3 | 8 | Senders waiting for approval from one client address (all rooms); more get `rate_limited`. |
 | `limits.denied_join_weight` | 2 | 2 | A denied or timed-out join request counts as this many failures toward the address ban (0 = never). UNCERTAIN: placeholder; everybody behind one NAT address shares the budget. |
 | `limits.wide_failure_factor` | 10 | 10 | An IPv6 /48 is banned after `ban_after_failed_joins` times this many failures. UNCERTAIN: placeholder (the first version used 4, which is probably too low for a large company or campus network that owns a /48). |
