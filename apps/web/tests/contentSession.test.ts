@@ -41,8 +41,10 @@ describe('content over the control channel (sessions with fake peers)', () => {
     a.send('{"kind":"link","url":"https://example.org/x"}')
     await tick()
     expect(r.snapshot.content).toEqual({ kind: 'link', url: 'https://example.org/x', host: 'example.org' })
-    a.send('{"kind":"image","name":"p.png","mime":"image/png","size":3}')
-    a.send(new Uint8Array([1, 2, 3]).buffer)
+    // A PNG signature and IHDR of a 2 x 2 image (the display reads the pixel size before showing it).
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 2, 0, 0, 0, 2])
+    a.send(`{"kind":"image","name":"p.png","mime":"image/png","size":${png.length}}`)
+    a.send(png.buffer)
     a.send('{"kind":"image_end"}')
     await tick()
     expect(r.snapshot.content).toMatchObject({ kind: 'image', url: 'blob:fake', name: 'p.png' })

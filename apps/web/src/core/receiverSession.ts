@@ -6,6 +6,7 @@ import { CONTROL_CHANNEL_LABEL, ControlReceiver, type ControlChannel, type Contr
 import { createWorkerRenderer, PdfError, type PageBitmap, type PdfRenderer, type PdfRendererFactory } from './pdfRenderer'
 import { SignalingClient, type JoinMode, type ServerMessage, type SocketFactory } from './signaling'
 import { BusyMemory } from './busyMemory'
+import { checkImageSize } from './imageSize'
 import type { IceFetchState } from './altchaClient'
 
 export type ReceiverPhase =
@@ -143,6 +144,12 @@ export function documentErrorCode(code: string): TransferErrorCode {
   }
 }
 
+/** Refuses an image whose header is unreadable or describes too many pixels to decode safely. */
+function imagePixelCheck(bytes: Uint8Array, mime: string): TransferErrorCode | null {
+  const r = checkImageSize(bytes, mime)
+  return r === 'ok' ? null : r === 'too_many_pixels' ? 'image_too_large' : 'image_invalid'
+}
+
 /** After these the renderer is gone (worker ended), so the document is closed. */
 const FATAL_RENDER_CODES = new Set(['timeout', 'failed', 'memory', 'closed', 'unavailable'])
 
@@ -188,7 +195,7 @@ export class ReceiverSession {
       this.set({ content: { kind: 'link', url, host: new URL(url).host }, contentError: null })
     },
     onError: (contentError) => this.set({ contentError }),
-  })
+  }, undefined, imagePixelCheck)
   private get urls() {
     return this.deps.objectUrl ?? { create: (b: Blob) => URL.createObjectURL(b), revoke: (u: string) => URL.revokeObjectURL(u) }
   }
