@@ -151,7 +151,8 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     col: 0,
     debugLabel: 'settings',
   );
-  final FocusNode _endNode = RowNode(row: 0, col: 0, debugLabel: 'end');
+  final FocusNode _endNode = RowNode(row: 0, col: 1, debugLabel: 'end');
+  final FocusNode _pauseNode = RowNode(row: 0, col: 0, debugLabel: 'pause');
 
   bool _ready = false;
   String? _instanceId;
@@ -344,6 +345,7 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
     _rootNode.dispose();
     _settingsNode.dispose();
     _endNode.dispose();
+    _pauseNode.dispose();
     unawaited(_wake.set(false));
     super.dispose();
   }
@@ -679,6 +681,19 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
       return KeyEventResult.ignored;
     }
     if (_presenting) {
+      // The Play/Pause key of a remote toggles the display's own pause flag, like the button
+      // (docs/design/pause.md); it needs no focus and does not reveal the controls.
+      if ((k == LogicalKeyboardKey.mediaPlayPause ||
+              k == LogicalKeyboardKey.mediaPause ||
+              k == LogicalKeyboardKey.mediaPlay) &&
+          c.canPause) {
+        c.setDisplayPaused(
+          k == LogicalKeyboardKey.mediaPlayPause
+              ? !c.pausedByDisplay
+              : k == LogicalKeyboardKey.mediaPause,
+        );
+        return KeyEventResult.handled;
+      }
       if (!_controlsShown) {
         // First input only reveals; arrows also focus End (spec 7.1).
         _reveal.poke();
@@ -1053,6 +1068,19 @@ class DisplayRootState extends State<DisplayRoot> with WidgetsBindingObserver {
                       // under the scrim and fade on their normal timer.
                       shown: _controlsShown,
                       endFocus: _endNode,
+                      pauseFocus: _pauseNode,
+                      // The display's own Pause control, only while a live screen is shown
+                      // (docs/design/pause.md); Miracast pictures cannot be paused.
+                      onPause: !miracastPicture && c.canPause
+                          ? c.setDisplayPaused
+                          : null,
+                      paused: c.pausedByDisplay,
+                      // Who paused: the presenter's text wins when both did (rule 5).
+                      frozenBadge: !miracastPicture && c.frozen
+                          ? (c.pausedByPresenter
+                                ? t.pauseDisplayByPresenter
+                                : t.toolbarFrozenHint)
+                          : null,
                       onEnd: () {
                         // End ends the Miracast session and the Comet Cast session (new code).
                         if (miracastPicture) unawaited(rx.endMiracast());

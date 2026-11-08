@@ -262,6 +262,26 @@
   "@toolbarFrozenHint": {
     "description": "Shown while the image is frozen."
   },
+  "pausePresenterButton": "Pause",
+  "@pausePresenterButton": {
+    "description": "Presenter: button that pauses the shared screen. The display's own Pause control uses the same word."
+  },
+  "pausePresenterResume": "Resume",
+  "@pausePresenterResume": {
+    "description": "Presenter and display: button while the picture is paused, it resumes."
+  },
+  "pausePresenterBanner": "Paused: the audience sees the last picture.",
+  "@pausePresenterBanner": {
+    "description": "Presenter: banner while the person's own pause is confirmed by the display."
+  },
+  "pausePresenterDisplayFrozen": "The display has frozen the picture.",
+  "@pausePresenterDisplayFrozen": {
+    "description": "Presenter: banner while only the display has frozen the picture."
+  },
+  "pauseDisplayByPresenter": "Paused by the presenter",
+  "@pauseDisplayByPresenter": {
+    "description": "Display: badge on the frozen picture when the presenter paused (also when both did)."
+  },
   "codecTitle": "Video codec needed",
   "@codecTitle": {
     "description": "Title of the card that asks to download the H.264 codec."
