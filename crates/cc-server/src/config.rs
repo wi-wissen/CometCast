@@ -586,7 +586,11 @@ impl ServerConfig {
             ("limits.ping_interval_secs", l.ping_interval, MAX_TIMEOUT),
             ("limits.pong_timeout_secs", l.pong_timeout, MAX_TIMEOUT),
             ("limits.paired_idle_secs", l.paired_idle, MAX_LONG_DURATION),
-            ("limits.max_room_lifetime_secs", l.max_room_lifetime, MAX_LONG_DURATION),
+            (
+                "limits.max_room_lifetime_secs",
+                l.max_room_lifetime,
+                MAX_LONG_DURATION,
+            ),
             ("limits.ban_memory_secs", l.ban_memory, MAX_LONG_DURATION),
         ] {
             if d.is_zero() {
