@@ -84,7 +84,7 @@ jobs:
           cp deploy/well-known/assetlinks.json deploy/well-known/apple-app-site-association stage/.well-known/
       - name: Check links of the staged artifact (/app/ must exist now)
         run: node tools/check-site-links.mjs stage
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: stage
 
