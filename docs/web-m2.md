@@ -53,8 +53,9 @@ protocol types) once it has been exercised, and it may change.
 
 | `kind` | Fields | Meaning |
 |--------|--------|---------|
-| `cmd` | `cmd`: a `ControlCmd` from cc-proto in serde's default form: `"next_page"`, `"prev_page"`, `"stop"`, `{"go_to_page":{"page":3}}` | Remote-control command. The web receiver acts on `stop` (closes the shown image, link or document) and, while a document is shown, on the page commands (N counts from 1 and is clamped to the page count). Page commands are ignored while no document is shown. The web sender sends `next_page`, `prev_page` and `stop`; it has no control for `go_to_page`. |
+| `cmd` | `cmd`: a `ControlCmd` from cc-proto in serde's default form: `"next_page"`, `"prev_page"`, `"stop"`, `"pause"`, `"resume"`, `{"go_to_page":{"page":3}}` | Remote-control command. `pause` and `resume` (presenter to display, see "Pause" below) are idempotent and concern the live screen, not the content. The web receiver acts on `stop` (closes the shown image, link or document) and, while a document is shown, on the page commands (N counts from 1 and is clamped to the page count). Page commands are ignored while no document is shown. The web sender sends `next_page`, `prev_page` and `stop`; it has no control for `go_to_page`. |
 | `page` | `page` (integer from 1), `pages` (integer from 1, at least `page`) | **Display to presenter** (decision 13.31). The receiver sends it whenever the shown PDF page or the page count changes, once the page count is known (not while the document is still being opened). The presenter keeps the last one for the current document and forgets it with the next document. A receiver ignores a `page` message it receives. UNCERTAIN: the name `page` and the field names follow the spec's wording (`page`, `pages`). The native receiver (`cc-receiver`) sends it when the shown document's page count is known and on every page change; the native presenter (`cc-sender`, `ControlSender::recv_page`) reads and validates it like the web client (`cc-files` `Message::Page`). |
+| `pause_state` | `presenter` (boolean), `display` (boolean); both required, other keys ignored | **Display to presenter** (docs/design/pause.md). The two pause flags as the display holds them. Sent whenever either flag changes and once when the control channel opens (both `false`). The source of truth for the presenter's UI. A display ignores a `pause_state` it receives (no error, no violation); a presenter ignores `pause` and `resume`. |
 | `image` | `name` (string, 1..255 characters), `mime` (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `size` (integer bytes, 1..10 MiB) | Starts an image transfer. Binary chunks follow. |
 | `image_end` | none | Ends the transfer; the receiver checks that the received byte count equals `size`. |
 | `link` | `url` (string, at most 2048 characters, **and the normalised URL at most 2048 characters too**) | Asks the receiver to open a link. See below. |
@@ -66,6 +67,35 @@ then two binary messages (16384 and 8448 bytes), then `{"kind":"document_end"}`.
 the first page; `cmd` messages `next_page`, `prev_page` and `{"go_to_page":{"page":N}}` (N from 1) turn pages and
 `stop` closes the document (N is clamped to the page count, page commands are ignored while no document is
 shown; same in the native and the web receiver).
+
+### Pause
+
+One feature, seen from both sides (full rules: [design/pause.md](design/pause.md)). There are two independent flags: `presenter` (set only by the
+presenter with `{"kind":"cmd","cmd":"pause"}`, cleared with `resume`) and `display` (set only by the display, with its Pause control; the web
+display's Freeze button). The picture on the display is frozen while **either** flag is set; each side clears only its own. Pause applies to the
+live screen picture only: a display ignores `pause` while no screen is shown, and both flags are cleared when the screen stops, the presentation
+ends, the peer leaves or a new session starts. The display tells the presenter with `pause_state`.
+
+- **Presenter pause** stops the presenter's video at once (web: `RTCRtpSender.replaceTrack(null)`, no renegotiation; native `cc-sender`: no
+  capture and no encoding, pushed units refused, test pattern silent), then sends `pause`. Resume sends `resume` first, then video flows again,
+  beginning with a key frame (native: forced; web: UNCERTAIN, see measurement point A22). Audio would be paused with it (no sender sends audio).
+- **No failure while paused.** No receiver has a frame watchdog: the native core, the Flutter display, the web display and the Apple TV core never
+  ask for key frames or raise an error because frames stop. The only timers on the channel belong to transfers (stall timeout), not to video.
+- **Display pause only** leaves the presenter sending; the display stops updating the picture (web: the freeze canvas; Flutter: new pictures are
+  held and the newest one is shown when live again, the hardware path asks for a key frame; Apple TV: the video view is taken off the track).
+- **Older peers.** Checked on every parser for this change: before it, an unknown `cmd` value was refused as invalid fields by `cc-files` (one
+  protocol violation, and a transfer in progress was dropped, because any refused text message ends the open transfer), and by the web and Swift
+  parsers as a bad message (a toast, the transfer goes on). So `pause` and `resume` are now **known on every receiver in the same change**
+  (`cc-files`, web, Apple TV). A display older than this change still counts them as a violation (and, native, drops a running transfer), and a
+  presenter older than this change ignores `pause_state` (it skips unknown display messages). With an old display the presenter's video still
+  stops (privacy holds), the presenter never sees an echo and so stays in the pending state, and the old display shows its last frame or black.
+- **Presenter confirmation.** The presenter shows its own flag as confirmed only when `pause_state.presenter` is `true`. Until then it shows a
+  pending state (the button already reads Resume). A `pause_state` that does not hold what the presenter wants is answered with the same
+  command again (idempotent; cannot loop, a display answers only when its state changes).
+- **iOS broadcast extension:** presenter pause is not offered (see [ios.md](ios.md)); the display can still pause.
+
+Fixtures: `tests/fixtures/control-parse.json` (`cmd pause`, `cmd resume`, `pause_state ...`) and `tests/fixtures/content-scenarios.json`
+(pause is a command that does not disturb a transfer, `pause_state` is ignored) in Rust, web and Swift.
 
 Example sequence for an image: `{"kind":"image","name":"a.png","mime":"image/png","size":40000}`,
 then three binary messages (16384, 16384, 7232 bytes), then `{"kind":"image_end"}`.
@@ -220,6 +250,8 @@ audio, `.m3u8` HLS. Other receivers (native clients, older web builds) see the s
 
 ## Tests
 
+- Unit (vitest) for pause: `tests/pause.test.ts` (the flags of both sides over a fake channel, the display's badge and canvas, the presenter's
+  button and banner, `replaceTrack` in the real peer wrapper).
 - Unit (vitest): `tests/control.test.ts` (chunking, reassembly, validation, back-pressure),
   `tests/toolbar.test.ts` (toolbar state, annotation model), `tests/contentSession.test.ts`,
   `tests/contentOverlay.test.ts` (no buttons over image and PDF, the link card with its 1 s guard, Escape and focus row),

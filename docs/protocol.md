@@ -80,7 +80,8 @@ transport). UNCERTAIN: this is verified only for one video m-line against Chromi
 audio or data m-lines are not tested (see docs/transport.md).
 
 `control.cmd` uses serde's default enum form, e.g. `"stop"` for unit commands
-and `{"go_to_page":{"page":3}}` for commands with data (see `ControlCmd`).
+and `{"go_to_page":{"page":3}}` for commands with data (see `ControlCmd`). `"pause"` and `"resume"` are unit commands too (presenter
+to display, docs/design/pause.md); the display answers on the control data channel with `pause_state`, see [web-m2.md](web-m2.md).
 
 Relay messages work only when both sides are in the room. Otherwise the sender
 of the message gets `error` `not_in_room` and nothing is forwarded.

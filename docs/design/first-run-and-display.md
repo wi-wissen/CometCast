@@ -304,7 +304,7 @@ On input (see 8) the controls fade in together for 5 s and fade out together:
 
 All use the current appearance's `--panel`, `--line` and `--fg` (dark blue in Dark, light grey in Light, black with grey border in OLED black). With D-pad input, End shows the focus ring.
 
-Shown only while it applies, at rest too (they are states, not controls): the **frozen badge** top left (`toolbar.frozenHint`), and the black screen with `toolbar.blackHint` (15/400 `--onblack` on `#000000`, centred, no box; decision 13.57). The frozen badge is hidden while the toolbar is visible (3.5).
+Shown only while it applies, at rest too (they are states, not controls): the **frozen badge** top left (`toolbar.frozenHint`, or `pause.display.byPresenter` while the presenter paused; see "Pause" below), and the black screen with `toolbar.blackHint` (15/400 `--onblack` on `#000000`, centred, no box; decision 13.57). The frozen badge is hidden while the toolbar is visible (3.5).
 
 Not on the display: "Close image", "Close document" and PDF page buttons. Pages are turned on the presenter's page (5.6); content goes away when the presenter stops, disconnects or the host presses End.
 
@@ -322,6 +322,8 @@ Not on the display: "Close image", "Close document" and PDF page buttons. Pages 
 **End** closes the session: all presenters are disconnected, all waiting requests are dropped, blocks are cleared, a new code is made, the display returns to Idle, toast `toast.sessionEnded`. Presenters see "Presentation ended". There is no confirmation step.
 
 While presenting, the screen is kept awake (D5). When the presenter stops, the display returns to Idle with the same code; presenters stay connected. When the presenter **leaves** (Disconnect, closed app, lost connection), the display also keeps its code: Idle, toast `toast.left`; join mode, blocks and waiting requests stay (decision N8). Only End, a restart, a lost and re-made room and the background rule of native-apps.md 15 make a new code.
+
+**Pause (docs/design/pause.md, built).** The Freeze of the web toolbar is the display's own pause flag; the presenter can pause too. The picture is frozen while either flag is set, and both are cleared when the screen stops. The badge (same look as the name tag, hidden while the controls are shown) says who paused: `pause.display.byPresenter` ("Paused by the presenter") while the presenter's flag is set, also when both are set; `toolbar.frozenHint` while only the display froze. The native displays have a **Pause / Resume control** next to End, on its left (focus row 0: Pause, then End; the arrows and Left from End reach it; the Play/Pause key of a remote toggles it). It uses the words `pause.presenter.button` and `pause.presenter.resume` and is offered only while a live screen is shown (not for an image, PDF page or link). Apple TV: the Play/Pause button of the Siri Remote toggles the flag instead of standing for Menu while a live screen is shown; the control has no icon yet (text only). Annotations keep working on a frozen picture and the black screen stays independent.
 
 ### 4.6 Toasts
 
@@ -934,6 +936,18 @@ These keys exist in the Flutter ARB files and are used by surfaces this spec now
 - the Android capture notification texts (system notification of the foreground service).
 
 Strings of the removed pre-design UI that nothing uses any more (the old discovery notes, the test-stream and monitor texts) are deleted from all three files.
+
+### 11.11 Pause (docs/design/pause.md)
+
+The du and Sie texts are identical, so none of these rows is a "du and Sie differ" row. `toolbar.freeze` and `toolbar.frozenHint` stay as they are. The Flutter keys are the camel-case form of the dotted ones (`pausePresenterButton`, ...); the display's own Pause control uses the same words as the presenter's button (`pause.presenter.button`, `pause.presenter.resume`).
+
+| Key | EN | DE du | DE Sie |
+| --- | --- | --- | --- |
+| `pause.presenter.button` | Pause | Pausieren | same as du |
+| `pause.presenter.resume` | Resume | Fortsetzen | same as du |
+| `pause.presenter.banner` | Paused: the audience sees the last picture. | Pausiert: Das Publikum sieht das letzte Bild. | same as du |
+| `pause.presenter.displayFrozen` | The display has frozen the picture. | Die Anzeige hat das Bild angehalten. | same as du |
+| `pause.display.byPresenter` | Paused by the presenter | Vom Vortragenden pausiert | same as du |
 
 ## 12. Open points that do not block implementation
 

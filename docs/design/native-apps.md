@@ -395,6 +395,8 @@ One session per join, replacing "join when sending" (N5):
 - Inside a joined session: `present_screen(…)` (desktop: the system picker, 20.3; mobile: the existing capture paths), `present_content(source)` (file or link), `send_content_cmd(cmd)` (pages), `stop_presenting()`. Stopping ends only the presentation: the display returns to Idle with the same code and the presenter stays joined. A new presentation in the same session needs no new approval. Video and content use the same peer connection (renegotiation or a pre-negotiated track; the engineers choose).
 - `PresenterUiEvent`: `WaitingForApproval { timeout_secs, check, room_name: Option<String> }`, `Joined { room_name: Option<String> }`, `ConnectionCode { sas: String }` (N2), `Page { page: u32, pages: u32 }` (N3), `Progress { sent, total }`, `Presenting`, `PresentingStopped` (also when the system ended the capture), `Ended { code }` (`removed_by_host`, the room ended, the display left), `Error { code: String, message: String }` (N9; codes in implementation-questions-flutter.md C9). `room_name` follows decision 49 (lenient).
 
+**Pause (docs/design/pause.md).** `set_presenter_paused(bool)` pauses or resumes the running screen presentation (video stops at once, `cmd pause` / `cmd resume` to the display); the display's answer is `PresenterUiEvent::PauseState`, which is the truth for the page: the person's own flag counts as confirmed only when the display echoes it. The Presenting page shows a Pause / Resume button and the banners `pause.presenter.banner` / `pause.presenter.displayFrozen` (the person's text wins when both flags are set). Not offered for files and links, for TVs without Comet Cast, and on iOS while the broadcast extension presents.
+
 ### 20.2 Receiver (`cc-ffi`, `cc-receiver`)
 
 - `start_receiver(…, room_name: Option<String>, …)` → `create_room.room_name` (N1).
@@ -403,6 +405,8 @@ One session per join, replacing "join when sending" (N5):
 - `ContentTransferProgress { received, total }`, at most one per percent and four per second (N4).
 - Send `{"kind":"page","page":n,"pages":m}` on the control channel when the page count is known and on every page change (N3).
 - `Error { code, message }` with the same code rule as 20.1; the display picks the offline body by code (spec 4.2).
+
+**Pause (display).** `set_display_paused(bool)` sets or clears the display's own flag (only while a live screen is shown); `ReceiverUiEvent::PauseChanged { presenter, display }` reports both flags after every change and when they are cleared with the presentation. The app keeps the last picture while either flag is set: Flutter holds new pictures (and asks for a key frame on the hardware path when live again), Apple TV takes the video view off the track. The control is next to End (Android TV: reachable with the D-pad; Apple TV: also the Play/Pause button).
 
 ### 20.3 Desktop capture (`cc-capture`)
 
