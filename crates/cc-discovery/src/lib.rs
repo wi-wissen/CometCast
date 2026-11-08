@@ -19,6 +19,7 @@ pub mod join;
 pub mod merge;
 pub mod nearby;
 pub mod policy;
+pub mod signed;
 pub mod srv;
 
 use std::time::Duration;
@@ -41,6 +42,7 @@ pub use policy::{
     ModeHint, PolicyFormat, PolicyLocation, PolicyState, ServerPolicy, default_policy_locations,
     load_policy,
 };
+pub use signed::{AnnounceState, DisplayKey, KeyError, Reject, SeqCounter};
 pub use srv::{SrvResolver, SystemResolver};
 
 /// DNS-SD service type that Comet Cast servers and receivers announce.
