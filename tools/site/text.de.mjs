@@ -60,9 +60,30 @@ export default function text({ GH, DOMAIN }) {
       qNet: 'Wie seid ihr verbunden?',
       qScreen: 'Der Bildschirm hängt an',
       nets: {
-        same: ['Gleiches WLAN', 'z. B. zu Hause'],
-        office: ['Büro oder Schule', 'eigenes Gerät, Gäste-WLAN'],
-        diff: ['Verschiedene Netze', 'z. B. mobile Daten'],
+        same: ['Im selben WLAN wie der Bildschirm', 'z. B. zu Hause'],
+        org: ['In einem anderen WLAN vor Ort', 'z. B. Gäste-WLAN, Bildschirm im internen Netz'],
+        away: ['Ganz woanders', 'mobile Daten oder anderer Standort'],
+      },
+      // Der Kasten über den Wegen: was diese Verbindung bedeutet, in Alltagssprache.
+      netBox: {
+        same: {
+          h: 'Gleiches WLAN: Dein Gerät und der Bildschirm reden direkt miteinander.',
+          p: ['Alle Wege unten gehen.', 'Eine Ausnahme: Manche Firmen- und Schulnetze trennen Geräte auch im selben WLAN. Klappt gar nichts, lies bei „anderes WLAN vor Ort“ weiter.'],
+        },
+        org: {
+          h: 'Anderes WLAN: Die beiden Netze sind meist absichtlich getrennt.',
+          p: ['Eingebaute Wege wie AirPlay, Cast oder Miracast gehen hier nicht. Comet Cast findet den Bildschirm trotzdem über seinen Code. Ob das Bild durchkommt, hängt von eurem Netz ab:'],
+          li: [
+            '<b>Zuverlässig:</b> Eure Organisation betreibt einen eigenen Comet-Cast-Server. Dann läuft das Bild über diesen Server und bleibt im Haus. Eure IT richtet ihn einmal ein, du musst nichts einstellen.',
+            '<b>Ohne eigenen Server</b> klappt es nur, wenn euer Netz die Verbindung durchlässt. Kommt keine zustande, verbinde dich mit dem WLAN des Bildschirms, wenn du darfst.',
+          ],
+          more: 'Für eure IT: wann ihr einen eigenen Server braucht',
+        },
+        away: {
+          h: 'Ganz woanders: über das Internet.',
+          p: ['Eingebaute Wege gehen hier nicht. Comet Cast verbindet die beiden über das Internet. Das klappt meistens. Strenge Netze, etwa bei manchen Firmen oder Mobilfunkanbietern, brauchen den eigenen Server der Organisation.'],
+          more: 'Für eure IT: wann ihr einen eigenen Server braucht',
+        },
       },
       onDevice: 'Auf deinem Gerät',
       onScreen: 'Auf dem Bildschirm',
@@ -71,12 +92,13 @@ export default function text({ GH, DOMAIN }) {
       chipApp: 'Comet-Cast-App',
       chipAppOnScreen: 'Comet-Cast-App darauf',
       netBuiltinStatic: 'Nur im selben WLAN',
-      netBuiltinOffice: 'In Schul- und Firmennetzen oft gesperrt',
-      netComet: 'Geht auch über verschiedene Netze',
+      tableNote: 'Eingebaute Wege (AirPlay, Cast, Miracast) gehen nur, wenn dein Gerät und der Bildschirm im selben WLAN sind. Comet Cast verbindet auch über Netze hinweg; zwischen einem Gäste-WLAN und einem internen Netz klappt das zuverlässig nur mit dem eigenen Server eurer Organisation.',
       verdictOne: 'Geht. So:',
       verdictMany: 'Geht. {n} Wege, der einfachste zuerst:',
       verdictNone: 'Mit Comet Cast geht das noch nicht.',
-      verdictNoNet: 'Über verschiedene Netze geht das mit diesem Paar nicht. Bring beide Geräte ins selbe WLAN, dann klappt der eingebaute Weg.',
+      verdictAcrossOne: 'Dieser Weg geht über Netze hinweg:',
+      verdictAcrossMany: 'Diese {n} Wege gehen über Netze hinweg:',
+      verdictNoNet: 'Für dieses Paar gibt es nur einen eingebauten Weg, und der braucht dasselbe WLAN. Verbinde dich mit dem WLAN des Bildschirms, wenn du darfst.',
       tableCaption: 'Alle Antworten: Gerät, Bildschirm und die Wege, der einfachste zuerst',
       tableTo: 'Zeigen auf',
       tableWays: 'Wege, der einfachste zuerst',
@@ -131,8 +153,15 @@ export default function text({ GH, DOMAIN }) {
 </div>
 <h2>Was das Relay sieht und speichert</h2>
 <p>Das Relay ist ein kleiner Server. Er bringt ein Gerät und einen Bildschirm über ihren Raumcode zusammen und reicht die Nachrichten weiter, die beide für den Verbindungsaufbau brauchen. Er sieht den Raumcode, den Namen des Bildschirms und deine Netzwerkadresse (um Missbrauch zu bremsen). Räume liegen nur im Arbeitsspeicher, auf der Platte wird nichts gespeichert. Bilder, Dateien und Links laufen nie über das öffentliche Relay.</p>
-<h2>Wenn der direkte Weg gesperrt ist</h2>
-<p>In manchen Netzen dürfen zwei Geräte nicht direkt miteinander reden. Dann kann eine Organisation einen eigenen Server mit TURN-Relay betreiben: Das Bild läuft über diesen Rechner, innerhalb der Organisation, und nicht über das öffentliche Relay. <a href="/de/selbst-hosten/">Selbst hosten</a> erklärt, wie.</p>
+<h2>Gäste-WLAN und internes Netz</h2>
+<p>Der klassische Fall: Du bist im Gäste-WLAN, der Bildschirm hängt im internen Netz der Organisation. Sich finden klappt immer, weil beide den Server über das Internet erreichen. Das Bild braucht einen Weg zwischen den beiden Netzen, und die sind meist absichtlich getrennt.</p>
+<div class="path nets"><svg viewBox="0 0 900 236" role="img" aria-labelledby="nets-t"><title id="nets-t">Drei Fälle: gleiches WLAN, Gäste-WLAN ohne eigenen Server, Gäste-WLAN mit eigenem Server</title><rect x="0" y="0" width="290" height="236" rx="12" class="panel"/><text x="145" y="28" text-anchor="middle" font-weight="700" font-size="15">Gleiches WLAN</text><text x="145" y="50" text-anchor="middle" font-size="13" font-weight="700" class="cap-direct">Direkt</text><rect x="12" y="150" width="96" height="44" rx="10" class="box"/><text x="60" y="177" text-anchor="middle" font-size="13" font-weight="700">Dein Gerät</text><rect x="182" y="150" width="96" height="44" rx="10" class="box"/><text x="230" y="177" text-anchor="middle" font-size="13" font-weight="700">Bildschirm</text><text x="60" y="214" text-anchor="middle" class="mut" font-size="12">gleiches WLAN</text><text x="230" y="214" text-anchor="middle" class="mut" font-size="12">gleiches WLAN</text><path d="M108 172 L182 172" class="direct"/><rect x="305" y="0" width="290" height="236" rx="12" class="panel"/><text x="450" y="28" text-anchor="middle" font-weight="700" font-size="15">Gäste-WLAN, ohne eigenen Server</text><text x="450" y="50" text-anchor="middle" font-size="13" font-weight="700" class="cap-maybe">Nur wenn er dich zurücklässt</text><rect x="317" y="150" width="96" height="44" rx="10" class="box"/><text x="365" y="177" text-anchor="middle" font-size="13" font-weight="700">Dein Gerät</text><rect x="487" y="150" width="96" height="44" rx="10" class="box"/><text x="535" y="177" text-anchor="middle" font-size="13" font-weight="700">Bildschirm</text><text x="365" y="214" text-anchor="middle" class="mut" font-size="12">Gäste-WLAN</text><text x="535" y="214" text-anchor="middle" class="mut" font-size="12">internes Netz</text><path d="M450 112 L450 224" class="wall"/><rect x="395" y="68" width="110" height="38" rx="10" class="box"/><text x="450" y="92" text-anchor="middle" font-size="12" font-weight="700">Router, Internet</text><path d="M365 150 C 365 110, 373 87, 395 87" class="maybe"/><path d="M505 87 C 527 87, 535 110, 535 150" class="maybe"/><rect x="610" y="0" width="290" height="236" rx="12" class="panel"/><text x="755" y="28" text-anchor="middle" font-weight="700" font-size="15">Gäste-WLAN, mit eigenem Server</text><text x="755" y="50" text-anchor="middle" font-size="13" font-weight="700" class="cap-server">Zuverlässig, bleibt im Haus</text><rect x="622" y="150" width="96" height="44" rx="10" class="box"/><text x="670" y="177" text-anchor="middle" font-size="13" font-weight="700">Dein Gerät</text><rect x="792" y="150" width="96" height="44" rx="10" class="box"/><text x="840" y="177" text-anchor="middle" font-size="13" font-weight="700">Bildschirm</text><text x="670" y="214" text-anchor="middle" class="mut" font-size="12">Gäste-WLAN</text><text x="840" y="214" text-anchor="middle" class="mut" font-size="12">internes Netz</text><path d="M755 112 L755 224" class="wall"/><rect x="700" y="68" width="110" height="38" rx="10" class="box"/><text x="755" y="92" text-anchor="middle" font-size="12" font-weight="700">Euer Server</text><path d="M670 150 C 670 110, 678 87, 700 87" class="direct"/><path d="M810 87 C 832 87, 840 110, 840 150" class="direct"/></svg></div>
+<ul class="cases">
+<li><b>Gleiches WLAN.</b> Dein Gerät und der Bildschirm reden direkt miteinander. Eingebaute Wege wie AirPlay und Cast gehen auch. Manche Netze trennen Geräte sogar im selben WLAN („Client-Isolation“); dann gilt der nächste Fall.</li>
+<li><b>Verschiedene Netze, kein eigener Server.</b> Comet Cast erfährt die öffentliche Adresse beider Seiten und versucht, ins Internet hinaus und wieder hinein zu gehen. Das klappt nur, wenn der Router eurer Organisation solchen Verkehr wieder nach innen leitet („Hairpinning“). Viele Firmen- und Schul-Firewalls tun das nicht, oft mit Absicht. Dann kommt keine Verbindung zustande, und die App sagt das. Eingebaute Wege gehen über Netze hinweg nie.</li>
+<li><b>Verschiedene Netze, eigener Server.</b> Eure Organisation betreibt einen Comet-Cast-Server mit TURN-Relay, den beide Netze erreichen, zum Beispiel in der DMZ. Das Bild läuft von deinem Gerät zu diesem Server und weiter zum Bildschirm. Das klappt immer, und das Bild bleibt im Haus. Der Bildschirm zeigt die Adresse und den QR-Code eures Servers, wer scannt, landet dort; niemand stellt am eigenen Gerät etwas ein.</li>
+</ul>
+<p>Aus mobilen Daten oder von einem anderen Standort ist es dieselbe Idee: Comet Cast verbindet über das Internet, das klappt meistens; strenge Netze brauchen euren eigenen Server. Das öffentliche Relay trägt nie das Bild, es hat absichtlich kein TURN-Relay. <a href="/de/selbst-hosten/#wann">Wann ihr einen eigenen Server braucht</a>.</p>
 <h2>Bildschirme in der Nähe und signierte Ankündigungen</h2>
 <p>Bildschirme in deinem Netz kündigen sich an, damit die App sie auflisten kann. Jede Ankündigung ist mit einem Schlüssel signiert, der zum Bildschirm gehört. Ein anderes Gerät im Netz kann sich also nicht als er ausgeben, ihn aus deiner Liste werfen oder ändern, was er sagt. Kommt ein Gerät mit einem Namen, den schon ein anderes Gerät benutzt hat, zeigt der Bildschirm einen neutralen Hinweis.</p>
 <h2>Der Verbindungs-Prüfcode</h2>

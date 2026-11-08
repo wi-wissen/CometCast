@@ -56,7 +56,6 @@
       st.n = m[3] && ids(nBtns).indexOf(m[3]) >= 0 ? m[3] : dflt.n
       return true
     }
-    const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1)
 
     function render() {
       sBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === st.s)))
@@ -68,15 +67,10 @@
       const list = box.querySelector('.ways')
       if (list) {
         let ways = [].slice.call(list.children)
-        if (st.n === 'diff') ways = ways.filter((w) => w.dataset.kind !== 'builtin')
-        // away from home, the way that also works across networks comes first, then the built-in one (stable order inside each)
-        if (st.n === 'office') ways = ways.filter((w) => w.dataset.kind === 'comet').concat(ways.filter((w) => w.dataset.kind === 'builtin'))
-        ways.forEach((w) => {
-          const chip = w.querySelector('.netchip')
-          const text = chip.dataset['text' + cap(st.n)] || ''
-          chip.textContent = text
-          chip.hidden = !text
-        })
+        // Built-in ways (AirPlay, Cast, Miracast) need the same Wi-Fi: in another network they are left out. In the same
+        // Wi-Fi their "only in the same Wi-Fi" chip says nothing new, so it is hidden.
+        if (st.n !== 'same') ways = ways.filter((w) => w.dataset.kind !== 'builtin')
+        ways.forEach((w) => { const chip = w.querySelector('.netchip'); if (chip) chip.hidden = true })
         list.textContent = ''
         ways.forEach((w) => list.appendChild(w))
         if (!ways.length) {
@@ -84,11 +78,16 @@
           verdict.className = 'verdict no'
           verdict.textContent = root.dataset.vNonet
         } else {
-          verdict.textContent = ways.length === 1 ? root.dataset.vOne : root.dataset.vMany.replace('{n}', String(ways.length))
+          // Across networks the box above says what it depends on; the heading must not promise more.
+          const across = st.n !== 'same'
+          const one = across ? root.dataset.vAcrossOne : root.dataset.vOne
+          const many = across ? root.dataset.vAcrossMany : root.dataset.vMany
+          verdict.textContent = ways.length === 1 ? one : many.replace('{n}', String(ways.length))
         }
       }
       answer.textContent = ''
       while (box.firstChild) answer.appendChild(box.firstChild)
+      picker.querySelectorAll('.netbox').forEach((b) => { b.hidden = b.dataset.net !== st.n })
     }
     function choose(key, id) {
       st[key] = id

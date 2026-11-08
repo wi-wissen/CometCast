@@ -32,9 +32,18 @@ export const SCREENS = [
   { id: 'linuxpc', icon: 'desktop', en: ['Linux PC', 'mini PC'], de: ['Linux-PC', 'Mini-PC'] },
   { id: 'board', icon: 'board', en: ['Interactive board', 'Android'], de: ['Interaktive Tafel', 'Android'] },
 ];
-/** How the two are connected; the default is the middle one. */
-export const NETS = ['same', 'office', 'diff'];
-export const DEFAULT_NET = 'office';
+/**
+ * Where the presenter's device is in the network, seen from the screen:
+ * same = the same Wi-Fi (direct; built-in ways work),
+ * org = another Wi-Fi of the same place, e.g. guest Wi-Fi while the screen is in the internal network (kept apart on
+ *       purpose; built-in ways never work; Comet Cast is reliable only with the organisation's own server with TURN),
+ * away = somewhere else entirely, mobile data or another site (over the internet; usually works with STUN, strict
+ *        networks need the organisation's own server).
+ */
+export const NETS = ['same', 'org', 'away'];
+export const DEFAULT_NET = 'same';
+/** Where "for your IT" points: the self-hosting page, at its "when do you need it" section. */
+const IT_LINK = { en: '/self-hosting/#when', de: '/de/selbst-hosten/#wann' };
 
 // What goes on each side: none, web (the site's address in the browser), app (Comet Cast app), or an object: built into the device.
 const own = (en, de) => ({ en, de });
@@ -109,17 +118,12 @@ function chip(w, side, lang, t, domain) {
 function wayHtml(w, s, r, lang, t, domain) {
   const builtin = isOwn(w.you);
   const rName = r[lang][0];
-  // The text of the connection chip per answer; the static text (no JavaScript) says both things.
-  const attrs = builtin
-    ? `data-text-same="" data-text-office="${esc(t.netBuiltinOffice)}" data-text-diff=""`
-    : `data-text-same="" data-text-office="${esc(t.netComet)}" data-text-diff="${esc(t.netComet)}"`;
-  const staticText = builtin ? t.netBuiltinStatic : t.netComet;
   return (
     `<li class="way" data-kind="${builtin ? 'builtin' : 'comet'}">` +
     `<div class="side"><span class="who">${esc(t.onDevice)}</span>${chip(w, 'you', lang, t, domain)}</div>` +
     `<svg class="arrow" viewBox="0 0 70 20" aria-hidden="true"><path d="M4 10h58M54 3l8 7-8 7"/></svg>` +
     `<div class="side right"><span class="who">${esc(t.onScreen)} · ${esc(rName)}</span>${chip(w, 'screen', lang, t, domain)}</div>` +
-    `<p class="netchip ${builtin ? 'builtin' : 'comet'}" ${attrs}>${esc(staticText)}</p>` +
+    (builtin ? `<p class="netchip builtin">${esc(t.netBuiltinStatic)}</p>` : '') +
     (w.note ? `<p class="note">${esc(w.note[lang])}</p>` : '') +
     `</li>`
   );
@@ -143,6 +147,18 @@ const picks = (items, lang, group, extra = '') =>
     )
     .join('')}</div>`;
 
+/** The box above the ways for one connection answer (texts may contain <b>, written by us). */
+function netBoxHtml(n, lang, t) {
+  const b = t.netBox[n];
+  return (
+    `<div class="netbox netbox-${n}" data-net="${n}" hidden><p class="netbox-h">${esc(b.h)}</p>` +
+    b.p.map((x) => `<p>${esc(x)}</p>`).join('') +
+    (b.li ? `<ul>${b.li.map((x) => `<li>${x}</li>`).join('')}</ul>` : '') +
+    (b.more ? `<p class="netbox-more"><a href="${IT_LINK[lang]}">${esc(b.more)}</a></p>` : '') +
+    `</div>`
+  );
+}
+
 /** t = the finder texts of the language (strings in tools/site/text.*.mjs). */
 export function renderFinder(lang, t, domain) {
   const netBtns = NETS.map((n) => `<button type="button" class="net" data-id="${n}" aria-pressed="false"><span>${esc(t.nets[n][0])}</span><small>${esc(t.nets[n][1])}</small></button>`).join('');
@@ -151,7 +167,7 @@ export function renderFinder(lang, t, domain) {
     `<div class="ask"><h3>${esc(t.qHave)}</h3>${picks(SENDERS, lang, t.qHave, ' five')}</div>` +
     `<div class="ask"><h3>${esc(t.qNet)}</h3><div class="nets" role="group" aria-label="${esc(t.qNet)}">${netBtns}</div></div>` +
     `<div class="ask"><h3>${esc(t.qScreen)}</h3>${picks(SCREENS, lang, t.qScreen, ' seven')}</div>` +
-    `<div class="answer" id="answer" aria-live="polite"></div>` +
+    `<div class="answer-wrap" aria-live="polite">${NETS.map((n) => netBoxHtml(n, lang, t)).join('')}<div class="answer" id="answer"></div></div>` +
     `</div>`;
   const rows = SENDERS.map(
     (s) =>
@@ -163,8 +179,8 @@ export function renderFinder(lang, t, domain) {
       `</tbody>`,
   ).join('');
   const table =
-    `<div class="matrix"><table class="mtable"><caption class="sr">${esc(t.tableCaption)}</caption>` +
+    `<div class="matrix"><p class="mnote">${esc(t.tableNote)}</p><table class="mtable"><caption class="sr">${esc(t.tableCaption)}</caption>` +
     `<thead><tr><th scope="col">${esc(t.tableTo)}</th><th scope="col">${esc(t.tableWays)}</th></tr></thead>${rows}</table></div>`;
-  const data = ` data-default-net="${DEFAULT_NET}" data-v-one="${esc(t.verdictOne)}" data-v-many="${esc(t.verdictMany)}" data-v-none="${esc(t.verdictNone)}" data-v-nonet="${esc(t.verdictNoNet)}"`;
+  const data = ` data-default-net="${DEFAULT_NET}" data-v-one="${esc(t.verdictOne)}" data-v-many="${esc(t.verdictMany)}" data-v-none="${esc(t.verdictNone)}" data-v-nonet="${esc(t.verdictNoNet)}" data-v-across-one="${esc(t.verdictAcrossOne)}" data-v-across-many="${esc(t.verdictAcrossMany)}"`;
   return `<div class="finder" id="finder-app"${data}>${picker}${table}</div>`;
 }

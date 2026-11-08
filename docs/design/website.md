@@ -138,3 +138,22 @@ Decided by the product owner after the pitch; they replace the matching parts ab
    * A tiny script (`userAgentData` / `userAgent`) moves the matching card to the top as "For your Mac" and so on; without JavaScript all cards are listed.
    * Short links: `/d/` (English download page) and `/de/d/` (German); `/apk/` leads to the latest Android APK (build-time meta refresh and link), else to the Android card of the download page. They do not collide with join codes or `/app/`.
    * The Pages workflow also runs when a release is published, so the page follows the latest release (`docs/website.md`).
+
+## Amendments (round 4): networks
+
+The connection question describes real situations instead of "home / office / different networks":
+
+* **In the same Wi-Fi as the screen** (default): direct; every way works. Note that some networks isolate devices even in
+  one Wi-Fi; then the next case applies.
+* **In another Wi-Fi of the same place** (guest Wi-Fi, screen in the internal network): built-in ways (AirPlay, Cast,
+  Miracast) are left out. Comet Cast always finds the screen, but the picture gets through reliably only with the
+  organisation's own server with TURN reachable from both networks; without it only if the network allows hairpinning.
+  Without IT: join the screen's Wi-Fi if allowed.
+* **Somewhere else entirely** (mobile data, another site): built-in ways left out; over the internet, usually works,
+  strict networks need the organisation's own server.
+
+A box above the ways explains the chosen case in plain words and links to "When do you need your own server?" on the
+self-hosting page. Across networks the heading reads "This way works across networks" (never "Works"), because the box
+states the condition. The per-way "also works across networks" chip is gone (it promised too much); built-in ways carry
+"Only in the same Wi-Fi" in the no-JS table, which has a short note above it. The technical page has a section "Guest
+Wi-Fi and the internal network" with a three-panel diagram (same Wi-Fi / no own server / own server).
