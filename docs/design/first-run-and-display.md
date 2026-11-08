@@ -231,7 +231,7 @@ Layout top to bottom (ref px, 960 × 540):
 2. **Main row** (flex, fills height, centred vertically):
    - Left column: step 1 — number disc "1", label `idle.step1` ("Open in your browser"), address `{dom}` (58/700). For the in-house box (native apps only; the web page never shows it) also a line `idle.altAddress` with the IP address (16, `--mut`; the IPv4 address the box announcement resolved to, shown only when `{dom}` is a host name, decision N40). Step 2 — disc "2", label `idle.step2`, the code (80 mono, 6 characters as `XXX XXX`). If Locked: code at 35 % opacity and the line `idle.locked` under it (indented 54).
    - Right column (236 wide): QR code (212 box) and caption `idle.qrCaption`. If Locked: QR at 25 % opacity, caption `idle.qrLocked`.
-3. **Footer row**: left (15, `--mut`) `idle.appLine` when at least one store or download link exists, otherwise `idle.appLineWeb` ("No download needed."); never name a store that has no listing. **Settings button** right: gear icon + word `settings.open`.
+3. **Footer row**: left (15, `--mut`) `idle.appLine` when at least one store or download link exists, otherwise `idle.appLineWeb` ("No download needed."); never name a store that has no listing. Under that line (next to the server line, **not** next to the room code) the short tag of the display's id, `display.tag` ("ID 3F7A"), small (13) in the secondary text colour (`--mut`); it is the first 4 characters of the id derived from the display's key (`docs/design/signed-announcements.md`, `docs/discovery.md` section 3). **Settings button** right: gear icon + word `settings.open`.
 
 The QR code encodes `https://{dom}/{CODE}` (code without spaces; for the in-house box the IP address is used instead of `{dom}`). Use error correction level M; the QR version is whatever that URL needs (version 3 or 4 for normal addresses), the box stays 212.
 
@@ -304,7 +304,7 @@ On input (see 8) the controls fade in together for 5 s and fade out together:
 
 All use the current appearance's `--panel`, `--line` and `--fg` (dark blue in Dark, light grey in Light, black with grey border in OLED black). With D-pad input, End shows the focus ring.
 
-Shown only while it applies, at rest too (they are states, not controls): the **frozen badge** top left (`toolbar.frozenHint`), and the black screen with `toolbar.blackHint` (15/400 `--onblack` on `#000000`, centred, no box; decision 13.57). The frozen badge is hidden while the toolbar is visible (3.5).
+Shown only while it applies, at rest too (they are states, not controls): the **frozen badge** top left (`toolbar.frozenHint`, or `pause.display.byPresenter` while the presenter paused; see "Pause" below), and the black screen with `toolbar.blackHint` (15/400 `--onblack` on `#000000`, centred, no box; decision 13.57). The frozen badge is hidden while the toolbar is visible (3.5).
 
 Not on the display: "Close image", "Close document" and PDF page buttons. Pages are turned on the presenter's page (5.6); content goes away when the presenter stops, disconnects or the host presses End.
 
@@ -322,6 +322,8 @@ Not on the display: "Close image", "Close document" and PDF page buttons. Pages 
 **End** closes the session: all presenters are disconnected, all waiting requests are dropped, blocks are cleared, a new code is made, the display returns to Idle, toast `toast.sessionEnded`. Presenters see "Presentation ended". There is no confirmation step.
 
 While presenting, the screen is kept awake (D5). When the presenter stops, the display returns to Idle with the same code; presenters stay connected. When the presenter **leaves** (Disconnect, closed app, lost connection), the display also keeps its code: Idle, toast `toast.left`; join mode, blocks and waiting requests stay (decision N8). Only End, a restart, a lost and re-made room and the background rule of native-apps.md 15 make a new code.
+
+**Pause (docs/design/pause.md, built).** The Freeze of the web toolbar is the display's own pause flag; the presenter can pause too. The picture is frozen while either flag is set, and both are cleared when the screen stops. The badge (same look as the name tag, hidden while the controls are shown) says who paused: `pause.display.byPresenter` ("Paused by the presenter") while the presenter's flag is set, also when both are set; `toolbar.frozenHint` while only the display froze. The native displays have a **Pause / Resume control** next to End, on its left (focus row 0: Pause, then End; the arrows and Left from End reach it; the Play/Pause key of a remote toggles it). It uses the words `pause.presenter.button` and `pause.presenter.resume` and is offered only while a live screen is shown (not for an image, PDF page or link). Apple TV: the Play/Pause button of the Siri Remote toggles the flag instead of standing for Menu while a live screen is shown; the control has no icon yet (text only). Annotations keep working on a frozen picture and the black screen stays independent.
 
 ### 4.6 Toasts
 
@@ -935,6 +937,18 @@ These keys exist in the Flutter ARB files and are used by surfaces this spec now
 
 Strings of the removed pre-design UI that nothing uses any more (the old discovery notes, the test-stream and monitor texts) are deleted from all three files.
 
+### 11.11 Pause (docs/design/pause.md)
+
+The du and Sie texts are identical, so none of these rows is a "du and Sie differ" row. `toolbar.freeze` and `toolbar.frozenHint` stay as they are. The Flutter keys are the camel-case form of the dotted ones (`pausePresenterButton`, ...); the display's own Pause control uses the same words as the presenter's button (`pause.presenter.button`, `pause.presenter.resume`).
+
+| Key | EN | DE du | DE Sie |
+| --- | --- | --- | --- |
+| `pause.presenter.button` | Pause | Pausieren | same as du |
+| `pause.presenter.resume` | Resume | Fortsetzen | same as du |
+| `pause.presenter.banner` | Paused: the audience sees the last picture. | Pausiert: Das Publikum sieht das letzte Bild. | same as du |
+| `pause.presenter.displayFrozen` | The display has frozen the picture. | Die Anzeige hat das Bild angehalten. | same as du |
+| `pause.display.byPresenter` | Paused by the presenter | Vom Vortragenden pausiert | same as du |
+
 ## 12. Open points that do not block implementation
 
 - ~~The owner's question "du" or "Sie" (D6).~~ Answered: "du" ships (decision 54).
@@ -1178,7 +1192,8 @@ Each found screen is one button in the option-row look of 5.5 (min height 58, la
 
 Rules:
 
-- **Never merge rows by name.** Two screens called „Raum 204" are two rows; the code (and `nearby.via` when the servers differ) tells them apart. Rows are merged only when they are the same screen (same instance id, 14.8).
+- **Never merge rows by name.** Two screens called „Raum 204" are two rows; the code (and `nearby.via` when the servers differ) tells them apart. Rows are merged only when they are the same screen (same verified id, 14.8).
+- **Notes under a row** (signed announcements, `docs/design/signed-announcements.md`). A row carries a note in `p-fg2` (13) under its option row, still tappable, and **only then** also the short tag `nearby.tag` ("ID 3F7A", 13/700, last line of the notes). Rows without a note show **no tag**. Notes: `nearby.sameName` when another row has the same name (cleaned, compared without case; both rows get it); `nearby.newDevice` when the app remembers a screen with this name but another id (the person joined a screen of that name before; trust on first use, at most 50 remembered pairs, stored when a join from a row succeeded). The accessible name of the row gets the notes and the tag appended.
 - **Order:** in the order they were first found; new rows are added **at the end**. Rows never re-sort while the page is shown (a row must not jump away from a finger). When the page is opened again, the list starts empty and fills in the order of discovery.
 - A row that **appeared, moved or changed within the last 500 ms ignores a tap** (a row above it may just have left).
 - A row leaves **at once** when its screen says goodbye or its announcement expires (14.8), without animation. No "gone" toast for rows that leave by themselves.
@@ -1228,17 +1243,17 @@ What the design needs from the display's announcement and from the apps that rea
 The display (sender of the announcement) must:
 
 1. Announce only while it is a display with a code: in Idle and Presenting. **Not** during setup, in Idle connecting / offline (no valid code), or when its policy forbids announcements.
-2. Carry: a layout version; a **stable random instance id** per installation (not the host name, not a hardware id; new after a data reset) so the same screen seen on two interfaces or addresses is one row; the **room name** as set in setup (same cleaning as `room_name`, at most 32 characters; no fallback to the device or host name: none set → empty); the **server** (`host:port` + TLS flag, as today); the **join mode** (`open`, `approval`, `locked`); and, only for Open and Approval on, the **current code** (6 characters, the same as on the screen). If a separate join token is ever used, the code still has to be carried, because the list shows it.
+2. Carry: a layout version (`v=2`); an **id derived from the display's Ed25519 key** (first 16 bytes of SHA-256 of the public key, 32 hex digits; not the host name, not a hardware id; new after a data reset) so the same screen seen on two interfaces or addresses is one row and nobody can use the id without the key; the public key, a strictly increasing `seq`, a `state` (`live` or `gone`) and an Ed25519 signature over the record (`docs/discovery.md`, section 3); the **room name** as set in setup (same cleaning as `room_name`, at most 32 characters; no fallback to the device or host name: none set → empty); the **server** (`host:port` + TLS flag, as today); the **join mode** (`open`, `approval`, `locked`); and, only for Open and Approval on, the **current code** (6 characters, the same as on the screen). If a separate join token is ever used, the code still has to be carried, because the list shows it.
 3. While **Locked**: keep announcing name, server and mode `locked`, and carry **no code and no token**.
 4. Update the announcement **within 1 s** when the code changes (End, restart, reconnect with a new code), the join mode changes, or the room name changes.
-5. Make sure a screen that dies without saying goodbye leaves every list within 30 s (acceptance: ≤ 35 s after the display loses power, on Android, iOS and desktop). The display re-announces every 10 s and the apps drop a row 30 s after its last **received** refresh. A refresh that only comes from a platform cache does not count: where the platform browse (`NsdManager`, `NWBrowser`) cannot tell, the record lifetime itself must be ≤ 30 s (decision N50). Send a **goodbye** (withdraw the record) when the display app stops, goes to the background (native-apps.md 15), loses the server, or enters a state of point 1 where it must not announce.
-6. Keep the record small (one DNS-SD TXT record, well under 400 bytes) and send nothing else (no person names, no presenter information, no "busy" flag).
+5. Make sure a screen that dies without saying goodbye leaves every list within 30 s (acceptance: ≤ 35 s after the display loses power, on Android, iOS and desktop). The display re-announces every 10 s and the apps drop a row 30 s after its last **received** refresh. A refresh that only comes from a platform cache does not count: where the platform browse (`NsdManager`, `NWBrowser`) cannot tell, the record lifetime itself must be ≤ 30 s (decision N50). When the display app stops, goes to the background (native-apps.md 15), loses the server, or enters a state of point 1 where it must not announce, first publish a signed `state=gone` record (a higher `seq`), then send the **goodbye** (withdraw the record). A row is removed only by that signed record or by expiry; the mDNS goodbye alone removes nothing.
+6. Keep the record small (one DNS-SD TXT record, about 260 bytes normally, at most 512) and send nothing else (no person names, no presenter information, no "busy" flag).
 
 The apps (receivers of the announcement) must:
 
-7. Treat every field as untrusted: clean the name (14.3), check the server like any announced server (`docs/discovery.md`: private-range IP literals only, TLS rule), drop a record whose code is not 6 characters from the code alphabet (5.2), drop records of another layout version.
-8. Merge by instance id; when two different instance ids claim the same name, show both.
-9. Remove a row when the record is withdrawn or its lifetime has passed without refresh; never show a cached entry from an earlier search.
+7. Treat every field as untrusted: verify the record first (layout `v=2`, `id` derived from `pk`, signature, `seq` higher than the highest accepted for that id; anything else is ignored and never changes or removes a row), then clean the name (14.3), check the server like any announced server (`docs/discovery.md`: private-range IP literals only, TLS rule), drop a record whose code is not 6 characters from the code alphabet (5.2). Layout `v=1` records are ignored (no compatibility). All of this runs in the Rust core on every platform.
+8. Merge by verified id; when two different ids claim the same name, show both with the tag and `nearby.sameName`; when the name is a remembered one under another id, show `nearby.newDevice` (14.3).
+9. Remove a row when a **signed** `gone` record was accepted or when no record was accepted for 30 s; an mDNS goodbye alone changes nothing; never show a cached entry from an earlier search.
 10. Keep at most 32 screens: the first 32 found; ignore further ones until one leaves (14.3, decision N49).
 11. Never pick a screen by itself, never pre-fill the code field from an announcement, and never save an announced server as "last used", confirmed or not; "Use this relay" only adds the host to the confirmed servers of this device (14.4, decision N52).
 12. Search only as 14.5 says; use the platform's browse API (NWBrowser on Apple, NsdManager on Android, the existing mDNS backend on desktops), so iOS shows its local-network prompt and Android needs no extra permission; map a refused permission (`kDNSServiceErr_PolicyDenied`) to the state Not allowed.
@@ -1272,6 +1287,10 @@ The apps (receivers of the announcement) must:
 | `nearby.noWifi` | Join the room’s Wi-Fi to find screens here. | Verbinde dich mit dem WLAN des Raums, um Bildschirme hier zu finden. | Verbinden Sie sich mit dem WLAN des Raums, um Bildschirme hier zu finden. |
 | `nearby.gone` | This screen is no longer available. | Dieser Bildschirm ist nicht mehr erreichbar. | same as du |
 | `nearby.aria` | {name}, code {code}, {mode} | {name}, Code {code}, {mode} | {name}, Code {code}, {mode} |
+| `nearby.tag` | ID {tag} | ID {tag} | ID {tag} |
+| `nearby.sameName` | Two screens use this name. Compare the ID with the screen. | Zwei Bildschirme haben diesen Namen. Vergleiche die ID mit dem Bildschirm. | Zwei Bildschirme haben diesen Namen. Vergleichen Sie die ID mit dem Bildschirm. |
+| `nearby.newDevice` | New device with a known name. Compare the ID with the screen. | Neues Gerät mit bekanntem Namen. Vergleiche die ID mit dem Bildschirm. | Neues Gerät mit bekanntem Namen. Vergleichen Sie die ID mit dem Bildschirm. |
+| `display.tag` | ID {tag} (display idle screen footer, next to the server line, and About) | ID {tag} | ID {tag} |
 | `relay.confirm.bodyNearby` | The screen {name} uses the relay {host}. Only continue if you know and trust its operator. | Der Bildschirm {name} nutzt das Relay {host}. Mach nur weiter, wenn du den Betreiber kennst und ihm vertraust. | Der Bildschirm {name} nutzt das Relay {host}. Fahren Sie nur fort, wenn Sie den Betreiber kennen und ihm vertrauen. |
 | `ios.localNetworkUsage` (`NSLocalNetworkUsageDescription`, shown by the system) | Comet Cast looks for screens on the same Wi-Fi so you do not have to type a code. | Comet Cast sucht Bildschirme im selben WLAN, damit du keinen Code tippen musst. | Comet Cast sucht Bildschirme im selben WLAN, damit Sie keinen Code tippen müssen. |
 

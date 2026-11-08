@@ -387,6 +387,75 @@ class ReceiverController extends ChangeNotifier {
   (int, int) get pictureSize =>
       image != null ? (image!.width, image!.height) : (videoWidth, videoHeight);
 
+  // --- pause (docs/design/pause.md) --------------------------------------------------------
+
+  /// The presenter paused its screen (it stopped sending video). Set by the core's
+  /// `pauseChanged` event; only the presenter can clear it.
+  bool pausedByPresenter = false;
+
+  /// The display's own pause flag (the Pause control of the display). Only the display clears it.
+  bool pausedByDisplay = false;
+
+  /// The picture is frozen while either flag is set: the last picture stays, new ones are held.
+  bool get frozen => pausedByPresenter || pausedByDisplay;
+
+  /// The Pause control is offered: a live screen is on show (not an image, PDF page or link,
+  /// which stay until replaced anyway).
+  bool get canPause => isActive && shown == null && hasLiveVideo;
+
+  /// Press Pause (`true`) or Resume (`false`) on the display: sets or clears the display's own
+  /// flag. The core confirms with `pauseChanged`; the presenter is told.
+  void setDisplayPaused(bool paused) {
+    if (paused && !canPause) return;
+    core.setDisplayPaused(paused);
+  }
+
+  /// The newest picture that arrived while frozen: shown when the picture is live again.
+  VideoFrame? _held;
+
+  /// Encoded units were dropped while frozen (hardware decoder): a key frame is needed when the
+  /// picture is live again, because delta frames would refer to what was dropped.
+  bool _hwNeedsKey = false;
+
+  void _onPauseChanged(bool presenter, bool display) {
+    final was = frozen;
+    pausedByPresenter = presenter;
+    pausedByDisplay = display;
+    if (was && !frozen) {
+      // Live again: what arrived meanwhile is shown at once, and the hardware decoder, which
+      // missed units, asks for a key frame.
+      final held = _held;
+      _held = null;
+      if (held != null) unawaited(_showHeld(held));
+      if (_hwNeedsKey) {
+        _hwNeedsKey = false;
+        core.requestVideoKeyframe();
+      }
+    }
+  }
+
+  Future<void> _showHeld(VideoFrame frame) async {
+    final session = _session;
+    try {
+      final img = await _toImage(frame, fetchTimeout);
+      if (_disposed || session != _session || !isActive || frozen) {
+        img.dispose();
+        return;
+      }
+      _swapImage(img);
+    } catch (e) {
+      debugPrint('cometcast: cannot show a held picture: $e');
+    }
+  }
+
+  /// The screen stopped (presentation ended, presenter left, new room): both flags go.
+  void _clearPause() {
+    pausedByPresenter = false;
+    pausedByDisplay = false;
+    _held = null;
+    _hwNeedsKey = false;
+  }
+
   /// Number of pictures drawn since [start].
   int imagesShown = 0;
 
@@ -488,6 +557,7 @@ class ReceiverController extends ChangeNotifier {
     discardedCount = 0;
     connectionState = null;
     codec = null;
+    _clearPause();
     packets = bytes = frames = keyframes = 0;
     imagesShown = 0;
     displayFps = 0;
@@ -527,6 +597,7 @@ class ReceiverController extends ChangeNotifier {
 
   void _end() {
     phase = ReceiverPhase.ended;
+    _clearPause();
     requests = const [];
     _clearImage();
     _stopHardware();
@@ -603,6 +674,8 @@ class ReceiverController extends ChangeNotifier {
         connectionState = state;
       case ReceiverUiEvent_ConnectionCode(:final sas):
         connectionCode = sas;
+      case ReceiverUiEvent_PauseChanged(:final presenter, :final display):
+        _onPauseChanged(presenter, display);
       case ReceiverUiEvent_PresentationStopped():
         // The presenter stopped but stays in the room: Idle with the same code, no notice.
         _resetPresenter();
@@ -732,6 +805,7 @@ class ReceiverController extends ChangeNotifier {
     connectionState = null;
     connectionCode = null;
     codec = null;
+    _clearPause();
     packets = bytes = frames = keyframes = 0;
     imagesShown = 0;
     displayFps = 0;
@@ -859,6 +933,12 @@ class ReceiverController extends ChangeNotifier {
         final d = hardwareDecoder;
         // Hardware path gone (failed, stopped): the units are of no use.
         if (d == null || _hwReady == null) return;
+        if (frozen) {
+          // Frozen: the texture keeps its last picture. The units are dropped, so a key frame
+          // is asked for when the picture is live again.
+          if (units.isNotEmpty) _hwNeedsKey = true;
+          continue;
+        }
         for (final u in units) {
           d.queue(u.data, ptsUs: u.ptsUs.toInt(), key: u.isKey);
         }
@@ -891,6 +971,11 @@ class ReceiverController extends ChangeNotifier {
         final frame = await core.takeFrame().timeout(fetchTimeout);
         if (_disposed || session != _session) return;
         if (frame == null) continue;
+        if (frozen) {
+          // Frozen (docs/design/pause.md): the last picture stays; keep the newest one for later.
+          _held = frame;
+          continue;
+        }
         final t1 = _clock.elapsedMicroseconds;
         final img = await _toImage(frame, fetchTimeout);
         if (_disposed || session != _session || !isActive) {

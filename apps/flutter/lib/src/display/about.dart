@@ -36,6 +36,7 @@ class AboutDialogView extends StatelessWidget {
   const AboutDialogView({
     super.key,
     required this.version,
+    this.idTag,
     required this.remote,
     required this.onLicences,
     required this.onClose,
@@ -43,6 +44,9 @@ class AboutDialogView extends StatelessWidget {
   });
 
   final String version;
+
+  /// The short tag of this display's id (`display.tag`), or null.
+  final String? idTag;
   final bool remote;
   final VoidCallback onLicences;
   final VoidCallback onClose;
@@ -91,6 +95,10 @@ class AboutDialogView extends StatelessWidget {
                   version,
                   const Key('about-version'),
                 ),
+                if (idTag != null) ...[
+                  const SizedBox(height: 4),
+                  line(t.displayTag(idTag!), key: const Key('about-tag')),
+                ],
                 const SizedBox(height: 4),
                 line(t.aboutLicence, key: const Key('about-licence')),
                 if (BrandingInfo.current.publisherName.isNotEmpty) ...[

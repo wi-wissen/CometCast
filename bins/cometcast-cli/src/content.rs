@@ -178,6 +178,8 @@ pub fn print_event(ev: &ContentEvent) {
         ContentEvent::ContentStopped => println!("Content: stopped"),
         // Answered by the receiver core itself; not content.
         ContentEvent::HandoverRequested { .. } => {}
+        // Taken by the receiver core, which reports `PauseChanged` (printed by the receiver).
+        ContentEvent::PauseRequested { .. } => {}
         ContentEvent::Error { error, detail } => {
             println!("Content: error code={} detail={detail:?}", error.code());
         }

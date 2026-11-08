@@ -141,6 +141,12 @@ pub fn page_message(page: u32, pages: u32) -> String {
     Message::Page { page, pages }.to_json()
 }
 
+/// The message with which a display tells the presenter its pause flags
+/// (`{"kind":"pause_state","presenter":p,"display":d}`, docs/design/pause.md).
+pub fn pause_state_message(presenter: bool, display: bool) -> String {
+    Message::PauseState { presenter, display }.to_json()
+}
+
 /// The message with which a presenter asks the display to hold a hand-over token
 /// (`{"kind":"handover","token":T}`, native-apps.md 20.5). `None` when the token is not 1 to
 /// 64 base64url characters.

@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var dimmed = false
     @Published private(set) var controlsShown = false
     @Published private(set) var presenting = false
+    /// The pause flags of the live screen (docs/design/pause.md). The picture is frozen while either is set.
+    @Published private(set) var pause = PauseState()
     /// Idle, connecting / online / offline (spec 4.2).
     @Published private(set) var view: ConnectionView = .connecting
     @Published private(set) var cause: OfflineCause = .network
@@ -313,11 +315,12 @@ final class AppModel: ObservableObject {
         perform(intent: intentForBack(context))
     }
 
-    /// Play/Pause stands for the spec's Menu key.
+    /// Play/Pause: the display's own pause flag while a live screen is shown (docs/design/pause.md), otherwise it
+    /// stands for the spec's Menu key.
     func handleMenu() {
         if dimmed { wake(); return }
         noteActivity()
-        perform(intent: intentForMenu(context))
+        perform(intent: intentForPlayPause(context, canPause: canPause))
     }
 
     private func perform(intent: BackIntent) {
@@ -331,7 +334,43 @@ final class AppModel: ObservableObject {
         case .wizardBack: wizardAct(.back)
         case .showControls: showControls()
         case .hideControls: controls.hideNow(); controlsShown = false
+        case .togglePause: togglePause()
         }
+    }
+
+    // MARK: pause (docs/design/pause.md)
+
+    /// The Pause control is offered: a live screen is on show, not an image, PDF page or link.
+    var canPause: Bool { isPresentingVideo && content == nil }
+
+    /// The display's own flag: the Pause control and the Play/Pause key. The presenter is told.
+    func togglePause() { setDisplayPaused(!pause.display) }
+
+    func setDisplayPaused(_ paused: Bool) {
+        if paused && !canPause { return }
+        var next = pause
+        if next.setDisplay(paused) { applyPause(next) }
+    }
+
+    /// `cmd pause` / `cmd resume` of the presenter. Pause applies to the live screen only.
+    fileprivate func presenterPaused(_ paused: Bool) {
+        if paused && !isPresentingVideo { return }
+        var next = pause
+        if next.setPresenter(paused) { applyPause(next) }
+    }
+
+    private func applyPause(_ next: PauseState) {
+        pause = next
+        sendPauseState()
+    }
+
+    /// Tells the presenter the flags: whenever either changes and once when the control channel opens.
+    fileprivate func sendPauseState() { peer?.sendControl(text: pauseStateMessageJSON(pause)) }
+
+    /// The screen stopped (stop, presentation ended, peer left, new session): both flags go.
+    private func clearPause() {
+        var next = pause
+        if next.clear() { pause = next }
     }
 
     private func showControls() {
@@ -433,6 +472,7 @@ final class AppModel: ObservableObject {
             case .closePeer:
                 peer?.close(); peer = nil
                 videoTrack = nil
+                clearPause()
             case .acceptOffer(let sdp):
                 guard let p = peer else { break }
                 Task {
@@ -446,6 +486,7 @@ final class AppModel: ObservableObject {
             case .resetContent:
                 control.reset()
                 clearContent()
+                clearPause()
             }
         }
     }
@@ -456,6 +497,7 @@ final class AppModel: ObservableObject {
             onVideoTrack: { [weak self] t in self?.videoTrack = t; self?.feed(.videoArrived, gen: gen) },
             onControlText: { [weak self] t in self?.control.handleText(t, nowMs: Self.nowMs) },
             onControlBinary: { [weak self] b in self?.control.handleBinary(b, nowMs: Self.nowMs) },
+            onControlOpen: { [weak self] in self?.sendPauseState() },
             onConnected: { [weak self] in
                 guard let self else { return }
                 self.feed(.peerConnected, gen: gen)
@@ -530,6 +572,8 @@ final class AppModel: ObservableObject {
         var url: String?
         if case .link(let u, _)? = content { url = u }
         if url != lastLinkUrl { lastLinkUrl = url; if url != nil { inputGuard.arm(now: now) } }
+        // the screen ended (the track went, the presenter stopped): a frozen picture of it would be misleading
+        if !isPresentingVideo { clearPause() }
         sendPageMessageIfNeeded()
         syncStats()
     }
@@ -559,17 +603,24 @@ final class AppModel: ObservableObject {
 
     /// Spec 14.8: announce only while the display shows Idle or Presenting with a code, in the foreground, and the
     /// policy allows it; say goodbye in every other state (setup, no code yet, error, background, `stop`). The room
-    /// name of the wizard is the announced `name`.
+    /// name of the wizard is the announced `name`. The record is signed with the key of the display; the goodbye is
+    /// a signed `state=gone` record first (the Announcer).
     private func syncAnnouncement() {
         let showing: Bool
         switch state.phase {
         case .waitingSender, .negotiating, .receiving, .peerLeft: showing = wizard == nil
         default: showing = false
         }
+        let key = ConfigStore.displayKey
+        let (mode, code, room) = (state.joinMode, state.code, config?.room)
         guard sceneActive, showing, announcementsAllowed(policy: policy), let relay = activeRelay,
-              let txt = displayAnnouncementTxt(id: ConfigStore.instanceId, wsUrl: relay.wsUrl, mode: state.joinMode, code: state.code, roomName: config?.room)
+              displayAnnouncementTxt(key: key, seq: 1, wsUrl: relay.wsUrl, mode: mode, code: code, roomName: room) != nil
         else { announcer.withdraw(); return }
-        announcer.publish(instance: announcementInstanceName(id: ConfigStore.instanceId), txt: txt)
+        let wsUrl = relay.wsUrl
+        // Every publication (also the refresh every 10 s) is signed anew with a higher `seq`.
+        announcer.publish(instance: announcementInstanceName(id: ConfigStore.displayId)) { seq, announceState in
+            displayAnnouncementTxt(key: key, seq: seq, state: announceState, wsUrl: wsUrl, mode: mode, code: code, roomName: room)
+        }
     }
 
     // MARK: statistics (debug builds only, log lines, no screen)
@@ -698,7 +749,15 @@ final class AppModel: ObservableObject {
 private final class ContentSink: ControlReceiverHandlers {
     unowned let model: AppModel
     init(model: AppModel) { self.model = model }
-    func onCmd(_ cmd: ControlCmd) { MainActor.assumeIsolated { model.turnPage(cmd) } }
+    func onCmd(_ cmd: ControlCmd) {
+        MainActor.assumeIsolated {
+            switch cmd {
+            case .pause: model.presenterPaused(true)
+            case .resume: model.presenterPaused(false)
+            default: model.turnPage(cmd)
+            }
+        }
+    }
     func onProgress(_ p: (name: String, received: Int, size: Int)?) { MainActor.assumeIsolated { model.contentEvent { $0.setProgress(p) } } }
     func onImage(bytes: [UInt8], mime: String, name: String) { MainActor.assumeIsolated { model.receivedImage(bytes: bytes, mime: mime, name: name) } }
     func onDocument(bytes: [UInt8], name: String) { MainActor.assumeIsolated { model.receivedDocument(bytes: bytes, name: name) } }

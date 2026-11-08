@@ -46,8 +46,10 @@ idle.step1 idle.step2 idle.altAddress idle.locked idle.qrCaption idle.qrLocked i
 idle.offline.title idle.offline.body idle.offline.bodyBusy idle.offline.bodyOutdatedApp
 settings.open settings.title settings.close settings.closeRemote settings.join.label settings.join.openText settings.join.approvalText settings.join.lockedText settings.appearance
 about.open about.title about.version about.licence about.publisher about.sourceTv about.webTv about.licences about.featured about.all
+display.tag
 request.title request.queue request.subtitle request.check request.yes request.no request.noBlock request.aria
 present.byline present.sas present.end
+pause.presenter.button pause.presenter.resume pause.display.byPresenter toolbar.frozenHint
 toast.joined toast.allowed toast.denied toast.blocked toast.expired toast.withdrawn toast.left toast.sessionEnded toast.openDisabled
 receive.link.title receive.link.hintTv receive.link.dismiss
 receive.media.play receive.media.stop receive.media.from receive.media.label receive.media.localWarning receive.media.cleartext receive.media.formatUnsupported

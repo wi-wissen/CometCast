@@ -15,7 +15,7 @@ The owner's rule is: the server search order is
 
 1. **MDM policy**: a file that an administrator put on the device.
 2. **DNS-SRV** `_cometcast._tcp` in the search domain of the network.
-3. **Announcement by the display device**: the receiver says which server it prefers (mDNS).
+3. **Announcement by the display device**: the receiver says which server it prefers (mDNS; a signed v2 record, section 3).
 4. **Built-in default list**: `relay.cometcast.de:443`.
 
 Discovery of **receivers** over mDNS runs **in parallel** to this ladder; it is not a step of
@@ -127,197 +127,237 @@ the search.
 * The tests use a fake resolver. The real resolver is only checked to build or to report an
   error (the sandbox has no DNS server with a `_cometcast._tcp` record).
 
-## 3. Announcement by the display device
+## 3. Announcement by the display device (layout v2, signed)
 
 A display registers a DNS-SD service `_cometcast._tcp` on `local.`. Two things use it: the
 **server ladder** (the `srv` field of an announcement is a server suggestion of the lowest
 rank, see "Trust policy") and the **list of screens on this network** in the presenter apps
-(`docs/design/first-run-and-display.md`, section 14). The code is `crates/cc-discovery`:
-`display.rs` (what a display announces), `nearby.rs` (what a presenter app lists),
-`announce.rs` (the older `advertise_receiver` / `ReceiverBrowser` pair that server discovery uses).
+(`docs/design/first-run-and-display.md`, section 14). The design is
+[design/signed-announcements.md](design/signed-announcements.md). The code is `crates/cc-discovery`:
+`signed.rs` (key, id derivation, signed bytes, signature check, `seq` counter), `display.rs` (what a
+display announces), `nearby.rs` (what a presenter app lists), `announce.rs` (the server ladder's
+browse, and `advertise_receiver`, which announces a locked, signed record for
+`cometcast-cli discover --announce`).
+
+There is **no compatibility with layout v1** (Comet Cast is not in production). Records with
+`v=1` are ignored by presenters and by the server ladder; displays announce v2 only.
 
 **UNCERTAIN:** the TXT layout is a proposal of this crate. Nothing else speaks it. The web
-pages cannot browse mDNS and the Apple TV app (Swift) reads no mDNS, so they must only
-**tolerate** extra fields in a record: they do not read it.
+pages cannot browse mDNS, so they do not read it.
 
-| TXT key | Meaning | In `display.rs` / `nearby.rs` |
+### What a record looks like
+
+| TXT key | Meaning | Checks |
 | --- | --- | --- |
-| `v` | layout version, `1`. A different version: the record is ignored | always written; required |
-| `id` | stable random instance id of the installation, 8 to 32 lower-case hex digits (the apps create 16). Not the host name, not a hardware id; new after a data reset. Rows are merged by it | required |
-| `srv` | the server the display uses, `host:port` | required; checked like any announced server |
-| `tls` | `1`: the server speaks TLS (`wss://`) | written only when set |
+| `v` | layout version, `2` | required; anything else: ignored |
+| `id` | the id of the display: lower-case hex of the first 16 bytes of SHA-256(public key), exactly 32 digits | required; must equal the id derived from `pk` |
+| `pk` | the Ed25519 public key, 32 bytes, base64url without padding (43 characters) | required; canonical spelling only |
+| `seq` | decimal `u64` (no sign, no leading zero), strictly increasing per key for every record the display publishes: `seq = max(unix time in ms, last seq + 1)`. The app persists the last value (plus a reserve) with the key, so a clock that goes back after a restart cannot reuse values | required; must be greater than the highest `seq` accepted for the id |
+| `state` | `live`, or `gone` in the record that is published before the goodbye | required |
+| `srv` | the server the display uses, `host:port` | required; checked like any announced server (below) |
+| `tls` | `1`: the server speaks TLS (`wss://`) | written only when set; only `1` or empty is accepted |
 | `mode` | who may join: `open`, `approval` or `locked` | required |
-| `code` | the current 6-character room code (alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`) | written for `open` and `approval` only; required there |
+| `code` | the current 6-character room code (alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`) | written for `open` and `approval` only; required there, else the whole record is dropped; ignored in a `locked` record |
 | `name` | the room name as set in setup, cleaned like `room_name` (control, bidi, zero-width, invisible and private-use characters removed, white space collapsed), at most 32 characters. **No fallback** to the host or device name: none set means the key is absent | optional |
+| `sig` | Ed25519 signature, 64 bytes, base64url without padding (86 characters) | required; verified with `verify_strict` |
 
-The older `advertise_receiver` record (`v`, `srv`, `tls`, `name` of at most 48 characters, name
-falling back to the instance name) is read by server discovery as before; a display record is a
-superset of it, so the new fields do no harm there.
+**Signed bytes.** The ASCII string `cometcast-announce-v2`, a 0x00 byte, then for every key except `sig`, in
+this fixed order `v, id, pk, seq, state, srv, tls, mode, code, name`, the bytes `key=value` followed by a
+0x00 byte. An absent optional key (`tls`, `code`, `name`) is written as `key=` with an empty value, so removing a
+key changes the signed bytes. Values are the exact UTF-8 bytes of the TXT value (values with a NUL byte or over 255
+bytes are refused). Where a key occurs twice, the first occurrence is signed and read. Only the first 32 TXT entries
+are looked at. `tests/fixtures/announce-v2.json` pins every byte (keys, ids, signed bytes, signatures, TXT, and the
+records that must be refused); it was made with an independent implementation, and Rust and the Swift tests read it.
 
-The DNS-SD **instance name** of a display is `CometCast-` plus the first 8 characters of the id,
-never a host or room name. The service port is `9`; DNS-SD only needs one, displays do not listen
-for senders.
+**Identity.** Every display has an Ed25519 key pair, made on first use from the operating system's randomness and
+stored by the app with its settings (Flutter: next to the display setup in the preferences; Apple TV: Keychain, with
+`UserDefaults` as a fallback). The core never writes a key: the app holds the 32 secret bytes and passes them to
+`set_display_announcing`. A data reset makes a new key, so a new id. The DNS-SD **instance name** is `CometCast-` plus
+the first 8 digits of the id, never a host or room name; rows are keyed by the **verified id only**, and the instance
+name is never used to match or remove a row (a name conflict that mDNS renames to `... (2)` does not matter). The
+service port is `9`; DNS-SD only needs one, displays do not listen for senders.
 
-**Why the code is announced now (it was not before).** The announced code is the same string the
-display shows large on its screen, to everybody in the room. Announcing it gives a device on the
-same network nothing that a person in the room does not see. What it enables (a list the person
-taps instead of typing) is the point of the feature. What it must never do is leak a code that
-the display does **not** show or that has been withdrawn on purpose:
+**The short tag** is the first 4 characters of the id in upper case, shown as `ID 3F7A`. It is deliberately
+discreet: the display shows it small, in the secondary text colour, in the footer of its idle screen next to the
+server line (not next to the code) and in About; the presenter list shows it **only on rows that carry a note**.
 
-* **Locked never announces a code** (and there is no token). A locked display keeps announcing
-  name, server and `mode=locked`, so the person knows the screen is there. The code is taken out
-  of the record when the UI asks for Locked, without waiting for the server's confirmation.
-* The record is built **from the running receiver** (`cc-ffi`, `nearby.rs`), not from what the UI
-  last said, so the announced code cannot differ from the shown one. A new code (End, restart,
-  reconnect) means a new receiver and a new record.
-* A display announces only while it shows **Idle or Presenting with a code** and the app is in the
-  foreground: not during setup, not offline or connecting (no valid code), not when the
-  administrator's policy forbids announcements (`forbid_announcement` or `forbid_user_override`,
-  checked again in the core on every start), and it says goodbye when the app goes to the
-  background, loses the server or ends the room.
-* Anybody on the network can announce a record with any code; therefore the presenter app lists
-  rows, never connects by itself, never fills the code field, and never saves an announced server
-  (see below).
+### What a display publishes, and when
 
-**Timing.** A change (code, mode, name) is published at once (the spec's limit is 1 s). The record
-is published again every 10 s (`REFRESH_EVERY`) and the presenter side drops a row after 30 s
-without a refresh (`SCREEN_TTL`); a goodbye removes it at once. The list shows a change of a
-row's content without a goodbye only 15 s after the old content was last announced (`CHANGE_HOLD`,
-see "What a record can change" below); withdrawing the code (Locked) shows at once. **Record lifetime (decision N50).** `mdns-sd` 0.21.7 announces with 120 s (SRV, address) and 4500 s (PTR, TXT)
-and has no public setter, and Android's `NsdManager` and Apple's `NWBrowser` answer from the system's cache until a
-record's lifetime has passed, so a display that dies without a goodbye would stay in a list for minutes. The repository
-therefore carries a patched copy, `vendor/mdns-sd` (the published crate plus two public setters, see
-`vendor/mdns-sd/COMETCAST-PATCH.md`, wired in by `[patch.crates-io]`), and every announcement (`display.rs`,
-`announce.rs`) sets both lifetimes to **30 s** (`RECORD_TTL_SECS`); the display publishes again every 10 s, so the caches
-refresh while it is alive and drop it within 30 s after it died (acceptance of spec 14.8 point 5: at most 35 s). The
-receiving side keeps its expiry as a second guard (30 s without a refresh; a browse started again every 10 s on
-desktops). Checked on one machine over real multicast (`tests/nearby_loopback.rs`, including a 45 s run in which an
-unchanged record stays); the lifetime is unit-tested; **not** checked: a display that dies without any goodbye on a
-real network, Android's `NsdManager` and Apple's `NWBrowser` caches (device test plans).
+* Everything is built **from the running receiver** (`cc-ffi`, `nearby.rs`), not from what the UI last said, so the
+  announced code cannot differ from the shown one. A new code (End, restart, reconnect) means a new receiver and a
+  new record.
+* **Locked never announces a code** (and there is no token). A locked display keeps announcing name, server and
+  `mode=locked`. The code is taken out of the record when the UI asks for Locked, without waiting for the server.
+* A display announces only while it shows **Idle or Presenting with a code** and the app is in the foreground: not
+  during setup, offline or connecting, not when the administrator's policy forbids announcements
+  (`forbid_announcement` or `forbid_user_override`, checked again in the core on every start).
+* **Timing.** A change (code, mode, name) is published at once (the limit of the spec is 1 s). The record is signed
+  and published again every 10 s (`REFRESH_EVERY`), each time with a new `seq`; the presenter drops a row after 30 s
+  without an accepted record (`SCREEN_TTL`).
+* **Leaving.** A display that stops announcing (End, background, offline, policy, key change) first publishes a signed
+  `state=gone` record (a higher `seq`), waits a moment (0.4 s; **UNCERTAIN**, a guess) and then sends the usual mDNS
+  goodbye. A presenter removes a row **only** on an accepted `gone` record or by expiry. An mDNS goodbye on its own
+  (TTL 0, `Lost`, `NsdManager` lost, `NWBrowser` removed) never removes a row: the platform bridges still call
+  `nearby_native_gone`, but it only marks the row "unconfirmed" inside the core and has no visible effect.
+* **Record lifetime (decision N50).** `mdns-sd` 0.21.7 announces with 120 s (SRV, address) and 4500 s (PTR, TXT)
+  and has no public setter, and Android's `NsdManager` and Apple's `NWBrowser` answer from the system's cache until a
+  record's lifetime has passed, so a display that dies without a goodbye would stay in a list for minutes. The
+  repository therefore carries a patched copy, `vendor/mdns-sd` (the published crate plus two public setters, see
+  `vendor/mdns-sd/COMETCAST-PATCH.md`, wired in by `[patch.crates-io]`), and every announcement sets both lifetimes to
+  **30 s** (`RECORD_TTL_SECS`) (acceptance of spec 14.8 point 5: at most 35 s). The receiving side keeps its expiry as a
+  second guard (a browse started again every 10 s on desktops). Checked on one machine over real multicast
+  (`tests/nearby_loopback.rs`, including a 45 s run in which a refreshed row stays); **not** checked: a display that
+  dies without any goodbye on a real network, Android's `NsdManager` and Apple's `NWBrowser` caches, and whether those
+  caches pass a record that changes (`seq`) every 10 s on as a refresh (device test plans).
+* **Size.** The record has at most 512 bytes (`MAX_TXT_BYTES`, DNS-SD lengths included); a normal record is about 260
+  bytes. A server name so long that it would not fit is not announced. Nothing else is in it: no presenter name, no
+  presenter data, no busy flag.
+* **Why the code is announced.** The announced code is the same string the display shows large on its screen, to
+  everybody in the room. Announcing it gives a device on the same network nothing that a person in the room does not
+  see. What it enables (a list the person taps instead of typing) is the point of the feature.
 
 **Who announces how (N50).** Computers and Android (TV, tablet, phone in the display role): the Rust core with
-`mdns-sd`; Android holds a `WifiManager.MulticastLock` while it announces (`announceLock` on the channel
-`de.cometcast/nearby`, called from `DisplayRoot`). iPad in the display role: the core builds the record and hands it to
-Swift (`watch_native_announcements`, `NativeAnnounceEvent`; `lib/core/native_announce.dart`, `AnnounceBridge.swift`),
-which publishes it with `NWListener`; the multicast entitlement is not counted on. Apple TV: its own Swift
-announcer (`Announcer.swift`, with the pure record builder `displayAnnouncementTxt` in `CometCastCore`, a port of
-`txt_records`), same layout, no room name (the app has no setup for one). macOS browses with `NWBrowser` through the
-iOS bridge (`macos/Runner/NearbyBridge.swift`; the Local Network permission of macOS 15 gives "Not asked yet" and
-"Not allowed"); Linux and Windows browse in the core.
+`mdns-sd`; Android holds a `WifiManager.MulticastLock` while it announces. iPad in the display role: the core builds
+and **signs** the record and hands it to Swift (`watch_native_announcements`, `NativeAnnounceEvent`;
+`AnnounceBridge.swift`), which only publishes it with `NWListener` (no crypto in Swift on this path; it cancels the
+listener 0.4 s after the withdraw so the `gone` record is on the wire first); the multicast entitlement is not counted
+on. Apple TV: its own Swift announcer (`Announcer.swift`, with the pure record builder `displayAnnouncementTxt` in
+`CometCastCore`: CryptoKit `Curve25519.Signing`, same id derivation, `seq` and signed bytes, `state=gone` before
+stopping), no room name unless the setup wizard sets one. macOS browses with `NWBrowser` through the iOS bridge; Linux
+and Windows browse in the core. **UNCERTAIN:** the Swift code was never compiled or run; whether CryptoKit's Ed25519
+signature is deterministic like Rust's (the Swift tests compare bytes only if it is), and whether `isValidSignature` is
+as strict as `verify_strict`, is not known (A8).
 
-**Size.** The record has at most 400 bytes (`MAX_TXT_BYTES`, DNS-SD lengths included); a server name
-so long that it would not fit is not announced. A normal record is about 100 bytes. Nothing else is
-in it: no presenter name, no presenter data, no busy flag.
+### What signing protects, and what it does not
 
-**Trust policy.** Anybody on the local network can send such a record, and the server a
-sender is pointed to sees room codes and the addresses of the devices. Therefore:
+Protected (a record that does not pass the four checks of "Nearby screens" below changes nothing):
 
-* An announced server has the **lowest rank** after MDM and DNS-SRV, and above only the
-  default list. In the list of screens (section "Nearby screens" below) it is **never trusted
-  because it was announced**: only the default relay, a policy server, a DNS-SRV server and a
-  server the person confirmed on this device are joined at once. Receivers with the same DNS-SD
-  instance name (`record_receiver`, the older record): the **first one seen is kept and its
-  server is never replaced**; a later announcement with the same server, addresses and port
-  may only change the friendly name. The addresses do not prove the sender (the A/AAAA records
-  are written by the sender), so they are not enough on their own. Browses keep at most 64
-  receivers; the command line tool also drops an entry on `Lost`. The list of screens has its
-  own rule (section "Nearby screens", "What a record can change").
-* An MDM policy can switch announcements off (`forbid_announcement`), and
-  `forbid_user_override` ignores them as well.
-* The `srv` value is checked like DNS data: no scheme, path or user name; host name or an IP
-  literal. An IP literal must be in a **private range** (RFC 1918, `100.64.0.0/10`, unique-local
-  IPv6 `fc00::/7`); a public server has to be given by name. Loopback, unspecified, multicast,
-  broadcast, IPv4-mapped, **link-local IPv4 (`169.254.0.0/16`)** and link-local IPv6 (needs a
-  zone id) are refused, as are the cloud metadata addresses (`169.254.169.254` is covered by
-  the link-local rule, plus `100.100.100.200` and `fd00:ec2::254`). UNCERTAIN: whether this is
-  too strict for real sites is not known.
-* Host names are checked so that no spelling of an IPv4 address gets through as a "name": the
-  last label must contain a letter and must not start with `0x`. So `0x7f000001`, `0x7f.0x1`,
-  `1.0x1`, `0177.0.0.1`, `127.1` and `2130706433`, which `inet_aton` and URL parsers read as
-  IPv4, are refused for every source, MDM policy included.
-* Only the first 32 TXT entries are read, names are cleaned (control characters, Unicode
-  format characters such as bidi overrides and zero-width characters, and line/paragraph
-  separators are removed), at most 8 addresses and 64 receivers are kept per browse.
-* `advertise_receiver` applies the same checks to the server it is told to announce, so the
-  mistake shows at the receiver.
-* The announcement only feeds a *list*. The app shows which server is used and where it
-  came from (`ServerSource`) and does not switch silently once the person has chosen.
+* A device cannot remove a row with a forged goodbye or a forged `gone` record: only the key owner can sign.
+* A device cannot take over the id, the row, the code, the server or the name of another display: the id derives from
+  the public key, so a record with the victim's id needs the victim's key.
+* A replayed old record (live or gone) has a lower or equal `seq` and is ignored while the id is remembered.
+* A device cannot make a row Locked or point it elsewhere.
 
-`cometcast-cli receive` does not announce. `cometcast-cli discover --announce HOST:PORT` advertises
-for the length of the command (the older record).
+**Not protected, and the docs say so plainly:**
 
-Backends: the display announcement and the browse of the desktop apps use `mdns-sd`
-(`DisplayAnnouncement::start_mdns`, `NearbySearch::with_mdns`). Android browses with `NsdManager`
-and iOS / iPadOS with `NWBrowser` in Kotlin and Swift (`NearbyBridge`), which only hand the raw
-TXT records to the Rust core (`nearby_native_seen` ...); the core checks and keeps the list on every
-platform. **Not built:** the announcement of a display with `NsdManager.registerService` (Android
-TV and tablets) or `NWListener` (iPad, Apple TV), which `native-apps.md` 4.1 lists: displays on all
-platforms that run the Flutter app announce through the core's `mdns-sd`, which on iOS needs the
-multicast entitlement ([ios.md](ios.md)) and probably fails without it (the status
-`AnnounceStatus` is then still `Announcing`; the failure is silent). Multicast can be blocked by
-switches, access points or VLANs; then screens do not show up and the room code or QR code is the
-way ([measurement-points.md](measurement-points.md), A8).
+* A device can still announce its **own** id with **any name, relay and code**. It can use the name "Room A", its own
+  relay and its own code; presenters cannot tell by signature alone which "Room A" is the real one. The defences are the
+  short tag, the same-name note, the remembered screens (trust on first use) and the connection check code after
+  joining; they depend on a person comparing the ID with the screen. A relay that is not trusted still needs the
+  confirmation page.
+* Records can be **withheld** (multicast blocked, flooding, a jammed network); then a row expires after 30 s. Not
+  preventable.
+* A record can be **replayed** to a presenter that has no `seq` memory for the id (the app was just started, or the
+  display has been gone for over 10 minutes, or 256 other ids pushed it out): the row then shows the old content for up
+  to 30 s, until the display's next record (a higher `seq`) replaces it or the row expires. `seq` is a time in
+  milliseconds, but presenters do not compare it with their own clock (clocks on these devices are not trusted;
+  UNCERTAIN, a window check could be added). A replayed old `gone` record is harmless. The server ladder (below) has no
+  `seq` memory at all.
+* Whoever floods the network with valid records under many keys can fill the 32 rows ("the first 32 found stay") or push
+  ids out of the `seq` memory. Not preventable on a network without port security.
+* The key lives in the app's preferences on phones, tablets and computers (UNCERTAIN: not a hardware-backed keystore;
+  someone with the app's data has the key and so the identity) and in the Keychain on Apple TV (UNCERTAIN: not tried).
+
+### Trust policy
+
+Anybody on the local network can send such a record, and the server a sender is pointed to sees room codes and the
+addresses of the devices. Therefore:
+
+* An announced server has the **lowest rank** after MDM and DNS-SRV, and above only the default list. In the list of
+  screens it is **never trusted because it was announced** (even if signed): only the default relay, a policy server, a
+  DNS-SRV server and a server the person confirmed on this device are joined at once. The server ladder's browse
+  (`announce.rs`, and `announcedReceiver` on the Apple TV) uses a record only if it verifies (`v=2`, id from `pk`,
+  signature) and says `live`; the first announcement seen for an instance name is kept and **its server is never
+  replaced** by a later one (`record_receiver`); browses keep at most 64 receivers; the command line tool drops an entry
+  on `Lost`.
+* An MDM policy can switch announcements off (`forbid_announcement`), and `forbid_user_override` ignores them as well.
+* The `srv` value is checked like DNS data: no scheme, path or user name; host name or an IP literal. An IP literal must
+  be in a **private range** (RFC 1918, `100.64.0.0/10`, unique-local IPv6 `fc00::/7`); a public server has to be given by
+  name. Loopback, unspecified, multicast, broadcast, IPv4-mapped, **link-local IPv4 (`169.254.0.0/16`)** and link-local
+  IPv6 (needs a zone id) are refused, as are the cloud metadata addresses (`169.254.169.254` is covered by the
+  link-local rule, plus `100.100.100.200` and `fd00:ec2::254`). UNCERTAIN: whether this is too strict for real sites is
+  not known.
+* Host names are checked so that no spelling of an IPv4 address gets through as a "name": the last label must contain a
+  letter and must not start with `0x`. So `0x7f000001`, `0x7f.0x1`, `1.0x1`, `0177.0.0.1`, `127.1` and `2130706433`,
+  which `inet_aton` and URL parsers read as IPv4, are refused for every source, MDM policy included.
+* Names are cleaned (control characters, Unicode format characters such as bidi overrides and zero-width characters,
+  and line/paragraph separators are removed), at most 8 addresses and 64 receivers are kept per browse.
+* The announcement only feeds a *list*. The app shows which server is used and where it came from (`ServerSource`) and
+  does not switch silently once the person has chosen. A valid signature is **not** a statement that the server or the
+  code is right.
+
+`cometcast-cli receive` does not announce. `cometcast-cli discover --announce HOST:PORT` advertises, for the length of
+the command, a **locked** display record (no code) that names that server, signed with a key made for that run; its
+goodbye is a signed `gone` record first.
+
+Backends: the display announcement and the browse of the desktop apps use `mdns-sd` (`DisplayAnnouncement::start_mdns`,
+`NearbySearch::with_mdns`). Android browses with `NsdManager` and iOS / iPadOS with `NWBrowser` in Kotlin and Swift
+(`NearbyBridge`), which only hand the raw TXT records to the Rust core (`nearby_native_seen` ...); the core verifies and
+keeps the list on every platform, so no platform has its own check. **Not built:** the announcement of a display with
+`NsdManager.registerService` (Android TV and tablets): displays on all platforms that run the Flutter app announce
+through the core's `mdns-sd`, which on iOS needs the multicast entitlement ([ios.md](ios.md)) and probably fails without
+it (the status `AnnounceStatus` is then still `Announcing`; the failure is silent). Multicast can be blocked by switches,
+access points or VLANs; then screens do not show up and the room code or QR code is the way
+([measurement-points.md](measurement-points.md), A8).
 
 ## Nearby screens (the list in the presenter apps)
 
-`crates/cc-discovery/src/nearby.rs`; the API for Flutter is `watch_nearby_screens` and the
-`nearby_native_*` calls of `cc-ffi` ([flutter-bridge.md](flutter-bridge.md)). Rules (spec 14.3, 14.8):
+`crates/cc-discovery/src/nearby.rs`; the API for Flutter is `watch_nearby_screens`, `set_remembered_screens` and the
+`nearby_native_*` calls of `cc-ffi` ([flutter-bridge.md](flutter-bridge.md)). Rules (spec 14.3, 14.8,
+signed-announcements.md):
 
-* Every record is untrusted. Layout version `1`; id 8 to 32 hex digits; `srv` passes
-  `network_server` (private IP literals or a name, TLS rule); `mode` is one of the three; for `open`
-  and `approval` the code must be exactly 6 characters of the code alphabet, otherwise the **whole
-  record is dropped**; a code in a `locked` record is ignored; the name is cleaned and cut; at most
-  32 TXT entries are read, values over 255 bytes are ignored, the first occurrence of a key wins.
-* **Rows are keyed by the instance id** and kept in the order they were first found (new ones at the
-  end, never re-sorted). Two screens with the same name are two rows. The same id under two
-  instance names (two interfaces) is one row.
-* **What a record can change.** The instance name (`CometCast-` plus the first 8 characters of
-  the id), the id and the A/AAAA records are all public or written by the sender, so nothing in
-  a record proves that it comes from the device of a row. Therefore:
-  * The **content of a row** (server, code, mode, name) is the first content seen for its id. A
-    later record for the id with other content is ignored, and it does not refresh the row,
-    as long as the shown content keeps being announced. It replaces the content (in place) only
-    when the shown content has not been announced for **15 s** (`CHANGE_HOLD`, longer than the
-    10 s refresh of a display, shorter than the 30 s expiry). So a display that restarts its
-    room without a goodbye and announces a new code shows the new code 15 to 25 s later (a tap
-    in between gets `room_not_found`, which restarts the list, spec 14.4); a display that ends
-    its room with a goodbye comes back at once as a new row.
-  * Only **withdrawing the code** (`locked`, same server and name) is applied at once: it makes the
-    row untappable and points it nowhere. Unlocking again is a change like any other (after
-    15 s).
-  * The record must in addition come from an instance name of the row or from an address the row
-    knew (this alone proves nothing, see above).
-  * **No record removes a row.** A record with a new id under the instance name of a row adds its
-    own row (if there is room) and leaves the old one alone; an unusable record is ignored. Such
-    rows leave by goodbye or expiry.
-  * **The guarantee:** while a display keeps announcing (at least every 15 s), no other device on
-    the network can point its row to another server or room, rename it, or remove it by an
-    announcement. **Not protected:** a goodbye names only the instance and can be sent by anybody,
-    so a row can be removed at once, and a device that then announces the id first decides the
-    content of the row that comes back (at the end of the list); a device can also flip a row to
-    Locked (it cannot be tapped until the display's content wins again); and once a display has been
-    quiet for 15 s, other content for its id is taken as a real change. The row always shows the
-    code, so the person can compare it with the screen, and a server that is not trusted still
-    needs the relay confirmation (14.4). **UNCERTAIN:** binding a row to the source address of the
-    packets was not done: no backend hands it over (`mdns-sd` merges several packets into one
-    resolved service; `NsdManager` and `NWBrowser` report services, not packets), and a source
-    address on a LAN can be forged too ([measurement-points.md](measurement-points.md), A8).
-  * The Flutter list has no "conflicting" state; a contested row is not marked, it just keeps
-    its first content.
-* A row leaves on goodbye or after 30 s without a refresh of its content. At most 32 rows: the
-  **first 32 found stay**; a 33rd and later screen is neither
-  reported nor stored until a row leaves, then it is added at the end with its next refresh (spec 14.8 point 10,
-  decision N49).
-* Nothing is picked, remembered or saved here. In the Flutter app a row is tapped by the person; the
-  announced server is used for that one join and is **not** saved as "last used" (a server the
+* **Four checks, all in Rust, on every platform.** A record is accepted only if (1) `v=2`, all required keys are
+  present and every value is well-formed (`srv` passes `network_server`; `mode` is one of the three; for `open` and
+  `approval` the code is exactly 6 characters of the code alphabet, otherwise the whole record is dropped; a code in a
+  `locked` record is ignored; the name is cleaned and cut; values over 255 bytes or with a NUL byte are refused; only
+  the first 32 TXT entries are read, the first occurrence of a key wins); (2) `id` equals the id derived from `pk`;
+  (3) `sig` verifies over the signed bytes with `pk` (strict Ed25519); (4) `seq` is **greater** than the highest `seq`
+  accepted for this id. Otherwise the record is **ignored**: it never changes or removes a row, and it does not refresh
+  one.
+* **`seq` memory.** The highest accepted `seq` per id is kept while the row exists and for **10 minutes** after it is
+  gone (a signed goodbye or expiry), at most **256** ids, the oldest dropped first (an id with a row is dropped only if
+  there is no other). A record with the same `seq` as the one accepted (a cache that reports the same record again) is
+  not newer and does not keep a row alive. A search that is stopped or restarted forgets everything.
+* **Rows are keyed by the verified id only**, in the order they were first found (new ones at the end, never re-sorted).
+  The instance name, the id as text and the A/AAAA records prove nothing and are never used to match or remove a row.
+  The same screen under two instance names (two interfaces, or a name that mDNS renamed to `... (2)`) is one row; its
+  addresses are the union (they only hide TV rows of the same device, N105).
+* **An accepted record replaces the row's content at once** (server, code, mode, name): only the key owner can make a
+  newer record. The 15 s `CHANGE_HOLD` of layout v1 and the rule "a row's server is fixed by the first record" are gone.
+* **A row leaves** only on an accepted `state=gone` record or when no record was accepted for 30 s (`SCREEN_TTL`). A
+  goodbye from the platform (`nearby_native_gone`) only marks the row unconfirmed inside the core and changes nothing
+  that is shown. A replayed old `gone` record has a lower `seq` and is ignored.
+* **Same name, different id.** When two rows have the same name (cleaned, compared case-insensitively; empty names never
+  match), both rows get `same_name`; the app shows `nearby.sameName` and the tag `nearby.tag` under both. **Remembered
+  screens (trust on first use):** when a join from a row succeeds, the app stores `(room name, id)` locally (at most 50,
+  oldest dropped) and passes the pairs to the core with `set_remembered_screens` (before and while a search runs); the
+  core keeps no list of its own and writes nothing. A row whose name is remembered but whose id is not gets `new_device`;
+  the app shows `nearby.newDevice` and the tag, and the row stays tappable. Rows without a note show no tag.
+* At most 32 rows: the **first 32 found stay**; a 33rd and later screen is neither reported nor stored until a row
+  leaves, then it is added at the end with its next record (spec 14.8 point 10, decision N49).
+* **What is not protected** is described under "What signing protects, and what it does not" above: a device can
+  announce its own id with any name, relay and code; records can be withheld or replayed to a presenter with no memory.
+  The row always shows the code, so the person can compare it with the screen, and a server that is not trusted still
+  needs the relay confirmation (14.4).
+* Nothing is picked, remembered (apart from the app's remembered screens) or saved here. In the Flutter app a row is
+  tapped by the person; the announced server is used for that one join and is **not** saved as "last used" (a server the
   person confirmed is saved in the list of confirmed servers only).
-* **Policy.** With `forbid_announcement` or `forbid_user_override` (or an unusable policy file) the
-  section is not shown, no search runs (`watch_nearby_screens` answers `Forbidden`) and a display
-  does not announce (`set_display_announcing` answers `ForbiddenByPolicy`).
-* **Permission and network.** `NearbyPermission` (`notAsked`, `granted`, `denied`) comes from the
-  native bridge (Apple: `kDNSServiceErr_PolicyDenied` means `denied`). `local_network_available()`
-  (a private, non-loopback interface) is used on computers; phones and tablets ask
-  `ConnectivityManager` / `NWPathMonitor`.
+* **Policy.** With `forbid_announcement` or `forbid_user_override` (or an unusable policy file) the section is not shown,
+  no search runs (`watch_nearby_screens` answers `Forbidden`) and a display does not announce (`set_display_announcing`
+  answers `ForbiddenByPolicy`).
+* **Permission and network.** `NearbyPermission` (`notAsked`, `granted`, `denied`) comes from the native bridge (Apple:
+  `kDNSServiceErr_PolicyDenied` means `denied`). `local_network_available()` (a private, non-loopback interface) is used
+  on computers; phones and tablets ask `ConnectivityManager` / `NWPathMonitor`.
+
+### The API for the apps (`cc-ffi`)
+
+* `new_display_secret()` (sync): 32 random bytes from the operating system; the app stores them.
+* `display_identity(secret)` (sync): id, tag and public key of a key (nothing is announced).
+* `set_display_announcing(active, secret_key, seq_floor)`: announce (or not); `seq_floor` is the persisted value.
+* `display_seq_to_persist()` (sync): the last `seq` plus a reserve of 120 000; the Flutter display stores it after
+  every status change and every minute.
+* `set_remembered_screens(screens)` (sync): the app's remembered `(name, id)` pairs.
+* `NearbyScreenInfo` carries `id`, `tag`, `same_name` and `new_device` besides the old fields.
 
 ## Network servers: TLS and the local network
 
@@ -363,7 +403,8 @@ while let Some(ReceiverEvent::Found(r)) = receivers.next().await { /* r.announce
   "policy, then default list" and the development fallback stays last. `discover_servers()`
   (async) asks everything and returns `ServerCandidate { address, source }`, `locked` and
   warnings (English, for logs) and `notices`: a code per kind of warning that the UI
-  translates. Also `start_advertising(name, preferred_server)` / `stop_advertising()` and
+  translates. Also `start_advertising(name, preferred_server)` (the server is required: the announced record is signed and
+  names a server; it is a locked display record with a key made for the announcement) / `stop_advertising()` and
   `watch_receivers()` / `stop_watching_receivers()`, see below.
 
 ## In the Flutter app
@@ -441,15 +482,26 @@ with exactly 1.92.
   on the same machine. It passed in the development sandbox. It skips itself with a note
   when multicast is unavailable, so a green run in such an environment proves nothing about
   mDNS. It does not prove behaviour on a network with several devices.
-* `display.rs` and `nearby.rs` unit tests with a fake announce backend and a fake clock: TXT building
-  (Locked never carries a code, bounds, hostile server and id), changes published at once, refresh
-  every 10 s, goodbye, retry after a failed publish, hostile TXT of every field, merging by id, a
-  second device that claims an id (also under the display's own instance name, id, name and
-  address, for another relay, another room on the same relay, another name or mode), a new id
-  or an unusable record under the instance name of a row (no eviction), a real code or server
-  change after `CHANGE_HOLD`, Locked at once, expiry after 30 s, the 32-row limit, goodbye and
-  reset through the sink; `record_receiver` never replaces the server of an entry.
-* `tests/nearby_loopback.rs`: a display announces with `mdns-sd`, the list sees the row, a new code
-  and mode, Locked without a code, and the goodbye (real multicast, skips itself where there is
-  none); `refreshed_row_does_not_expire` (45 s, run with `-- --ignored`).
-* Not tested: a real DNS server with SRV records, a real MDM, Windows, macOS, Android, iOS.
+* `signed.rs` unit tests: id derivation, the layout of the signed bytes, every changed or removed field breaks the
+  signature, id from another key, wrong key order, malformed values, first key wins, the `seq` counter, keys.
+* `display.rs` unit tests with a fake announce backend and a fixed clock: signed TXT building (Locked never carries a
+  code, bounds, hostile server, the order of keys), changes published at once, refresh every 10 s with a higher `seq`
+  every time, the persisted `seq` floor against a clock that went back, the signed `gone` record before the goodbye,
+  retry after a failed publish.
+* `nearby.rs` unit tests (the acceptance list of the design): a forged goodbye does nothing; a forged `gone` record, a
+  record with the victim's id and another key, and a tampered record are ignored and do not refresh a row; a replay of
+  an older signed record (live or gone) is ignored; a signed newer record (new code, new server, locked, renamed, gone)
+  applies at once; the same `seq` again does not refresh; expiry after 30 s; the `seq` memory (10 minutes, 256 ids);
+  rows keyed by the verified id, not by the instance name; the 32-row limit; same name marks both rows; the
+  remembered-screen mark; layout v1 is ignored.
+* `tests/announce_v2_vectors.rs`: the shared vectors `tests/fixtures/announce-v2.json` (made by an independent
+  implementation): ids, tags, signed bytes, signatures, the refused records with their reasons, a `seq` sequence at the
+  presenter, the `seq` counter. The Swift tests of the Apple TV core read the same file (not run here).
+* `tests/nearby_loopback.rs`: a display announces with `mdns-sd`, the list sees the row, a new code and mode at once,
+  Locked without a code, and the signed goodbye (real multicast, skips itself where there is none);
+  `refreshed_row_does_not_expire` (45 s, run with `-- --ignored`: the record changes its `seq` every 10 s and the row
+  stays). `cc-ffi` tests cover the key API and the rows' tag and marks; the Flutter tests cover the store of the key
+  and `seq`, the tag on the idle screen, the notes and remembered screens in the list, and the real core through
+  `rust_core_test.dart` (needs `COMETCAST_FFI_LIB`).
+* Not tested: a real DNS server with SRV records, a real MDM, Windows, macOS, Android, iOS, tvOS (the Swift code was
+  never compiled), a real network with several devices.

@@ -40,5 +40,8 @@ export function useSender(opts: { contentOnly?: boolean } = {}) {
     sendDocument: (f: ImageSource, onProgress?: (sent: number, total: number) => void) => session.sendDocument(f, onProgress),
     sendLink: (url: string) => session.sendLink(url),
     sendCmd: (cmd: ControlCmd) => session.sendCmd(cmd),
+    /** Pause / resume the shown screen (docs/design/pause.md). */
+    pausePresenter: () => session.pausePresenter(),
+    resumePresenter: () => session.resumePresenter(),
   }
 }

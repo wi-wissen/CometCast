@@ -88,6 +88,8 @@ impl DocumentSession {
             ControlCmd::NextPage => self.next_page(),
             ControlCmd::PrevPage => self.prev_page(),
             ControlCmd::GoToPage { page } => self.go_to(*page),
+            // Pause and resume concern the live screen picture, not a document.
+            ControlCmd::Pause | ControlCmd::Resume => SessionEvent::Ignored,
             ControlCmd::Stop => {
                 if self.stopped {
                     SessionEvent::Ignored

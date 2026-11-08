@@ -489,6 +489,11 @@
   display: flex;
   gap: 8px;
 }
+/* The pause banner of "Presenting" (docs/design/pause.md): a state, like "Page n of m" but stronger. */
+.cp-pausebanner {
+  font-weight: 700;
+  color: var(--p-fg2);
+}
 .cp-pages > .cp-sbtn {
   flex: 1;
   min-width: 0;
@@ -507,6 +512,7 @@
   .cp-bottom .cp-pbtn,
   .cp-acts .cp-pbtn,
   .cp-acts .cp-sbtn,
+  .cp-pdf > .cp-sbtn,
   .cp-pages > .cp-sbtn {
     width: auto;
     min-width: 160px;

@@ -19,14 +19,14 @@ struct PresentingView: View {
     @Environment(\.ref) private var ref
     @Environment(\.canvasInsets) private var insets
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private enum Focus: Hashable { case catcher, end }
+    private enum Focus: Hashable { case catcher, end, pause }
     @FocusState private var focus: Focus?
 
     var body: some View {
         ZStack {
             DisplayPalette.picture.ignoresSafeArea()
             if model.state.hasVideo, let track = model.videoTrack {
-                VideoSurface(track: track).ignoresSafeArea().accessibilityHidden(true)
+                VideoSurface(track: track, frozen: model.pause.isFrozen).ignoresSafeArea().accessibilityHidden(true)
             }
             contentPicture
             CanvasFrame { hud }
@@ -58,6 +58,19 @@ struct PresentingView: View {
     private var hud: some View {
         ZStack {
             // states, drawn at rest
+            if let badge = frozenBadge(model.pause) {
+                // Who paused (docs/design/pause.md, rule 5): top left, like the name tag; it steps aside while the
+                // controls are shown (the Pause control's state says the rest).
+                VStack {
+                    HStack { tag(L.s(badge == .byPresenter ? "pause.display.byPresenter" : "toolbar.frozenHint")); Spacer() }
+                    Spacer()
+                }
+                .padding(.leading, ref(insets.leading(Metrics.tagEdge)))
+                .padding(.top, ref(insets.top(Metrics.tagEdge)))
+                .opacity(model.controlsShown ? 0 : 1)
+                .animation(reduceMotion ? nil : .easeInOut(duration: DisplayTiming.controlsFadeSeconds), value: model.controlsShown)
+                .accessibilityElement(children: .combine)
+            }
             if let err = model.pageError {
                 tag(L.s("receive.document.pageError.\(err)")).frame(maxWidth: ref(880))
             }
@@ -71,6 +84,8 @@ struct PresentingView: View {
                 HStack(alignment: .bottom) {
                     nameTag
                     Spacer(minLength: ref(16))
+                    // Pause next to End, on its left: only while a live screen is shown (docs/design/pause.md).
+                    if model.canPause { pauseButton }
                     endButton
                 }
             }
@@ -131,6 +146,17 @@ struct PresentingView: View {
         return (Text(parts[0]).font(.custom(FontFace.regular.rawValue, fixedSize: ref(13))).foregroundColor(p.mut)
             + Text(groupedSas(sas)).font(.custom(FontFace.monoBold.rawValue, fixedSize: ref(13))).foregroundColor(p.fg)
             + Text(parts.count > 1 ? parts[1] : "").font(.custom(FontFace.regular.rawValue, fixedSize: ref(13))).foregroundColor(p.mut))
+    }
+
+    /// The display's own pause flag; the words are the presenter's (`pause.presenter.button` / `.resume`).
+    private var pauseButton: some View {
+        DButton(kind: .overlay, action: { model.togglePause() }) {
+            // Text only: the asset catalog has no pause icon yet (tools/gen-appletv-icons.mjs).
+            Text(L.s(model.pause.display ? "pause.presenter.resume" : "pause.presenter.button")).dtype(DisplayType.nameTagLine1)
+        }
+        .focused($focus, equals: .pause)
+        .disabled(!model.controlsShown || model.dialogOpen)
+        .onMoveCommand { model.presentingKey(Self.key($0)) }
     }
 
     private var endButton: some View {

@@ -3,6 +3,11 @@
 
 import XCTest
 @testable import CometCastCore
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
 
 final class DisplayDesignTests: XCTestCase {
     func testPalettesAreTheSpecHexValues() {
@@ -157,14 +162,16 @@ final class DisplayTextTests: XCTestCase {
         XCTAssertNil(pageMessageJSON(page: 0, pages: 12))
         XCTAssertNil(pageMessageJSON(page: 13, pages: 12))
         XCTAssertNil(pageMessageJSON(page: 1, pages: 0))
-        let id = "0123456789abcdef"
-        let t = displayAnnouncementTxt(id: id, wsUrl: "wss://relay.cometcast.de:443/ws", mode: .open, code: "K7QM2W", roomName: "  Room\u{202E} 204 ")
-        XCTAssertEqual(t?.map(\.0), ["v", "id", "srv", "tls", "mode", "code", "name"]) // cc-discovery's order
-        XCTAssertEqual(t?.last?.1, "Room 204")
+        // The announced record is signed (docs/design/signed-announcements.md): the keys come in the order of
+        // the signed bytes, `sig` last; details are in DisplayAnnouncementTests.
+        let key = try! Curve25519.Signing.PrivateKey(rawRepresentation: Data(repeating: 0x42, count: 32))
+        let t = displayAnnouncementTxt(key: key, seq: 1, wsUrl: "wss://relay.cometcast.de:443/ws", mode: .open, code: "K7QM2W", roomName: "  Room\u{202E} 204 ")
+        XCTAssertEqual(t?.map(\.0), ["v", "id", "pk", "seq", "state", "srv", "tls", "mode", "code", "name", "sig"])
+        XCTAssertEqual(t?.first { $0.0 == "name" }?.1, "Room 204")
         // no name set: no key, no fallback to the device name
-        XCTAssertEqual(displayAnnouncementTxt(id: id, wsUrl: "wss://a.de/ws", mode: .open, code: "K7QM2W", roomName: "\u{200B}")?.map(\.0), ["v", "id", "srv", "tls", "mode", "code"])
+        XCTAssertEqual(displayAnnouncementTxt(key: key, seq: 1, wsUrl: "wss://a.de/ws", mode: .open, code: "K7QM2W", roomName: "\u{200B}")?.map(\.0), ["v", "id", "pk", "seq", "state", "srv", "tls", "mode", "code", "sig"])
         // Locked keeps announcing name and mode, without a code
-        XCTAssertEqual(displayAnnouncementTxt(id: id, wsUrl: "wss://a.de/ws", mode: .locked, code: nil, roomName: "Elbe")?.map(\.0), ["v", "id", "srv", "tls", "mode", "name"])
+        XCTAssertEqual(displayAnnouncementTxt(key: key, seq: 1, wsUrl: "wss://a.de/ws", mode: .locked, code: nil, roomName: "Elbe")?.map(\.0), ["v", "id", "pk", "seq", "state", "srv", "tls", "mode", "name", "sig"])
         XCTAssertEqual(builtInRelayHost, defaultServers[0].split(separator: ":")[0].description)
     }
 }

@@ -55,7 +55,7 @@ function onEvent(e: ReceiverEvent) {
 }
 onBeforeUnmount(() => toastTimer && clearTimeout(toastTimer))
 
-const { state, start, setJoinMode, decide, endRoom, clearContent, renderPage } = useReceiver({
+const { state, start, setJoinMode, decide, endRoom, clearContent, renderPage, setDisplayPaused } = useReceiver({
   joinMode: props.setup.mode,
   // Presenters see this name on their waiting, "What to show" and "Presenting" pages (protocol `room_name`).
   roomName: props.setup.room,
@@ -326,6 +326,7 @@ onBeforeUnmount(() => {
     :request-open="head !== null"
     @close="clearContent"
     @input="controls.poke()"
+    @display-pause="setDisplayPaused"
     @playing="streamPlaying = $event"
   />
 

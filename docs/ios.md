@@ -60,6 +60,8 @@ The room code is a secret that decides who sees the screen: the file lives in th
 
 Names and raw values are shared between Swift and Dart; a Dart test pins them (`test/ios_broadcast_test.dart`, "the Dart enums match the Swift raw values"), and the Rust numbers are pinned by `abi_numbers_are_stable` in `cc-ios`.
 
+**Pause (docs/design/pause.md).** The presenter's Pause is **not offered** while the broadcast extension presents: the extension has no UI, and the app is in the background (a suspended app cannot send commands, see Design B above). What the person can do is stop the broadcast. The display can still pause (its own flag): the extension receives `pause_state` on the control channel and ignores it (`cc-ios` skips it like any display message that it does not act on). The system's own pause (`broadcastPaused`, a phone call or another recording, see below) is a different thing: the display just sees no frames, and the extension resumes with a key frame.
+
 **Stopping.** iOS has no API for an app to stop a broadcast. The extension can end itself with `finishBroadcastWithError`, which shows the error text in an alert (UNCERTAIN: whether iOS shows the alert for `stoppedByApp` or ends silently, test item **B8**). The person can always stop with the red status bar or Control Center. Leaving the Send screen stops the broadcast (like the Android capture).
 
 ### Hand-over of the approval (N32, native-apps.md 20.5)

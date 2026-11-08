@@ -100,6 +100,11 @@ class NearbyController extends ChangeNotifier {
   String? _connectingId;
   bool _goneLine = false;
 
+  /// Tell the core which screens the person joined before; it marks rows whose name is
+  /// remembered under another id (`newDevice`). The core keeps no list of its own.
+  void setRemembered(List<RememberedScreen> screens) =>
+      core.setRememberedScreens(screens);
+
   /// The rows in the order they were first found. New rows are added at the end; rows never
   /// re-sort (spec 14.3).
   List<NearbyRow> get rows => List.unmodifiable(_rows);

@@ -33,7 +33,8 @@ const props = defineProps<{
   /** A join request is open (the link card is known from the content): everything but the dialog is inert (decision 13.68). */
   requestOpen?: boolean
 }>()
-const emit = defineEmits<{ close: []; playing: [on: boolean]; input: [] }>()
+// `displayPause` is the display's own pause flag (the Freeze button): the session tells the presenter (docs/design/pause.md).
+const emit = defineEmits<{ close: []; playing: [on: boolean]; input: []; displayPause: [on: boolean] }>()
 const { t } = useI18n()
 
 const video = ref<HTMLVideoElement | null>(null)
@@ -84,23 +85,48 @@ function onVideoSize() {
 }
 const canFreeze = computed(() => showVideo.value && videoSize.value > 0)
 
-function applyFreeze() {
+// Pause (docs/design/pause.md): the picture is frozen while either flag is set. `toolbar.frozen` is the display's own flag
+// (the Freeze button), `pause.presenter` the presenter's (it stopped sending video).
+const pausedByPresenter = computed(() => props.state.pause?.presenter === true)
+const frozenView = computed(() => toolbar.value.frozen || pausedByPresenter.value)
+const freezePainted = ref(false)
+
+/** Paints the current frame on the freeze canvas; `false` when there is no frame to freeze. */
+function paintFreeze(): boolean {
   const v = video.value
   const c = freezeCanvas.value
-  if (!toolbar.value.frozen) return
-  if (!v || !c || v.videoWidth === 0) {
-    toolbar.value = { ...toolbar.value, frozen: false }
-    return
-  }
-  // Paint the current frame; the video element keeps playing the live stream underneath.
+  if (!v || !c || v.videoWidth === 0) return false
+  // Paint the current frame; the video element may go on (display flag) or stop (presenter flag) underneath.
   c.width = v.videoWidth
   c.height = v.videoHeight
   c.getContext('2d')?.drawImage(v, 0, 0)
+  freezePainted.value = true
+  return true
 }
 function onFreeze() {
-  toolbar.value = toggleFreeze(toolbar.value)
-  applyFreeze()
+  const next = toggleFreeze(toolbar.value)
+  // Nothing to freeze yet (no frame): the button does nothing. Already frozen by the presenter: the canvas holds the picture.
+  if (next.frozen && !frozenView.value && !paintFreeze()) return
+  // The display lets go while the presenter still holds the picture: that is the video's last frame, not the older one painted
+  // when the display froze (the live stream went on until the presenter paused).
+  if (!next.frozen && pausedByPresenter.value) paintFreeze()
+  toolbar.value = next
+  emit('displayPause', next.frozen)
 }
+// The presenter paused: keep its last picture (the video element may go black without frames).
+watch(pausedByPresenter, (on) => {
+  if (on && !toolbar.value.frozen) paintFreeze()
+})
+watch(frozenView, (on) => {
+  if (!on) freezePainted.value = false
+})
+// The session clears the display's flag with the screen (and can only confirm what the button asked for).
+watch(
+  () => props.state.pause?.display,
+  (d) => {
+    if (d === false && toolbar.value.frozen) toolbar.value = { ...toolbar.value, frozen: false }
+  },
+)
 // A frozen frame of a finished stream would be misleading.
 watch(showVideo, (v) => {
   if (!v && toolbar.value.frozen) toolbar.value = { ...toolbar.value, frozen: false }
@@ -181,7 +207,7 @@ defineExpose({ stage })
   <div
     ref="stage"
     data-testid="stage"
-    :data-frozen="toolbar.frozen"
+    :data-frozen="frozenView"
     :aria-label="t('receive.stageLabel')"
     role="region"
     class="cd-show isolate"
@@ -200,7 +226,7 @@ defineExpose({ stage })
       @playing="onPlaying"
     />
     <canvas
-      v-show="toolbar.frozen"
+      v-show="frozenView && freezePainted"
       ref="freezeCanvas"
       data-testid="freeze-canvas"
       aria-hidden="true"
@@ -228,7 +254,8 @@ defineExpose({ stage })
            A failed transfer is a toast (DisplayRunning), never a pill over the picture. -->
       <TransferPill v-if="state.transfer" message-key="receive.transfer" :name="state.transfer.name" :percent="transferPercent" />
       <TransferPill v-else-if="opening" message-key="receive.document.loading" :name="opening.name" />
-      <p v-if="toolbar.frozen" data-testid="frozen-badge" class="cd-badge" :class="{ hid: toolbarShown }" :aria-hidden="toolbarShown">{{ t('toolbar.frozenHint') }}</p>
+      <!-- Who paused (docs/design/pause.md, rule 5): the presenter's text wins when both did. -->
+      <p v-if="frozenView" data-testid="frozen-badge" class="cd-badge" :class="{ hid: toolbarShown }" :aria-hidden="toolbarShown">{{ pausedByPresenter ? t('pause.display.byPresenter') : t('toolbar.frozenHint') }}</p>
       <ReceiverToolbar
         :shown="controlsShown && state.content?.kind !== 'link'"
         :state="toolbar"

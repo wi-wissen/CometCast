@@ -31,7 +31,7 @@ const PROGRESS_INTERVAL_MS = 100
 export const STALL_TIMEOUT_MS = 30_000
 
 /** Mirrors `ControlCmd` in cc-proto (serde default enum form). */
-export type ControlCmd = 'next_page' | 'prev_page' | 'stop' | { go_to_page: { page: number } }
+export type ControlCmd = 'next_page' | 'prev_page' | 'stop' | 'pause' | 'resume' | { go_to_page: { page: number } }
 
 export type ControlMessage =
   | { kind: 'cmd'; cmd: ControlCmd }
@@ -45,6 +45,12 @@ export type ControlMessage =
    * so that the presenter's page can say "Page n of m" and disable Previous / Next at the ends.
    */
   | { kind: 'page'; page: number; pages: number }
+  /**
+   * Display to presenter (docs/design/pause.md): which pause flags are set. `presenter` is the presenter's own flag as the
+   * display holds it (the echo of `cmd pause` / `cmd resume`), `display` the display's own. Sent whenever either changes
+   * and once when the channel opens. A receiver ignores it.
+   */
+  | { kind: 'pause_state'; presenter: boolean; display: boolean }
 
 /** The part of RTCDataChannel that is used here (so tests can provide a fake). */
 export interface ControlChannel {
@@ -120,7 +126,7 @@ function isPositiveInt(n: unknown, max: number): n is number {
 }
 
 function parseCmd(c: unknown): ControlCmd | null {
-  if (c === 'next_page' || c === 'prev_page' || c === 'stop') return c
+  if (c === 'next_page' || c === 'prev_page' || c === 'stop' || c === 'pause' || c === 'resume') return c
   if (c && typeof c === 'object') {
     const g = (c as { go_to_page?: { page?: unknown } }).go_to_page
     if (g && typeof g === 'object' && isPositiveInt(g.page, 1_000_000)) return { go_to_page: { page: g.page } }
@@ -172,6 +178,11 @@ export function parseControlMessage(text: string): ControlMessage | null {
     case 'page': {
       if (!isPositiveInt(o.pages, MAX_PAGES) || !isPositiveInt(o.page, MAX_PAGES) || o.page > o.pages) return null
       return { kind: 'page', page: o.page, pages: o.pages }
+    }
+    case 'pause_state': {
+      // Both flags are required and must be booleans; other keys are ignored.
+      if (typeof o.presenter !== 'boolean' || typeof o.display !== 'boolean') return null
+      return { kind: 'pause_state', presenter: o.presenter, display: o.display }
     }
     default:
       return null
@@ -412,6 +423,7 @@ export class ControlReceiver {
         this.h.onLink(m.url)
         break
       case 'page':
+      case 'pause_state':
         break // display to presenter only: a receiver has nothing to do with it
     }
   }
@@ -434,16 +446,21 @@ export class SendError extends Error {
 
 /** Sender side of the control channel. */
 export class ControlSender {
-  /** `onPage` gets the display's `page` messages (the shown PDF page and the page count). */
+  /**
+   * `onPage` gets the display's `page` messages (the shown PDF page and the page count), `onPauseState` its `pause_state`
+   * messages (docs/design/pause.md).
+   */
   constructor(
     private readonly ch: ControlChannel,
     onPage?: (state: { page: number; pages: number }) => void,
+    onPauseState?: (state: { presenter: boolean; display: boolean }) => void,
   ) {
     ch.bufferedAmountLowThreshold = LOW_WATER
     ch.onmessage = (ev) => {
       if (typeof ev?.data !== 'string') return
       const m = parseControlMessage(ev.data)
       if (m?.kind === 'page') onPage?.({ page: m.page, pages: m.pages })
+      else if (m?.kind === 'pause_state') onPauseState?.({ presenter: m.presenter, display: m.display })
     }
   }
 

@@ -21,6 +21,14 @@
 //! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well. So
 //! is a presenter whose connection fails (an offer that cannot be answered, WebRTC `failed`,
 //! no connection in time): a joiner must not be able to end the room.
+//! Pause (docs/design/pause.md): the core holds the two pause flags of the live screen
+//! ([`PauseState`]): `presenter` (set by the presenter's `cmd pause` / `cmd resume`) and
+//! `display` (set with [`ReceiverCore::set_display_paused`]). Every change is reported as
+//! [`ReceiverEvent::PauseChanged`] and sent to the presenter as `pause_state`, once more when
+//! the control channel arrives (both `false`). Pause only applies while a video track is
+//! shown; both flags are cleared when the presentation ends (stop, failure, peer left, new
+//! offer). The core never treats missing frames as a failure: it has no frame watchdog.
+//!
 //! The core stops on [`ReceiverEvent::RoomEnded`], an error (the signalling connection, a
 //! server error that closes the connection) or [`ReceiverCore::stop`]. A server error that
 //! leaves the connection open (for example `no_such_request`) is a
@@ -35,7 +43,7 @@ mod handover;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime};
+pub use cc_files::{Blob, ContentError, ContentEvent, ContentOptions, ImageMime, PauseState};
 pub use cc_proto::JoinMode;
 use cc_proto::{ClientMsg, Role, RoomCode, ServerMsg};
 use cc_transport::{
@@ -192,6 +200,15 @@ pub enum ReceiverEvent {
     /// The sender left (or was removed). The room stays: the core is ready for the next sender
     /// with the same code, join mode, block list and queue.
     PeerLeft,
+    /// A pause flag changed (docs/design/pause.md). The picture is frozen while either flag is
+    /// set; the application keeps showing the last picture. The presenter has been told with
+    /// `pause_state`. Both flags are cleared (one event) when the presentation ends.
+    PauseChanged {
+        /// The presenter paused its screen (it stops sending video).
+        presenter: bool,
+        /// The display's own flag ([`ReceiverCore::set_display_paused`]).
+        display: bool,
+    },
     /// The sender's presentation ended but the sender is still in the room: it closed its
     /// control channel or began a new offer, or its connection could not be made (an offer
     /// that cannot be answered, WebRTC `failed`, no connection 30 s after the offer).
@@ -299,6 +316,7 @@ pub struct ReceiverCore {
     events: mpsc::UnboundedReceiver<ReceiverEvent>,
     content_events: Option<content::EventStream>,
     content_width: mpsc::UnboundedSender<u32>,
+    display_pause: mpsc::UnboundedSender<bool>,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<()>,
 }
@@ -352,6 +370,7 @@ impl ReceiverCore {
         let (stop_tx, stop_rx) = oneshot::channel();
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (width_tx, width_rx) = mpsc::unbounded_channel();
+        let (pause_tx, pause_rx) = mpsc::unbounded_channel();
         let (content_tx, content_rx) = content::event_queue();
         let content = options.content.map(|mut o| {
             // The apps show a progress for incoming files.
@@ -373,6 +392,7 @@ impl ReceiverCore {
             events_tx,
             stop_rx,
             cmd_rx,
+            pause_rx,
             content,
             handover,
         ));
@@ -385,6 +405,7 @@ impl ReceiverCore {
             events: events_rx,
             content_events: has_content.then_some(content_rx),
             content_width: width_tx,
+            display_pause: pause_tx,
             stop: Some(stop_tx),
             task,
         })
@@ -497,6 +518,15 @@ impl ReceiverCore {
         let _ = self.content_width.send(width);
     }
 
+    /// Set or clear the **display's own** pause flag (docs/design/pause.md): the display keeps
+    /// the last picture while the presenter goes on sending. Only offered while a screen is
+    /// shown: without a video track the call is ignored. The change arrives as
+    /// [`ReceiverEvent::PauseChanged`]; the presenter is told with `pause_state`. The
+    /// presenter's flag cannot be changed from here.
+    pub fn set_display_paused(&self, paused: bool) {
+        let _ = self.display_pause.send(paused);
+    }
+
     /// Stop and close everything.
     pub async fn stop(mut self) {
         if let Some(tx) = self.stop.take() {
@@ -558,6 +588,51 @@ impl TokenAdmission {
     }
 }
 
+/// The pause flags of the running presentation and the way to tell the presenter.
+#[derive(Default)]
+struct PauseCtl {
+    state: PauseState,
+    /// Texts for the presenter, sent by the content task on its control channel.
+    down: Option<mpsc::UnboundedSender<String>>,
+}
+
+impl PauseCtl {
+    fn changed(&self, emit: &impl Fn(ReceiverEvent)) {
+        emit(ReceiverEvent::PauseChanged {
+            presenter: self.state.presenter,
+            display: self.state.display,
+        });
+        self.tell();
+    }
+
+    /// Tell the presenter the flags (`pause_state`).
+    fn tell(&self) {
+        if let Some(d) = &self.down {
+            let _ = d.send(self.state.message());
+        }
+    }
+
+    fn set_presenter(&mut self, paused: bool, emit: &impl Fn(ReceiverEvent)) {
+        if self.state.set_presenter(paused) {
+            self.changed(emit);
+        }
+    }
+
+    fn set_display(&mut self, paused: bool, emit: &impl Fn(ReceiverEvent)) {
+        if self.state.set_display(paused) {
+            self.changed(emit);
+        }
+    }
+
+    /// The presentation ended: both flags are cleared and the channel is forgotten.
+    fn end(&mut self, emit: &impl Fn(ReceiverEvent)) {
+        if self.state.clear() {
+            self.changed(emit);
+        }
+        self.down = None;
+    }
+}
+
 /// End the content task of a presentation that is over (the presenter stays in the room).
 fn stop_presentation(
     content_task: &mut Option<JoinHandle<()>>,
@@ -593,6 +668,7 @@ async fn run(
     out: mpsc::UnboundedSender<ReceiverEvent>,
     mut stop: oneshot::Receiver<()>,
     mut commands: mpsc::UnboundedReceiver<ClientMsg>,
+    mut display_pause: mpsc::UnboundedReceiver<bool>,
     mut content: Option<ContentSetup>,
     handover: Arc<HandoverStore>,
 ) {
@@ -613,7 +689,11 @@ async fn run(
     let mut admitted_by_token = TokenAdmission::default();
     // The presenter the host asked to remove, until its `peer_left` arrives.
     let mut removed_peer: Option<String> = None;
-    let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<ReceiverEvent>();
+    let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<content::TaskMsg>();
+    // The pause flags of the live screen and the way to tell the presenter (the content task
+    // of the running presentation sends the texts on its control channel).
+    let mut pause = PauseCtl::default();
+    let mut display_pause_open = true;
     // Why the loop ended: stop, a fatal error or the end of the room all close the session below.
     loop {
         // The sender is gone or its presentation ended: forget its connection and start
@@ -671,10 +751,27 @@ async fn run(
                 // is over.
                 content_task = None;
                 task_widths = None;
+                pause.end(&emit);
                 emit(ReceiverEvent::PresentationStopped);
                 reset = true;
             }
-            Some(e) = hand_rx.recv() => emit(e),
+            Some(m) = hand_rx.recv() => match m {
+                content::TaskMsg::Event(e) => emit(e),
+                // Only while a screen is shown (a video track arrived).
+                content::TaskMsg::PresenterPause(p) => {
+                    pause.set_presenter(p && conn.have_track, &emit);
+                }
+            },
+            d = async {
+                if display_pause_open {
+                    display_pause.recv().await
+                } else {
+                    std::future::pending().await
+                }
+            } => match d {
+                Some(p) => pause.set_display(p && conn.have_track, &emit),
+                None => display_pause_open = false,
+            },
             msg = sig.recv() => match msg {
                 None => {
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
@@ -724,6 +821,7 @@ async fn run(
                         // A second offer in a connection that had one: the sender begins a
                         // new presentation. The old one is over; start on a fresh session.
                         stop_presentation(&mut content_task, &mut task_widths);
+                        pause.end(&emit);
                         emit(ReceiverEvent::PresentationStopped);
                         match fresh_session(&session, &session_config, &shared_session).await {
                             Ok((s, ev)) => {
@@ -749,6 +847,7 @@ async fn run(
                         // presentation, not the room (any joiner could send one).
                         Err(_) => {
                             stop_presentation(&mut content_task, &mut task_widths);
+                            pause.end(&emit);
                             emit(ReceiverEvent::PresentationStopped);
                             reset = true;
                         }
@@ -774,6 +873,7 @@ async fn run(
                     {
                         emit(ReceiverEvent::HandoverExpired);
                     }
+                    pause.end(&emit);
                     emit(ReceiverEvent::PeerLeft);
                     reset = true;
                 }
@@ -804,6 +904,7 @@ async fn run(
                         // The presenter's connection failed: its presentation is over, the
                         // room stays (the presenter may offer again, or the next one comes).
                         stop_presentation(&mut content_task, &mut task_widths);
+                        pause.end(&emit);
                         emit(ReceiverEvent::PresentationStopped);
                         reset = true;
                     }
@@ -816,6 +917,11 @@ async fn run(
                         }
                         let (wtx, wrx) = mpsc::unbounded_channel();
                         task_widths = Some(wtx);
+                        // The presenter learns the pause flags as soon as the channel is
+                        // there (both `false` unless the display paused meanwhile).
+                        let (down_tx, down_rx) = mpsc::unbounded_channel();
+                        pause.down = Some(down_tx);
+                        pause.tell();
                         content_task = Some(content::spawn(
                             channel,
                             options,
@@ -827,6 +933,10 @@ async fn run(
                                 name,
                                 notify: hand_tx.clone(),
                             }),
+                            content::PauseLink {
+                                up: hand_tx.clone(),
+                                down: down_rx,
+                            },
                         ));
                     }
                     // Content is not wanted: refuse the channel.
@@ -844,6 +954,7 @@ async fn run(
                 if !conn.connected && conn.offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
                     // No connection after the presenter's offer: as a failed connection.
                     stop_presentation(&mut content_task, &mut task_widths);
+                    pause.end(&emit);
                     emit(ReceiverEvent::PresentationStopped);
                     reset = true;
                 } else if conn.have_track {
@@ -852,6 +963,7 @@ async fn run(
             }
         }
         if reset {
+            pause.end(&emit);
             match fresh_session(&session, &session_config, &shared_session).await {
                 Ok((s, ev)) => {
                     session = s;

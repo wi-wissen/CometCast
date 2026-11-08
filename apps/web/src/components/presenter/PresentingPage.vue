@@ -17,13 +17,27 @@ const props = defineProps<{
   /** The shown page and the page count, as the display reports them (`page` message, decision 13.31); absent while unknown. */
   page?: number
   total?: number
+  /**
+   * Pause (docs/design/pause.md): offered only while the screen is shown (`kind === 'screen'`) and `pause` is passed. `requested`
+   * is the presenter's own flag as asked (the button reads Resume at once); `presenter` and `display` are what the display
+   * reported with `pause_state` (the presenter's flag counts as confirmed only when the display echoed it).
+   */
+  pause?: { requested: boolean; presenter: boolean; display: boolean }
 }>()
-const emit = defineEmits<{ stop: []; page: [cmd: 'next_page' | 'prev_page'] }>()
+const emit = defineEmits<{ stop: []; page: [cmd: 'next_page' | 'prev_page']; pause: []; resume: [] }>()
 const { t } = useI18n()
 const ICON: Record<string, IconName> = { screen: 'screen', file: 'file', link: 'link' }
 // While the page is unknown both buttons stay enabled; once known, Previous is off on page 1 and Next on the last page.
 const known = computed(() => Boolean(props.page && props.total))
 const onFirst = computed(() => known.value && (props.page ?? 1) <= 1)
+// The banner: the presenter's own pause wins (confirmed by the display); else the display's own freeze (pause.md rule 5).
+const banner = computed(() => {
+  const p = props.pause
+  if (props.kind !== 'screen' || !p) return null
+  if (p.presenter) return 'pause.presenter.banner'
+  if (p.display) return 'pause.presenter.displayFrozen'
+  return null
+})
 const onLast = computed(() => known.value && (props.page ?? 0) >= (props.total ?? 0))
 </script>
 
@@ -37,6 +51,18 @@ const onLast = computed(() => known.value && (props.page ?? 0) >= (props.total ?
     <!-- The bottom action area: a shown PDF is turned page by page from here (spec 5.6), "Page n of m" when known, the
          Previous / Next row 8 above Stop. -->
     <div class="cp-bottom">
+      <div v-if="kind === 'screen' && pause !== undefined" class="cp-pdf" data-testid="pause-area">
+        <p v-if="banner" class="cp-small cp-pausebanner" role="status" data-testid="pause-banner">{{ t(banner) }}</p>
+        <button
+          type="button"
+          class="cp-sbtn"
+          :aria-pressed="pause.requested"
+          data-testid="presenting-pause"
+          @click="pause.requested ? emit('resume') : emit('pause')"
+        >
+          {{ pause.requested ? t('pause.presenter.resume') : t('pause.presenter.button') }}
+        </button>
+      </div>
       <div v-if="pdf" class="cp-pdf">
         <p v-if="known" class="cp-small" data-testid="presenting-pageof">{{ t('presenting.pageOf', { n: page, total }) }}</p>
         <div class="cp-pages" role="group" :aria-label="t('sendContent.document.pagesHelp')">

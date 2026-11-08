@@ -1013,3 +1013,35 @@ fn a_page_message_is_ignored_without_a_violation() {
     assert!(ev.is_empty(), "{ev:?}");
     assert_eq!(r.violations(), 0);
 }
+
+#[test]
+fn pause_and_resume_are_reported_and_are_never_violations() {
+    let mut r = rx();
+    for (cmd, paused) in [
+        (cmd_message(ControlCmd::Pause), true),
+        (cmd_message(ControlCmd::Pause), true),
+        (cmd_message(ControlCmd::Resume), false),
+    ] {
+        assert_eq!(
+            r.handle_text(&cmd),
+            vec![ContentEvent::PauseRequested { paused }]
+        );
+    }
+    // A pause_state message is for presenters: ignored, no violation.
+    assert!(
+        r.handle_text(&crate::outgoing::pause_state_message(true, false))
+            .is_empty()
+    );
+    assert_eq!(r.violations(), 0);
+}
+
+#[test]
+fn pause_does_not_disturb_a_running_transfer_or_queue_with_an_opening_document() {
+    let mut r = rx();
+    r.handle_text(&image_start(20_000));
+    r.handle_binary(&vec![1u8; CHUNK_SIZE]);
+    let ev = r.handle_text(&cmd_message(ControlCmd::Pause));
+    assert_eq!(ev, vec![ContentEvent::PauseRequested { paused: true }]);
+    assert!(r.transfer_active(), "the transfer goes on");
+    assert_eq!(r.violations(), 0);
+}

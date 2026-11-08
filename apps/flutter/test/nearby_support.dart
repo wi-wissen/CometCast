@@ -75,13 +75,18 @@ NearbyScreenInfo screen(
   NearbyMode mode = NearbyMode.open,
   String? code = 'K7QM2W',
   List<String> addresses = const [],
+  bool sameName = false,
+  bool newDevice = false,
 }) => NearbyScreenInfo(
   id: id,
+  tag: id.length >= 4 ? id.substring(0, 4).toUpperCase() : id.toUpperCase(),
   name: name,
   server: server,
   mode: mode,
   code: mode == NearbyMode.locked ? null : code,
   addresses: addresses,
+  sameName: sameName,
+  newDevice: newDevice,
 );
 
 class Nearby {

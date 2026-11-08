@@ -17,6 +17,7 @@ import 'package:cometcast/src/rust/api.dart'
         ContentFrame,
         ContentSenderUiEvent,
         ContentSource,
+        DisplayIdentity,
         EncodedVideoUnit,
         LinkCheck,
         NearbyPermission,
@@ -27,6 +28,7 @@ import 'package:cometcast/src/rust/api.dart'
         PresenterUiEvent,
         ProbeResult,
         ReceiverUiEvent,
+        RememberedScreen,
         RoomCodeCheck,
         ScreenRequest,
         SenderUiEvent,
@@ -49,6 +51,7 @@ export 'package:cometcast/src/rust/api.dart'
         denyAndBlockJoin,
         unblock,
         endRoom,
+        setDisplayPaused,
         removePeer,
         startSender,
         startEncodedSender,
@@ -79,6 +82,7 @@ export 'package:cometcast/src/rust/api.dart'
         presentEncoded,
         presentContent,
         requestHandover,
+        setPresenterPaused,
         stopPresenting,
         captureInfo,
         serverDefaults,
@@ -88,6 +92,10 @@ export 'package:cometcast/src/rust/api.dart'
         watchReceivers,
         stopWatchingReceivers,
         setDisplayAnnouncing,
+        newDisplaySecret,
+        displayIdentity,
+        displaySeqToPersist,
+        setRememberedScreens,
         watchNearbyScreens,
         stopNearbyScreens,
         watchNativeAnnouncements,
@@ -166,6 +174,11 @@ abstract class CoreApi {
   /// stream ends). Start a new receiver for a new room.
   bool endRoom();
 
+  /// Set or clear the display's own pause flag (docs/design/pause.md): the display keeps the last
+  /// picture, the presenter goes on sending and is told. Only while a screen is shown. The core
+  /// answers with a `pauseChanged` event. False if no receiver runs.
+  bool setDisplayPaused(bool paused);
+
   /// The received image or PDF page that waits, or null. Call it after a `contentFrameReady`
   /// event; fetching re-arms that event. Only the latest picture is kept.
   Future<ContentFrame?> takeContentFrame();
@@ -240,6 +253,11 @@ abstract class CoreApi {
 
   /// Show a file or a link in the joined session. False if no session.
   bool presentContent(ContentSource source);
+
+  /// Pause (true) or resume (false) the running screen presentation (docs/design/pause.md): the
+  /// video stops at once and the display keeps the last picture. Ignored without a screen. The
+  /// display's answer is the `pauseState` event. False if no session.
+  bool setPresenterPaused(bool paused);
 
   /// End the presentation only; the session stays joined. False if no session.
   bool stopPresenting();
@@ -325,13 +343,29 @@ abstract class CoreApi {
   Future<void> stopWatchingReceivers();
 
   /// Whether the display may announce itself in the local network (spec 14.8): [active] is true
-  /// while it shows Idle or Presenting in the foreground; [instanceId] is the stable random id
-  /// of this installation. What is announced (server, room name, mode, the current code, none
-  /// while Locked) comes from the running receiver; a policy that forbids it wins.
+  /// while it shows Idle or Presenting in the foreground; [secretKey] is the 32-byte Ed25519
+  /// secret of this installation (the id derives from it) and [seqFloor] the value persisted from
+  /// [displaySeqToPersist]. What is announced (server, room name, mode, the current code, none
+  /// while Locked) comes from the running receiver and is signed by the core; a policy that
+  /// forbids it wins.
   Future<AnnounceStatus> setDisplayAnnouncing({
     required bool active,
-    required String instanceId,
+    required Uint8List secretKey,
+    required int seqFloor,
   });
+
+  /// 32 new secret bytes for a display key (operating system randomness).
+  Uint8List newDisplaySecret();
+
+  /// Id, tag and public key of a display key; null when [secretKey] is not 32 bytes.
+  DisplayIdentity? displayIdentity(Uint8List secretKey);
+
+  /// What to persist with the key so a restart continues above every `seq` used.
+  int displaySeqToPersist();
+
+  /// The screens the person joined before, `(room name, id)`; rows with a remembered name but
+  /// another id are reported with `newDevice`. The core keeps no list.
+  void setRememberedScreens(List<RememberedScreen> screens);
 
   /// One search for screens on the local network (spec 14): the stream starts with
   /// `searchStarted` and ends after [stopNearbyScreens]. With [native] the platform's own browse
@@ -491,6 +525,9 @@ class RustCoreApi implements CoreApi {
   bool endRoom() => rust.endRoom();
 
   @override
+  bool setDisplayPaused(bool paused) => rust.setDisplayPaused(paused: paused);
+
+  @override
   Future<ContentFrame?> takeContentFrame() => rust.takeContentFrame();
 
   @override
@@ -561,6 +598,10 @@ class RustCoreApi implements CoreApi {
   @override
   bool presentContent(ContentSource source) =>
       rust.presentContent(source: source);
+
+  @override
+  bool setPresenterPaused(bool paused) =>
+      rust.setPresenterPaused(paused: paused);
 
   @override
   bool stopPresenting() => rust.stopPresenting();
@@ -674,8 +715,27 @@ class RustCoreApi implements CoreApi {
   @override
   Future<AnnounceStatus> setDisplayAnnouncing({
     required bool active,
-    required String instanceId,
-  }) => rust.setDisplayAnnouncing(active: active, instanceId: instanceId);
+    required Uint8List secretKey,
+    required int seqFloor,
+  }) => rust.setDisplayAnnouncing(
+    active: active,
+    secretKey: secretKey,
+    seqFloor: seqFloor,
+  );
+
+  @override
+  Uint8List newDisplaySecret() => rust.newDisplaySecret();
+
+  @override
+  DisplayIdentity? displayIdentity(Uint8List secretKey) =>
+      rust.displayIdentity(secretKey: secretKey);
+
+  @override
+  int displaySeqToPersist() => rust.displaySeqToPersist();
+
+  @override
+  void setRememberedScreens(List<RememberedScreen> screens) =>
+      rust.setRememberedScreens(screens: screens);
 
   @override
   Stream<NearbyUiEvent> watchNearbyScreens({required bool native}) =>

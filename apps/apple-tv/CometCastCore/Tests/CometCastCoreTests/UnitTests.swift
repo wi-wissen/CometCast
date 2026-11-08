@@ -5,6 +5,11 @@
 import Foundation
 import XCTest
 @testable import CometCastCore
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
 
 final class JSONTests: XCTestCase {
     func testParsesLikeJavaScript() {
@@ -435,16 +440,28 @@ final class ServerListTests: XCTestCase {
     }
 
     func testAnnouncement() {
-        let r = announcedReceiver(instanceName: "Lobby TV", txt: [("v", "1"), ("srv", "192.168.1.9:8443"), ("name", "Lobby\u{202E} Display")])
+        // Only signed v2 records give a server (docs/design/signed-announcements.md); there is no v1 compatibility.
+        let key = try! Curve25519.Signing.PrivateKey(rawRepresentation: Data(repeating: 0x42, count: 32))
+        func signed(_ fields: [String: String], state: AnnounceState = .live) -> [(String, String)] {
+            signAnnouncement(key: key, seq: 5, state: state, fields: fields)!
+        }
+        let r = announcedReceiver(instanceName: "Lobby TV", txt: signed(["srv": "192.168.1.9:8443", "mode": "locked", "name": "Lobby\u{202E} Display"]))
         XCTAssertEqual(r?.announcedServer, "ws://192.168.1.9:8443")
         XCTAssertEqual(r?.name, "Lobby Display")
-        XCTAssertEqual(announcedReceiver(instanceName: "x", txt: [("srv", "relay.example.org:443"), ("tls", "1")])?.announcedServer, "wss://relay.example.org:443")
-        XCTAssertNil(announcedReceiver(instanceName: "x", txt: [("srv", "relay.example.org:443")])?.announcedServer, "no tls=1: plain ws for a public host is dropped")
-        XCTAssertNil(announcedReceiver(instanceName: "x", txt: [("v", "2"), ("srv", "192.168.1.9:1")])?.announcedServer)
-        XCTAssertNil(announcedReceiver(instanceName: "x", txt: [("srv", "wss://x.example:1")])?.announcedServer)
+        XCTAssertEqual(announcedReceiver(instanceName: "x", txt: signed(["srv": "relay.example.org:443", "tls": "1", "mode": "locked"]))?.announcedServer, "wss://relay.example.org:443")
+        XCTAssertNil(announcedReceiver(instanceName: "x", txt: signed(["srv": "relay.example.org:443", "mode": "locked"]))?.announcedServer, "no tls=1: plain ws for a public host is dropped")
+        XCTAssertNil(announcedReceiver(instanceName: "x", txt: signed(["srv": "wss://x.example:1", "mode": "locked"]))?.announcedServer)
+        XCTAssertNil(announcedReceiver(instanceName: "x", txt: signed(["srv": "192.168.1.9:1", "mode": "locked"], state: .gone))?.announcedServer, "a gone record names no server")
+        // v1 and tampered records give no server and no announced name.
+        XCTAssertNil(announcedReceiver(instanceName: "x", txt: [("v", "1"), ("srv", "192.168.1.9:1")])?.announcedServer)
+        XCTAssertNil(announcedReceiver(instanceName: "x", txt: [("srv", "192.168.1.9:1")])?.announcedServer)
+        var tampered = signed(["srv": "192.168.1.9:1", "mode": "locked"])
+        tampered[tampered.firstIndex { $0.0 == "srv" }!] = ("srv", "10.66.0.1:1")
+        XCTAssertNil(announcedReceiver(instanceName: "x", txt: tampered)?.announcedServer)
         XCTAssertNil(announcedReceiver(instanceName: "\u{200B}", txt: []))
-        XCTAssertEqual(announcedReceiver(instanceName: "x", txt: [("name", String(repeating: "n", count: 100))])?.name.count, maxNameChars)
-        XCTAssertEqual(announcedReceiver(instanceName: "x", txt: [("srv", "192.168.1.9:1"), ("srv", "10.0.0.1:2")])?.announcedServer, "ws://192.168.1.9:1", "first key wins")
+        XCTAssertEqual(announcedReceiver(instanceName: "x", txt: signed(["srv": "192.168.1.9:1", "mode": "locked", "name": String(repeating: "n", count: 100)]))?.name.count, maxNameChars)
+        // The first key wins: a second `srv` after the signed record is not read.
+        XCTAssertEqual(announcedReceiver(instanceName: "x", txt: signed(["srv": "192.168.1.9:1", "mode": "locked"]) + [("srv", "10.0.0.1:2")])?.announcedServer, "ws://192.168.1.9:1", "first key wins")
     }
 
     func testChooseRelayNeverPrefillsAnAnnouncement() {
@@ -537,6 +554,80 @@ final class ContentControllerTests: XCTestCase {
         XCTAssertFalse(c.clear())
         c.setError(.stalled)
         XCTAssertTrue(c.clear())
+    }
+}
+
+/// Pause from either side (docs/design/pause.md): the same rules as `PauseState` in crates/cc-files and the web client.
+final class PauseTests: XCTestCase {
+    func testEitherFlagFreezesAndEachSideClearsOnlyItsOwn() {
+        var s = PauseState()
+        XCTAssertFalse(s.isFrozen)
+        XCTAssertTrue(s.setPresenter(true))
+        XCTAssertFalse(s.setPresenter(true)) // idempotent
+        XCTAssertTrue(s.setDisplay(true))
+        XCTAssertTrue(s.setPresenter(false))
+        XCTAssertTrue(s.isFrozen) // the display flag keeps the picture frozen
+        XCTAssertTrue(s.setDisplay(false))
+        XCTAssertFalse(s.isFrozen)
+    }
+
+    func testClearResetsBothAndReportsTheChange() {
+        var s = PauseState(presenter: true, display: true)
+        XCTAssertTrue(s.clear())
+        XCTAssertEqual(s, PauseState())
+        XCTAssertFalse(s.clear())
+    }
+
+    func testTheMessageIsTheWireFormat() {
+        XCTAssertEqual(pauseStateMessageJSON(PauseState(presenter: true, display: false)),
+                       "{\"display\":false,\"kind\":\"pause_state\",\"presenter\":true}")
+        // what the display sends parses back, like the presenter's parser reads it
+        XCTAssertEqual(parseControlMessage(pauseStateMessageJSON(PauseState(presenter: false, display: true))),
+                       .pauseState(presenter: false, display: true))
+    }
+
+    func testPauseCommandsParseAndDoNotTouchTheContent() {
+        XCTAssertEqual(parseControlMessage("{\"kind\":\"cmd\",\"cmd\":\"pause\"}"), .cmd(.pause))
+        XCTAssertEqual(parseControlMessage("{\"kind\":\"cmd\",\"cmd\":\"resume\"}"), .cmd(.resume))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"cmd\",\"cmd\":\"Pause\"}"))
+        let c = ContentController()
+        let id = c.openDocument(name: "d.pdf")
+        c.documentOpened(id: id, pages: 3)
+        c.onCmd(.pause)
+        c.onCmd(.resume)
+        XCTAssertEqual(c.content, .document(id: id, name: "d.pdf", pages: 3, page: 1))
+    }
+
+    func testPauseStateNeedsTwoBooleans() {
+        XCTAssertNil(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":true}"))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":1,\"display\":0}"))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":null,\"display\":false}"))
+        XCTAssertEqual(parseControlMessage("{\"kind\":\"pause_state\",\"presenter\":false,\"display\":true,\"x\":1}"),
+                       .pauseState(presenter: false, display: true))
+    }
+
+    func testTheBadgeSaysWhoPausedAndThePresenterWinsWhenBothDid() {
+        XCTAssertNil(frozenBadge(PauseState()))
+        XCTAssertEqual(frozenBadge(PauseState(presenter: true, display: false)), .byPresenter)
+        XCTAssertEqual(frozenBadge(PauseState(presenter: false, display: true)), .frozenHere)
+        XCTAssertEqual(frozenBadge(PauseState(presenter: true, display: true)), .byPresenter)
+    }
+
+    func testAReceiverIgnoresPauseStateWithoutAnError() {
+        final class R: ControlReceiverHandlers {
+            var events: [String] = []
+            func onCmd(_ cmd: ControlCmd) { events.append("cmd:" + JSON.serialize(cmd.json)) }
+            func onProgress(_ p: (name: String, received: Int, size: Int)?) {}
+            func onImage(bytes: [UInt8], mime: String, name: String) {}
+            func onDocument(bytes: [UInt8], name: String) {}
+            func onLink(url: String) {}
+            func onError(_ code: TransferErrorCode) { events.append("error:" + code.rawValue) }
+        }
+        let r = R()
+        let rx = ControlReceiver(handlers: r)
+        rx.handleText("{\"kind\":\"pause_state\",\"presenter\":true,\"display\":false}", nowMs: 0)
+        rx.handleText("{\"kind\":\"cmd\",\"cmd\":\"pause\"}", nowMs: 1)
+        XCTAssertEqual(r.events, ["cmd:\"pause\""])
     }
 }
 

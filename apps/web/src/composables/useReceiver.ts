@@ -67,6 +67,8 @@ export function useReceiver(opts: UseReceiverOptions = {}) {
     unblock: (id: number) => session.unblock(id),
     endRoom: () => session.endRoom(),
     dismissNotice: () => session.dismissNotice(),
+    /** The display's own pause flag (the Freeze button): the presenter is told, the picture stays frozen (docs/design/pause.md). */
+    setDisplayPaused: (on: boolean) => session.setDisplayPaused(on),
     nextPage: () => session.nextPage(),
     prevPage: () => session.prevPage(),
     renderPage: (page: number, width: number) => session.renderPage(page, width),

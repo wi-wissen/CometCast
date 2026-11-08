@@ -27,6 +27,8 @@ async fn advertised_receiver_is_found_with_its_server() {
             return;
         }
     };
+    // The instance name is derived from the id of the key made for the announcement.
+    let instance = format!("CometCast-{}", &ad.id()[..8]);
     // Stream API.
     let mut browser = match discover_receivers() {
         Ok(b) => b,
@@ -38,7 +40,7 @@ async fn advertised_receiver_is_found_with_its_server() {
     let found = tokio::time::timeout(Duration::from_secs(8), async {
         while let Some(ev) = browser.next().await {
             if let ReceiverEvent::Found(r) = ev
-                && r.instance == name
+                && r.instance == instance
             {
                 return Some(r);
             }
@@ -60,6 +62,6 @@ async fn advertised_receiver_is_found_with_its_server() {
 
     // One-shot API used by discover_servers.
     let list = MdnsSource.browse(Duration::from_secs(3)).await.unwrap();
-    assert!(list.iter().any(|r| r.instance == name));
+    assert!(list.iter().any(|r| r.instance == instance));
     eprintln!("mDNS loopback: OK");
 }

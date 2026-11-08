@@ -718,8 +718,8 @@ pub(crate) async fn run(
                             events.emit(PresenterUiEvent::PresentingStopped);
                         }
                     }
-                    // Not for a TV: no encoded input, no page commands, no hand-over.
-                    PCmd::Encoded | PCmd::Cmd(_) | PCmd::Handover(_) => {
+                    // Not for a TV: no encoded input, no page commands, no hand-over, no pause.
+                    PCmd::Encoded | PCmd::Cmd(_) | PCmd::Handover(_) | PCmd::Pause(_) => {
                         report(&events, &TvFail::Unsupported("not available for a TV".into()));
                     }
                 }

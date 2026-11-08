@@ -490,6 +490,69 @@
         "progress:null",
         "error:bad_chunk"
       ]
+    },
+    {
+      "name": "pause and resume are commands, pause_state is ignored",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}"
+        },
+        {
+          "t": 1010,
+          "text": "{\"kind\":\"pause_state\",\"presenter\":true,\"display\":false}"
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}"
+        },
+        {
+          "t": 1030,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"resume\"}"
+        },
+        {
+          "t": 1040,
+          "text": "{\"kind\":\"pause_state\",\"presenter\":1}"
+        }
+      ],
+      "events": [
+        "cmd:\"pause\"",
+        "cmd:\"pause\"",
+        "cmd:\"resume\"",
+        "error:bad_message"
+      ]
+    },
+    {
+      "name": "pause does not disturb a running transfer",
+      "ops": [
+        {
+          "t": 1000,
+          "text": "{\"kind\":\"image\",\"name\":\"a.png\",\"mime\":\"image/png\",\"size\":16389}"
+        },
+        {
+          "t": 1010,
+          "bin": 16384
+        },
+        {
+          "t": 1020,
+          "text": "{\"kind\":\"cmd\",\"cmd\":\"pause\"}"
+        },
+        {
+          "t": 1200,
+          "bin": 5
+        },
+        {
+          "t": 1210,
+          "text": "{\"kind\":\"image_end\"}"
+        }
+      ],
+      "events": [
+        "progress:a.png:0:16389",
+        "cmd:\"pause\"",
+        "progress:a.png:16389:16389",
+        "progress:null",
+        "image:a.png:16389"
+      ]
     }
   ]
 }

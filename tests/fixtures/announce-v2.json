@@ -1,0 +1,1217 @@
+{
+  "about": "Shared vectors for signed display announcements (layout v=2). Made by tools/gen-announce-v2-vectors.py with an independent implementation. Signed bytes: 'cometcast-announce-v2', 0x00, then key=value, 0x00 for v,id,pk,seq,state,srv,tls,mode,code,name (absent optional keys with an empty value).",
+  "keys": [
+    {
+      "name": "A",
+      "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "public_key_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "pk": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "id": "56475aa75463474c0285df5dbf2bcab7",
+      "tag": "5647"
+    },
+    {
+      "name": "B",
+      "seed_hex": "4242424242424242424242424242424242424242424242424242424242424242",
+      "public_key_hex": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+      "pk": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+      "id": "3097e2dee2cb4a34b53840cdb705aed7",
+      "tag": "3097"
+    }
+  ],
+  "valid": [
+    {
+      "name": "open_seq100",
+      "key": "A",
+      "seq": 100,
+      "state": "live",
+      "fields": {
+        "srv": "10.0.0.5:8443",
+        "mode": "open",
+        "code": "P4X9TR",
+        "name": "Room 204"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d353634373561613735343633343734633032383564663564626632626361623700706b3d41364548765f504f454c3464634e3059353076416d57666b316a436270513166486479475a424a564d6267007365713d3130300073746174653d6c697665007372763d31302e302e302e353a3834343300746c733d006d6f64653d6f70656e00636f64653d503458395452006e616d653d526f6f6d2032303400",
+      "sig": "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "open_seq200",
+      "key": "A",
+      "seq": 200,
+      "state": "live",
+      "fields": {
+        "srv": "10.0.0.5:8443",
+        "mode": "open",
+        "code": "P4X9TR",
+        "name": "Room 204"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d353634373561613735343633343734633032383564663564626632626361623700706b3d41364548765f504f454c3464634e3059353076416d57666b316a436270513166486479475a424a564d6267007365713d3230300073746174653d6c697665007372763d31302e302e302e353a3834343300746c733d006d6f64653d6f70656e00636f64653d503458395452006e616d653d526f6f6d2032303400",
+      "sig": "HOtw6WVX2U9c52PqxOn_ZRDQWhJCuelhBp7YDEPUUsx91pVJb_3PJdGprUhkZIBgqg1XYOVYrWk0iOGHmAECBQ",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "200"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "HOtw6WVX2U9c52PqxOn_ZRDQWhJCuelhBp7YDEPUUsx91pVJb_3PJdGprUhkZIBgqg1XYOVYrWk0iOGHmAECBQ"
+        ]
+      ]
+    },
+    {
+      "name": "open_seq250",
+      "key": "A",
+      "seq": 250,
+      "state": "live",
+      "fields": {
+        "srv": "10.0.0.5:8443",
+        "mode": "open",
+        "code": "P4X9TR",
+        "name": "Room 204"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d353634373561613735343633343734633032383564663564626632626361623700706b3d41364548765f504f454c3464634e3059353076416d57666b316a436270513166486479475a424a564d6267007365713d3235300073746174653d6c697665007372763d31302e302e302e353a3834343300746c733d006d6f64653d6f70656e00636f64653d503458395452006e616d653d526f6f6d2032303400",
+      "sig": "IhQnMl0YEbhKKnZ10qcMqV6-PO9oZQ2BCJ_PVqMgniykUiBuNO-AmCZ8zvH_OGXmqtXVLx_0v5cK2-dYnPjVAQ",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "250"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "IhQnMl0YEbhKKnZ10qcMqV6-PO9oZQ2BCJ_PVqMgniykUiBuNO-AmCZ8zvH_OGXmqtXVLx_0v5cK2-dYnPjVAQ"
+        ]
+      ]
+    },
+    {
+      "name": "gone_seq300",
+      "key": "A",
+      "seq": 300,
+      "state": "gone",
+      "fields": {
+        "srv": "10.0.0.5:8443",
+        "mode": "open",
+        "code": "P4X9TR",
+        "name": "Room 204"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d353634373561613735343633343734633032383564663564626632626361623700706b3d41364548765f504f454c3464634e3059353076416d57666b316a436270513166486479475a424a564d6267007365713d3330300073746174653d676f6e65007372763d31302e302e302e353a3834343300746c733d006d6f64653d6f70656e00636f64653d503458395452006e616d653d526f6f6d2032303400",
+      "sig": "j76ESgPdIY9_V5iL1m5bIObGo8u7r-3tcU5bh8bACP9P1-ijgnLZQLGXdHDcJLAOsK4_DHvjIb2nWdGb-0RkAg",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "300"
+        ],
+        [
+          "state",
+          "gone"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "j76ESgPdIY9_V5iL1m5bIObGo8u7r-3tcU5bh8bACP9P1-ijgnLZQLGXdHDcJLAOsK4_DHvjIb2nWdGb-0RkAg"
+        ]
+      ]
+    },
+    {
+      "name": "approval_tls_unicode",
+      "key": "B",
+      "seq": 1700000000000,
+      "state": "live",
+      "fields": {
+        "srv": "relay.example.org:443",
+        "tls": "1",
+        "mode": "approval",
+        "code": "K7Q2MW",
+        "name": "Raum Süd 3"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d333039376532646565326362346133346235333834306364623730356165643700706b3d49564c34305a7435485352464d6b4c6858793672624c66502d6e747158744d416c35594f42706942327849007365713d313730303030303030303030300073746174653d6c697665007372763d72656c61792e6578616d706c652e6f72673a34343300746c733d31006d6f64653d617070726f76616c00636f64653d4b3751324d57006e616d653d5261756d2053c3bc64203300",
+      "sig": "E-YCmq9heK-OjyB5NoPw9tKygrpdDpOP_CCRNj9o59jCH4dvWtSdvrv3VlQX5Eml3HJuRd_XRcbsuecUUGjDDQ",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "3097e2dee2cb4a34b53840cdb705aed7"
+        ],
+        [
+          "pk",
+          "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+        ],
+        [
+          "seq",
+          "1700000000000"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "relay.example.org:443"
+        ],
+        [
+          "tls",
+          "1"
+        ],
+        [
+          "mode",
+          "approval"
+        ],
+        [
+          "code",
+          "K7Q2MW"
+        ],
+        [
+          "name",
+          "Raum Süd 3"
+        ],
+        [
+          "sig",
+          "E-YCmq9heK-OjyB5NoPw9tKygrpdDpOP_CCRNj9o59jCH4dvWtSdvrv3VlQX5Eml3HJuRd_XRcbsuecUUGjDDQ"
+        ]
+      ]
+    },
+    {
+      "name": "locked_no_code_no_name",
+      "key": "A",
+      "seq": 1700000000001,
+      "state": "live",
+      "fields": {
+        "srv": "192.168.1.20:8443",
+        "mode": "locked"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d353634373561613735343633343734633032383564663564626632626361623700706b3d41364548765f504f454c3464634e3059353076416d57666b316a436270513166486479475a424a564d6267007365713d313730303030303030303030310073746174653d6c697665007372763d3139322e3136382e312e32303a3834343300746c733d006d6f64653d6c6f636b656400636f64653d006e616d653d00",
+      "sig": "JZMDQSq6b4bKkNOVuqk8HsmTbI8B5vMDmdKnPE6XnKtXf43_bqoog62ZUDzJJkvLdG0o8oMTZ7tfqsrd-CbIDQ",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "1700000000001"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "192.168.1.20:8443"
+        ],
+        [
+          "mode",
+          "locked"
+        ],
+        [
+          "sig",
+          "JZMDQSq6b4bKkNOVuqk8HsmTbI8B5vMDmdKnPE6XnKtXf43_bqoog62ZUDzJJkvLdG0o8oMTZ7tfqsrd-CbIDQ"
+        ]
+      ]
+    },
+    {
+      "name": "gone_locked",
+      "key": "B",
+      "seq": 1700000000002,
+      "state": "gone",
+      "fields": {
+        "srv": "192.168.1.20:8443",
+        "mode": "locked"
+      },
+      "signed_bytes_hex": "636f6d6574636173742d616e6e6f756e63652d763200763d320069643d333039376532646565326362346133346235333834306364623730356165643700706b3d49564c34305a7435485352464d6b4c6858793672624c66502d6e747158744d416c35594f42706942327849007365713d313730303030303030303030320073746174653d676f6e65007372763d3139322e3136382e312e32303a3834343300746c733d006d6f64653d6c6f636b656400636f64653d006e616d653d00",
+      "sig": "is5zE1tjoIX7cwIvDEjxsVzfk-IaZ6sFp1uTHLRWvbpcoWlcrav4o1-FBXY0zDJCduT1BW22EEzdJ2ZoEi4zAA",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "3097e2dee2cb4a34b53840cdb705aed7"
+        ],
+        [
+          "pk",
+          "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+        ],
+        [
+          "seq",
+          "1700000000002"
+        ],
+        [
+          "state",
+          "gone"
+        ],
+        [
+          "srv",
+          "192.168.1.20:8443"
+        ],
+        [
+          "mode",
+          "locked"
+        ],
+        [
+          "sig",
+          "is5zE1tjoIX7cwIvDEjxsVzfk-IaZ6sFp1uTHLRWvbpcoWlcrav4o1-FBXY0zDJCduT1BW22EEzdJ2ZoEi4zAA"
+        ]
+      ]
+    }
+  ],
+  "refused": [
+    {
+      "name": "changed code",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "K7Q2MW"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "changed server",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.66.0.1:1"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "changed seq",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "101"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "changed state",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "gone"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "removed code",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "removed name",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "added tls",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "tls",
+          "1"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "id of another key",
+      "reason": "id_mismatch",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "3097e2dee2cb4a34b53840cdb705aed7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "victim id, attacker key",
+      "reason": "id_mismatch",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "thx5vZVjQvzHDXmwCFjRXSs7ONVQIc1h-H3i-7MaAuyQCZOwsIVnBN7lpibO36d4gTwwhRYfrWeC1-QpgasECQ"
+        ]
+      ]
+    },
+    {
+      "name": "wrong key order",
+      "reason": "signature",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "pgj9eFR6mx-kjGslrpBBYw3MPhStWNlWnKsDOdva16qI7bzcBwIWqpAdvQfsIyhP1tBTIcwzgzGIZ4QirXwiAA"
+        ]
+      ]
+    },
+    {
+      "name": "layout v1",
+      "reason": "version",
+      "txt": [
+        [
+          "v",
+          "1"
+        ],
+        [
+          "id",
+          "0123456789abcdef"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ]
+      ]
+    },
+    {
+      "name": "no sig",
+      "reason": "malformed",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ]
+      ]
+    },
+    {
+      "name": "short sig",
+      "reason": "malformed",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JL"
+        ]
+      ]
+    },
+    {
+      "name": "short pk",
+      "reason": "malformed",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJV"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "seq with leading zero",
+      "reason": "malformed",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "0100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "uppercase id",
+      "reason": "malformed",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475AA75463474C0285DF5DBF2BCAB7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "live"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    },
+    {
+      "name": "unknown state",
+      "reason": "malformed",
+      "txt": [
+        [
+          "v",
+          "2"
+        ],
+        [
+          "id",
+          "56475aa75463474c0285df5dbf2bcab7"
+        ],
+        [
+          "pk",
+          "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+        ],
+        [
+          "seq",
+          "100"
+        ],
+        [
+          "state",
+          "dead"
+        ],
+        [
+          "srv",
+          "10.0.0.5:8443"
+        ],
+        [
+          "mode",
+          "open"
+        ],
+        [
+          "code",
+          "P4X9TR"
+        ],
+        [
+          "name",
+          "Room 204"
+        ],
+        [
+          "sig",
+          "PmvRhhp4g7lljPegXfRsLVXYDPnFVNNInRnZHJnp-_oDsIYblJKCNT0Z_fKQmv-8MZH7I6iidyREp6JLb195AQ"
+        ]
+      ]
+    }
+  ],
+  "seq_cases": [
+    {
+      "name": "lower and equal seq are ignored, gone applies, replay after gone is ignored",
+      "steps": [
+        {
+          "record": "open_seq200",
+          "accepted": true
+        },
+        {
+          "record": "open_seq100",
+          "accepted": false
+        },
+        {
+          "record": "open_seq200",
+          "accepted": false
+        },
+        {
+          "record": "gone_seq300",
+          "accepted": true
+        },
+        {
+          "record": "open_seq250",
+          "accepted": false
+        },
+        {
+          "record": "gone_seq300",
+          "accepted": false
+        }
+      ]
+    }
+  ],
+  "seq_counter": [
+    {
+      "floor": 0,
+      "clock": [
+        1000,
+        1000,
+        5,
+        5000
+      ],
+      "expect": [
+        1000,
+        1001,
+        1002,
+        5000
+      ]
+    },
+    {
+      "floor": 9000,
+      "clock": [
+        10,
+        10,
+        20000
+      ],
+      "expect": [
+        9001,
+        9002,
+        20000
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ part 'api.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `accept_code_and_input`, `android_capture_info`, `announcements_allowed`, `begin`, `begin`, `candidates`, `capture_info_blocking`, `classify_advertise_error`, `classify_warning`, `classify_warnings`, `codec_info_impl`, `codec_state_impl`, `discover_servers_with`, `fire`, `ios_capture_info`, `is_current`, `join_refusal`, `map_receiver_event`, `map_sender_event`, `new`, `run_sender`, `send_receiver_cmd`, `server_defaults_with`, `spawn_guarded`, `stats_event`, `stop`, `store`, `store`, `video_stats_event`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AdvertiseSlot`, `ReceiverCmd`, `Slot`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `hash`
 
 /// Check typed text with the same rules as `cc_proto::RoomCode::parse`.
 RoomCodeCheck checkRoomCode({required String input}) =>
@@ -94,6 +94,14 @@ bool unblock({required BigInt id}) =>
 /// gone and the stream ends with [`ReceiverUiEvent::RoomEnded`]. Start a new receiver for a new
 /// room. Returns `false` if no receiver runs.
 bool endRoom() => RustLib.instance.api.crateApiEndRoom();
+
+/// Set or clear the **display's own** pause flag (docs/design/pause.md): the display keeps the
+/// last picture while the presenter goes on sending, and the presenter is told. Only offered
+/// while a screen is shown; without one the call is ignored. The change arrives as
+/// [`ReceiverUiEvent::PauseChanged`] (also for the presenter's flag, which only the presenter
+/// can change). Returns `false` if no receiver runs.
+bool setDisplayPaused({required bool paused}) =>
+    RustLib.instance.api.crateApiSetDisplayPaused(paused: paused);
 
 /// The newest decoded picture that the UI has not fetched yet (RGBA, 4 bytes per pixel, rows
 /// without padding), or `None`. Call it after a [`ReceiverUiEvent::FrameReady`].
@@ -278,19 +286,40 @@ Future<void> stopWatchingReceivers() =>
 ///
 /// `active` is true while the display shows Idle or Presenting in the foreground and false in
 /// setup, offline, in the background and on every other page; the announcement is withdrawn
-/// (goodbye) when it turns false. `instance_id` is the stable random id of this installation
-/// (8 to 32 lower-case hex digits, created and persisted by the app, new after a data reset).
+/// when it turns false (a signed `gone` record first, then the goodbye). `secret_key` is the
+/// 32-byte Ed25519 secret of this installation (made by [`new_display_secret`], stored by the
+/// app next to its settings, new after a data reset; the core never writes it anywhere). The id
+/// of the display derives from the key ([`display_identity`]). `seq_floor` is the value the
+/// app persisted from [`display_seq_to_persist`] (0 for a new key): every record gets a `seq`
+/// above it, so a clock that went back after a restart cannot reuse values.
 /// What is announced (server, room name, join mode, the current code; no code while Locked)
 /// is taken from the running receiver ([`start_receiver`]), so it cannot differ from what the
 /// screen shows, and it is updated at once when the mode changes. A policy that forbids
 /// announcements wins over `active`.
 Future<AnnounceStatus> setDisplayAnnouncing({
   required bool active,
-  required String instanceId,
+  required List<int> secretKey,
+  required PlatformInt64 seqFloor,
 }) => RustLib.instance.api.crateApiSetDisplayAnnouncing(
   active: active,
-  instanceId: instanceId,
+  secretKey: secretKey,
+  seqFloor: seqFloor,
 );
+
+/// Make a new display key: 32 random bytes from the operating system. The app stores them
+/// (with its settings) and passes them to [`set_display_announcing`] and [`display_identity`].
+Uint8List newDisplaySecret() => RustLib.instance.api.crateApiNewDisplaySecret();
+
+/// The identity of a key, or `None` when `secret_key` is not 32 bytes.
+DisplayIdentity? displayIdentity({required List<int> secretKey}) =>
+    RustLib.instance.api.crateApiDisplayIdentity(secretKey: secretKey);
+
+/// What the app should persist with the key so that the next start continues above every `seq`
+/// used so far: call it now and then while announcing (every minute or so) and when the
+/// announcement stops, and pass the last value back as `seq_floor`. It includes a reserve, so a
+/// persist that lags a little behind is still safe.
+PlatformInt64 displaySeqToPersist() =>
+    RustLib.instance.api.crateApiDisplaySeqToPersist();
 
 /// Let the platform announce the screen instead of the core (iPadOS). Call it before
 /// [`set_display_announcing`]; the events arrive until [`stop_native_announcements`] is called.
@@ -348,6 +377,15 @@ void nearbyNativeReset() => RustLib.instance.api.crateApiNearbyNativeReset();
 /// The native bridge reports the state of the system permission.
 void nearbyNativePermission({required NearbyPermission state}) =>
     RustLib.instance.api.crateApiNearbyNativePermission(state: state);
+
+/// The app tells the core which screens the person joined before (trust on first use): at most
+/// 50 `(room name, id)` pairs, newest first or last as the app likes; only the first 50 count.
+/// A row whose name is remembered but whose id is not is reported with `new_device`. The core
+/// keeps no list of its own and writes nothing: the app stores the pairs and passes them again
+/// whenever they change (also before [`watch_nearby_screens`] starts). Rows of a running
+/// search are updated at once.
+void setRememberedScreens({required List<RememberedScreen> screens}) =>
+    RustLib.instance.api.crateApiSetRememberedScreens(screens: screens);
 
 /// Does this machine have a local network (a non-loopback interface with a private address)?
 /// Used by the computers' pages for the state "No local network"; phones and tablets ask the
@@ -489,6 +527,16 @@ bool presentContent({required ContentSource source}) =>
 /// presented. Returns `false` if no presenter session runs or the token is not valid.
 bool requestHandover({required String token}) =>
     RustLib.instance.api.crateApiRequestHandover(token: token);
+
+/// Pause (`true`) or resume (`false`) the running **screen** presentation (docs/design/pause.md):
+/// the video stops at once, so nothing the presenter prepares reaches the display device, and
+/// the display keeps the last picture; on resume video flows again, beginning with a key frame.
+/// Ignored while no screen or pushed video is presented (content-only presentations). The
+/// display's answer is the event `PauseState`. Returns `false` if no presenter session runs.
+/// Not offered on iOS while the broadcast extension presents (it runs in another process
+/// and has no UI).
+bool setPresenterPaused({required bool paused}) =>
+    RustLib.instance.api.crateApiSetPresenterPaused(paused: paused);
 
 /// End the running presentation only: the display goes Idle with the same code and the
 /// session stays joined (`PresentingStopped`); the next presentation needs no new approval.
@@ -681,8 +729,8 @@ enum AnnounceStatus {
   /// The administrator's policy forbids announcements (or the policy file is unusable).
   forbiddenByPolicy,
 
-  /// The instance id is not 8 to 32 lower-case hex digits.
-  badId,
+  /// The key is not 32 bytes: nothing is announced.
+  badKey,
 }
 
 /// Answer of [`capture_info`].
@@ -970,6 +1018,36 @@ enum DiscoveryWarning {
   other,
 }
 
+/// Who a display is: derived from its key.
+class DisplayIdentity {
+  /// The id: first 16 bytes of SHA-256(public key), 32 lower-case hex digits.
+  final String id;
+
+  /// The short tag shown to people: the first 4 characters of the id in upper case.
+  final String tag;
+
+  /// The public key, base64url without padding.
+  final String publicKey;
+
+  const DisplayIdentity({
+    required this.id,
+    required this.tag,
+    required this.publicKey,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ tag.hashCode ^ publicKey.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DisplayIdentity &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          tag == other.tag &&
+          publicKey == other.publicKey;
+}
+
 /// One undecoded H.264 access unit for a hardware decoder of the host (pass-through mode).
 class EncodedVideoUnit {
   /// Annex B bytes (start codes), SPS and PPS included on key frames.
@@ -1093,8 +1171,12 @@ sealed class NearbyReceiverEvent with _$NearbyReceiverEvent {
 /// section 3). Nothing in it is trusted: in particular the server is only a suggestion until
 /// the person has confirmed it (spec 14.4).
 class NearbyScreenInfo {
-  /// The stable instance id of the screen; rows are merged by it.
+  /// The verified id of the screen (derived from its public key); rows are keyed by it.
   final String id;
+
+  /// The short tag of the id (4 characters, upper case). The app shows it only on rows that
+  /// carry a note ([`NearbyScreenInfo::same_name`], [`NearbyScreenInfo::new_device`]).
+  final String tag;
 
   /// The room name, cleaned, at most 32 characters; empty when the screen has none.
   final String name;
@@ -1113,23 +1195,35 @@ class NearbyScreenInfo {
   /// only to hide TV rows of the same device (decision N105); never shown.
   final List<String> addresses;
 
+  /// Another screen on the network uses the same room name (compared without case).
+  final bool sameName;
+
+  /// The app remembers a screen with this name but another id ([`set_remembered_screens`]).
+  final bool newDevice;
+
   const NearbyScreenInfo({
     required this.id,
+    required this.tag,
     required this.name,
     required this.server,
     required this.mode,
     this.code,
     required this.addresses,
+    required this.sameName,
+    required this.newDevice,
   });
 
   @override
   int get hashCode =>
       id.hashCode ^
+      tag.hashCode ^
       name.hashCode ^
       server.hashCode ^
       mode.hashCode ^
       code.hashCode ^
-      addresses.hashCode;
+      addresses.hashCode ^
+      sameName.hashCode ^
+      newDevice.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1137,11 +1231,14 @@ class NearbyScreenInfo {
       other is NearbyScreenInfo &&
           runtimeType == other.runtimeType &&
           id == other.id &&
+          tag == other.tag &&
           name == other.name &&
           server == other.server &&
           mode == other.mode &&
           code == other.code &&
-          addresses == other.addresses;
+          addresses == other.addresses &&
+          sameName == other.sameName &&
+          newDevice == other.newDevice;
 }
 
 @freezed
@@ -1230,6 +1327,19 @@ sealed class PresenterUiEvent with _$PresenterUiEvent {
     /// The page count, from 1.
     required int pages,
   }) = PresenterUiEvent_Page;
+
+  /// The display's pause flags (`pause_state`, docs/design/pause.md): sent whenever either
+  /// flag changes and once when the control channel opens (both `false`). The picture is
+  /// frozen while either is set. `presenter` is the echo of [`set_presenter_paused`]: the
+  /// app shows its own flag as confirmed only when this event says so. Not sent by
+  /// displays that do not know pause (a presenter then stays "pending").
+  const factory PresenterUiEvent.pauseState({
+    /// The presenter's own flag, as the display holds it.
+    required bool presenter,
+
+    /// The display froze the picture on its own.
+    required bool display,
+  }) = PresenterUiEvent_PauseState;
 
   /// An Office file is being converted to a PDF (takes seconds; child process). Comes before
   /// `ContentPrepared`; a failure is `ContentRejected`.
@@ -1580,6 +1690,17 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
   const factory ReceiverUiEvent.presentationStopped() =
       ReceiverUiEvent_PresentationStopped;
 
+  /// A pause flag changed (docs/design/pause.md). The picture is frozen while either flag is
+  /// set: keep showing the last picture. Both flags are cleared (one event) when the
+  /// presentation ends. The presenter has been told with `pause_state`.
+  const factory ReceiverUiEvent.pauseChanged({
+    /// The presenter paused its screen (it stopped sending video).
+    required bool presenter,
+
+    /// The display's own flag ([`set_display_paused`]).
+    required bool display,
+  }) = ReceiverUiEvent_PauseChanged;
+
   /// The connection check code of the sender's connection, `"123 456"`, once per
   /// connection; the presenter shows the same digits (`cc_transport::sas`).
   const factory ReceiverUiEvent.connectionCode({
@@ -1596,6 +1717,28 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// Technical message in English (for logs only).
     required String message,
   }) = ReceiverUiEvent_Error;
+}
+
+/// A screen the person joined before: its room name and verified id.
+class RememberedScreen {
+  /// The room name as it was listed (cleaned).
+  final String name;
+
+  /// The verified id.
+  final String id;
+
+  const RememberedScreen({required this.name, required this.id});
+
+  @override
+  int get hashCode => name.hashCode ^ id.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RememberedScreen &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          id == other.id;
 }
 
 @freezed

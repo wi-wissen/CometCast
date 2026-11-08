@@ -199,6 +199,13 @@ pub enum ContentEvent {
     },
     /// The sender stopped the content; whatever was shown should disappear.
     ContentStopped,
+    /// The presenter paused (`true`) or resumed (`false`) its screen (`cmd pause` /
+    /// `cmd resume`, docs/design/pause.md). Reported on every command (they are idempotent);
+    /// the owner of the [`PauseState`](crate::PauseState) decides whether it changes anything.
+    PauseRequested {
+        /// `true` for `pause`, `false` for `resume`.
+        paused: bool,
+    },
     /// The presenter asks the display to hold a hand-over token (iOS broadcast extension,
     /// native-apps.md 20.5). The application stores it and answers with
     /// [`handover_ok_message`](crate::handover_ok_message), or does not answer.
@@ -738,7 +745,9 @@ impl ContentReceiver {
             }
             Message::Link { url } => out.push(ContentEvent::LinkRequested { url }),
             // Display to presenter only: ignored here, and not a violation.
-            Message::Page { .. } | Message::HandoverOk => self.skipping = skipping,
+            Message::Page { .. } | Message::HandoverOk | Message::PauseState { .. } => {
+                self.skipping = skipping;
+            }
             Message::Handover { token } => out.push(ContentEvent::HandoverRequested { token }),
             Message::Cmd(cmd) => self.command(&mut out, &cmd),
         }
@@ -947,6 +956,14 @@ impl ContentReceiver {
     }
 
     fn command(&mut self, out: &mut Vec<ContentEvent>, cmd: &ControlCmd) {
+        // Pause and resume concern the live screen, not the content: no document state is
+        // touched and nothing is queued while a document opens.
+        if matches!(cmd, ControlCmd::Pause | ControlCmd::Resume) {
+            out.push(ContentEvent::PauseRequested {
+                paused: *cmd == ControlCmd::Pause,
+            });
+            return;
+        }
         if *cmd == ControlCmd::Stop {
             self.active = None;
             self.drop_document();

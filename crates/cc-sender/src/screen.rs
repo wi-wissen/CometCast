@@ -228,6 +228,8 @@ pub(crate) enum Ended {
 pub(crate) struct Pipeline {
     stop: Arc<AtomicBool>,
     keyframe: Arc<AtomicBool>,
+    /// While set the thread neither captures nor encodes (presenter pause).
+    paused: Arc<AtomicBool>,
     counters: Arc<Counters>,
     token_tx: mpsc::Sender<()>,
     thread: Option<JoinHandle<()>>,
@@ -253,6 +255,17 @@ impl Pipeline {
             last_accepted: Arc::new(Mutex::new(None)),
             min_interval: KEYFRAME_MIN_INTERVAL,
         }
+    }
+
+    /// Pause or resume (docs/design/pause.md). While paused the thread does not look at the
+    /// screen and does not encode, so nothing the presenter prepares reaches the encoder. On
+    /// resume a key frame is forced (bypassing the rate limit): the receiver missed everything
+    /// in between, so a delta frame would be useless.
+    pub(crate) fn set_paused(&self, paused: bool) {
+        if !paused {
+            self.keyframe.store(true, Ordering::Relaxed);
+        }
+        self.paused.store(paused, Ordering::Relaxed);
     }
 
     /// Tell the thread that the previous frame was handed to the transport.
@@ -374,6 +387,7 @@ pub(crate) fn spawn(
 ) -> Pipeline {
     let stop = Arc::new(AtomicBool::new(false));
     let keyframe = Arc::new(AtomicBool::new(false));
+    let paused = Arc::new(AtomicBool::new(false));
     let counters = Arc::clone(&prepared.counters);
     let (token_tx, token_rx) = mpsc::channel();
     let (done_tx, done_rx) = mpsc::channel::<()>();
@@ -382,12 +396,13 @@ pub(crate) fn spawn(
     let thread = {
         let stop = Arc::clone(&stop);
         let keyframe = Arc::clone(&keyframe);
+        let paused = Arc::clone(&paused);
         let ended_in_thread = ended.clone();
         let spawned = std::thread::Builder::new()
             .name("cometcast-screen".into())
             .spawn(move || {
                 let result = catch_unwind(AssertUnwindSafe(|| {
-                    run(prepared, &out, &token_rx, &stop, &keyframe)
+                    run(prepared, &out, &token_rx, &stop, &keyframe, &paused)
                 }))
                 .unwrap_or_else(|payload| {
                     let what = payload
@@ -413,6 +428,7 @@ pub(crate) fn spawn(
     Pipeline {
         stop,
         keyframe,
+        paused,
         counters,
         token_tx,
         thread,
@@ -435,6 +451,7 @@ fn run(
     tokens: &mpsc::Receiver<()>,
     stop: &AtomicBool,
     keyframe: &AtomicBool,
+    paused: &AtomicBool,
 ) -> Ended {
     let c = &p.counters;
     let started = Instant::now();
@@ -485,6 +502,11 @@ fn run(
     loop {
         if stop.load(Ordering::Relaxed) {
             return Ended::Stopped;
+        }
+        // Paused by the presenter: no capture, no encoding, until it resumes (with a key frame).
+        if paused.load(Ordering::Relaxed) {
+            std::thread::sleep(tick.min(Duration::from_millis(50)));
+            continue;
         }
         // One frame in flight: wait for the transport to take the previous one before looking
         // at the screen again.
