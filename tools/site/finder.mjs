@@ -25,12 +25,11 @@ export const SENDERS = [
 ];
 export const SCREENS = [
   { id: 'appletv', icon: 'appletv', en: ['Apple TV', ''], de: ['Apple TV', ''] },
-  { id: 'googletv', icon: 'googletv', en: ['Google TV', 'or Android TV'], de: ['Google TV', 'oder Android TV'] },
+  { id: 'androidtv', icon: 'googletv', en: ['Android device', 'Google TV, Android TV, board'], de: ['Android-Gerät', 'Google TV, Android TV, Tafel'] },
   { id: 'chromecast', icon: 'chromecast', en: ['Chromecast', ''], de: ['Chromecast', ''] },
   { id: 'winpc', icon: 'desktop', en: ['Windows PC', ''], de: ['Windows-PC', ''] },
   { id: 'macscreen', icon: 'desktop', en: ['Mac', 'iMac, Mac mini'], de: ['Mac', 'iMac, Mac mini'] },
   { id: 'linuxpc', icon: 'desktop', en: ['Linux PC', 'mini PC'], de: ['Linux-PC', 'Mini-PC'] },
-  { id: 'board', icon: 'board', en: ['Interactive board', 'Android'], de: ['Interaktive Tafel', 'Android'] },
 ];
 /**
  * Where the presenter's device is in the network, seen from the screen:
@@ -56,7 +55,6 @@ const winK = own('Windows: Win + K, built in', 'Windows: Win + K, schon eingebau
 const airIos = own('AirPlay, built in', 'AirPlay, schon eingebaut');
 const castBtn = own('Cast button, built in', 'Übertragen-Knopf, schon eingebaut');
 const smart = own('Smart View or Cast, built in', 'Smart View oder Übertragen, schon eingebaut');
-const BROWSER_ALONE = N('Your browser can do this on its own.', 'Dein Browser kann das schon selbst.');
 const BROWSER_NEEDLESS = N('Your browser can do this on its own. You do not need Comet Cast for it.', 'Dein Browser kann das schon selbst. Dafür brauchst du Comet Cast nicht.');
 const ASK = N('With Comet Cast the screen can ask before it shows anything, and you can send PDFs and links.', 'Mit Comet Cast kann der Bildschirm vorher um Erlaubnis fragen, und du kannst PDFs und Links schicken.');
 const PHOTOS = N('Photos, PDFs and links only, not your screen.', 'Nur Fotos, PDFs und Links, nicht dein Bildschirm.');
@@ -66,53 +64,64 @@ const DELAY = N('Photos and videos right away; your screen with a short delay.',
 const MAC_ALONE = N('A Mac can do this on its own.', 'Ein Mac kann das auch ganz allein.');
 const MAC_SCREEN = N('A Mac with macOS 12 or newer can show this on its own. You do not need Comet Cast for it.', 'Ein Mac ab macOS 12 kann das schon selbst zeigen. Dafür brauchst du Comet Cast nicht.');
 
-const laptopTo = (cast, extra = []) => ({
-  googletv: [W(cast, 'none', BROWSER_ALONE), W('web', 'app', ASK), W('app', 'none')],
-  chromecast: [W(cast, 'none', BROWSER_NEEDLESS), W('app', 'none')],
-  appletv: [W('web', 'app'), W('app', 'none', DELAY)],
-  winpc: [W('web', 'web', NOTHING), ...extra],
-  macscreen: [W('web', 'web', NOTHING)],
-  linuxpc: [W('web', 'web', NOTHING)],
-  board: [W('web', 'web', NOTHING), W('web', 'app')],
-});
-const win = laptopTo(castW, [W(winK, 'app', WINONLY)]);
-const mac = laptopTo(castW);
-mac.appletv = [W(airMac, 'none', MAC_ALONE), ...mac.appletv];
-mac.macscreen = [W(airMac, 'none', MAC_SCREEN), W('web', 'web', NOTHING)];
-mac.linuxpc = [W('web', 'web', NOTHING), W(airMac, 'app')];
-const linux = laptopTo(castL);
-
-export const M = {
-  win,
-  mac,
-  linux,
-  iphone: {
-    appletv: [W(airIos, 'none', N('Your iPhone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein iPhone schon selbst. Dafür brauchst du Comet Cast nicht.')), W('app', 'app', N('Also sends PDFs and links, and the screen can ask before it shows anything.', 'Schickt auch PDFs und Links, und der Bildschirm kann vorher um Erlaubnis fragen.'))],
-    googletv: [W('app', 'app'), W('web', 'app', PHOTOS)],
-    chromecast: [],
-    winpc: [W('app', 'web'), W('web', 'web', PHOTOS)],
-    macscreen: [W(airIos, 'none', MAC_SCREEN), W('app', 'web')],
-    linuxpc: [W(airIos, 'app'), W('app', 'web')],
-    board: [W('app', 'web'), W('app', 'app'), W('web', 'web', PHOTOS)],
-  },
-  android: {
-    appletv: [W('app', 'app'), W('web', 'app', PHOTOS)],
-    googletv: [W(castBtn, 'none', N('Most Android phones can do this on their own.', 'Die meisten Android-Handys können das schon selbst.')), W('app', 'app', ASK)],
-    chromecast: [W(castBtn, 'none', N('Your phone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein Handy schon selbst. Dafür brauchst du Comet Cast nicht.'))],
-    winpc: [W(smart, 'app', WINONLY), W('app', 'web')],
-    macscreen: [W('app', 'web')],
-    linuxpc: [W('app', 'web')],
-    board: [W('app', 'web'), W('app', 'app')],
-  },
+// The matrix follows one rule, so no combination is forgotten:
+// 1. Built-in ways of the devices (AirPlay, Cast, Miracast): only where they exist, only in the same Wi-Fi.
+// 2. One Comet Cast way per pair. Each side lists every option it has:
+//    - your device: a computer can use the browser or the app; a phone the app (its browser sends photos, PDFs and
+//      links only, no screen);
+//    - the screen: a computer or an interactive board can use the browser or the app; Apple TV and Google TV the app;
+//      a Chromecast cannot run Comet Cast.
+// 3. The Comet Cast app on a computer can also send to a TV that has no Comet Cast at all (Cast, AirPlay).
+// Order: ways where nothing has to be installed come first.
+const DESKTOP = ['win', 'mac', 'linux'];
+const SCREEN_SIDE = { appletv: ['app'], androidtv: ['app'], chromecast: null, winpc: ['web', 'app'], macscreen: ['web', 'app'], linuxpc: ['web', 'app'] };
+// Google TV and Android TV have a Cast receiver built in; Android boards usually do not, but they have a browser.
+const TV_ONLY = N('Works with Google TV and Android TV; most interactive boards have no Cast built in.', 'Geht bei Google TV und Android TV; die meisten interaktiven Tafeln haben kein Cast eingebaut.');
+const BOARD_WEB = N('An interactive board can also use cometcast.de in its browser instead of the app.', 'Eine interaktive Tafel kann statt der App auch cometcast.de im Browser öffnen.');
+const PHONE_WEB = N('In the browser only photos, PDFs and links; with the app also your screen.', 'Im Browser nur Fotos, PDFs und Links, mit der App auch dein Bildschirm.');
+const BUILTIN = {
+  win: { androidtv: [W(castW, 'none', TV_ONLY)], chromecast: [W(castW, 'none', BROWSER_NEEDLESS)], winpc: [W(winK, 'app', WINONLY)] },
+  mac: { androidtv: [W(castW, 'none', TV_ONLY)], chromecast: [W(castW, 'none', BROWSER_NEEDLESS)], appletv: [W(airMac, 'none', MAC_ALONE)], macscreen: [W(airMac, 'none', MAC_SCREEN)], linuxpc: [W(airMac, 'app')] },
+  linux: { androidtv: [W(castL, 'none', TV_ONLY)], chromecast: [W(castL, 'none', BROWSER_NEEDLESS)] },
+  iphone: { appletv: [W(airIos, 'none', N('Your iPhone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein iPhone schon selbst. Dafür brauchst du Comet Cast nicht.'))], macscreen: [W(airIos, 'none', MAC_SCREEN)], linuxpc: [W(airIos, 'app')] },
+  android: { androidtv: [W(castBtn, 'none', TV_ONLY)], chromecast: [W(castBtn, 'none', N('Your phone can do this on its own. You do not need Comet Cast for it.', 'Das kann dein Handy schon selbst. Dafür brauchst du Comet Cast nicht.'))], winpc: [W(smart, 'app', WINONLY)] },
 };
+// The app on a computer sends to TVs without Comet Cast (Cast-compatible and AirPlay receivers).
+const APP_TO_TV = { androidtv: [W('app', 'none', TV_ONLY)], chromecast: [W('app', 'none')], appletv: [W('app', 'none', DELAY)] };
+const COMET_NOTE = { appletv: ASK, androidtv: BOARD_WEB };
 
-const isOwn = (v) => typeof v === 'object';
+function cometWay(s, r) {
+  const screen = SCREEN_SIDE[r];
+  if (!screen) return [];
+  const desktop = DESKTOP.includes(s);
+  const you = desktop ? ['web', 'app'] : ['app', 'web'];
+  const note = desktop ? COMET_NOTE[r] : r === 'androidtv' ? N(PHONE_WEB.en + ' ' + BOARD_WEB.en, PHONE_WEB.de + ' ' + BOARD_WEB.de) : PHONE_WEB;
+  return [W(you, screen, note)];
+}
+const noInstall = (w) => (w.screen === 'none' || (Array.isArray(w.screen) && w.screen.includes('web'))) && (typeof w.you === 'object' && !Array.isArray(w.you) || (Array.isArray(w.you) && w.you.includes('web')));
 
+export const M = {};
+for (const { id: s } of SENDERS) {
+  M[s] = {};
+  for (const { id: r } of SCREENS) {
+    const ways = [...((BUILTIN[s] || {})[r] || []), ...cometWay(s, r), ...(DESKTOP.includes(s) ? APP_TO_TV[r] || [] : [])];
+    M[s][r] = ways.filter(noInstall).concat(ways.filter((w) => !noInstall(w)));
+  }
+}
+
+const isOwn = (v) => typeof v === 'object' && !Array.isArray(v);
+
+function oneChip(v, side, t, domain) {
+  const text = v === 'none' ? t.chipNone : v === 'web' ? t.chipWeb.replace('{domain}', domain) : side === 'screen' ? t.chipAppOnScreen : t.chipApp;
+  return `<span class="need ${v}">${esc(text)}</span>`;
+}
+
+/** A side may list several options ("open cometcast.de or Comet Cast app"). */
 function chip(w, side, lang, t, domain) {
   const v = side === 'you' ? w.you : w.screen;
   if (isOwn(v)) return `<span class="need own">${esc(v[lang])}</span>`;
-  const text = v === 'none' ? t.chipNone : v === 'web' ? t.chipWeb.replace('{domain}', domain) : side === 'screen' ? t.chipAppOnScreen : t.chipApp;
-  return `<span class="need ${v}">${esc(text)}</span>`;
+  if (Array.isArray(v)) return v.map((x) => oneChip(x, side, t, domain)).join(`<span class="or">${esc(t.or)}</span>`);
+  return oneChip(v, side, t, domain);
 }
 
 function wayHtml(w, s, r, lang, t, domain) {
@@ -166,7 +175,7 @@ export function renderFinder(lang, t, domain) {
     `<div class="picker" hidden>` +
     `<div class="ask"><h3>${esc(t.qHave)}</h3>${picks(SENDERS, lang, t.qHave, ' five')}</div>` +
     `<div class="ask"><h3>${esc(t.qNet)}</h3><div class="nets" role="group" aria-label="${esc(t.qNet)}">${netBtns}</div></div>` +
-    `<div class="ask"><h3>${esc(t.qScreen)}</h3>${picks(SCREENS, lang, t.qScreen, ' seven')}</div>` +
+    `<div class="ask"><h3>${esc(t.qScreen)}</h3>${picks(SCREENS, lang, t.qScreen, ' six')}</div>` +
     `<div class="answer-wrap" aria-live="polite">${NETS.map((n) => netBoxHtml(n, lang, t)).join('')}<div class="answer" id="answer"></div></div>` +
     `</div>`;
   const rows = SENDERS.map(

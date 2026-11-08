@@ -91,6 +91,7 @@ export default function text({ GH, DOMAIN }) {
       chipNone: 'Nothing to install',
       chipWeb: 'Open {domain}',
       chipApp: 'Comet Cast app',
+      or: 'or',
       chipAppOnScreen: 'Comet Cast app on it',
       netBuiltinStatic: 'Only in the same Wi-Fi',
       tableNote: 'Built-in ways (AirPlay, Cast, Miracast) work only when your device and the screen are in the same Wi-Fi. Comet Cast also connects across networks; between a guest Wi-Fi and an internal network that is reliable only with your organisation\'s own server.',
