@@ -323,7 +323,8 @@ pub struct ServerConfig {
     /// A connection must send a valid `hello` within this time.
     pub hello_timeout: Duration,
     /// A connection that said hello but is in no room is closed after this time
-    /// (counted from the moment it connected).
+    /// (counted from the moment it connected, and again from the moment its room or
+    /// join request ended).
     pub no_room_timeout: Duration,
     /// Largest accepted WebSocket message in bytes.
     pub max_message_bytes: usize,

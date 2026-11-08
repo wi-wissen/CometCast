@@ -281,7 +281,7 @@ messages gets `rate_limited` (or `banned`) and is closed. See [server.md](server
 | Max message size | 64 KiB | UNCERTAIN: placeholder; check against real SDP sizes, measure. |
 | Time to send a valid `hello` | 5 s | UNCERTAIN: placeholder; check on slow mobile networks. |
 | Idle time of a room without sender | 30 min | UNCERTAIN: placeholder; needs real usage data. |
-| Time a connection may stay in no room | 60 s | UNCERTAIN: placeholder, counted from connect time; closed with close reason `no_room_timeout` (no `error` message). |
+| Time a connection may stay in no room | 60 s | UNCERTAIN: placeholder, counted from connect time, and again from the moment the connection's room or join request ended (other messages do not extend it); closed with close reason `no_room_timeout` (no `error` message). |
 | Queued outgoing messages per client | 256 | UNCERTAIN: placeholder. A client that does not read and fills the queue is disconnected (its peer gets `peer_left`). |
 
 The hello deadline is fixed at connect time; WebSocket pings do not extend it.
