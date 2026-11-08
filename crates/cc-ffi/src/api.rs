@@ -38,6 +38,7 @@ use tokio::sync::oneshot;
 
 use crate::content::{self, CONTENT};
 use crate::content_sender;
+use crate::device;
 use crate::encoded;
 use crate::frb_generated::StreamSink;
 use crate::nearby;
@@ -193,6 +194,18 @@ pub enum ReceiverUiEvent {
         /// extension, native-apps.md 20.5) and was let in without a dialog: show no
         /// "connected" notice, the person was approved before.
         handover: bool,
+        /// The presenter's device id (32 hex digits) when it proved its key for this room,
+        /// else `None` (docs/design/presenter-identity.md).
+        device: Option<String>,
+        /// `device` is set and this name was used here before, but only by other devices
+        /// (open mode): the "connected" notice adds a neutral sentence. Not a warning.
+        other_device: bool,
+    },
+    /// The display's memory of names and devices changed: store `json` with the settings and
+    /// hand it back with [`set_display_device_memory`] before the next [`start_receiver`].
+    DeviceMemoryChanged {
+        /// The memory as text (a list of name and device id pairs, at most 200).
+        json: String,
     },
     /// A presenter's hand-over token is stored (the display answered `handover_ok`). The
     /// presenter leaving now is not a leave for the host (no notice) until the token is used
@@ -213,6 +226,12 @@ pub enum ReceiverUiEvent {
         name: String,
         /// Two-digit check number; the sender's waiting screen shows the same number.
         check: u8,
+        /// The presenter's device id when its proof for this room verified, else `None`.
+        device: Option<String>,
+        /// `device` is set and this name was used here before, but only by other devices:
+        /// the dialog adds "This name was used here before by a different device." as neutral
+        /// information.
+        other_device: bool,
     },
     /// A waiting request ended: `left`, `cancelled`, `timeout`, `locked` or `room_full`.
     JoinRequestCancelled {
@@ -460,14 +479,33 @@ fn stats_event(s: MediaSnapshot) -> ReceiverUiEvent {
 /// The UI event for a core event.
 fn map_receiver_event(e: ReceiverEvent) -> ReceiverUiEvent {
     match e {
-        ReceiverEvent::PeerJoined { name, handover } => {
-            ReceiverUiEvent::PeerJoined { name, handover }
-        }
+        ReceiverEvent::PeerJoined {
+            name,
+            handover,
+            device,
+            other_device,
+        } => ReceiverUiEvent::PeerJoined {
+            name,
+            handover,
+            device,
+            other_device,
+        },
+        ReceiverEvent::DeviceMemoryChanged(json) => ReceiverUiEvent::DeviceMemoryChanged { json },
         ReceiverEvent::HandoverStored { name } => ReceiverUiEvent::HandoverStored { name },
         ReceiverEvent::HandoverExpired => ReceiverUiEvent::HandoverExpired,
-        ReceiverEvent::JoinRequest { id, name, check } => {
-            ReceiverUiEvent::JoinRequest { id, name, check }
-        }
+        ReceiverEvent::JoinRequest {
+            id,
+            name,
+            check,
+            device,
+            other_device,
+        } => ReceiverUiEvent::JoinRequest {
+            id,
+            name,
+            check,
+            device,
+            other_device,
+        },
         ReceiverEvent::JoinRequestCancelled { id, reason } => {
             ReceiverUiEvent::JoinRequestCancelled { id, reason }
         }
@@ -631,6 +669,7 @@ pub async fn start_receiver(
     let mut options = ReceiverOptions::new(server);
     options.join_mode = join_mode.into();
     options.room_name = room_name.filter(|n| !n.trim().is_empty());
+    options.device_memory = device::memory();
     let announce_room_name = options.room_name.clone();
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
@@ -1173,6 +1212,7 @@ async fn run_sender(
         }
     };
     let mut options = SenderOptions::new(server, code);
+    options.device_key = device::presenter_key();
     options.duration = seconds.map(|s| Duration::from_secs(u64::from(s)));
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
@@ -2017,6 +2057,25 @@ pub fn new_display_secret() -> Vec<u8> {
     cc_discovery::DisplayKey::generate_secret().to_vec()
 }
 
+/// Set the key that signs this installation's joins as a presenter, so a display can tell
+/// whether a name was used by a different device before (docs/design/presenter-identity.md).
+/// `secret_key` is the 32-byte Ed25519 secret of this installation: the same one as the display
+/// key ([`new_display_secret`]) when the app keeps one key for both. Call it before
+/// [`start_presenter`], [`start_sender`] or [`start_content_sender`]; the core never writes the
+/// key anywhere. Returns `false` (and no proof is sent) when it is not 32 bytes.
+#[frb(sync)]
+pub fn set_presenter_device_key(secret_key: Vec<u8>) -> bool {
+    device::set_presenter_key(&secret_key)
+}
+
+/// Tell the display core what it remembered about names and devices (the text of the last
+/// [`ReceiverUiEvent::DeviceMemoryChanged`]; anything else, such as an empty string, is an empty
+/// memory). Call it before [`start_receiver`].
+#[frb(sync)]
+pub fn set_display_device_memory(json: String) {
+    device::set_memory(&json);
+}
+
 /// Who a display is: derived from its key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayIdentity {
@@ -2665,6 +2724,7 @@ pub async fn start_content_sender(
         return;
     }
     let mut options = ContentSenderOptions::new(server, code);
+    options.device_key = device::presenter_key();
     if let Some(b) = udp_bind {
         options.session.udp_bind = vec![b];
     }

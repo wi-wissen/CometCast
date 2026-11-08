@@ -24,6 +24,7 @@ mod airplay_rx;
 pub mod api;
 mod content;
 mod content_sender;
+mod device;
 mod encoded;
 mod nearby;
 mod office;

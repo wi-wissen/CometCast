@@ -310,6 +310,21 @@ Future<AnnounceStatus> setDisplayAnnouncing({
 /// (with its settings) and passes them to [`set_display_announcing`] and [`display_identity`].
 Uint8List newDisplaySecret() => RustLib.instance.api.crateApiNewDisplaySecret();
 
+/// Set the key that signs this installation's joins as a presenter, so a display can tell
+/// whether a name was used by a different device before (docs/design/presenter-identity.md).
+/// `secret_key` is the 32-byte Ed25519 secret of this installation: the same one as the display
+/// key ([`new_display_secret`]) when the app keeps one key for both. Call it before
+/// [`start_presenter`], [`start_sender`] or [`start_content_sender`]; the core never writes the
+/// key anywhere. Returns `false` (and no proof is sent) when it is not 32 bytes.
+bool setPresenterDeviceKey({required List<int> secretKey}) =>
+    RustLib.instance.api.crateApiSetPresenterDeviceKey(secretKey: secretKey);
+
+/// Tell the display core what it remembered about names and devices (the text of the last
+/// [`ReceiverUiEvent::DeviceMemoryChanged`]; anything else, such as an empty string, is an empty
+/// memory). Call it before [`start_receiver`].
+void setDisplayDeviceMemory({required String json}) =>
+    RustLib.instance.api.crateApiSetDisplayDeviceMemory(json: json);
+
 /// The identity of a key, or `None` when `secret_key` is not 32 bytes.
 DisplayIdentity? displayIdentity({required List<int> secretKey}) =>
     RustLib.instance.api.crateApiDisplayIdentity(secretKey: secretKey);
@@ -1478,7 +1493,22 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
     /// extension, native-apps.md 20.5) and was let in without a dialog: show no
     /// "connected" notice, the person was approved before.
     required bool handover,
+
+    /// The presenter's device id (32 hex digits) when it proved its key for this room,
+    /// else `None` (docs/design/presenter-identity.md).
+    String? device,
+
+    /// `device` is set and this name was used here before, but only by other devices
+    /// (open mode): the "connected" notice adds a neutral sentence. Not a warning.
+    required bool otherDevice,
   }) = ReceiverUiEvent_PeerJoined;
+
+  /// The display's memory of names and devices changed: store `json` with the settings and
+  /// hand it back with [`set_display_device_memory`] before the next [`start_receiver`].
+  const factory ReceiverUiEvent.deviceMemoryChanged({
+    /// The memory as text (a list of name and device id pairs, at most 200).
+    required String json,
+  }) = ReceiverUiEvent_DeviceMemoryChanged;
 
   /// A presenter's hand-over token is stored (the display answered `handover_ok`). The
   /// presenter leaving now is not a leave for the host (no notice) until the token is used
@@ -1504,6 +1534,14 @@ sealed class ReceiverUiEvent with _$ReceiverUiEvent {
 
     /// Two-digit check number; the sender's waiting screen shows the same number.
     required int check,
+
+    /// The presenter's device id when its proof for this room verified, else `None`.
+    String? device,
+
+    /// `device` is set and this name was used here before, but only by other devices:
+    /// the dialog adds "This name was used here before by a different device." as neutral
+    /// information.
+    required bool otherDevice,
   }) = ReceiverUiEvent_JoinRequest;
 
   /// A waiting request ended: `left`, `cancelled`, `timeout`, `locked` or `room_full`.
