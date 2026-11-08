@@ -158,6 +158,81 @@ async fn a_handover_token_admits_the_next_join_once_and_without_a_dialog() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_presenter_the_host_removed_loses_its_token() {
+    let server = start_server().await;
+    let mut d = display(&server, JoinMode::Confirm, Duration::from_secs(60)).await;
+    let p = first_join(&server, &mut d, "Ada").await;
+    p.request_handover(TOKEN).await.expect("handover_ok");
+    event(&mut d, |e| {
+        matches!(e, ReceiverEvent::HandoverStored { name } if name == "Ada").then_some(())
+    })
+    .await;
+
+    // The host removes Ada (no block): the token is withdrawn with her.
+    d.remove_peer(false);
+    let mut withdrawn = false;
+    event(&mut d, |e| {
+        withdrawn |= matches!(e, ReceiverEvent::HandoverExpired);
+        matches!(e, ReceiverEvent::PeerLeft).then_some(())
+    })
+    .await;
+    assert!(withdrawn, "the app is told that the hand-over is gone");
+    drop(p);
+
+    // Coming back with the token is an ordinary request for the host, not a silent join.
+    let back = tokio::spawn(PresenterSession::join(opts(
+        &server,
+        &d,
+        "Ada",
+        Some(TOKEN),
+    )));
+    let id = event(&mut d, |e| match e {
+        ReceiverEvent::JoinRequest { id, name, .. } if name == "Ada" => Some(*id),
+        ReceiverEvent::PeerJoined { .. } => panic!("let in without the host"),
+        _ => None,
+    })
+    .await;
+    d.decide_join(id, false);
+    assert!(back.await.unwrap().is_err(), "denied like any join");
+    d.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn locking_the_room_withdraws_the_tokens() {
+    let server = start_server().await;
+    let mut d = display(&server, JoinMode::Confirm, Duration::from_secs(60)).await;
+    let p = first_join(&server, &mut d, "Ada").await;
+    p.request_handover(TOKEN).await.expect("handover_ok");
+    p.leave().await;
+    event(&mut d, |e| {
+        matches!(e, ReceiverEvent::PeerLeft).then_some(())
+    })
+    .await;
+    d.set_join_mode(JoinMode::Locked);
+    event(&mut d, |e| {
+        matches!(e, ReceiverEvent::HandoverExpired).then_some(())
+    })
+    .await;
+    // Open again for asking: the token no longer admits anybody by itself.
+    d.set_join_mode(JoinMode::Confirm);
+    let back = tokio::spawn(PresenterSession::join(opts(
+        &server,
+        &d,
+        "Ada",
+        Some(TOKEN),
+    )));
+    let id = event(&mut d, |e| match e {
+        ReceiverEvent::JoinRequest { id, .. } => Some(*id),
+        ReceiverEvent::PeerJoined { .. } => panic!("let in without the host"),
+        _ => None,
+    })
+    .await;
+    d.decide_join(id, false);
+    assert!(back.await.unwrap().is_err());
+    d.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_token_works_in_an_open_room_too() {
     let server = start_server().await;
     let mut d = display(&server, JoinMode::Open, Duration::from_secs(60)).await;

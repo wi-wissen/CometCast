@@ -135,7 +135,8 @@ pub enum ReceiverEvent {
         /// The presenter's name.
         name: String,
     },
-    /// A hand-over token ran out unused (60 s).
+    /// A hand-over token ran out unused (60 s), or was withdrawn because the host removed the
+    /// presenter, denied and blocked a request or locked the room.
     HandoverExpired,
     /// Join mode `confirm`: somebody waits for a decision. Answer with
     /// [`ReceiverCore::decide_join`]. The name is untrusted text (cleaned by the server):
@@ -385,7 +386,8 @@ impl ReceiverCore {
     }
 
     /// Deny a waiting request and block the sender's address bucket for the rest of this room
-    /// session (it then gets `join_denied` at once, and the host is not asked again).
+    /// session (it then gets `join_denied` at once, and the host is not asked again). All
+    /// hand-over tokens are withdrawn as well: after a block, every join asks the host.
     pub fn deny_and_block_join(&self, id: u64) {
         let _ = self.commands.send(ClientMsg::JoinDecision {
             id: Some(id),
@@ -416,7 +418,8 @@ impl ReceiverCore {
 
     /// Remove the connected sender (end its presentation); with `block` also block its address
     /// bucket for the rest of this room session. The core reports [`ReceiverEvent::PeerLeft`]
-    /// and waits for the next sender in the same room.
+    /// and waits for the next sender in the same room. A hand-over token the sender left with
+    /// is withdrawn ([`ReceiverEvent::HandoverExpired`]): its next join asks the host again.
     pub fn remove_peer(&self, block: bool) {
         let _ = self.commands.send(ClientMsg::RemovePeer { block });
     }
@@ -531,6 +534,8 @@ async fn run(
     // the name of a join that was let in with a token and whose `peer_joined` is still to come.
     let mut peer_name: Option<String> = None;
     let mut admitted_by_token: Option<String> = None;
+    // The presenter the host asked to remove, until its `peer_left` arrives.
+    let mut removed_peer: Option<String> = None;
     let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<ReceiverEvent>();
     // Why the loop ended: stop, a fatal error or the end of the room all close the session below.
     loop {
@@ -542,6 +547,21 @@ async fn run(
             cmd = commands.recv() => {
                 // The core itself holds the sender of this channel, so `None` cannot happen
                 // before it is dropped (which stops the loop too).
+                if let Some(cmd) = &cmd {
+                    // The host turned against somebody: hand-over tokens must not let them
+                    // straight back in (an ordinary leave keeps them, see `PeerLeft`).
+                    let withdrawn = match cmd {
+                        ClientMsg::RemovePeer { .. } => {
+                            removed_peer = peer_name.clone();
+                            peer_name.as_deref().map_or(0, |n| handover.remove_for(n))
+                        }
+                        ClientMsg::JoinDecision { block: true, .. } => handover.clear(),
+                        _ => 0,
+                    };
+                    if withdrawn > 0 {
+                        emit(ReceiverEvent::HandoverExpired);
+                    }
+                }
                 if let Some(cmd) = cmd
                     && sig.send(cmd).await.is_err()
                 {
@@ -608,7 +628,12 @@ async fn run(
                     emit(ReceiverEvent::JoinRequestCancelled { id, reason })
                 }
                 Some(ServerMsg::JoinModeChanged { join_mode }) => {
-                    emit(ReceiverEvent::JoinModeChanged(join_mode))
+                    emit(ReceiverEvent::JoinModeChanged(join_mode));
+                    // Nobody may join a locked room, a hand-over join included. (`confirm`
+                    // keeps the tokens: they stand for an approval the host already gave.)
+                    if join_mode == JoinMode::Locked && handover.clear() > 0 {
+                        emit(ReceiverEvent::HandoverExpired);
+                    }
                 }
                 Some(ServerMsg::Blocked { id, name }) => emit(ReceiverEvent::Blocked { id, name }),
                 Some(ServerMsg::Unblocked { id }) => emit(ReceiverEvent::Unblocked { id }),
@@ -663,6 +688,13 @@ async fn run(
                     }
                     task_widths = None;
                     peer_name = None;
+                    // A presenter the host removed: a token its content task stored after
+                    // `remove_peer` was sent is withdrawn too (the task has ended above).
+                    if let Some(n) = removed_peer.take()
+                        && handover.remove_for(&n) > 0
+                    {
+                        emit(ReceiverEvent::HandoverExpired);
+                    }
                     emit(ReceiverEvent::PeerLeft);
                     reset = true;
                 }
