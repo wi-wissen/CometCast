@@ -18,8 +18,11 @@
 //! WebRTC session and the content task, makes a fresh session and waits for the next sender in
 //! the same room. Code, join mode, block list and request queue stay. A sender that only stops
 //! presenting (it closes its control channel, or starts a new offer, but stays in the room) is
-//! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well.
-//! The core stops on [`ReceiverEvent::RoomEnded`], an error or [`ReceiverCore::stop`].
+//! reported as [`ReceiverEvent::PresentationStopped`]; the session is made fresh as well. So
+//! is a presenter whose connection fails (an offer that cannot be answered, WebRTC `failed`,
+//! no connection in time): a joiner must not be able to end the room.
+//! The core stops on [`ReceiverEvent::RoomEnded`], an error (signalling or server) or
+//! [`ReceiverCore::stop`].
 //!
 //! Use: [`ReceiverCore::start`] -> show [`ReceiverCore::room_code`] -> loop on
 //! [`ReceiverCore::next_event`].
@@ -187,21 +190,27 @@ pub enum ReceiverEvent {
     /// The sender left (or was removed). The room stays: the core is ready for the next sender
     /// with the same code, join mode, block list and queue.
     PeerLeft,
-    /// The sender stopped its presentation but is still in the room (it closed its control
-    /// channel, or began a new offer). Whatever is shown should go; the next presentation
-    /// of the same sender needs no new approval.
+    /// The sender's presentation ended but the sender is still in the room: it closed its
+    /// control channel or began a new offer, or its connection could not be made (an offer
+    /// that cannot be answered, WebRTC `failed`, no connection 30 s after the offer).
+    /// Whatever is shown should go; the next presentation of the same sender needs no new
+    /// approval. The room stays.
     PresentationStopped,
     /// The connection check code (`"123 456"`) of the sender's connection, once per connection,
     /// as soon as it is connected. Identical to the one the sender shows (`cc_transport::sas`).
     ConnectionCode(String),
-    /// Something failed. The core stops after this event.
+    /// Something failed that ends the room (the signalling connection, a server error, no
+    /// new session). The core stops after this event. A failure of the presenter's own
+    /// connection is not an error: it is [`ReceiverEvent::PresentationStopped`].
     Error(String),
 }
 
 /// The code of a [`ReceiverEvent::Error`] message, for the apps (native-apps.md 20.2): the
 /// protocol code of a `server error <code>: ...`, `connection_lost` when the signalling
-/// connection ended, `peer_failed` when WebRTC failed, `unknown` otherwise. The messages are
-/// the ones made in this file; the text itself is for logs only.
+/// connection ended, `peer_failed` when no WebRTC session could be made, `unknown` otherwise.
+/// The messages are the ones made in this file; the text itself is for logs only. (A failed
+/// connection of a presenter is no error any more but [`ReceiverEvent::PresentationStopped`];
+/// its old messages still map to `peer_failed`.)
 pub fn error_code(message: &str) -> String {
     if let Some(rest) = message.strip_prefix("server error ")
         && let Some((code, _)) = rest.split_once(':')
@@ -516,6 +525,17 @@ impl TokenAdmission {
     }
 }
 
+/// End the content task of a presentation that is over (the presenter stays in the room).
+fn stop_presentation(
+    content_task: &mut Option<JoinHandle<()>>,
+    task_widths: &mut Option<mpsc::UnboundedSender<u32>>,
+) {
+    if let Some(t) = content_task.take() {
+        t.abort();
+    }
+    *task_widths = None;
+}
+
 /// Close the session of a sender that is gone and make a fresh one for the next sender.
 /// The new session is also published for [`ReceiverCore::stats`] and the key frame requests.
 async fn fresh_session(
@@ -670,10 +690,7 @@ async fn run(
                     if conn.offer_at.is_some() {
                         // A second offer in a connection that had one: the sender begins a
                         // new presentation. The old one is over; start on a fresh session.
-                        if let Some(t) = content_task.take() {
-                            t.abort();
-                        }
-                        task_widths = None;
+                        stop_presentation(&mut content_task, &mut task_widths);
                         emit(ReceiverEvent::PresentationStopped);
                         match fresh_session(&session, &session_config, &shared_session).await {
                             Ok((s, ev)) => {
@@ -688,16 +705,20 @@ async fn run(
                         }
                     }
                     conn.offer_at.get_or_insert_with(tokio::time::Instant::now);
-                    let answer = match session.accept_offer(sdp).await {
-                        Ok(a) => a,
-                        Err(e) => {
-                            emit(ReceiverEvent::Error(format!("cannot answer offer: {e}")));
-                            break;
+                    match session.accept_offer(sdp).await {
+                        Ok(answer) => {
+                            if sig.send(ClientMsg::Answer { sdp: answer }).await.is_err() {
+                                emit(ReceiverEvent::Error("signalling connection closed".into()));
+                                break;
+                            }
                         }
-                    };
-                    if sig.send(ClientMsg::Answer { sdp: answer }).await.is_err() {
-                        emit(ReceiverEvent::Error("signalling connection closed".into()));
-                        break;
+                        // An offer we cannot answer is the presenter's: it ends this
+                        // presentation, not the room (any joiner could send one).
+                        Err(_) => {
+                            stop_presentation(&mut content_task, &mut task_widths);
+                            emit(ReceiverEvent::PresentationStopped);
+                            reset = true;
+                        }
                     }
                 }
                 Some(ServerMsg::IceCandidate { candidate }) => {
@@ -744,8 +765,11 @@ async fn run(
                         }
                     }
                     if s == ConnectionState::Failed {
-                        emit(ReceiverEvent::Error("WebRTC connection failed".into()));
-                        break;
+                        // The presenter's connection failed: its presentation is over, the
+                        // room stays (the presenter may offer again, or the next one comes).
+                        stop_presentation(&mut content_task, &mut task_widths);
+                        emit(ReceiverEvent::PresentationStopped);
+                        reset = true;
                     }
                 }
                 Some(SessionEvent::ControlChannel(channel)) => match content.as_ref() {
@@ -781,13 +805,11 @@ async fn run(
                     emit(ReceiverEvent::HandoverExpired);
                 }
                 if !conn.connected && conn.offer_at.is_some_and(|t| t.elapsed() > CONNECT_TIMEOUT) {
-                    emit(ReceiverEvent::Error(format!(
-                        "no WebRTC connection {} s after the offer arrived",
-                        CONNECT_TIMEOUT.as_secs()
-                    )));
-                    break;
-                }
-                if conn.have_track {
+                    // No connection after the presenter's offer: as a failed connection.
+                    stop_presentation(&mut content_task, &mut task_widths);
+                    emit(ReceiverEvent::PresentationStopped);
+                    reset = true;
+                } else if conn.have_track {
                     emit(ReceiverEvent::Stats(session.stats()));
                 }
             }
