@@ -137,6 +137,8 @@ final class DeviceNoteMachineTests: XCTestCase {
 
     func machine(_ mode: JoinMode, memory: DeviceMemory = DeviceMemory()) -> ReceiverMachine {
         var m = ReceiverMachine(joinMode: mode, deviceMemory: memory)
+        // No wait for the ICE server list: a join is taken at once (otherwise it is held until `iceLoaded`).
+        m.fetchesIce = false
         let t = now
         m.nowMs = { t }
         _ = m.handle(.start)

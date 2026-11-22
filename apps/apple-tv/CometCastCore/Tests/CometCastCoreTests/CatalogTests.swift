@@ -45,7 +45,7 @@ final class CatalogTests: XCTestCase {
     func testCoreKeysExistInBothCatalogs() {
         for name in ["Localizable", "Localizable-sie"] {
             let cat = catalog(name)
-            XCTAssertEqual(cat.count, 138, name)
+            XCTAssertEqual(cat.count, 144, name)
             for k in coreKeys {
                 for lang in ["en", "de"] { XCTAssertNotNil(value(cat, k, lang), "\(name): missing or empty \(lang) value: \(k)") }
             }
