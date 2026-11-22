@@ -41,7 +41,7 @@ RUN COMETCAST_BRANDING="$COMETCAST_BRANDING" npm run build
 # ---- Stage 2: server binary ----
 # The workspace needs Rust >= 1.92 (rust-version in Cargo.toml). First run: built with 1.99.1
 # (rust:1-bookworm on 2026-11-07). The image tag is pinned to a minor release for repeatable builds.
-FROM rust:1.99-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c AS build
+FROM rust:1.100-bookworm@sha256:ade39a710ef85f3506cffcfec3e8a24ba090badef1dff2fb798f71d878833fea AS build
 WORKDIR /src
 COPY . .
 # rust-toolchain.toml names a Rust version. rustup would then try to DOWNLOAD that toolchain (the
