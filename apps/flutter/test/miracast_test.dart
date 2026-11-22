@@ -149,7 +149,7 @@ void main() {
           separator: '/',
           fileExists: (_) => false,
         ),
-        'cc_miracast_ffi.dll',
+        '/app/cc_miracast_ffi.dll',
       );
     });
 

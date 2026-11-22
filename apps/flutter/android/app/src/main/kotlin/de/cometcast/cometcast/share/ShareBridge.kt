@@ -149,6 +149,10 @@ class ShareBridge(
         uri: Uri,
         intentMime: String?,
     ): Map<String, Any?> {
+        // Only content URIs of other apps. A file:// URI (or a provider of this app) would be
+        // opened with this app's own rights, so another app could point at our private files.
+        if (uri.scheme != "content") return mapOf("kind" to "noLink")
+        if (uri.authority?.startsWith(activity.packageName) == true) return mapOf("kind" to "noLink")
         val resolver = activity.contentResolver
         val mime = resolver.getType(uri)?.takeIf { ShareLogic.kindFor(it) != null } ?: intentMime
         val kind = ShareLogic.kindFor(mime) ?: return mapOf("kind" to "noLink")
