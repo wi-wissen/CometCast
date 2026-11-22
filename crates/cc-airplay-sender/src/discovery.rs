@@ -3,7 +3,8 @@
 //!
 //! Everything that comes from the network is untrusted: the number of devices, the number
 //! and length of TXT entries and the text of names are capped, control characters in names
-//! are replaced.
+//! are replaced, and address records that do not point into a local network are dropped
+//! ([`is_lan_addr`]).
 //!
 //! TXT keys used (names from pyatv and the public AirPlay notes): `deviceid`, `model`,
 //! `features` (or `ft`; `0xLOW,0xHIGH`), `flags` (or `sf`), `pk`, `pw`, `acl`, `srcvers`.
@@ -61,7 +62,8 @@ pub struct Device {
     pub name: String,
     /// DNS host name, if known.
     pub host: String,
-    /// Addresses, IPv4 first.
+    /// Addresses, IPv4 first. From mDNS only local-network addresses are kept
+    /// ([`is_lan_addr`]); an address given by the user ([`Device::from_address`]) is kept as is.
     pub addrs: Vec<IpAddr>,
     /// Control port (usually 7000).
     pub port: u16,
@@ -167,6 +169,28 @@ impl Device {
     }
 }
 
+/// Whether an address from an mDNS record may be used as a connection target: private
+/// (RFC 1918), carrier-grade NAT (`100.64.0.0/10`), unique-local IPv6 (`fc00::/7`) and
+/// link-local addresses. Loopback, unspecified, multicast, broadcast and public addresses are
+/// not: a record is unauthenticated, and a receiver of this network has no such address, so
+/// it would only point our connection (and then the screen) at this machine or at a host on
+/// the internet. An IPv4-mapped IPv6 address is judged by its IPv4 address.
+pub fn is_lan_addr(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => {
+            let o = a.octets();
+            a.is_private() || a.is_link_local() || (o[0] == 100 && (64..128).contains(&o[1]))
+        }
+        IpAddr::V6(a) => match a.to_ipv4_mapped() {
+            Some(v4) => is_lan_addr(IpAddr::V4(v4)),
+            None => {
+                let first = a.segments()[0];
+                first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80
+            }
+        },
+    }
+}
+
 /// Parse a `features` TXT value: `0xLOW` or `0xLOW,0xHIGH`.
 pub fn parse_features(text: &str) -> Option<u64> {
     fn part(s: &str) -> Option<u64> {
@@ -192,6 +216,7 @@ fn parse_flags(text: &str) -> u64 {
 }
 
 /// Build a [`Device`] from the parts of a resolved mDNS service. Pure, for tests.
+/// Addresses that are not local-network ones ([`is_lan_addr`]) are left out.
 pub fn device_from_parts(
     fullname: &str,
     host: &str,
@@ -208,7 +233,12 @@ pub fn device_from_parts(
     let name = fullname
         .strip_suffix(&format!(".{SERVICE_TYPE}"))
         .unwrap_or(fullname);
-    let mut addrs: Vec<IpAddr> = addrs.into_iter().take(16).collect();
+    let mut addrs: Vec<IpAddr> = addrs
+        .into_iter()
+        .take(64)
+        .filter(|a| is_lan_addr(*a))
+        .take(16)
+        .collect();
     addrs.sort_by_key(|a| (!a.is_ipv4(), *a));
     let features = map
         .get("features")
@@ -404,6 +434,56 @@ mod tests {
         assert_eq!(d.device_id, None);
         assert_eq!(d.features, 0);
         assert_eq!(d.store_key(), d.name);
+    }
+
+    #[test]
+    fn only_local_network_addresses_are_connection_targets() {
+        let ok = [
+            "10.0.0.5",
+            "172.16.0.1",
+            "172.31.255.254",
+            "192.168.1.9",
+            "100.64.0.1",
+            "100.127.255.254",
+            "169.254.10.20",
+            "fe80::1",
+            "fd12:3456::1",
+            "fc00::1",
+            "::ffff:192.168.1.9",
+        ];
+        let bad = [
+            "127.0.0.1",
+            "0.0.0.0",
+            "224.0.0.251",
+            "255.255.255.255",
+            "8.8.8.8",
+            "172.32.0.1",
+            "100.128.0.1",
+            "192.0.2.1",
+            "::1",
+            "::",
+            "ff02::fb",
+            "2001:db8::1",
+            "::ffff:127.0.0.1",
+            "::ffff:8.8.8.8",
+        ];
+        for a in ok {
+            assert!(is_lan_addr(a.parse().unwrap()), "{a}");
+        }
+        for a in bad {
+            assert!(!is_lan_addr(a.parse().unwrap()), "{a}");
+        }
+        // A record that mixes them keeps only the local ones; one with none has no address
+        // (and so no connection target).
+        let all = ok.iter().chain(&bad).map(|a| a.parse().unwrap());
+        let d = device_from_parts("A._airplay._tcp.local.", "h", 7000, all, []);
+        assert_eq!(d.addrs.len(), ok.len());
+        assert!(d.addrs.iter().all(|a| is_lan_addr(*a)));
+        let none = bad.iter().map(|a| a.parse().unwrap());
+        let d = device_from_parts("A._airplay._tcp.local.", "h", 7000, none, []);
+        assert_eq!(d.socket_addr(), None);
+        // An address typed by the user is not filtered.
+        assert!(Device::from_address("127.0.0.1:7000").is_ok());
     }
 
     #[test]

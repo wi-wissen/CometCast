@@ -48,7 +48,7 @@ mod testfake;
 mod tests;
 
 pub use client::{AuthKind, PlaybackInfo, Proto, Session};
-pub use creds::{Credentials, PairingStore};
+pub use creds::{Credentials, Lookup, PairingStore};
 pub use discovery::Device;
 pub use error::{Result, SenderError};
 pub use mirror::{MirroringError, MirroringProvider, Unsupported};

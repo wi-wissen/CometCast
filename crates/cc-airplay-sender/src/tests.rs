@@ -80,10 +80,93 @@ fn legacy_pin_pairing_verify_and_media() {
     let forged = Credentials::Legacy {
         client_id: client_id.clone(),
         seed: "07".repeat(32),
+        receiver_key: None,
     };
     let mut s = Session::connect(&dev).unwrap();
     assert!(s.authenticate(Some(&forged)).is_err());
     assert!(fake.log().iter().any(|l| l == "POST /pair-verify"));
+}
+
+#[test]
+fn legacy_verify_checks_the_receiver_against_the_key_remembered_at_pairing() {
+    use crate::cryptoutil::hex;
+    let fake = FakeReceiver::start(FakeMode::Legacy, "4711", false);
+    let dev = fake.device();
+    let mut s = Session::connect(&dev).unwrap();
+    legacy::pair_pin_start(s.conn_mut()).unwrap();
+    let plain = legacy::pair_finish(s.conn_mut(), "4711").unwrap();
+    // Pairing itself knows no receiver key; the caller adds the announced one.
+    assert!(matches!(
+        &plain,
+        Credentials::Legacy {
+            receiver_key: None,
+            ..
+        }
+    ));
+
+    // The right key: the receiver's signature verifies and the session works.
+    let pinned = plain
+        .clone()
+        .with_receiver_key(Some(&hex(&fake.public_key)));
+    assert!(matches!(
+        &pinned,
+        Credentials::Legacy {
+            receiver_key: Some(_),
+            ..
+        }
+    ));
+    let mut s = Session::connect(&dev).unwrap();
+    assert_eq!(
+        s.authenticate(Some(&pinned)).unwrap(),
+        AuthKind::LegacyVerify
+    );
+    media_roundtrip(&mut s, &fake);
+
+    // Another receiver answers in place of the paired one (same address here, another
+    // long-term key): the session fails before our own proof is sent.
+    let other_key = ed25519_dalek::SigningKey::from_bytes(&[9; 32])
+        .verifying_key()
+        .to_bytes();
+    let wrong = plain.clone().with_receiver_key(Some(&hex(&other_key)));
+    let before = fake
+        .log()
+        .iter()
+        .filter(|l| *l == "POST /pair-verify")
+        .count();
+    let mut s = Session::connect(&dev).unwrap();
+    let err = s.authenticate(Some(&wrong)).unwrap_err();
+    assert!(legacy::is_receiver_key_mismatch(&err), "{err:?}");
+    assert!(matches!(err, SenderError::Auth(_)));
+    let after = fake
+        .log()
+        .iter()
+        .filter(|l| *l == "POST /pair-verify")
+        .count();
+    assert_eq!(after, before + 1, "only the first verify message was sent");
+
+    // Credentials without a key (older store files) still verify, unchecked.
+    let mut s = Session::connect(&dev).unwrap();
+    assert_eq!(
+        s.authenticate(Some(&plain)).unwrap(),
+        AuthKind::LegacyVerify
+    );
+    // A stored key that is not a key is a store error, not a silent skip.
+    let Credentials::Legacy {
+        client_id, seed, ..
+    } = &plain
+    else {
+        panic!("legacy credentials expected")
+    };
+    let broken = Credentials::Legacy {
+        client_id: client_id.clone(),
+        seed: seed.clone(),
+        receiver_key: Some("nonsense".into()),
+    };
+    let mut s = Session::connect(&dev).unwrap();
+    assert!(matches!(
+        s.authenticate(Some(&broken)),
+        Err(SenderError::Store(_))
+    ));
 }
 
 #[test]

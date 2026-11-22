@@ -153,6 +153,14 @@ pub enum Decision {
 pub trait ConfirmHook: Send + Sync {
     /// Ask the operator.
     fn confirm(&self, request: &ConfirmRequest) -> Decision;
+
+    /// Would a new device be refused right now without any question (the app's rules say no:
+    /// locked, another session, ...)? Must not block. The supervisor asks this for a pairing
+    /// request that gets no dialog of its own (a dialog is open already, or a session is
+    /// active) and denies the request when the answer is yes. The default is no.
+    fn would_reject(&self) -> bool {
+        false
+    }
 }
 
 /// A hook that always says yes (for the CLI and tests). Not for real use on a display

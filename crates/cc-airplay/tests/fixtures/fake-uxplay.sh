@@ -14,6 +14,8 @@
 #   ignore-term   like "normal" but ignores SIGTERM (so the supervisor must kill it)
 #   spoof         like "normal" but first prints a PIN line with no pairing line before it
 #   twopins       like "normal" but prints a second pairing and PIN (5432) at the end
+#   manypins      like "normal" but then prints five more pairings and PINs (0001 to 0005) at
+#                 once, like a device that guesses the PIN
 #   helper        like "normal" but starts a background helper (pid in FAKE_UXPLAY_HELPER_PID)
 #   helper-crash  starts a background helper, then exits with code 3
 #   self-kill     kills itself with SIGKILL after the banner
@@ -93,6 +95,13 @@ echo "Open connections: 0"
 if [ "$mode" = twopins ]; then
     echo "client sent PAIR-PIN-START request"
     echo '*** CLIENT MUST NOW ENTER PIN = "5432" AS AIRPLAY PASSWORD'
+fi
+
+if [ "$mode" = manypins ]; then
+    for i in 1 2 3 4 5; do
+        echo "client sent PAIR-PIN-START request"
+        echo "*** CLIENT MUST NOW ENTER PIN = \"000$i\" AS AIRPLAY PASSWORD"
+    done
 fi
 
 case "$mode" in

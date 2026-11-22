@@ -165,6 +165,13 @@ impl Shared {
 struct Hook(Arc<Shared>);
 
 impl ConfirmHook for Hook {
+    fn would_reject(&self) -> bool {
+        matches!(
+            admit_new_session(lock(&self.0.state).policy()),
+            Admission::Reject(_)
+        )
+    }
+
     fn confirm(&self, request: &ConfirmRequest) -> Decision {
         let sh = &self.0;
         let mut st = lock(&sh.state);
@@ -209,6 +216,18 @@ impl ConfirmHook for Hook {
     }
 }
 
+impl Shared {
+    /// UxPlay was restarted for a denial: a request that still waits for the operator belongs
+    /// to the run that is gone, so it is refused (its dialog closes, no stale PIN is shown).
+    fn refuse_waiting_request(&self) {
+        let mut st = lock(&self.state);
+        if st.waiting && st.answer.is_none() {
+            st.answer = Some(false);
+            self.cond.notify_all();
+        }
+    }
+}
+
 /// The failure code for a message of the supervisor's `Failed` event.
 fn failure_code(msg: &str) -> &'static str {
     if msg.starts_with("cannot start") {
@@ -234,7 +253,11 @@ fn pump(sh: &Arc<Shared>, rx: &Receiver<AirplayEvent>) {
         match ev {
             AirplayEvent::ServerStarted => sh.send(ReceiveEvent::Advertising),
             AirplayEvent::MirroringChanged { active } => mirroring_changed(sh, active),
-            AirplayEvent::ClientDisconnected | AirplayEvent::Denied => sh.close_dialogs(),
+            AirplayEvent::ClientDisconnected => sh.close_dialogs(),
+            AirplayEvent::Denied => {
+                sh.refuse_waiting_request();
+                sh.close_dialogs();
+            }
             AirplayEvent::Failed(msg) => sh.send(ReceiveEvent::Failed {
                 code: failure_code(&msg).to_owned(),
             }),

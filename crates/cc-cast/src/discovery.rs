@@ -15,9 +15,44 @@ use std::time::{Duration, Instant};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 
 use crate::error::CastError;
+use crate::watch::MAX_DEVICES;
 
 /// DNS-SD service type (with the `.local.` domain) of Cast receivers.
 pub const SERVICE_TYPE: &str = "_googlecast._tcp.local.";
+
+/// Most TXT entries read from one record.
+const MAX_TXT_ENTRIES: usize = 64;
+/// Longest instance name, friendly name, model and id we keep, in characters. A DNS label
+/// has at most 63 bytes and a TXT entry at most 255, so real values are not cut.
+const MAX_TEXT_CHARS: usize = 128;
+/// Most addresses kept for one device.
+const MAX_ADDRESSES: usize = 16;
+
+/// Cut text from the network to [`MAX_TEXT_CHARS`] characters.
+fn cut(s: &str) -> String {
+    s.chars().take(MAX_TEXT_CHARS).collect()
+}
+
+/// Whether an address from an mDNS record may be used as a connection target: private
+/// (RFC 1918), carrier-grade NAT (`100.64.0.0/10`), unique-local IPv6 (`fc00::/7`) and
+/// link-local addresses. Loopback, unspecified, multicast, broadcast and public addresses are
+/// not: a record is unauthenticated, and a receiver of this network has no such address. An
+/// IPv4-mapped IPv6 address is judged by its IPv4 address.
+pub fn is_lan_addr(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => {
+            let o = a.octets();
+            a.is_private() || a.is_link_local() || (o[0] == 100 && (64..128).contains(&o[1]))
+        }
+        IpAddr::V6(a) => match a.to_ipv4_mapped() {
+            Some(v4) => is_lan_addr(IpAddr::V4(v4)),
+            None => {
+                let first = a.segments()[0];
+                first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80
+            }
+        },
+    }
+}
 
 /// A Cast receiver found on the network.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +71,8 @@ pub struct CastDevice {
     pub capabilities: Option<u32>,
     /// `ve`: TXT record version.
     pub txt_version: Option<u32>,
-    /// Addresses of the device (IPv4 first).
+    /// Addresses of the device (IPv4 first). [`CastDevice::from_txt`] keeps only
+    /// local-network addresses ([`is_lan_addr`]).
     pub addresses: Vec<IpAddr>,
     /// TCP port of the Cast channel (normally 8009).
     pub port: u16,
@@ -44,17 +80,20 @@ pub struct CastDevice {
 
 impl CastDevice {
     /// Build a device from DNS-SD data. `txt` are the TXT key/value pairs.
+    ///
+    /// The data comes from the network and is untrusted: texts are cut to a fixed length,
+    /// only the first TXT entries are read, and addresses that are not local-network ones
+    /// ([`is_lan_addr`]) are left out.
     pub fn from_txt<'a>(
         full_name: &str,
         port: u16,
         addresses: impl IntoIterator<Item = IpAddr>,
         txt: impl IntoIterator<Item = (&'a str, &'a str)>,
     ) -> Self {
-        let instance = full_name
+        let instance = cut(full_name
             .strip_suffix(SERVICE_TYPE)
             .unwrap_or(full_name)
-            .trim_end_matches('.')
-            .to_owned();
+            .trim_end_matches('.'));
         let mut dev = Self {
             instance: instance.clone(),
             id: String::new(),
@@ -66,11 +105,11 @@ impl CastDevice {
             addresses: Vec::new(),
             port,
         };
-        for (k, v) in txt {
+        for (k, v) in txt.into_iter().take(MAX_TXT_ENTRIES) {
             match k {
-                "id" => dev.id = v.to_owned(),
-                "fn" => dev.friendly_name = v.to_owned(),
-                "md" => dev.model = v.to_owned(),
+                "id" => dev.id = cut(v),
+                "fn" => dev.friendly_name = cut(v),
+                "md" => dev.model = cut(v),
                 "st" => dev.status = v.parse().ok(),
                 "ca" => dev.capabilities = v.parse().ok(),
                 "ve" => dev.txt_version = v.parse().ok(),
@@ -80,7 +119,12 @@ impl CastDevice {
         if dev.friendly_name.is_empty() {
             dev.friendly_name = instance;
         }
-        let mut addrs: Vec<IpAddr> = addresses.into_iter().collect();
+        let mut addrs: Vec<IpAddr> = addresses
+            .into_iter()
+            .take(64)
+            .filter(|a| is_lan_addr(*a))
+            .take(MAX_ADDRESSES)
+            .collect();
         addrs.sort_by_key(|a| (a.is_ipv6(), *a));
         dev.addresses = addrs;
         dev
@@ -99,7 +143,24 @@ impl CastDevice {
     }
 }
 
-/// Browse for `duration` and return every device that resolved.
+/// Add a resolved device to the list of a one-shot search: a record without port or usable
+/// address is not a device, a known instance is replaced, and at most [`MAX_DEVICES`] devices
+/// are kept (the list comes from the network). Returns whether the device is in the list now.
+fn remember(found: &mut Vec<CastDevice>, dev: CastDevice) -> bool {
+    if dev.port == 0 || dev.addresses.is_empty() {
+        return false;
+    }
+    if let Some(old) = found.iter_mut().find(|d| d.instance == dev.instance) {
+        *old = dev;
+    } else if found.len() < MAX_DEVICES {
+        found.push(dev);
+    } else {
+        return false;
+    }
+    true
+}
+
+/// Browse for `duration` and return every device that resolved (at most [`MAX_DEVICES`]).
 ///
 /// Blocking (the `mdns-sd` receiver is a blocking channel): call it from
 /// `tokio::task::spawn_blocking` in async code, or use [`discover`].
@@ -126,13 +187,7 @@ pub fn discover_blocking(duration: Duration) -> Result<Vec<CastDevice>, CastErro
                         .map(mdns_sd::ScopedIp::to_ip_addr),
                     props.iter().map(|(k, v)| (k.as_str(), v.as_str())),
                 );
-                if dev.port != 0 && !dev.addresses.is_empty() {
-                    if let Some(old) = found.iter_mut().find(|d| d.instance == dev.instance) {
-                        *old = dev;
-                    } else {
-                        found.push(dev);
-                    }
-                }
+                remember(&mut found, dev);
             }
             Ok(_) => {}
             Err(_) => break,
@@ -189,6 +244,114 @@ mod tests {
         assert_eq!(d.port, 8009);
         // IPv4 sorts before IPv6.
         assert_eq!(d.connect_ip(), Some("192.168.1.20".parse().unwrap()));
+    }
+
+    #[test]
+    fn only_local_network_addresses_are_connection_targets() {
+        let ok = [
+            "10.0.0.5",
+            "172.16.0.1",
+            "192.168.1.20",
+            "100.64.0.1",
+            "169.254.10.20",
+            "fe80::1",
+            "fd12:3456::1",
+            "::ffff:192.168.1.9",
+        ];
+        let bad = [
+            "127.0.0.1",
+            "0.0.0.0",
+            "224.0.0.251",
+            "255.255.255.255",
+            "8.8.8.8",
+            "172.32.0.1",
+            "100.128.0.1",
+            "::1",
+            "::",
+            "ff02::fb",
+            "2001:db8::1",
+            "::ffff:127.0.0.1",
+        ];
+        for a in ok {
+            assert!(is_lan_addr(a.parse().unwrap()), "{a}");
+        }
+        for a in bad {
+            assert!(!is_lan_addr(a.parse().unwrap()), "{a}");
+        }
+        let all = ok.iter().chain(&bad).map(|a| a.parse().unwrap());
+        let d = CastDevice::from_txt("A._googlecast._tcp.local.", 8009, all, []);
+        assert_eq!(d.addresses.len(), ok.len());
+        assert!(d.addresses.iter().all(|a| is_lan_addr(*a)));
+        let none = bad.iter().map(|a| a.parse().unwrap());
+        let d = CastDevice::from_txt("A._googlecast._tcp.local.", 8009, none, []);
+        assert_eq!(d.connect_ip(), None);
+    }
+
+    #[test]
+    fn hostile_txt_is_cut() {
+        let long = "x".repeat(10_000);
+        let name = format!("{long}.{SERVICE_TYPE}");
+        let d = CastDevice::from_txt(
+            &name,
+            8009,
+            ["10.0.0.2".parse().unwrap()],
+            [
+                ("id", long.as_str()),
+                ("fn", long.as_str()),
+                ("md", long.as_str()),
+            ],
+        );
+        for text in [&d.instance, &d.id, &d.friendly_name, &d.model] {
+            assert_eq!(text.chars().count(), MAX_TEXT_CHARS);
+        }
+        // Cutting counts characters, so a multi-byte name is not split inside a character.
+        let d = CastDevice::from_txt(
+            "A._googlecast._tcp.local.",
+            8009,
+            ["10.0.0.2".parse().unwrap()],
+            [("fn", "ä".repeat(300).as_str())],
+        );
+        assert_eq!(d.friendly_name, "ä".repeat(MAX_TEXT_CHARS));
+        // Entries after the cap are not read.
+        let junk: Vec<(String, String)> = (0..MAX_TXT_ENTRIES)
+            .map(|i| (format!("k{i}"), "v".to_owned()))
+            .collect();
+        let d = CastDevice::from_txt(
+            "A._googlecast._tcp.local.",
+            8009,
+            ["10.0.0.2".parse().unwrap()],
+            junk.iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .chain([("id", "late")]),
+        );
+        assert_eq!(d.id, "");
+    }
+
+    #[test]
+    fn a_one_shot_search_keeps_a_capped_list() {
+        let dev = |name: &str, port: u16, addr: &str| {
+            CastDevice::from_txt(
+                &format!("{name}.{SERVICE_TYPE}"),
+                port,
+                addr.parse::<IpAddr>(),
+                [("id", name)],
+            )
+        };
+        let mut found = Vec::new();
+        assert!(!remember(&mut found, dev("NoPort", 0, "10.0.0.1")));
+        assert!(!remember(&mut found, dev("Public", 8009, "8.8.8.8")));
+        for i in 0..MAX_DEVICES {
+            assert!(remember(
+                &mut found,
+                dev(&format!("D{i}"), 8009, "10.0.0.1")
+            ));
+        }
+        assert!(!remember(&mut found, dev("Extra", 8009, "10.0.0.1")));
+        assert_eq!(found.len(), MAX_DEVICES);
+        // A known device may still change.
+        assert!(remember(&mut found, dev("D0", 8010, "10.0.0.1")));
+        assert_eq!(found.len(), MAX_DEVICES);
+        assert_eq!(found[0].port, 8010);
     }
 
     #[test]

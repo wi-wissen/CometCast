@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 use cc_airplay_sender::discovery::{self, feature};
 use cc_airplay_sender::screen::{ScreenOptions, start_cast};
 use cc_airplay_sender::{
-    Credentials, Device, MirroringProvider, PairingStore, Result as SendResult, SenderError,
-    Session, Unsupported, hap, legacy,
+    Credentials, Device, Lookup, MirroringProvider, PairingStore, Result as SendResult,
+    SenderError, Session, Unsupported, hap, legacy,
 };
 
 pub(crate) const USAGE: &str = "\
@@ -230,9 +230,19 @@ fn store() -> SendResult<PairingStore> {
 fn connect(selector: &str) -> SendResult<Session> {
     let device = discovery::find(selector, Duration::from_secs(4))?;
     println!("device: {}", device.summary());
-    let creds = store()
-        .ok()
-        .and_then(|s| s.get(&device.store_key()).ok().flatten());
+    let creds = match store().and_then(|s| s.lookup(&device)) {
+        Ok(Lookup::Paired(c)) => Some(c),
+        // A receiver with this name was paired under another device id. The id comes from
+        // the network announcement, which another device can fake: never without a pairing.
+        Ok(Lookup::NameClash) => {
+            return Err(SenderError::Protocol(format!(
+                "a receiver named {:?} is paired under another device id; this one may be an \
+                 impostor. Pair it with `airplay pair` first if it is the right device",
+                device.name
+            )));
+        }
+        Ok(Lookup::Unknown) | Err(_) => None,
+    };
     let mut s = Session::connect(&device)?;
     let kind = s.authenticate(creds.as_ref())?;
     println!("authentication: {kind:?}");
@@ -266,10 +276,11 @@ fn pair(selector: &str, pin: Option<String>, mode: Option<&str>) -> SendResult<(
     } else {
         legacy::pair_pin_start(s.conn_mut())?;
         let pin = ask_pin(pin)?;
-        legacy::pair_finish(s.conn_mut(), &pin)?
+        // The receiver's announced key is kept: later sessions check its signature with it.
+        legacy::pair_finish(s.conn_mut(), &pin)?.with_receiver_key(device.public_key.as_deref())
     };
     let st = store()?;
-    if st.put(&device.store_key(), creds)? {
+    if st.put_named(&device.store_key(), &device.name, creds)? {
         println!(
             "warning: this replaced the stored credentials for {} (the key comes from the \
              network announcement, which another device can fake)",

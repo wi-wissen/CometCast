@@ -48,7 +48,8 @@ Usage:
   cometcast-cli --version
 
 Options:
-  --server ADDRESS    Signalling server: HOST:PORT (plain ws://), or ws://, wss://, http://,
+  --server ADDRESS    Signalling server: HOST:PORT (wss://; plain ws:// for a loopback or private
+                      address, localhost or a .local name), or ws://, wss://, http://,
                       https:// URL (default 127.0.0.1:8443). Servers that require proof-of-work
                       (open mode) are handled automatically; STUN/TURN servers are fetched
                       from the server when it offers them.

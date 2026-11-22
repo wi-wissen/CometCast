@@ -19,14 +19,20 @@
 //! this with the real UxPlay 1.68 (see docs/airplay.md). A PTY looks like a terminal, so
 //! the lines are written at once.
 //!
-//! Policy is the app's job: this supervisor enforces nothing by itself (with
+//! Policy is the app's job: this supervisor enforces none by itself (with
 //! `confirm: None` every device that knows the PIN gets in). The app tells us whether a
 //! mirroring session is active with [`Supervisor::set_session_active`].
+//!
+//! The one rule the supervisor has of its own is a limit on guessing the PIN: after
+//! [`MAX_PIN_TRIES`] PINs within [`PIN_TRIES_WINDOW`] with no mirroring start between them,
+//! UxPlay is stopped and started again only after `pin_lockout` ([`SupervisorOptions`]).
+//! A running session is never cut for it.
 
+use std::collections::VecDeque;
 use std::io::Read;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -76,9 +82,11 @@ pub enum AirplayEvent {
     Error(String),
     /// Hint only: UxPlay may get no data from the device (line wording is UNCERTAIN).
     StreamStalled,
-    /// The operator denied a device in the confirmation dialog; UxPlay is restarted.
+    /// A device was denied (by the operator in the confirmation dialog, by the hook's
+    /// [`ConfirmHook::would_reject`], or because too many PINs were shown without a
+    /// mirroring start); UxPlay is restarted.
     Denied,
-    /// The operator denied a device, but a session is active, so nothing was done.
+    /// A device was denied, but a session is active, so nothing was done.
     DenyIgnored,
     /// The app told us a session became active or inactive (see
     /// [`Supervisor::set_session_active`]).
@@ -210,6 +218,45 @@ impl Backoff {
     }
 }
 
+/// Most PINs that may be shown within [`PIN_TRIES_WINDOW`] without a mirroring start between
+/// them. Each pairing request makes UxPlay show a PIN and gives the device a try at its four
+/// digits, so this is the number of guesses before the pause. UNCERTAIN: placeholder value.
+pub const MAX_PIN_TRIES: usize = 5;
+/// The time span in which [`MAX_PIN_TRIES`] is counted.
+pub const PIN_TRIES_WINDOW: Duration = Duration::from_secs(60);
+
+/// Counts the PINs that were shown without a mirroring start after them. Pure, for tests.
+#[derive(Debug, Default)]
+struct PinTries {
+    shown: VecDeque<Instant>,
+}
+
+impl PinTries {
+    /// A PIN was shown at `now`. True when this is the [`MAX_PIN_TRIES`]-th within
+    /// [`PIN_TRIES_WINDOW`]: the caller denies, and the count starts again.
+    fn shown(&mut self, now: Instant) -> bool {
+        while self
+            .shown
+            .front()
+            .is_some_and(|t| now.saturating_duration_since(*t) > PIN_TRIES_WINDOW)
+        {
+            self.shown.pop_front();
+        }
+        self.shown.push_back(now);
+        if self.shown.len() >= MAX_PIN_TRIES {
+            self.shown.clear();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// A mirroring started: the device knew its PIN, earlier PINs are not counted as guesses.
+    fn mirrored(&mut self) {
+        self.shown.clear();
+    }
+}
+
 /// Settings of the supervisor itself.
 #[derive(Clone)]
 pub struct SupervisorOptions {
@@ -228,6 +275,11 @@ pub struct SupervisorOptions {
     /// Only one dialog is open at a time; a PIN that appears while a dialog is open gets
     /// no dialog of its own (it is dropped, not queued).
     pub confirm: Option<Arc<dyn ConfirmHook>>,
+    /// How long UxPlay stays stopped after [`MAX_PIN_TRIES`] PINs were shown within
+    /// [`PIN_TRIES_WINDOW`] without a mirroring start (somebody guesses the PIN). With the
+    /// default a device gets at most [`MAX_PIN_TRIES`] tries per pause.
+    /// UNCERTAIN: 30 s is a placeholder; any device on the network can cause this pause.
+    pub pin_lockout: Duration,
 }
 
 impl Default for SupervisorOptions {
@@ -237,6 +289,7 @@ impl Default for SupervisorOptions {
             backoff: Backoff::default(),
             reader_grace: Duration::from_secs(1),
             confirm: None,
+            pin_lockout: Duration::from_secs(30),
         }
     }
 }
@@ -245,9 +298,11 @@ impl Default for SupervisorOptions {
 enum Cmd {
     Stop,
     Restart,
-    /// The operator denied; `generation` says which run it was about.
+    /// A device was denied; `generation` says which run it was about. `lockout` = too many
+    /// PINs were shown: wait `pin_lockout` before the next start.
     Deny {
         generation: u32,
+        lockout: bool,
     },
 }
 
@@ -262,6 +317,15 @@ struct Shared {
     mirroring: AtomicBool,
     /// Number of the current run. Events of older runs are dropped.
     generation: AtomicU32,
+    /// PINs shown without a mirroring start. Kept across restarts of UxPlay, or a denial
+    /// (which restarts it) would give a guesser a fresh count.
+    pin_tries: Mutex<PinTries>,
+}
+
+impl Shared {
+    fn pin_tries(&self) -> std::sync::MutexGuard<'_, PinTries> {
+        self.pin_tries.lock().unwrap_or_else(|p| p.into_inner())
+    }
 }
 
 /// Handle to a running supervisor. Dropping it stops UxPlay.
@@ -287,6 +351,7 @@ impl Supervisor {
             confirm_pending: AtomicBool::new(false),
             mirroring: AtomicBool::new(false),
             generation: AtomicU32::new(0),
+            pin_tries: Mutex::new(PinTries::default()),
         });
         let ctx = ManagerCtx {
             tx: tx.clone(),
@@ -310,8 +375,9 @@ impl Supervisor {
 
     /// Tell the supervisor whether a mirroring session is active. The app decides this
     /// (UxPlay's output has no line we can trust for it). While it is active, a denial
-    /// from the confirmation dialog changes nothing and no dialog is opened for new PINs,
-    /// so a running picture is never cut by the dialog.
+    /// (from the confirmation dialog, from [`ConfirmHook::would_reject`] or from the limit
+    /// on PIN tries) changes nothing and no dialog is opened for new PINs, so a running
+    /// picture is never cut by another device.
     pub fn set_session_active(&self, active: bool) {
         self.shared.session_active.store(active, Ordering::SeqCst);
         let _ = self.tx.send(AirplayEvent::SessionChanged { active });
@@ -436,6 +502,19 @@ impl ReaderCtx {
             let _ = self.ctx.tx.send(ev);
         }
     }
+
+    /// Deny the device of this run: restart UxPlay (after the pause when `lockout`), which
+    /// drops the pairing and its PIN. A running session is never cut: then nothing is done.
+    fn deny(&self, lockout: bool) {
+        if self.ctx.shared.session_active.load(Ordering::SeqCst) {
+            self.emit(AirplayEvent::DenyIgnored);
+        } else {
+            let _ = self.ctx.ctl.send(Cmd::Deny {
+                generation: self.generation,
+                lockout,
+            });
+        }
+    }
 }
 
 /// Read the output, split it into lines and send events.
@@ -492,6 +571,13 @@ fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
                 return;
             }
             state.pin_seen = true;
+            // Every PIN is a try at the four digits. Too many without a mirroring start:
+            // this PIN is not shown or asked about, the service pauses.
+            let too_many = rc.ctx.shared.pin_tries().shown(Instant::now());
+            if too_many {
+                rc.deny(true);
+                return;
+            }
             maybe_ask_operator(&pin, rc);
             AirplayEvent::PinShown { pin }
         }
@@ -500,6 +586,7 @@ fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
                 return;
             }
             state.mirroring = true;
+            rc.ctx.shared.pin_tries().mirrored();
             rc.ctx.shared.mirroring.store(true, Ordering::SeqCst);
             AirplayEvent::MirroringChanged { active: true }
         }
@@ -531,19 +618,23 @@ fn handle_line(raw: &[u8], state: &mut LineState, rc: &ReaderCtx) {
 }
 
 /// Open the confirmation dialog on its own thread, but only if there is a hook, no session
-/// is active and no other dialog is open.
+/// is active and no other dialog is open. A request that gets no dialog for these reasons is
+/// denied when the hook says it would refuse it anyway ([`ConfirmHook::would_reject`]);
+/// otherwise it is dropped (its tries at the PIN are still counted, see [`PinTries`]).
 fn maybe_ask_operator(pin: &str, rc: &ReaderCtx) {
     let Some(hook) = &rc.confirm else { return };
     let shared = &rc.ctx.shared;
-    if shared.session_active.load(Ordering::SeqCst) {
+    let busy = shared.session_active.load(Ordering::SeqCst)
+        || shared
+            .confirm_pending
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err();
+    if busy {
+        // No second dialog and none during a session.
+        if hook.would_reject() {
+            rc.deny(false);
+        }
         return;
-    }
-    if shared
-        .confirm_pending
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return; // a dialog is open already: drop this one
     }
     let hook = Arc::clone(hook);
     let ctx = rc.ctx.clone();
@@ -560,7 +651,10 @@ fn maybe_ask_operator(pin: &str, rc: &ReaderCtx) {
                 if ctx.shared.session_active.load(Ordering::SeqCst) {
                     let _ = ctx.tx.send(AirplayEvent::DenyIgnored);
                 } else {
-                    let _ = ctx.ctl.send(Cmd::Deny { generation });
+                    let _ = ctx.ctl.send(Cmd::Deny {
+                        generation,
+                        lockout: false,
+                    });
                 }
             }
         });
@@ -648,7 +742,12 @@ enum RunEnd {
     /// The process ended by itself.
     Died(ExitInfo),
     /// We ended it on request; `stop` = the app wants a stop, otherwise a restart.
-    Asked { stop: bool, denied: bool },
+    /// `lockout` = wait `pin_lockout` before that restart.
+    Asked {
+        stop: bool,
+        denied: bool,
+        lockout: bool,
+    },
 }
 
 fn manage(
@@ -683,20 +782,26 @@ fn manage(
                     break RunEnd::Asked {
                         stop: true,
                         denied: false,
+                        lockout: false,
                     };
                 }
                 Ok(Cmd::Restart) => {
                     break RunEnd::Asked {
                         stop: false,
                         denied: false,
+                        lockout: false,
                     };
                 }
-                Ok(Cmd::Deny { generation: g }) => {
+                Ok(Cmd::Deny {
+                    generation: g,
+                    lockout,
+                }) => {
                     // Ignore answers about older runs, and never cut a running session.
                     if g == generation && !ctx.shared.session_active.load(Ordering::SeqCst) {
                         break RunEnd::Asked {
                             stop: false,
                             denied: true,
+                            lockout,
                         };
                     }
                 }
@@ -710,7 +815,11 @@ fn manage(
 
         let ran_for = run.started.elapsed();
         match end {
-            RunEnd::Asked { mut stop, denied } => {
+            RunEnd::Asked {
+                mut stop,
+                denied,
+                lockout,
+            } => {
                 let (code, signal) = terminate(&mut run, options.stop_timeout);
                 finish_reader(&run, options.reader_grace);
                 end_mirroring_with_run(ctx);
@@ -733,6 +842,21 @@ fn manage(
                     break 'outer;
                 }
                 options.backoff.reset(); // a planned restart starts fresh
+                if lockout {
+                    // Too many PIN tries: no service (and so no new PIN) for a while. Stay
+                    // responsive to stop; a restart asked by the app ends the pause.
+                    let until = Instant::now() + options.pin_lockout;
+                    while Instant::now() < until {
+                        let step = until
+                            .saturating_duration_since(Instant::now())
+                            .min(Duration::from_millis(50));
+                        match ctl_rx.recv_timeout(step) {
+                            Ok(Cmd::Stop) | Err(RecvTimeoutError::Disconnected) => break 'outer,
+                            Ok(Cmd::Restart) => break,
+                            Ok(Cmd::Deny { .. }) | Err(RecvTimeoutError::Timeout) => {}
+                        }
+                    }
+                }
             }
             RunEnd::Died((code, signal)) => {
                 // Already reaped by try_wait. Clean up the output thread.
@@ -811,6 +935,43 @@ mod tests {
         let mut d = Backoff::default();
         let n = (1..=20).find(|_| d.on_unexpected_exit(ms(1)).is_none());
         assert_eq!(n, Some(10));
+    }
+
+    #[test]
+    fn pin_tries_are_limited_within_the_window() {
+        let t0 = Instant::now();
+        let at = |secs: u64| t0 + Duration::from_secs(secs);
+        let mut p = PinTries::default();
+        // Four PINs are fine, the fifth within the window is one too many.
+        for i in 0..MAX_PIN_TRIES as u64 - 1 {
+            assert!(!p.shown(at(i)), "try {i}");
+        }
+        assert!(p.shown(at(10)));
+        // The count starts again after the limit was hit.
+        assert!(!p.shown(at(11)));
+
+        // PINs older than the window do not count.
+        let mut p = PinTries::default();
+        for i in 0..MAX_PIN_TRIES as u64 - 1 {
+            assert!(!p.shown(at(i)));
+        }
+        assert!(!p.shown(at(3) + PIN_TRIES_WINDOW + ms(1)));
+        // (The tries at 0 to 3 s are forgotten: three more fit.)
+        assert!(!p.shown(at(70)));
+        assert!(!p.shown(at(71)));
+        assert!(!p.shown(at(72)));
+        assert!(p.shown(at(73)));
+
+        // A mirroring start (the device knew its PIN) forgets the PINs before it.
+        let mut p = PinTries::default();
+        for i in 0..MAX_PIN_TRIES as u64 - 1 {
+            assert!(!p.shown(at(i)));
+        }
+        p.mirrored();
+        for i in 0..MAX_PIN_TRIES as u64 - 1 {
+            assert!(!p.shown(at(10 + i)));
+        }
+        assert!(p.shown(at(20)));
     }
 
     #[test]
