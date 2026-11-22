@@ -129,6 +129,11 @@ fn describe(config: &ServerConfig, addr: std::net::SocketAddr) {
     }
     if config.turn.is_some() {
         println!("TURN credentials: on (GET /ice-servers)");
+        if config.network.allow.is_empty() && config.turn_allow_public {
+            println!(
+                "note: turn.allow_public is set and network.allow is empty: every host that reaches this server gets TURN credentials."
+            );
+        }
     }
     if !config.allowed_origins.is_empty() {
         println!(

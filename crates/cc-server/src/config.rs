@@ -107,6 +107,16 @@ pub struct LimitsConfig {
     pub max_rooms: usize,
     /// Most open WebSocket connections at the same time (whole server).
     pub max_connections: usize,
+    /// Most accepted TCP connections at the same time (whole server), counted from `accept`
+    /// until the socket closes: plain HTTP requests, TLS handshakes and WebSockets alike.
+    /// Above it a new connection is closed at once. Must leave room above `max_connections`
+    /// for short HTTP requests (see [`default_max_sockets`]).
+    pub max_sockets: usize,
+    /// Most accepted TCP connections at the same time from one peer address (IPv4 address or
+    /// IPv6 /64; an IPv6 /48 may hold `wide_open_factor` times as many). Counted under the
+    /// address of the socket, not `X-Forwarded-For`; peers in `network.trusted_proxies` are
+    /// exempt (all clients arrive from the proxy), only `max_sockets` applies to them.
+    pub max_sockets_per_ip: usize,
     /// This many failed joins within `failed_join_window` cause a temporary ban.
     pub ban_after_failed_joins: u32,
     /// Window in which failed joins are counted.
@@ -152,6 +162,11 @@ pub struct LimitsConfig {
     /// failures (a /48 has many more users than a /64). UNCERTAIN: the default is a
     /// placeholder.
     pub wide_failure_factor: u32,
+    /// An IPv6 /48 network may hold this many times the per-address caps
+    /// (`max_connections_per_ip`, `max_sockets_per_ip`, `max_rooms_per_ip`): somebody who
+    /// owns a /56 or /48 has hundreds of /64 networks and would otherwise get the per-address
+    /// cap once for each. IPv4 is not affected. UNCERTAIN: the default is a placeholder.
+    pub wide_open_factor: u32,
     /// Most senders that may wait for approval in one room at the same time.
     pub max_pending_per_room: usize,
     /// Most senders waiting for approval (in all rooms) that one client address may have.
@@ -165,6 +180,24 @@ pub struct LimitsConfig {
 /// UNCERTAIN: factor 10 is a placeholder (the first version used 4, which is probably too
 /// low for a large company or campus network that owns a whole /48).
 pub const DEFAULT_WIDE_FAILURE_FACTOR: u32 = 10;
+/// UNCERTAIN: factor 4 is a placeholder. A campus that owns a whole /48 gets four times the
+/// room of one IPv4 address or one /64 (raise `limits.wide_open_factor` for such a network).
+pub const DEFAULT_WIDE_OPEN_FACTOR: u32 = 4;
+
+/// Default of `limits.max_sockets` for a given `max_connections`: a quarter more (at least
+/// 64 more), so that short HTTP requests (web app files, `/ice-servers`, ALTCHA puzzles,
+/// health checks) still get in when every WebSocket place is taken.
+/// UNCERTAIN: the headroom is a placeholder.
+pub fn default_max_sockets(max_connections: usize) -> usize {
+    max_connections.saturating_add((max_connections / 4).max(64))
+}
+
+/// Default of `limits.max_sockets_per_ip` for a given `max_connections_per_ip`: eight times
+/// as many, because a browser opens several short HTTP connections (about six) next to its
+/// one WebSocket while it loads the web app. UNCERTAIN: the factor is a placeholder.
+pub fn default_max_sockets_per_ip(max_connections_per_ip: usize) -> usize {
+    max_connections_per_ip.saturating_mul(8)
+}
 
 impl LimitsConfig {
     /// Defaults of one mode. UNCERTAIN: all numbers are placeholders.
@@ -181,6 +214,8 @@ impl LimitsConfig {
                 ice_per_min: 30,
                 max_rooms: 10_000,
                 max_connections: 5_000,
+                max_sockets: default_max_sockets(5_000),
+                max_sockets_per_ip: default_max_sockets_per_ip(20),
                 ban_after_failed_joins: 10,
                 failed_join_window: mins(10),
                 ban_durations: bans,
@@ -199,6 +234,7 @@ impl LimitsConfig {
                 max_bad_messages: 20,
                 global_failed_joins_per_min: 300,
                 wide_failure_factor: DEFAULT_WIDE_FAILURE_FACTOR,
+                wide_open_factor: DEFAULT_WIDE_OPEN_FACTOR,
                 max_pending_per_room: 8,
                 max_pending_per_ip: 3,
                 denied_join_weight: 2,
@@ -212,6 +248,8 @@ impl LimitsConfig {
                 ice_per_min: 300,
                 max_rooms: 100_000,
                 max_connections: 20_000,
+                max_sockets: default_max_sockets(20_000),
+                max_sockets_per_ip: default_max_sockets_per_ip(500),
                 ban_after_failed_joins: 30,
                 failed_join_window: mins(10),
                 ban_durations: bans,
@@ -230,6 +268,7 @@ impl LimitsConfig {
                 max_bad_messages: 50,
                 global_failed_joins_per_min: 1000,
                 wide_failure_factor: DEFAULT_WIDE_FAILURE_FACTOR,
+                wide_open_factor: DEFAULT_WIDE_OPEN_FACTOR,
                 max_pending_per_room: 8,
                 max_pending_per_ip: 8,
                 denied_join_weight: 2,
@@ -340,6 +379,10 @@ pub struct ServerConfig {
     pub altcha: AltchaConfig,
     /// Short-lived TURN credentials. `None` = not offered.
     pub turn: Option<TurnConfig>,
+    /// `turn.allow_public`: hand out TURN credentials although `network.allow` is empty, that
+    /// is to every host that can reach the server. Without it such a configuration is refused
+    /// (see [`ServerConfig::validate`]).
+    pub turn_allow_public: bool,
     /// Public STUN servers handed out at `GET /ice-servers` (`[stun] urls`). Allowed in BOTH
     /// modes: STUN needs no credentials and relays no media, so open servers may offer it
     /// (TURN stays internal-only). Empty = none.
@@ -449,6 +492,11 @@ pub const MAX_LONG_DURATION: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 /// UNCERTAIN: 256 queued messages is a placeholder; the right size depends on
 /// how bursty ICE candidates and control messages are in practice.
 pub const DEFAULT_OUTGOING_QUEUE_LEN: usize = 256;
+/// Most bytes of text messages that may wait to be sent to one client before it is closed as
+/// too slow (next to the count `outgoing_queue_len`: 256 messages of 64 KiB would be 16 MiB
+/// per connection). A message that arrives at an empty queue always passes.
+/// UNCERTAIN: 1 MiB is a placeholder; an SDP is a few KiB, an ICE candidate a few hundred bytes.
+pub const OUTGOING_QUEUE_BYTES: usize = 1024 * 1024;
 
 impl ServerConfig {
     /// The defaults of one mode (limits and ALTCHA differ between modes).
@@ -476,8 +524,15 @@ impl ServerConfig {
             limits: LimitsConfig::for_mode(mode),
             altcha: AltchaConfig::for_mode(mode),
             turn: None,
+            turn_allow_public: false,
             stun_urls: Vec::new(),
         }
+    }
+
+    /// Most bytes of text messages that may wait to be sent to one client (see
+    /// [`OUTGOING_QUEUE_BYTES`]); never less than two of the largest messages.
+    pub fn outgoing_queue_bytes(&self) -> usize {
+        OUTGOING_QUEUE_BYTES.max(self.max_message_bytes.saturating_mul(2))
     }
 
     /// All STUN URLs offered at `/ice-servers`: `[stun] urls`, then `[turn] stun_urls`
@@ -492,6 +547,15 @@ impl ServerConfig {
             }
         }
         out
+    }
+
+    /// Can a host outside the organisation get TURN credentials? Yes when `network.allow` is
+    /// empty, unless the server only listens on loopback and trusts no proxy (then only
+    /// programs on this computer reach it; this is the development default).
+    fn turn_is_public(&self) -> bool {
+        let local_only =
+            self.listen_addr.ip().is_loopback() && self.network.trusted_proxies.is_empty();
+        self.network.allow.is_empty() && !local_only
     }
 
     /// Check that the settings make sense together.
@@ -515,6 +579,7 @@ impl ServerConfig {
                 l.global_failed_joins_per_min,
             ),
             ("limits.wide_failure_factor", l.wide_failure_factor),
+            ("limits.wide_open_factor", l.wide_open_factor),
             ("limits.max_pending_per_room", l.max_pending_per_room as u32),
             ("limits.max_pending_per_ip", l.max_pending_per_ip as u32),
             ("altcha.cost", self.altcha.cost),
@@ -577,6 +642,11 @@ impl ServerConfig {
                 "limits.max_rooms and limits.max_connections must be at least 1",
             ));
         }
+        if l.max_sockets == 0 || l.max_sockets_per_ip == 0 {
+            return Err(ConfigError::new(
+                "limits.max_sockets and limits.max_sockets_per_ip must be at least 1",
+            ));
+        }
         if l.max_connections_per_ip == 0 || l.max_rooms_per_ip == 0 || l.max_room_relay_bytes == 0 {
             return Err(ConfigError::new(
                 "limits.max_connections_per_ip, max_rooms_per_ip and max_room_relay_bytes must be at least 1",
@@ -636,6 +706,16 @@ impl ServerConfig {
             )));
         }
         check_stun_list("stun.urls", &self.stun_urls)?;
+        if self.turn.is_some() && self.turn_is_public() && !self.turn_allow_public {
+            // TURN credentials let their holder relay traffic through the organisation's TURN
+            // server. `/ice-servers` gives them to every client that passes the access lists,
+            // and with an empty allow list that is every host that can reach the server.
+            return Err(ConfigError::new(
+                "[turn] is configured but network.allow is empty: GET /ice-servers would hand TURN credentials to every host that can reach this server. \
+                 Either list the networks of your organisation in network.allow (for example allow = [\"10.0.0.0/8\", \"192.168.0.0/16\"]), \
+                 or set turn.allow_public = true if anybody who reaches the server may really use the TURN relay",
+            ));
+        }
         if let Some(turn) = &self.turn {
             check_stun_list("turn.stun_urls", &turn.stun_urls)?;
             if turn.urls.is_empty() && turn.stun_urls.is_empty() {

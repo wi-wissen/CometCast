@@ -11,7 +11,10 @@ use std::time::Duration;
 use ipnet::IpNet;
 use serde::Deserialize;
 
-use crate::config::{AltchaMode, ConfigError, Mode, Secret, ServerConfig, TurnConfig};
+use crate::config::{
+    AltchaMode, ConfigError, Mode, Secret, ServerConfig, TurnConfig, default_max_sockets,
+    default_max_sockets_per_ip,
+};
 use cc_proto::JoinMode;
 
 /// The commented default configuration printed by `--print-default-config`.
@@ -104,6 +107,8 @@ struct FileLimits {
     ice_per_min: Option<u32>,
     max_rooms: Option<usize>,
     max_connections: Option<usize>,
+    max_sockets: Option<usize>,
+    max_sockets_per_ip: Option<usize>,
     ban_after_failed_joins: Option<u32>,
     failed_join_window_secs: Option<u64>,
     ban_secs: Option<Vec<u64>>,
@@ -122,6 +127,7 @@ struct FileLimits {
     max_bad_messages: Option<u32>,
     global_failed_joins_per_min: Option<u32>,
     wide_failure_factor: Option<u32>,
+    wide_open_factor: Option<u32>,
     max_pending_per_room: Option<usize>,
     max_pending_per_ip: Option<usize>,
     denied_join_weight: Option<u32>,
@@ -147,6 +153,7 @@ struct FileTurn {
     secret: Option<String>,
     secret_file: Option<PathBuf>,
     ttl_secs: Option<u64>,
+    allow_public: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -305,6 +312,8 @@ impl FileConfig {
             }
             if let Some(v) = l.max_connections {
                 d.max_connections = v;
+                // The socket caps follow unless they are set themselves (below).
+                d.max_sockets = default_max_sockets(v);
             }
             if let Some(v) = l.ban_after_failed_joins {
                 d.ban_after_failed_joins = v;
@@ -320,6 +329,13 @@ impl FileConfig {
             }
             if let Some(v) = l.max_connections_per_ip {
                 d.max_connections_per_ip = v;
+                d.max_sockets_per_ip = default_max_sockets_per_ip(v);
+            }
+            if let Some(v) = l.max_sockets {
+                d.max_sockets = v;
+            }
+            if let Some(v) = l.max_sockets_per_ip {
+                d.max_sockets_per_ip = v;
             }
             if let Some(v) = l.max_rooms_per_ip {
                 d.max_rooms_per_ip = v;
@@ -359,6 +375,9 @@ impl FileConfig {
             }
             if let Some(v) = l.wide_failure_factor {
                 d.wide_failure_factor = v;
+            }
+            if let Some(v) = l.wide_open_factor {
+                d.wide_open_factor = v;
             }
             if let Some(v) = l.max_pending_per_room {
                 d.max_pending_per_room = v;
@@ -401,6 +420,7 @@ impl FileConfig {
                 // UNCERTAIN: 1 hour is the plan's "about 1 h".
                 ttl: secs(t.ttl_secs.unwrap_or(3600)),
             });
+            c.turn_allow_public = t.allow_public.unwrap_or(false);
         }
         if let Some(s) = self.stun {
             c.stun_urls = s.urls.map(StringList::items).unwrap_or_default();
@@ -642,6 +662,50 @@ mod tests {
         assert_eq!(c.limits.ice_per_min, 77);
         assert_eq!(c.limits.http_per_min, 300);
         assert!(load_config(None, &[("limits.ice_per_min".into(), "0".into())]).is_err());
+    }
+
+    #[test]
+    fn socket_caps_follow_the_connection_caps_unless_set() {
+        let d = load_config(None, &[]).unwrap().limits;
+        assert_eq!((d.max_sockets, d.max_sockets_per_ip), (25_000, 4_000));
+        let open = load_config(None, &[("mode".into(), "open".into())])
+            .unwrap()
+            .limits;
+        assert_eq!((open.max_sockets, open.max_sockets_per_ip), (6_250, 160));
+        assert_eq!(open.wide_open_factor, 4);
+        // Changing the WebSocket caps moves the socket caps with them ...
+        let c = load_config(
+            None,
+            &[
+                ("limits.max_connections".into(), "100".into()),
+                ("limits.max_connections_per_ip".into(), "5".into()),
+            ],
+        )
+        .unwrap()
+        .limits;
+        assert_eq!((c.max_sockets, c.max_sockets_per_ip), (164, 40));
+        // ... unless they are set themselves.
+        let c = load_config(
+            None,
+            &[
+                ("limits.max_connections".into(), "100".into()),
+                ("limits.max_sockets".into(), "300".into()),
+                ("limits.max_sockets_per_ip".into(), "7".into()),
+            ],
+        )
+        .unwrap()
+        .limits;
+        assert_eq!((c.max_sockets, c.max_sockets_per_ip), (300, 7));
+        for key in [
+            "limits.max_sockets",
+            "limits.max_sockets_per_ip",
+            "limits.wide_open_factor",
+        ] {
+            assert!(
+                load_config(None, &[(key.into(), "0".into())]).is_err(),
+                "{key}"
+            );
+        }
     }
 
     #[test]

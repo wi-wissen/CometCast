@@ -83,13 +83,13 @@ UNCERTAIN: every number is a placeholder.
 | `idle_room_secs` | 1800 | 1800 | Room without sender expires. 1 to 86400. |
 | `hello_secs` / `no_room_secs` | 5 / 60 | 5 / 60 | Handshake and "must be in a room" deadlines. Each 1 to 86400. |
 | `max_message_bytes` | 65536 | 65536 | Largest WebSocket message. |
-| `outgoing_queue_len` | 256 | 256 | Queue per slow client. |
+| `outgoing_queue_len` | 256 | 256 | Queue per slow client, in messages. The queue is also limited in bytes (1 MiB, or two of the largest messages if that is more; not configurable, UNCERTAIN: placeholder), see "Slow readers". |
 | `tls.cert_file`, `tls.key_file` | | none | PEM files; HTTPS/WSS is on when set. |
 | `tls.self_signed` | | `false` | Development only: throw-away certificate. |
 | `tls.self_signed_names` | | `localhost`, `127.0.0.1`, `::1` | Names in that certificate. |
 | `tls.self_signed_cert_out` | | none | Write the public certificate here (for `curl --cacert`). |
 | `network.trusted_proxies` | | empty | CIDR list of reverse proxies whose `X-Forwarded-For` is believed. |
-| `network.allow` / `network.deny` | | empty | CIDR lists. Empty `allow` = everybody. `deny` wins. |
+| `network.allow` / `network.deny` | | empty | CIDR lists. Empty `allow` = everybody. `deny` wins. With `[turn]`, an empty `allow` is a start error unless `turn.allow_public = true` (see "TURN credentials and coturn"). |
 | `limits.connections_per_min` | 30 | 300 | New WebSocket connections per client address. |
 | `limits.create_room_per_min` | 6 | 60 | `create_room` per client address. |
 | `limits.join_attempts_per_min` | 20 | 120 | `join_room` per client address. |
@@ -98,12 +98,14 @@ UNCERTAIN: every number is a placeholder.
 | `limits.ice_per_min` | 30 | 300 | `/ice-servers` per client address. Its own bucket: it is no longer shared with `/altcha/challenge`, so a client that fetches the ICE list on every connect cannot use up the puzzle budget (and the other way round). |
 | `limits.max_rooms` | 10000 | 100000 | Rooms at the same time, whole server. |
 | `limits.max_connections` | 5000 | 20000 | Open WebSocket connections, whole server. |
+| `limits.max_sockets` | 6250 | 25000 | Accepted TCP connections, whole server, counted from `accept` until the socket closes (HTTP requests, TLS handshakes and WebSockets alike). Above it a new connection is closed at once, without an answer. When not set it follows `max_connections`: a quarter more, at least 64 more, so short HTTP requests still get in when every WebSocket place is taken. UNCERTAIN: the headroom is a placeholder. |
+| `limits.max_sockets_per_ip` | 160 | 4000 | Accepted TCP connections from one **peer** address (the address of the socket, not `X-Forwarded-For`; IPv4 address or IPv6 /64). When not set it follows `max_connections_per_ip`: 8 times as many, because a browser opens about six short HTTP connections next to its WebSocket while it loads the web app. Peers in `network.trusted_proxies` are exempt (every client arrives from the proxy); only `max_sockets` applies to them. UNCERTAIN: the factor is a placeholder. |
 | `limits.ban_after_failed_joins` | 10 | 30 | Failed joins within the window cause a ban. |
 | `limits.failed_join_window_secs` | 600 | 600 | The window. |
 | `limits.ban_secs` | `[60, 300, 1800]` | same | 1st, 2nd, 3rd+ ban. The plan says 1, 5, 30 minutes. |
 | `limits.ban_memory_secs` | 3600 | 3600 | A ban history is forgotten after this long without a new ban. 1 to 31536000 (one year); each `ban_secs` entry at most one year too. |
-| `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64). Internal is high because an office may sit behind one NAT address. |
-| `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address. |
+| `limits.max_connections_per_ip` | 20 | 500 | Open connections from one address (IPv6: /64; a whole /48 may hold `wide_open_factor` times as many). Internal is high because an office may sit behind one NAT address. |
+| `limits.max_rooms_per_ip` | 5 | 100 | Rooms owned by one address (IPv6: /64; a whole /48 may own `wide_open_factor` times as many). |
 | `limits.ping_interval_secs` / `pong_timeout_secs` | 20 / 20 | 20 / 20 | The server pings; a connection that sends no data and no pong for the sum is closed (close reason `ping_timeout`). A ping sent by the client does not count as a sign of life. Each 1 to 86400. |
 | `limits.paired_idle_secs` | 3600 | 14400 | A connection in a room is closed (`idle_timeout`) only if nothing was relayed for this long **and** it has not answered a ping for `ping_interval + pong_timeout`. A connection that answers pings is never closed for being idle. See "Liveness and lifetime". 1 to 31536000. |
 | `limits.max_room_lifetime_secs` | 43200 | 86400 | Hard cap: longest life of any room, however busy and alive (`room_lifetime`). UNCERTAIN: 12 h / 24 h are placeholders; clients see `peer_left` when it is reached even if the video still runs. 1 to 31536000. |
@@ -116,6 +118,7 @@ UNCERTAIN: every number is a placeholder.
 | `limits.max_pending_per_ip` | 3 | 8 | Senders waiting for approval from one client address (all rooms); more get `rate_limited`. |
 | `limits.denied_join_weight` | 2 | 2 | A denied or timed-out join request counts as this many failures toward the address ban (0 = never). UNCERTAIN: placeholder; everybody behind one NAT address shares the budget. |
 | `limits.wide_failure_factor` | 10 | 10 | An IPv6 /48 is banned after `ban_after_failed_joins` times this many failures. UNCERTAIN: placeholder (the first version used 4, which is probably too low for a large company or campus network that owns a /48). |
+| `limits.wide_open_factor` | 4 | 4 | An IPv6 /48 may hold this many times the per-address caps `max_connections_per_ip`, `max_sockets_per_ip` and `max_rooms_per_ip` (open: 80 connections, 640 sockets, 20 rooms per /48). Without it the owner of a /56 (256 /64 networks) or a /48 gets the per-address cap once per /64. IPv4 is not affected. UNCERTAIN: placeholder; raise it for a campus that owns a whole /48. |
 | `altcha.mode` | `always` (forced) | `optional` | See ALTCHA. |
 | `altcha.secret` / `secret_file` | | random at start | HMAC secret for puzzles, at least 16 characters. |
 | `altcha.cost` | 1000 | 1000 | PBKDF2 iterations per attempt. |
@@ -126,6 +129,7 @@ UNCERTAIN: every number is a placeholder.
 | `turn.urls`, `turn.stun_urls` | not allowed | none | URLs given to clients. `turn.stun_urls` follows the same rules as `stun.urls`; both are listed (without duplicates) in one STUN entry. |
 | `turn.secret` / `secret_file` | not allowed | none | Shared secret with coturn, at least 16 characters (`openssl rand -hex 32`). |
 | `turn.ttl_secs` | | 3600 | Credential lifetime. 1 to 31536000. |
+| `turn.allow_public` | | `false` | `true` = hand out TURN credentials although `network.allow` is empty, that is to every host that can reach the server. Without it, `[turn]` with an empty `network.allow` is a **start error** (exception: the server listens on loopback only and trusts no proxy). |
 
 ## Join approval (who may join a room)
 
@@ -208,6 +212,21 @@ reject, wildcard rules, config sources) and a browser test with the web app on a
 `relay.cometcast.de`, behaviour behind a CDN or a reverse proxy that rewrites `Origin` or adds its own CORS
 headers (do not add CORS headers in the proxy as well).
 
+### Security headers
+
+Every response (pages, files, API answers, refusals, the WebSocket handshake) carries:
+
+| Header | Value | Why |
+| --- | --- | --- |
+| `X-Content-Type-Options` | `nosniff` | The browser must not guess another content type. |
+| `X-Frame-Options` | `DENY` | No page may show the web app in a frame (clickjacking on "allow join", "share screen"). |
+| `Content-Security-Policy` | `frame-ancestors 'none'` | The same, for current browsers. Nothing else is restricted by it. |
+| `Referrer-Policy` | `same-origin` | A room code in the address is not sent to other sites. |
+| `Strict-Transport-Security` | `max-age=31536000` | Only when the server does TLS itself (`[tls]`). Behind a reverse proxy that does TLS, set it in the proxy. No `includeSubDomains`, no preload. |
+
+A header that a handler sets itself is kept. The `Origin` rules of `/ws` are unchanged.
+Consequence: the web app served by the relay cannot be embedded in an `<iframe>` of another page.
+
 ## TLS (HTTPS and WSS)
 
 Browsers are said to need a secure context for screen sharing (HTTPS, except
@@ -270,6 +289,16 @@ with `network.trusted_proxies = ["127.0.0.1/32"]` in the server. Caddy's `revers
 handles the WebSocket upgrade by itself and sets `X-Forwarded-For` (UNCERTAIN: not run
 here). If you use a proxy, set `trusted_proxies` to the proxy's address and nothing wider.
 
+**The proxy must be the only way in.** Everybody who can open a connection from a trusted
+address can write any client address into `X-Forwarded-For` (to pass `allow`, to escape limits
+and bans). So let the server listen where only the proxy reaches it: `127.0.0.1` for a bare
+binary, and with Docker publish the port on loopback (`127.0.0.1:8443:8443`) and trust the one
+address the proxy has from the container's view (the gateway of the compose network), never a
+range such as `172.16.0.0/12`. With the port published on all host addresses and a Docker
+range trusted, clients that connect directly are "trusted proxies" wherever Docker does not
+keep their source address (userland proxy, rootless Docker, Docker Desktop). Without a proxy
+(the server does TLS itself, port published directly) leave `trusted_proxies` empty.
+
 ## Rate limits and bans
 
 Counted per client address, with [governor](https://crates.io/crates/governor) (one
@@ -282,6 +311,20 @@ bucket per address; a quota of N per minute also allows a burst of N):
 - `/altcha/challenge` (`http_per_min`) and `/ice-servers` (`ice_per_min`): two separate buckets per address.
 - Whole server: `max_connections` (`503`) and `max_rooms` (`create_room` gets `rate_limited`).
 
+**Sockets, before any request:** every accepted TCP connection is counted from `accept` until
+it closes, whatever is spoken on it (an idle socket, a TLS handshake, kept-alive HTTP requests,
+an upgraded WebSocket). The caps are `max_sockets` for the whole server, `max_sockets_per_ip`
+per peer address (IPv4 address or IPv6 /64) and `wide_open_factor` times that per IPv6 /48. A
+connection above a cap is closed at once, without an HTTP answer (no request was read yet).
+Without these caps a client could hold tens of thousands of sockets open with a cheap request
+every few seconds (`GET /healthz` just inside the 15 s limit below) and be counted nowhere. The
+address is the one of the socket: peers in `network.trusted_proxies` are exempt from the
+per-address caps, because all clients arrive from the proxy, so **limit connections per client
+in the proxy** (nginx `limit_conn`, for example); the server-wide cap still applies. When
+`max_sockets` is reached, the health check is refused too. UNCERTAIN: not load-tested. The
+lifetime of a kept-alive HTTP connection that keeps sending requests is not limited (hyper has
+no setting for requests per connection); the caps bound how many of them one address can hold.
+
 **Per connection (after the upgrade):** a token bucket limits messages and bytes per
 second. A connection that exceeds it gets `rate_limited` and is closed, and that counts as a
 failure toward a ban. Every `bad_message` / `wrong_role` also counts as a failure, and
@@ -290,9 +333,18 @@ failure toward a ban. Every `bad_message` / `wrong_role` also counts as a failur
 above normal use; UNCERTAIN: they are not measured.
 
 **Liveness and lifetime:** the server sends a WebSocket ping every `ping_interval_secs`. A
-connection that sends neither data nor a pong for `ping_interval_secs + pong_timeout_secs` is
-closed (`ping_timeout`); a ping sent by the client does not count, anybody can send those
-without reading. Browsers and normal WebSocket libraries answer pings automatically.
+connection that sends neither data nor an answer to a ping for
+`ping_interval_secs + pong_timeout_secs` is closed (`ping_timeout`). Each ping carries 8 random
+bytes, and only a pong that echoes the bytes of the latest ping counts (WebSocket requires the
+echo; browsers and normal libraries do it automatically). A ping sent by the client does not
+count, and neither does a pong that answers nothing: anybody can send those without reading.
+
+**Slow readers:** messages for a client wait in a queue of at most `outgoing_queue_len`
+messages and 1 MiB of text (or two of the largest messages, if that is more). A client whose
+queue is full is dropped without a close frame; a message that finds the queue empty always
+fits. Each write to the socket must finish within 10 s, otherwise the connection ends, so a
+client that stops reading cannot keep its queue (and the memory in it) for long. UNCERTAIN:
+1 MiB and 10 s are placeholders, not configurable.
 
 A room stays open as long as **both** of its connections keep answering pings, however
 quiet the signalling channel is: media flows peer to peer, so a long presentation without any
@@ -319,7 +371,9 @@ WebSocket is not affected (liveness above applies). UNCERTAIN: 15 s is a placeho
 configurable.
 
 **Per-address caps:** open connections (`max_connections_per_ip`) and rooms
-(`max_rooms_per_ip`) per client address.
+(`max_rooms_per_ip`) per client address. For IPv6 the address is the /64, and the /48 has a cap
+of its own, `wide_open_factor` times higher (default 4, UNCERTAIN), so the owner of a /56 or
+/48 does not get the per-address cap once for each of its /64 networks. IPv4 is unchanged.
 
 **Temporary bans:** `ban_after_failed_joins` failed joins within `failed_join_window_secs`
 ban the address. The sender gets `banned`, its connection is closed, and new connections,
@@ -420,6 +474,18 @@ clients already parse it; there is no `ttl` field because nothing expires):
 
 TURN relays media when a direct connection is impossible (network separates devices).
 coturn runs as a **separate process** and is not built here.
+
+**Who gets credentials:** every client that passes `network.allow` / `network.deny`. A holder
+of credentials can relay traffic through your TURN server, so `[turn]` needs an allow list:
+with `[turn]` and an empty `network.allow` the server **refuses to start**. Two ways out:
+
+- list the networks of your organisation in `network.allow` (the Docker example ships the
+  private ranges), or
+- set `turn.allow_public = true` if anybody who reaches the server may really use the relay.
+
+The only exception is a server that listens on loopback only and has no `trusted_proxies`
+(the development default): nothing but programs on the same computer can reach it. Behind a
+reverse proxy the rule applies even on loopback, because the clients are then the proxy's.
 
 `GET /ice-servers` with `[turn]` configured (internal mode only) returns a JSON
 array shaped like the browser's `RTCIceServer` list:
@@ -560,8 +626,9 @@ What the image and compose file give you (all checked in the first run, see belo
 | Secrets | `turn_secret`, `altcha_secret` as compose file secrets (`/run/secrets/...`), read by the server from `secret_file`; never in the image, `Dockerfile.dockerignore` excludes `deploy/secrets`, `deploy/certs`, `deploy/.env`, `**/.env`, `**/.env.*` (except `.env.example`), `**/*.pem`, `**/*.key` (nested too; checked with a test build of a scratch context) |
 | coturn secret | has to be in `turnserver.conf` (coturn has no secret-file option; UNCERTAIN: not looked for other ways), written by `render.sh` with mode 600, or 640 for coturn's group with `TURN_CONF_GROUP=3478` (must equal `COTURN_GID`; 65534 is refused) |
 | TLS files | mounted read-only from `deploy/certs/`; the key must be readable by 65532 (server) and `COTURN_GID` (coturn): `chown 65532:3478 certs/privkey.pem; chmod 640` (`render.sh` with `TURN_CONF_GROUP` sets group and mode of the key too) |
-| Ports | server `8443/tcp` published on all host addresses; coturn on the host network (3478 udp/tcp, 5349 tcp, relay range) |
-| Trusted proxy | none by default; set `network.trusted_proxies` only for your proxy's address |
+| Ports | server `8443/tcp` published on all host addresses (direct setup; with a reverse proxy on the host publish `127.0.0.1:8443:8443` instead); coturn on the host network (3478 udp/tcp, 5349 tcp, relay range) |
+| Trusted proxy | none by default; set `network.trusted_proxies` only for your proxy's exact address, and only together with the loopback publish above |
+| Allow list | the example config ships `network.allow` with the private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`); with `[turn]` an empty list is a start error unless `turn.allow_public = true` |
 
 Silent failure modes found in the run, and what to look for:
 

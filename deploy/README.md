@@ -56,8 +56,15 @@ to `docker build`, then `docker compose up -d` **without** `--build` (the secret
 compose; UNCERTAIN whether `build.secrets` works). The image does not contain the WASM PDF renderer,
 so PDF display is missing in the web app it serves.
 
-Ports: the server publishes `8443/tcp` on all host addresses. Change the left side to
-`127.0.0.1:8443:8443` if a reverse proxy on the same host is the only client.
+Ports: the server publishes `8443/tcp` on all host addresses (the direct setup: the server does TLS itself).
+With a reverse proxy on the same host, change the left side to `127.0.0.1:8443:8443` so the proxy is the only
+way in (see "Reverse proxy").
+
+Who may connect: the example config ships `network.allow` with the private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16`, `fc00::/7`); replace them with your networks. With `[turn]` the server **refuses to start when
+`network.allow` is empty**, because `GET /ice-servers` hands TURN credentials to every client that passes the list
+and the port is published. If anybody who reaches the server may really use your TURN relay, say so with
+`allow_public = true` in `[turn]` (the only exception: a server that listens on loopback only and trusts no proxy).
 
 ## Bare binary
 
@@ -108,6 +115,12 @@ listen = "127.0.0.1:8443"
 [network]
 trusted_proxies = ["127.0.0.1/32"]
 ```
+
+With a proxy in front, publish the server's port on loopback only (`127.0.0.1:8443:8443` in `docker-compose.yml`)
+and trust **only the proxy's exact address**, not a range such as `172.16.0.0/12`. If the port stays published on
+all addresses, clients can connect past the proxy; where Docker does not keep their source address (userland
+proxy, rootless Docker, Docker Desktop) they all arrive from the bridge address, count as "trusted proxy" and can
+put any address into `X-Forwarded-For` (to pass `allow`, to escape limits and bans).
 
 With the server in Docker and the proxy on the host, the proxy's address as the server sees it is the
 Docker bridge address; the example config suggests `172.16.0.0/12` and says to trust nothing wider
@@ -173,7 +186,7 @@ Open only what you use; the TURN ports only with TURN. coturn's CLI port (5766) 
 
 ## Open and internal in practice
 
-- **Internal:** `network.allow` = your networks, ALTCHA optional or `always`, TURN allowed, large limits.
+- **Internal:** `network.allow` = your networks (required with `[turn]`, unless `turn.allow_public = true`), ALTCHA optional or `always`, TURN allowed, large limits.
 - **Open:** ALTCHA always, strict limits, no `[turn]` (the server refuses to start with one), no images or files. `[stun] urls = [...]` is allowed (public STUN list at `/ice-servers`, no credentials, no ALTCHA for that call; the STUN service itself is not part of this compose file).
 - ALTCHA: set `altcha.secret_file` so puzzles survive restarts and work on several instances.
 

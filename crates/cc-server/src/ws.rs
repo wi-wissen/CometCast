@@ -21,7 +21,9 @@ use crate::AppState;
 use crate::limits::{ConnBudget, ConnSlot, Deny, limit_key};
 use crate::net::ClientIp;
 use crate::puzzle::PuzzleError;
-use crate::rooms::{CreateError, Gone, JoinError, Joined, Outgoing, OwnerError, Standing, Tx};
+use crate::rooms::{
+    CreateError, Frame, Gone, JoinError, Joined, Outgoing, OwnerError, Rx, Standing, Tx,
+};
 
 /// Source of unique connection numbers.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -96,40 +98,51 @@ impl Conn {
     }
 }
 
+/// Longest time one frame may take to be written to the socket. A client that does not read
+/// lets the TCP buffers fill; the write then never finishes, and without a limit the
+/// connection (and its queue) would stay for as long as the client likes.
+/// UNCERTAIN: 10 s is a placeholder; slow mobile networks are not measured.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The writer of one connection: takes entries from the queue and writes them to the socket.
+/// Ends after a close frame, on a write error, when a write takes longer than `limit`, or
+/// when the queue is gone. The connection loop ends when this task ends.
+async fn write_loop<S>(mut sink: S, mut rx: Rx, limit: Duration)
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    while let Some(frame) = rx.recv().await {
+        let len = frame.len();
+        let (msg, last) = match frame {
+            Frame::Text(text) => (Message::Text(text.into()), false),
+            Frame::Ping(payload) => (Message::Ping(payload.to_vec().into()), false),
+            Frame::Close(reason) => {
+                let frame = CloseFrame {
+                    code: 1000,
+                    reason: reason.into(),
+                };
+                (Message::Close(Some(frame)), true)
+            }
+        };
+        let sent = tokio::time::timeout(limit, sink.send(msg)).await;
+        rx.written(len);
+        if last || !matches!(sent, Ok(Ok(()))) {
+            break;
+        }
+    }
+}
+
 async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: ConnSlot) {
     // `_slot` is kept until this function ends: it counts the open connection.
-    let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx, kill) = Tx::new(state.config.outgoing_queue_len);
+    let (sink, mut stream) = socket.split();
+    let (tx, rx, kill) = Tx::new(
+        state.config.outgoing_queue_len,
+        state.config.outgoing_queue_bytes(),
+    );
 
     // Writer task: the only place that writes to the socket. Everything else
     // (including other connections relaying to us) pushes into the channel.
-    let mut writer = tokio::spawn(async move {
-        while let Some(out) = rx.recv().await {
-            match out {
-                Outgoing::Msg(m) => {
-                    let Ok(text) = serde_json::to_string(&m) else {
-                        continue;
-                    };
-                    if sink.send(Message::Text(text.into())).await.is_err() {
-                        break;
-                    }
-                }
-                Outgoing::Ping => {
-                    if sink.send(Message::Ping(Vec::new().into())).await.is_err() {
-                        break;
-                    }
-                }
-                Outgoing::Close(reason) => {
-                    let frame = CloseFrame {
-                        code: 1000,
-                        reason: reason.into(),
-                    };
-                    let _ = sink.send(Message::Close(Some(frame))).await;
-                    break;
-                }
-            }
-        }
-    });
+    let mut writer = tokio::spawn(write_loop(sink, rx, WRITE_TIMEOUT));
 
     let mut conn = Conn {
         id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
@@ -163,6 +176,10 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
     // Last time this client answered one of our pings.
     let mut last_pong = connected;
     let mut last_ping = connected;
+    // Payload of our last ping that is not answered yet. Only a pong that echoes it counts:
+    // the payload is random, so a client must have read the ping to answer it. A client that
+    // stopped reading cannot stay "alive" by sending pongs of its own.
+    let mut awaited_pong: Option<[u8; 8]> = None;
 
     loop {
         // An owner may have decided on our join request meanwhile.
@@ -199,7 +216,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             }
             _ = ticker.tick() => {
                 forget_lost_room(&mut conn, &state, &mut no_room_deadline);
-                if let Some(reason) = tick_check(&conn, &state, last_seen, last_pong, &mut last_ping) {
+                if let Some(reason) = tick_check(&conn, &state, last_seen, last_pong, &mut last_ping, &mut awaited_pong) {
                     conn.tx.send(Outgoing::Close(reason));
                     break;
                 }
@@ -222,11 +239,13 @@ async fn handle_socket(socket: WebSocket, state: AppState, ip: IpAddr, _slot: Co
             Ok(None) | Ok(Some(Err(_))) => break,
             Ok(Some(Ok(m))) => m,
         };
-        // Data and pongs show that the client is alive. A ping from the client does not:
-        // anybody can send those without reading anything.
+        // Data and answers to our pings show that the client is alive. A ping from the
+        // client does not, and neither does a pong that answers nothing: anybody can send
+        // those without reading anything.
         match &msg {
             Message::Text(_) | Message::Binary(_) => last_seen = Instant::now(),
-            Message::Pong(_) => {
+            Message::Pong(payload) if awaited_pong.is_some_and(|p| p[..] == payload[..]) => {
+                awaited_pong = None;
                 last_seen = Instant::now();
                 last_pong = last_seen;
             }
@@ -340,6 +359,7 @@ fn tick_check(
     last_seen: Instant,
     last_pong: Instant,
     last_ping: &mut Instant,
+    awaited_pong: &mut Option<[u8; 8]>,
 ) -> Option<&'static str> {
     let l = state.guard.cfg();
     let now = Instant::now();
@@ -348,7 +368,9 @@ fn tick_check(
     }
     if now.duration_since(*last_ping) >= l.ping_interval {
         *last_ping = now;
-        conn.tx.send(Outgoing::Ping);
+        let payload: [u8; 8] = rand::random();
+        *awaited_pong = Some(payload);
+        conn.tx.send(Outgoing::Ping(payload));
     }
     let code = conn.room.as_ref()?;
     let (created, last_activity) = lock(state).times(code)?;
@@ -542,6 +564,7 @@ fn handle_text(conn: &mut Conn, state: &AppState, text: &str) -> Step {
                     limit_key(conn.ip),
                     state.guard.max_rooms(),
                     state.guard.max_rooms_per_ip(),
+                    state.guard.max_rooms_per_wide(),
                     mode,
                     room_name.as_deref(),
                 );
@@ -1130,5 +1153,63 @@ mod tests {
         let t0 = Instant::now();
         let now = t0 + Duration::from_secs(1001);
         assert_eq!(room_verdict(&l, now, t0, now, now), Some("room_lifetime"));
+    }
+
+    /// A socket whose peer never reads: nothing can ever be written.
+    struct Stuck;
+
+    impl futures_util::Sink<Message> for Stuck {
+        type Error = std::io::Error;
+        fn poll_ready(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Pending
+        }
+        fn start_send(self: std::pin::Pin<&mut Self>, _: Message) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Pending
+        }
+        fn poll_close(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Pending
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn writer_gives_up_when_a_write_takes_too_long() {
+        let (tx, rx, _kill) = Tx::new(8, 1 << 20);
+        tx.send(Outgoing::Msg(ServerMsg::PeerLeft));
+        let started = Instant::now();
+        // `tx` stays alive: the writer must end because of the time limit, not the queue.
+        write_loop(Stuck, rx, WRITE_TIMEOUT).await;
+        assert_eq!(started.elapsed(), WRITE_TIMEOUT);
+        drop(tx);
+    }
+
+    #[tokio::test]
+    async fn writer_sends_frames_in_order_and_stops_after_close() {
+        let (tx, rx, _kill) = Tx::new(8, 1 << 20);
+        tx.send(Outgoing::Msg(ServerMsg::PeerLeft));
+        tx.send(Outgoing::Ping([7; 8]));
+        tx.send(Outgoing::Close("bye"));
+        tx.send(Outgoing::Msg(ServerMsg::PeerLeft));
+        let mut out: Vec<Message> = Vec::new();
+        let sink = futures_util::sink::unfold(&mut out, |out, m: Message| async move {
+            out.push(m);
+            Ok::<_, std::io::Error>(out)
+        });
+        write_loop(Box::pin(sink), rx, WRITE_TIMEOUT).await;
+        assert_eq!(out.len(), 3, "{out:?}");
+        assert!(matches!(&out[0], Message::Text(t) if t.as_str().contains("peer_left")));
+        assert!(matches!(&out[1], Message::Ping(p) if p[..] == [7; 8]));
+        assert!(matches!(&out[2], Message::Close(Some(f)) if f.reason.as_str() == "bye"));
     }
 }

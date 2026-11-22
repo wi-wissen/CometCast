@@ -65,7 +65,9 @@ failed_join_weight = 2          # a failed join counts like this many attempts
 http_per_min = 300              # /altcha/challenge
 ice_per_min = 300               # /ice-servers (its own bucket)
 max_rooms = 100000              # whole server
-max_connections = 20000         # whole server
+max_connections = 20000         # open WebSocket connections, whole server
+max_sockets = 25000             # accepted TCP connections (HTTP, TLS handshakes, WebSockets), whole server; follows max_connections (+ a quarter) when not set
+max_sockets_per_ip = 4000       # accepted TCP connections from one peer address; follows max_connections_per_ip (x 8) when not set; trusted proxies are exempt
 ban_after_failed_joins = 30     # within failed_join_window_secs
 failed_join_window_secs = 600
 ban_secs = [60, 300, 1800]      # 1st, 2nd, 3rd+ ban
@@ -87,6 +89,7 @@ max_pending_per_room = 8        # senders waiting for approval in one room
 max_pending_per_ip = 8          # senders waiting for approval from one address (all rooms)
 denied_join_weight = 2          # a denied / timed-out join counts as this many failures toward a ban (0 = off)
 wide_failure_factor = 10        # an IPv6 /48 is banned after ban_after_failed_joins * this many failures
+wide_open_factor = 4            # an IPv6 /48 may hold this many times the per-address caps (connections, sockets, rooms)
 
 # Proof-of-work (ALTCHA) for creating a room.
 [altcha]
@@ -106,9 +109,13 @@ ttl_secs = 300
 
 # Short-lived TURN credentials at GET /ice-servers (internal mode only; a [turn] section is
 # refused in open mode). With [stun] too, /ice-servers lists both.
+# [turn] needs a non-empty [network] allow list (who may get credentials). Without one the
+# server refuses to start, unless it listens on loopback only (and trusts no proxy) or you set
+# allow_public = true (then every host that reaches the server may use your TURN relay).
 # Remove the leading "#" and fill in to switch on. coturn runs separately.
 # [turn]
 # urls = ["turn:relay.example.org:3478?transport=udp", "turns:relay.example.org:5349?transport=tcp"]
 # stun_urls = ["stun:relay.example.org:3478"]
 # secret = "..."          # same value as static-auth-secret in coturn; or secret_file = "..."
 # ttl_secs = 3600
+# allow_public = false

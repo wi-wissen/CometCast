@@ -43,7 +43,7 @@ pub(crate) fn tune<A: axum_server::Address, Acc>(server: &mut axum_server::Serve
 }
 
 /// Acceptor that wraps the streams of `inner` in a [`Deadline`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct FirstRequestDeadline<A> {
     inner: A,
     limit: Duration,

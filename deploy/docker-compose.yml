@@ -36,9 +36,15 @@
 # works the same, not tried. In the run the image was built with `docker build` as above and
 # started with `docker compose up -d` without --build.)
 #
-# Ports: the server publishes 8443/tcp on ALL host addresses (change the left side to
-# "127.0.0.1:8443:8443" if a reverse proxy on the same host is the only client). coturn uses
-# host networking: 3478 udp+tcp, 5349 tcp, relay range from .env (UDP).
+# Ports: the server publishes 8443/tcp on ALL host addresses (the direct setup: the server does
+# TLS itself, no reverse proxy). WITH A REVERSE PROXY on the same host change the left side to
+# "127.0.0.1:8443:8443", so that the proxy is the only way in, and set network.trusted_proxies
+# to the proxy's exact address (see the example config). Publishing on all addresses AND
+# trusting a Docker range lets clients that come in directly forge X-Forwarded-For wherever
+# Docker does not keep their source address.
+# The example config allows private networks only (network.allow): with [turn] the server
+# refuses to start without an allow list, because /ice-servers hands out TURN credentials.
+# coturn uses host networking: 3478 udp+tcp, 5349 tcp, relay range from .env (UDP).
 
 services:
   cometcast-server:
@@ -48,6 +54,7 @@ services:
     image: cometcast-server:local
     restart: unless-stopped
     ports:
+      # Direct setup. With a reverse proxy on this host: "127.0.0.1:8443:8443" (see above).
       - "8443:8443"
     volumes:
       - ./config/cometcast-server.toml:/etc/cometcast/server.toml:ro
