@@ -157,6 +157,19 @@ opt-level = 3
 # most of the time per frame in the Flutter debug build.
 [profile.dev.package.cc-ffi]
 opt-level = 3
+# The PDF renderer parses and inflates hostile input in tight loops. At opt-level 0 a deflate
+# bomb took most of the 5 s that the cc-docs limit tests allow per call (about 3 s per call on a
+# fast machine, a timeout on a busy CI runner); optimised it is about half of that.
+[profile.dev.package.hayro-syntax]
+opt-level = 3
+[profile.dev.package.hayro-interpret]
+opt-level = 3
+[profile.dev.package.hayro]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
 
 # mdns-sd 0.21.7 with two public setters for the record lifetime (vendor/mdns-sd/COMETCAST-PATCH.md).
 # Remove this when a released mdns-sd has them.
