@@ -18,7 +18,7 @@ jobs:
       run:
         working-directory: apps/flutter
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # UNCERTAIN: this workflow has NOT been run on GitHub. Every command below was run
       # locally with Flutter 3.47.9 on Linux (see apps/flutter/README.md); the action
       # versions, the apt package names and the cache settings are untested.
@@ -116,7 +116,7 @@ jobs:
       run:
         working-directory: apps/flutter
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # UNCERTAIN: this job has NOT been run on GitHub. The same commands were run locally
       # (Flutter 3.47.9, JDK 21, Android SDK platform 36, build-tools 36.0.0, NDK 28.2.13676358,
       # cargo-ndk 4.1.2); see docs/android.md. The runner image's preinstalled Android SDK,
