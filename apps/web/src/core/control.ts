@@ -235,10 +235,14 @@ export type TransferErrorCode =
 
 /**
  * Reassembles one image or PDF from its metadata message and binary chunks.
- * Memory is bounded: one buffer of the announced size is allocated up front and chunks are copied in.
+ * Memory is bounded by the announced size, but the buffer grows with the bytes that really arrived:
+ * a peer that only announces large transfers (a few bytes per message) makes no large allocations.
  * Every chunk must be exactly CHUNK_SIZE long unless it completes the image, so the number of
  * messages is bounded by size / CHUNK_SIZE (a flood of tiny messages is rejected).
  */
+/** First size of the reassembly buffer; it doubles as chunks arrive, up to the announced size. */
+const INITIAL_BUFFER = 1024 * 1024
+
 export class ImageAssembler {
   private cur: { name: string; mime: string; size: number; buf: Uint8Array; received: number } | null = null
   private stallTimer: ReturnType<typeof setTimeout> | undefined
@@ -270,7 +274,7 @@ export class ImageAssembler {
 
   /** Begins a transfer; a transfer in progress is dropped. The size limit is enforced by parseControlMessage. */
   start(meta: { name: string; mime: string; size: number }): void {
-    this.cur = { ...meta, buf: new Uint8Array(meta.size), received: 0 }
+    this.cur = { ...meta, buf: new Uint8Array(Math.min(meta.size, INITIAL_BUFFER)), received: 0 }
     this.arm()
   }
 
@@ -286,6 +290,12 @@ export class ImageAssembler {
     if (chunk.byteLength !== CHUNK_SIZE && end !== c.size) {
       this.reset()
       return 'bad_chunk'
+    }
+    if (end > c.buf.byteLength) {
+      // Doubling, never more than the announced size.
+      const grown = new Uint8Array(Math.min(c.size, Math.max(end, c.buf.byteLength * 2)))
+      grown.set(c.buf.subarray(0, c.received))
+      c.buf = grown
     }
     c.buf.set(chunk, c.received)
     c.received = end

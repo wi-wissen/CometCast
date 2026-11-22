@@ -13,6 +13,17 @@ import {
   type AltchaSolution,
 } from './altcha'
 import type { WorkerReply, WorkerRequest } from './altchaWorker'
+import { readCapped } from './relay'
+
+/** Largest answer of /altcha/challenge and /ice-servers that is read; both are a few hundred bytes. */
+const MAX_ANSWER_BYTES = 64 * 1024
+
+/** The JSON body of a response, read with a size limit. Throws when it is too long or no JSON. */
+async function cappedJson(res: Response): Promise<unknown> {
+  const text = await readCapped(res, MAX_ANSWER_BYTES)
+  if (text === null) throw new Error('answer too long')
+  return JSON.parse(text)
+}
 
 /** Error with a code that has a translation under `errors.<code>`. */
 export class ServerHttpError extends Error {
@@ -123,7 +134,7 @@ export async function obtainAltchaPayload(baseUrl: string, deps: HttpDeps = {}):
     }
     if (!res.ok) throw new ServerHttpError(httpErrorCode(res.status, res.headers.get('retry-after')))
     try {
-      challenge = parseChallenge(await res.json())
+      challenge = parseChallenge(await cappedJson(res))
     } catch {
       if (deps.signal?.aborted) throw new AltchaError('aborted')
       throw new ServerHttpError('altcha_failed')
@@ -237,7 +248,7 @@ export async function fetchIceServersDetailed(baseUrl: string, deps: { fetchImpl
     if (!res.ok) return { servers: [], state: { kind: 'http_error', status: res.status } }
     let body: unknown
     try {
-      body = await res.json()
+      body = await cappedJson(res)
     } catch {
       return { servers: [], state: { kind: 'bad_answer' } }
     }

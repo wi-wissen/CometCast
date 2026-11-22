@@ -3,10 +3,14 @@
 /**
  * TEST-ONLY: when the page URL has `?testVideo=1`, the sender sends an animated canvas instead of
  * the screen. This exists so automated tests can exercise signalling + WebRTC where
- * getDisplayMedia cannot be granted headlessly. Not a user feature.
+ * getDisplayMedia cannot be granted headlessly. Not a user feature: the flag only exists in the dev
+ * server and in builds made with `VITE_E2E=1` (the end-to-end tests). A release build ignores it, so
+ * a crafted link cannot make "Share screen" skip the browser's own capture prompt.
  */
+const TEST_HOOKS: boolean = import.meta.env.DEV || import.meta.env.VITE_E2E === '1'
+
 export function isTestVideo(search: string = typeof location !== 'undefined' ? location.search : ''): boolean {
-  return new URLSearchParams(search).get('testVideo') === '1'
+  return TEST_HOOKS && new URLSearchParams(search).get('testVideo') === '1'
 }
 
 export function createTestStream(): MediaStream {
