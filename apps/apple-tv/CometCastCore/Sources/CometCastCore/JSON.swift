@@ -4,7 +4,8 @@
 // integral numbers and lone surrogates differs between Apple platforms and Linux, and the parser rules of
 // the content channel must be the same as the web app's `JSON.parse` + checks (apps/web/src/core/control.ts).
 // Differences from JavaScript's JSON.parse that are known and accepted:
-//   * nesting deeper than `maxDepth` (1000) is refused (JS has no limit; messages are at most 8192 characters),
+//   * nesting deeper than `maxDepth` (64) is refused (JS has no limit; no message of the protocol nests deeper
+//     than a few levels),
 //   * a lone UTF-16 surrogate escape (\ud800) becomes U+FFFD because a Swift String cannot hold it.
 
 import Foundation
@@ -33,7 +34,8 @@ public enum JSONValue: Equatable, Sendable {
 public struct JSONParseError: Error, Equatable {}
 
 public enum JSON {
-    public static let maxDepth = 1000
+    /// Deepest nesting that is parsed. The parser is recursive, so this also bounds its stack use on hostile input.
+    public static let maxDepth = 64
 
     public static func parse(_ text: String) -> JSONValue? {
         var p = Parser(bytes: Array(text.utf8))

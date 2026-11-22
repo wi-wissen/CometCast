@@ -685,6 +685,12 @@ final class AppModel: ObservableObject {
 
     private func syncContent() {
         content = contentController.content
+        // the decode queue skips an image that is not the shown one any more
+        if case .image(let id, _, _)? = contentController.content {
+            ImageDecodeQueue.shared.setCurrent(id)
+        } else {
+            ImageDecodeQueue.shared.setCurrent(nil)
+        }
         transfer = contentController.transfer.map { ($0.name, $0.received, $0.size) }
         // a failed transfer or a PDF that cannot be shown is a toast with the existing wording (spec 4.5)
         if let e = contentController.contentError, e != contentError { showToast(L.s("receive.transferError.\(e.rawValue)")) }
@@ -701,7 +707,8 @@ final class AppModel: ObservableObject {
         let id = contentController.showImage(name: name, mime: mime)
         syncContent()
         Task {
-            let result = await Task.detached(priority: .userInitiated) { ImageDecoder.decode(bytes) }.value
+            // One image is decoded at a time; nil: this one was skipped because it is not the shown image any more.
+            guard let result = await ImageDecodeQueue.shared.decode(bytes, id: id) else { return }
             guard case .image(let cur, _, _)? = contentController.content, cur == id else { return }
             switch result {
             case .success(let img): image = img

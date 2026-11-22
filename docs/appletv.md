@@ -68,14 +68,14 @@ Phases are the web app's: `idle`, `connecting`, `checking` (ALTCHA), `waiting_se
 | `room_created` | `waiting_sender`, show the code |
 | `error altcha_required` while `connecting`, first time | `checking`; fetch and solve the puzzle; send `create_room` again **on the same connection** with `altcha` |
 | `error altcha_required` again | `error` (no endless loop) |
-| `peer_joined` | new peer; `negotiating` |
-| `offer` | answer it (the answer is sent when ready); candidates are fed to the peer |
+| `peer_joined` | new peer; `negotiating`, if the join rules of the display allow it (see [Join approval](#join-approval-protocol-version-2)); otherwise no peer and `remove_peer` is sent |
+| `offer` | answer it (the answer is sent when ready); candidates are fed to the peer. Ignored while there is no peer (the server sends `peer_joined` first) |
 | peer connected | `receiving`; the connection check code is computed from the final SDPs |
 | `peer_left` | `peer_left`; peer and content closed; the room and its code stay (a new sender may join) |
 | `room_ended` (after End) | a new room on the same connection, in the **default mode** (Open or Approval on): Locked lasts only until End (spec 4.3) |
 | `error not_in_room` after the room exists | ignored |
 | any other `error`, socket closed, peer failed, answer failed | `error` with the code; everything torn down |
-| messages before the ICE list is known | held (`peer_joined`, `offer`, `ice_candidate`) and processed afterwards |
+| messages before the ICE list is known | held (`peer_joined`, `offer`, `ice_candidate`) and processed afterwards; the join rules are checked when `peer_joined` arrives, and `peer_left` or `room_ended` drop what is held |
 
 Error codes and what the person sees (key `errors.<code>`, German and English in `Localizable.xcstrings`; the server's own text is never shown):
 
@@ -144,6 +144,7 @@ The Swift client speaks **protocol version 2** (`protoVersion = 2` in `Signaling
 
 - **Mode.** The wanted mode survives start, stop and new rooms. `create_room` carries it; if the server's `room_created.join_mode` differs, a `set_join_mode` follows. `join_mode_changed` is what changes `state.joinMode`. If the server answers `open_rooms_disabled` while the room is being created, the machine asks again with `confirm` (same ALTCHA payload) and sets the notice `openDisabled`.
 - **Requests.** A queue, no timer: the server ends a request after 60 s (`joinRequestSecs`, UNCERTAIN: an operator can change it) with `join_request_cancelled` (`timeout`, `left`, `cancelled`, `locked`, `room_full`, `blocked`). A decision removes the request at once (as the web client does); an unknown id is not sent. `locked` cancellations add up in the notice `lockedDiscarded(count:)` until the mode changes to something else.
+- **The display enforces the join rules itself.** The server is not trusted with them (it may be hostile or wrong). A `peer_joined` makes a peer in mode `open`; in mode `confirm` only when the host said Yes to a request at most 30 s before (`joinAllowanceMs`, UNCERTAIN: generous; the server answers a decision at once), and one Yes lets one sender in; in mode `locked` never. Otherwise the machine makes no peer, changes nothing on the screen and sends `remove_peer` (without `block`). A Yes is void after `locked`, a new room, `start` and `stop`. An `offer` without a peer is ignored. What this does not cover: the server still decides *which* sender it connects after a Yes (the request's name and check number come from the server); the connection check code is the defence against that. Deviation from the web client, which makes a peer for every `peer_joined` and for an `offer` without a peer.
 - **Block list.** `blocked` adds, `unblocked` removes, duplicates are ignored. It is cleared when the room ends.
 - **End the presentation / the session.** `removePeer` ends the connected sender's presentation (server answers `peer_left`, phase `peer_left`, the code stays). `endRoom` sends `end_room`; on `room_ended` the machine drops peer and content, clears requests and blocks and sends `create_room` again on the same connection (new code).
 - **Errors.** `no_such_request` and `no_such_block` are ignored, `block_list_full` sets the notice `blockListFull`, all other errors are terminal as before (and now also clear requests, blocks and sender name). `joinApprovalErrorCodes` lists the new codes; they have **no string-catalog entries** and so show the generic message (see TODO below). Deviation from the web client: the web client ends the session on `no_such_block` and `block_list_full`; the Swift machine does not, because the room is intact.
@@ -172,7 +173,7 @@ The data channel with the label `control` (other labels are ignored) carries tex
 | Progress updates | at most one per 100 ms | |
 | One transfer at a time | a new `image`/`document` drops the one in progress; `stop` drops it too | |
 | Pause (docs/design/pause.md) | `cmd pause` / `cmd resume` set and clear the presenter flag, `pause_state` is parsed and ignored; the display sends `pause_state` whenever either flag changes and once when the control channel opens | no difference from the web client; the shared fixtures cover it |
-| Memory | one buffer of the announced size, allocated at the start | at most 64 MiB for a PDF |
+| Memory | one buffer that grows with the chunks; nothing is allocated for the announcement alone (the space is reserved, not filled, with the first chunk) | at most 64 MiB for a PDF |
 
 Error codes of a transfer (`transferError.<code>`): `bad_message`, `unexpected_chunk`, `too_large`, `size_mismatch`, `no_transfer`, `bad_chunk`, `stalled`, the `document_*` codes, and two Apple TV additions, `image_undecodable` and `image_too_many_pixels`.
 
@@ -186,20 +187,20 @@ Error codes of a transfer (`transferError.<code>`): `bad_message`, `unexpected_c
 | link without `://` (`https:example.com`), `http://@host` | accepted | refused | accepted |
 | link with a non-breaking space, a bidi override or a leading Unicode space | accepted (percent-encoded or trimmed) | refused | accepted |
 | IDN host (`münchen.de`), full-width host, soft hyphen in host, `xn--` labels | accepted (punycode) | accepted | **refused** (IDNA is not implemented) |
-| JSON nested deeper than 1000 levels | accepted | not tested (serde_json's default limit is 128 levels) | refused |
+| JSON nested deeper than 64 levels | accepted | not tested (serde_json's default limit is 128 levels) | refused |
 | lone UTF-16 surrogate escape in a name | kept | not tested | replaced by U+FFFD |
 
 No case was found where the Swift code accepts something the browser refuses; its differences only refuse more (apart from the lone surrogate). UNCERTAIN: only the vectors in `tests/fixtures` were compared (131 links, 107 control messages); this is not a proof of equivalence.
 
 ### Images
 
-ImageIO, with the type taken **from the bytes** (PNG, JPEG, WebP, GIF), not from the announced MIME type. The pixel count is read from the header before decoding and refused above 64 Mpixel (`imageMaxPixels`, the value of `cc-docs`' `max_image_pixels`; the web client has no cap because the browser decides). The picture is decoded through a thumbnail request limited to 3840 pixels on the long side. A GIF shows its first frame. UNCERTAIN: WebP in ImageIO on tvOS, memory on older Apple TV models.
+ImageIO, with the type taken **from the bytes** (PNG, JPEG, WebP, GIF), not from the announced MIME type. The pixel count is read from the header before decoding and refused above 64 Mpixel (`imageMaxPixels`, the value of `cc-docs`' `max_image_pixels`; the web client has no cap because the browser decides). The picture is decoded through a thumbnail request limited to 3840 pixels on the long side. A GIF shows its first frame. Images are decoded one at a time (`ImageDecodeQueue`): at most one is being decoded and one waits, and an image that is not the shown one any more when its turn comes is not decoded. UNCERTAIN: WebP in ImageIO on tvOS, memory on older Apple TV models.
 
 ### PDF
 
 Core Graphics (`CGPDFDocument`). **UNCERTAIN: PDFKit is, to our knowledge, not part of tvOS** (not checked without the SDK), so it is not used; Core Graphics is. Checks: `%PDF-` in the first 1024 bytes, encrypted and locked is refused (`document_encrypted`), 5000 pages at most, rendering at most 8192 pixels on a side and 7680x4320 pixels, white background, a watchdog of 20 s. Only pixels are shown: no text layer, no links, no scripts. Pages are rendered on demand at the screen width; left/right on the Siri Remote and the sender's `next_page`/`prev_page`/`go_to_page` turn pages.
 
-**Risk the desktop apps do not have:** they render in a child process with a memory limit (`cc-docs`). tvOS cannot start processes, so a hostile PDF is parsed inside the app by Core Graphics; the watchdog stops waiting but cannot cancel the drawing, and memory is not limited. This is assumption A20.
+**Risk the desktop apps do not have:** they render in a child process with a memory limit (`cc-docs`). tvOS cannot start processes, so a hostile PDF is parsed inside the app by Core Graphics; the watchdog stops waiting but cannot cancel the drawing, and memory is not limited. All pages of all documents are drawn on one queue (`PDFRenderGate`); while a draw that ran into the watchdog has not ended, every new page or document is refused at once (`document_failed`), so a PDF that hangs the renderer holds one thread, not one per page. If such a draw never ends, no PDF can be shown until the app is started again. This is assumption A20.
 
 ### Links
 

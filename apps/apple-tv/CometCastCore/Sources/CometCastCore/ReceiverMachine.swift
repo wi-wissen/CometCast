@@ -10,6 +10,11 @@
 // messages. Names from the server are cleaned again (defence in depth). Like the web client, a decision removes the
 // request from the queue at once.
 //
+// The join rules are enforced here too, not only by the server (a signalling server may be hostile or wrong): a
+// `peer_joined` makes a peer only in mode `open`, or in mode `confirm` right after the host said Yes to a request
+// (`joinAllowances`). In mode `locked`, or in `confirm` without such a Yes, no peer is made and the server is asked
+// to remove the sender. An `offer` without a peer is ignored: the server sends `peer_joined` first.
+//
 // Phases are the web app's: idle, connecting, checking (ALTCHA), waiting_sender (code is shown), negotiating,
 // receiving, peer_left, error. The app guards async work with a generation counter: results of an earlier
 // `start`/`stop` are never fed in.
@@ -99,6 +104,10 @@ public enum JoinNotice: Equatable, Sendable {
 /// How long the server lets a request wait by default. UNCERTAIN: an operator can change it; the server decides.
 public let joinRequestSecs = 60
 
+/// How long a Yes of the host lets the allowed sender in (mode `confirm`), in milliseconds. The server answers a
+/// `join_decision` with `peer_joined` at once, so this only has to cover the round trip. UNCERTAIN: 30 s is generous.
+public let joinAllowanceMs: UInt64 = 30_000
+
 public enum ReceiverInput: Equatable, Sendable {
     case start
     case stop
@@ -170,6 +179,9 @@ public struct ReceiverMachine: Sendable {
     private var memoryChanged = false
     /// Verified devices of requests the host allowed, until their `peer_joined` shows the presenter is in.
     private var allowedDevices: [(name: String, id: String)] = []
+    /// One entry for every Yes of the host that no `peer_joined` has used yet: the time (`nowMs`) until which it
+    /// counts. Only a `peer_joined` that finds one makes a peer in mode `confirm`.
+    private var joinAllowances: [UInt64] = []
     /// The clock for the 120 s window of a proof, in milliseconds since the Unix epoch (replaced in tests).
     public var nowMs: @Sendable () -> UInt64 = { UInt64(max(0, Date().timeIntervalSince1970 * 1000)) }
 
@@ -227,7 +239,7 @@ public struct ReceiverMachine: Sendable {
             var fx: [ReceiverEffect] = []
             let h = held
             held = []
-            for m in h { fx += onMessage(m) }
+            for m in h { fx += onMessage(m, replayed: true) }
             return fx
         case .message(let m):
             return onMessage(m)
@@ -265,6 +277,10 @@ public struct ReceiverMachine: Sendable {
                 allowedDevices.append((request.name, device))
                 if allowedDevices.count > 16 { allowedDevices.removeFirst() }
             }
+            if allow {
+                joinAllowances.append(nowMs() &+ joinAllowanceMs)
+                if joinAllowances.count > 16 { joinAllowances.removeFirst() }
+            }
             return [.send(.joinDecision(id: id, allow: allow, block: block && !allow))]
         case .denyAll:
             guard state.code != nil, !state.requests.isEmpty else { return [] }
@@ -294,8 +310,26 @@ public struct ReceiverMachine: Sendable {
 
     private func createRoom() -> ReceiverEffect { .send(.createRoom(altcha: altchaPayload, joinMode: mode, roomName: roomName)) }
 
+    /// Whether a `peer_joined` that arrives now may make a peer (see the head of the file). A Yes of the host is
+    /// used up by it: one sender per room, so whoever comes in is the one sender and every other Yes is void.
+    private mutating func admitJoin() -> Bool {
+        let now = nowMs()
+        let fresh = joinAllowances.contains { $0 >= now }
+        switch state.joinMode {
+        case .open:
+            joinAllowances = []
+            return true
+        case .confirm:
+            joinAllowances = []
+            return fresh
+        case .locked:
+            return false
+        }
+    }
+
     private mutating func teardown() -> [ReceiverEffect] {
         held = []
+        joinAllowances = []
         let fx: [ReceiverEffect] = [.cancelAltcha, .resetContent, .closePeer, .closeSocket]
         hasPeer = false
         return fx
@@ -323,7 +357,16 @@ public struct ReceiverMachine: Sendable {
         return fx
     }
 
-    private mutating func onMessage(_ m: ServerMessage) -> [ReceiverEffect] {
+    /// `replayed`: a message that was held until the ICE server list was known (its join check is done).
+    private mutating func onMessage(_ m: ServerMessage, replayed: Bool = false) -> [ReceiverEffect] {
+        // The display enforces its own join rules: the server is not trusted with them. Nobody comes into a locked
+        // room, and into a room with approval only the sender the host has just said Yes to. Anything else makes no
+        // peer and changes nothing on the screen; the server is asked to remove the sender (without a block: an
+        // address of the server's choosing must not end up on the block list). Checked when the message arrives,
+        // not when a held one is processed: the mode may have changed in between.
+        if case .peerJoined = m, !replayed, !admitJoin() {
+            return state.code != nil ? [.send(.removePeer(block: false))] : []
+        }
         // A peer must not be made before the ICE server list is known (rarely waits at all).
         if !iceReady {
             switch m {
@@ -366,6 +409,8 @@ public struct ReceiverMachine: Sendable {
             mode = m
             state.joinMode = m
             if m != .locked { state.notice = nil }
+            // Locking ends every waiting request, also one the host has just said Yes to.
+            if m == .locked { joinAllowances = [] }
             return []
         case .blocked(let id, let name):
             if !state.blocks.contains(where: { $0.id == id }) {
@@ -380,9 +425,11 @@ public struct ReceiverMachine: Sendable {
             // The room and its code are gone; the connection stays, so ask for a new room at once.
             var fx: [ReceiverEffect] = [.closePeer, .resetContent]
             hasPeer = false
+            held = [] // messages of the room that is gone
             altchaPayload = nil
             altchaTried = false
             peersSeen = 0
+            joinAllowances = []
             // End: the next session starts in the default mode, not in Locked (spec 4.3).
             mode = defaultMode
             state.phase = .connecting
@@ -398,6 +445,7 @@ public struct ReceiverMachine: Sendable {
             fx.append(createRoom())
             return fx
         case .peerJoined(let name, let device):
+            // Admitted by the join rules at the top of this function.
             peersSeen += 1
             let fx = newPeer()
             state.phase = .negotiating
@@ -421,16 +469,17 @@ public struct ReceiverMachine: Sendable {
             events.append(.senderJoined(name: clean, unnamed: state.peerUnnamed, otherDevice: other))
             return fx
         case .offer(let sdp):
-            var fx: [ReceiverEffect] = []
-            if !hasPeer { fx += newPeer() }
+            // The server announces a sender with `peer_joined` before it relays anything from it. An offer without
+            // a peer comes from nobody the join rules let in (or from a sender that has left): it is ignored.
+            guard hasPeer else { return [] }
             if state.phase != .receiving { state.phase = .negotiating }
-            fx.append(.acceptOffer(sdp: sdp))
-            return fx
+            return [.acceptOffer(sdp: sdp)]
         case .iceCandidate(let c):
             return hasPeer ? [.addIceCandidate(c)] : []
         case .peerLeft:
             if let n = state.peerName { events.append(.senderLeft(name: n, unnamed: state.peerUnnamed)) }
             hasPeer = false
+            held = [] // messages of the sender that left
             state.phase = .peerLeft
             state.hasVideo = false
             state.sas = nil
