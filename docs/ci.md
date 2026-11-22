@@ -159,9 +159,14 @@ Before switching on, start every workflow once by hand and check that it is gree
 
 ## Known causes of red runs (fixed, keep in mind)
 
-- `rust-toolchain.toml` and the workflows use the newest stable Rust, so a new clippy lint can turn
-  `-D warnings` red without any code change (`clippy::chunks_exact_to_as_chunks`, clippy 1.99). Reproduce
-  with the same toolchain before pushing: `cargo clippy --workspace --all-targets -- -D warnings`.
+- `rust-toolchain.toml` and the workflows name one exact Rust version (the same as `RUST_VERSION` in
+  `release.yml`). Before, they used the newest stable Rust, and a new compiler turned checks red without
+  any code change: a new clippy lint (`clippy::chunks_exact_to_as_chunks`, clippy 1.99) and different
+  generated bridge code ("Check generated bridge code is up to date", Rust 1.100). Bump the version by
+  hand in both places and run the checks.
+- `cc-docs` `process_kill`: the runner hands open descriptors down to the test process, and the worker
+  inherited them ("extra descriptors"). Fixed in the code: before a worker starts, every descriptor
+  above the standard three is marked close-on-exec (`cc-docs` `process.rs`, `cc-office` `runner.rs`).
 - 32-bit ARM Android libraries are not 16 KB aligned by default: `.cargo/config.toml` passes
   `-Wl,-z,max-page-size=16384` for `armv7-linux-androideabi`.
 

@@ -11,14 +11,14 @@ cache: run `flutter pub get` in `apps/flutter` first). `tools/release-guard.sh l
 when one of the lock files below changed after this file was generated.
 
 ```text
-Cargo.lock-sha256: 84159e12f591602ad9c8bf1a57d949dbbe4331b03e9e179b1556fd8a3c86c754
+Cargo.lock-sha256: 69251daaed9be583f707b6bcf5f89bf4f3f55c3d3680e3e96a6a68ca686ab8e1
 package-lock.json-sha256: 6ad3910c8dda2fc821f1d6816de1bb9f66cb81880ac376837e1807a1f03d363a
 pubspec.lock-sha256: 14af36e015c2d330e4c0de78a9da1fc10953410c364e5d4379d3f923430fcc38
 ```
 
 Scope and limits:
 
-- Rust: 784 external crates, the normal and build dependencies of all workspace members with **all features** (including optional ones such as the OpenH264 source build) for **all
+- Rust: 785 external crates, the normal and build dependencies of all workspace members with **all features** (including optional ones such as the OpenH264 source build) for **all
   target platforms together** (a given binary contains a subset; for example the `windows` crates are only
   in Windows builds). Dev-dependencies are not listed. The licence shown is the SPDX expression of the crate; where a
   crate offers a choice (`MIT OR Apache-2.0`) the recipient may pick either. The texts come from the crate sources.
@@ -37,7 +37,7 @@ Scope and limits:
 | Licence expression | Crates |
 | --- | ---: |
 | MIT OR Apache-2.0 | 335 |
-| MIT | 153 |
+| MIT | 154 |
 | Apache-2.0 OR MIT | 86 |
 | MIT/Apache-2.0 | 53 |
 | Apache-2.0 | 28 |
@@ -186,6 +186,7 @@ Scope and limits:
 | cipher | 0.4.4 | MIT OR Apache-2.0 |
 | citationberg | 0.7.0 | MIT OR Apache-2.0 |
 | clang-sys | 1.9.1 | Apache-2.0 |
+| close_fds | 0.3.2 | MIT |
 | cmov | 0.5.4 | Apache-2.0 OR MIT |
 | cobs | 0.3.0 | MIT OR Apache-2.0 |
 | codex | 0.3.0 | Apache-2.0 |
@@ -6024,6 +6025,32 @@ The Creative Commons BY-SA 3.0 DEED License applies to:
 * The CSL locales found in `tests/locales/*`
 
 https://creativecommons.org/licenses/by-sa/3.0/
+```
+
+#### close_fds 0.3.2
+
+```text
+MIT License
+
+Copyright (c) 2020 cptpcrd
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 #### cmov 0.5.4, hybrid-array 0.4.15

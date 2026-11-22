@@ -56,8 +56,9 @@ env:
   # Publisher identity and legal links of the apps and the web app (branding/README.md, docs/releasing.md). Official
   # release builds use the project's file; a fork sets the repository variable COMETCAST_BRANDING to its own file.
   COMETCAST_BRANDING: ${{ vars.COMETCAST_BRANDING || 'branding/cometcast.json' }}
-  # The one place that names the Rust compiler. Passed to .github/actions/rust-toolchain by every
-  # job that compiles Rust (the Dockerfile has its own). Bump by hand and run a dry run.
+  # The Rust compiler of the release, the same version as in rust-toolchain.toml. Passed to
+  # .github/actions/rust-toolchain by every job that compiles Rust (the Dockerfile has its own).
+  # Bump by hand, in both places, and run a dry run.
   RUST_VERSION: '1.97.0'
   CARGO_TERM_COLOR: always
 

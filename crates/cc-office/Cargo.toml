@@ -34,6 +34,7 @@ office2pdf = { version = "0.10", optional = true }
 
 # Resource limits and process-group kill on Unix (same crates as cc-docs).
 [target.'cfg(unix)'.dependencies]
+close_fds = "0.3"
 rlimit = "0.11"
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 

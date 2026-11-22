@@ -29,7 +29,7 @@ jobs:
           flutter-version: '3.47.9'
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
-          toolchain: stable
+          toolchain: '1.97.0' # the version in rust-toolchain.toml
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           workspaces: '. -> target'
@@ -131,7 +131,7 @@ jobs:
           java-version: '21'
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
-          toolchain: stable
+          toolchain: '1.97.0' # the version in rust-toolchain.toml
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
       # The Gradle tasks build into build/cargo-target-android (not target/): cache that too.
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3

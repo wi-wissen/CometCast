@@ -110,8 +110,10 @@ checks every size in the reply against what it asked for before it allocates.
   `stderr` to `/dev/null`. File descriptors: only stdin and stdout (pipes) and stderr exist in
   the child. The Rust standard library opens every file and socket close-on-exec, so nothing of
   the application's own is inherited. A descriptor that other code in the same program opened
-  **without** close-on-exec would leak into the child; the worker lowers `RLIMIT_NOFILE` to 16
-  but cannot close what it did not open. Applications must open descriptors close-on-exec
+  **without** close-on-exec, or that the program got from whoever started it, would leak into the
+  child. So right before a worker starts (PDF and Office), every descriptor of the program above
+  the standard three is marked close-on-exec (Unix; a descriptor another thread opens without the
+  flag in that very moment can still slip through). The worker also lowers `RLIMIT_NOFILE` to 16
   (tested with a worker that lists its descriptors, environment and directory).
 - The worker runs in its **own process group** (Unix). On timeout, cancel, memory excess, any
   error, and also when the leader exits normally, the parent sends `SIGKILL` to the **whole

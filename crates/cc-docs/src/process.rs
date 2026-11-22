@@ -337,6 +337,12 @@ pub(crate) fn run(
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    // Descriptors this process got from whoever started it, or that a native library opened
+    // without close-on-exec, would be handed down to the worker (Rust itself opens everything
+    // close-on-exec). The worker reads hostile input, so it gets the three standard ones only:
+    // every other descriptor of this process is marked close-on-exec before the worker starts.
+    #[cfg(unix)]
+    close_fds::set_fds_cloexec_threadsafe(3, &[]);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {

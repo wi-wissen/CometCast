@@ -127,7 +127,7 @@ The workflow never pushes a tag; the tag appears when a person publishes the dra
 
 The Linux desktop bundle, `.deb` and the Linux server binaries are built on **ubuntu-22.04** (the arm64 server on `ubuntu-22.04-arm`), not `ubuntu-latest`. A binary needs a glibc at least as new as the one it was linked against, so the oldest runner image sets the floor: **glibc 2.35, meaning Ubuntu 22.04 and newer, Debian 12 (glibc 2.36) and newer. Debian 11 and Ubuntu 20.04 are not supported.** Decision: 22.04 rather than 24.04 so Debian 12 stays supported; revisit when Ubuntu 22.04 runners are retired (April 2027 end of standard support). The Docker image is independent (its own base image).
 
-Rust is pinned to one exact version, `RUST_VERSION` at the top of `release.yml` (currently 1.97.0, above the workspace `rust-version` 1.92). The composite action `.github/actions/rust-toolchain` runs `rustup toolchain install` and sets `RUSTUP_TOOLCHAIN`, which overrides `rust-toolchain.toml` (that file says `stable`) inside the release jobs only. Bump the one variable by hand and run a dry run. The Dockerfile pins its own compiler.
+Rust is pinned to one exact version, `RUST_VERSION` at the top of `release.yml` (currently 1.97.0, above the workspace `rust-version` 1.92). The composite action `.github/actions/rust-toolchain` runs `rustup toolchain install` and sets `RUSTUP_TOOLCHAIN`, which overrides `rust-toolchain.toml` inside the release jobs. That file names the same version for local builds and the check workflows. Bump both by hand and run a dry run. The Dockerfile pins its own compiler.
 
 ## Windows runtime
 
