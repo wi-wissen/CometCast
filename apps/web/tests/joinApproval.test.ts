@@ -48,6 +48,41 @@ function sender(name?: string) {
 }
 
 describe('ReceiverSession join approval', () => {
+  it('does not take a presenter the host did not let in, whatever the server says', () => {
+    // confirm: no request was allowed.
+    const r = receiver('confirm')
+    r.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'confirm' })
+    r.sock.recv({ type: 'join_mode_changed', join_mode: 'open' }) // not asked for by the host
+    const before = r.sock.sent.length
+    r.sock.recv({ type: 'peer_joined', name: 'Eve' })
+    expect(r.s.snapshot.peerName).toBeNull()
+    expect(r.sock.sent.slice(before)).toEqual([{ type: 'remove_peer' }])
+    // Its offer is not answered and its leaving is not shown.
+    r.sock.recv({ type: 'offer', sdp: 'OFFER' })
+    r.sock.recv({ type: 'peer_left' })
+    expect(r.s.snapshot.phase).toBe('waiting_sender')
+    expect(r.sock.sent.length).toBe(before + 1)
+    // A request the host allowed comes in.
+    r.sock.recv({ type: 'join_request', id: 1, name: 'Ana', check: 11 })
+    r.s.decide(1, true)
+    r.sock.recv({ type: 'peer_joined', name: 'Ana' })
+    expect(r.s.snapshot.peerName).toBe('Ana')
+
+    // locked: nobody.
+    const l = receiver('locked')
+    l.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'locked' })
+    l.sock.recv({ type: 'peer_joined', name: 'Eve' })
+    expect(l.s.snapshot.peerName).toBeNull()
+
+    // open: an offer without a presenter is ignored, a join is taken.
+    const o = receiver('open')
+    o.sock.recv({ type: 'room_created', code: 'ABC234', join_mode: 'open' })
+    o.sock.recv({ type: 'offer', sdp: 'OFFER' })
+    expect(o.s.snapshot.phase).toBe('waiting_sender')
+    o.sock.recv({ type: 'peer_joined', name: 'Ana' })
+    expect(o.s.snapshot.peerName).toBe('Ana')
+  })
+
   it('creates the room in the chosen mode and defaults to open', () => {
     expect(receiver().sock.sent[1]).toEqual({ type: 'create_room', join_mode: 'open' })
     const r = receiver('confirm')

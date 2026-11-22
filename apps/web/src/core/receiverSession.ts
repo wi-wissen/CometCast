@@ -60,6 +60,10 @@ export type JoinNotice =
 
 /** How long the server lets a request wait (its default). UNCERTAIN: an operator can change it; the server decides. */
 export const JOIN_REQUEST_SECS = 60
+/** Messages held back until the ICE server list is known; more are dropped. */
+const MAX_HELD_MESSAGES = 64
+/** Join requests shown at once; more are ignored (the server allows far fewer per room). */
+const MAX_JOIN_REQUESTS = 16
 
 /** An entry of the room's block list (blocked for the rest of this room session). */
 export interface BlockedEntry {
@@ -240,6 +244,10 @@ export class ReceiverSession {
   private altchaAbort: AbortController | null = null
   private altchaPayload: string | undefined
   private mode: JoinMode
+  /** The mode the host chose on this device. Joins are checked against it, never against what the server reports. */
+  private hostMode: JoinMode
+  /** A join this display refused, until its `peer_left` arrives. */
+  private refusedJoin = false
   /** The mode a new room (after the session ends) starts with: the last one that was not "locked". */
   private defaultMode: JoinMode
   /** The id of a request that was allowed, while its sender is about to connect (so "connected" is not toasted a second time). */
@@ -252,6 +260,7 @@ export class ReceiverSession {
   constructor(private readonly deps: ReceiverDeps) {
     this.peerFactory = deps.peerFactory ?? ((h, c) => createPeer(h, c))
     this.mode = deps.joinMode ?? 'open'
+    this.hostMode = this.mode
     this.defaultMode = this.mode === 'locked' ? 'open' : this.mode
   }
 
@@ -442,6 +451,7 @@ export class ReceiverSession {
       this.emit({ kind: 'lockedRejected', n: this.state.requests.length })
     }
     this.mode = mode
+    this.hostMode = mode
     if (this.state.code !== null) this.client?.send({ type: 'set_join_mode', join_mode: mode })
   }
 
@@ -641,7 +651,7 @@ export class ReceiverSession {
   private onMessage(m: ServerMessage): void {
     // A peer must not be made before the ICE server list is known (rarely waits at all).
     if (!this.iceReady && (m.type === 'peer_joined' || m.type === 'offer' || m.type === 'ice_candidate')) {
-      this.held.push(m)
+      if (this.held.length < MAX_HELD_MESSAGES) this.held.push(m)
       return
     }
     switch (m.type) {
@@ -652,6 +662,8 @@ export class ReceiverSession {
         break
       case 'join_request':
         if (this.state.requests.some((r) => r.id === m.id)) break
+        // Bounded: a relay must not be able to grow the list of dialogs without end.
+        if (this.state.requests.length >= MAX_JOIN_REQUESTS) break
         this.set({
           requests: [
             ...this.state.requests,
@@ -703,12 +715,25 @@ export class ReceiverSession {
         this.altchaTried = false
         // A new session starts in the default mode again ("locked" does not survive the end).
         this.mode = this.defaultMode
+        this.hostMode = this.defaultMode
+        this.refusedJoin = false
         this.allowedPending = null
         this.emit({ kind: 'sessionEnded' })
         this.set({ joinMode: this.mode, phase: 'connecting', code: null, stream: null, sas: undefined, peerName: null, requests: [], blocks: [] })
         this.sendCreateRoom()
         break
       case 'peer_joined': {
+        // Who may present is decided here too, not only by the server: a wrong or hostile relay could
+        // send this for somebody the host never let in. In `confirm` only a request the host allowed
+        // comes in, in `locked` nobody; the mode that counts is the one the host chose on this device.
+        if (this.state.peerName !== null) break
+        const admitted = this.hostMode === 'open' || (this.hostMode === 'confirm' && this.allowedPending !== null)
+        if (!admitted) {
+          // Not shown, nothing of this peer is answered; the server is told to drop it.
+          this.refusedJoin = true
+          this.client?.send({ type: 'remove_peer' })
+          break
+        }
         const announce = this.allowedPending === null
         const allowed = this.allowedDevice
         this.allowedPending = null
@@ -723,6 +748,8 @@ export class ReceiverSession {
         break
       }
       case 'offer': {
+        // Without a presenter that was let in, an offer is not answered.
+        if (this.state.peerName === null) break
         // A sender that is still in the room makes a new peer connection for its next presentation
         // ("Stop", then show something else): that offer begins a fresh session, as on a native
         // display (spec 5.6, native-apps.md 21.10 item 8). An offer of the same connection (the web
@@ -759,11 +786,17 @@ export class ReceiverSession {
         break
       }
       case 'ice_candidate':
+        if (this.state.peerName === null) break
         this.peer?.addIceCandidate(m.candidate).catch(() => {
           // A single bad candidate is not fatal; the connection may still succeed with others.
         })
         break
       case 'peer_left':
+        // The newcomer this display refused is gone: it was never shown as joined.
+        if (this.refusedJoin && this.state.peerName === null) {
+          this.refusedJoin = false
+          break
+        }
         this.allowedPending = null
         if (this.state.peerName !== null) this.emit({ kind: 'left', name: this.state.peerName })
         this.peer?.close()
@@ -784,6 +817,7 @@ export class ReceiverSession {
           this.emit({ kind: 'openDisabled' })
           if (this.state.phase === 'connecting' && this.mode === 'open') {
             this.mode = 'confirm'
+            this.hostMode = 'confirm'
             this.set({ joinMode: 'confirm', notice: { kind: 'open_disabled' } })
             this.sendCreateRoom()
           } else {
