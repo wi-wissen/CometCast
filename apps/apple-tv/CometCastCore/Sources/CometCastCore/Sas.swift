@@ -15,7 +15,10 @@ import Crypto
 /// The `a=fingerprint:sha-256 XX:..` of an SDP, normalised to lower case hex, or nil. Same rule as
 /// `sdp_fingerprint` in crates/cc-transport/src/sas.rs (vectors: tests/fixtures/sas.json): lines end at LF, one CR
 /// right before it belongs to the line end; an SDP with any other CR or with U+2028 / U+2029 is refused; every
-/// `a=fingerprint:` line whose algorithm is `sha-256` (in any case) must hold 32 hex pairs and all must agree.
+/// `a=fingerprint:` line must name `sha-256` (in any case) and hold 32 hex pairs, and all must agree. A fingerprint
+/// line with another algorithm is refused (a DTLS stack may take the first fingerprint line), and so is any other
+/// line that holds the word `fingerprint` in any case, such as `a= fingerprint:..`: a lenient SDP parser reads that
+/// as a fingerprint, so a relay could otherwise pin DTLS to its own certificate and leave the genuine line here.
 public func sdpFingerprint(_ sdp: String) -> String? {
     let scalars = Array(sdp.unicodeScalars)
     if scalars.contains(where: { $0 == "\u{2028}" || $0 == "\u{2029}" }) { return nil }
@@ -32,10 +35,13 @@ public func sdpFingerprint(_ sdp: String) -> String? {
         if line.last == "\r" { line = line.dropLast() }
         if line.contains("\r") { return nil }
         let prefix = Array("a=fingerprint:".unicodeScalars)
-        guard line.count >= prefix.count, Array(line.prefix(prefix.count)) == prefix else { continue }
+        guard line.count >= prefix.count, Array(line.prefix(prefix.count)) == prefix else {
+            if String(String.UnicodeScalarView(line)).lowercased().contains("fingerprint") { return nil }
+            continue
+        }
         let rest = line.dropFirst(prefix.count)
         let alg = rest.prefix(while: { $0 != " " && $0 != "\t" })
-        guard String(String.UnicodeScalarView(alg)).lowercased() == "sha-256" else { continue }
+        guard String(String.UnicodeScalarView(alg)).lowercased() == "sha-256" else { return nil }
         var value = rest.dropFirst(alg.count)
         while let f = value.first, f == " " || f == "\t" { value = value.dropFirst() }
         while let l = value.last, l == " " || l == "\t" { value = value.dropLast() }

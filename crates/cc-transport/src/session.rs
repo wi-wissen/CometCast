@@ -344,6 +344,7 @@ impl Session {
 
     /// Take the peer's offer and return our answer SDP.
     pub async fn accept_offer(&self, sdp: String) -> Result<String, TransportError> {
+        Self::check_remote_fingerprint(&sdp)?;
         self.set_sdp(None, Some(sdp.clone()));
         let offer = RTCSessionDescription::offer(sdp)?;
         self.pc.set_remote_description(offer).await?;
@@ -361,10 +362,24 @@ impl Session {
 
     /// Take the peer's answer to our offer.
     pub async fn accept_answer(&self, sdp: String) -> Result<(), TransportError> {
+        Self::check_remote_fingerprint(&sdp)?;
         self.set_sdp(None, Some(sdp.clone()));
         let answer = RTCSessionDescription::answer(sdp)?;
         self.pc.set_remote_description(answer).await?;
         self.flush_pending_candidates().await;
+        Ok(())
+    }
+
+    /// A remote description is only taken when the connection check code can be made from it:
+    /// one unambiguous SHA-256 fingerprint, read by the strict rule of [`crate::sas`]. Without
+    /// this a relay could send an SDP whose fingerprint the DTLS stack reads differently (or
+    /// one that gives no code at all), and the session would run with no code to compare.
+    fn check_remote_fingerprint(sdp: &str) -> Result<(), TransportError> {
+        if crate::sas::sdp_fingerprint(sdp).is_none() {
+            return Err(TransportError::Invalid(
+                "remote description has no unambiguous SHA-256 fingerprint".into(),
+            ));
+        }
         Ok(())
     }
 

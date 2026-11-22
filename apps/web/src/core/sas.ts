@@ -9,9 +9,10 @@
 /**
  * The `a=fingerprint:sha-256 XX:..` of an SDP, lowercase, or null. Lines end at LF (one CR before it
  * is part of the line end), as for the DTLS stack's SDP parser; an SDP with any other CR, U+2028 or
- * U+2029, or whose sha-256 fingerprint lines (any case, session and media level) disagree or are
- * malformed, gives null. So a relay cannot hide a second fingerprint that only this check would
- * read. Same rule as crates/cc-transport/src/sas.rs; vectors: tests/fixtures/sas.json.
+ * U+2029, or whose fingerprint lines (session and media level) are not all sha-256 (any case), disagree
+ * or are malformed, gives null; so does any other line that holds the word "fingerprint" (any case),
+ * such as `a= fingerprint:..`, which a lenient SDP parser reads as a fingerprint. So a relay cannot
+ * show one fingerprint to this check and another one to DTLS. Same rule as crates/cc-transport/src/sas.rs; vectors: tests/fixtures/sas.json.
  */
 export function sdpFingerprint(sdp: string): string | null {
   if (/[\u2028\u2029]/.test(sdp)) return null
@@ -19,10 +20,15 @@ export function sdpFingerprint(sdp: string): string | null {
   for (const raw of sdp.split('\n')) {
     const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
     if (line.includes('\r')) return null
-    if (!line.startsWith('a=fingerprint:')) continue
+    if (!line.startsWith('a=fingerprint:')) {
+      // `a= fingerprint:..` and the like: a fingerprint for a lenient SDP parser, so never skipped.
+      if (/fingerprint/i.test(line)) return null
+      continue
+    }
     const rest = line.slice('a=fingerprint:'.length)
     const m = /^([^ \t]*)(.*)$/s.exec(rest)!
-    if (m[1].toLowerCase() !== 'sha-256') continue
+    // Another algorithm is refused, not skipped: a DTLS stack may take the first fingerprint line.
+    if (m[1].toLowerCase() !== 'sha-256') return null
     const value = m[2].replace(/^[ \t]+|[ \t]+$/g, '')
     if (!/^[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){31}$/.test(value)) return null
     const fp = value.toLowerCase()

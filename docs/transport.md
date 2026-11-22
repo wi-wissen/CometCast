@@ -80,7 +80,7 @@ cargo run -p cometcast-cli -- send-file <CODE> photo.png            # or a .pdf;
 cargo run -p cometcast-cli -- send-link <CODE> https://example.org/
 ```
 
-`ADDRESS` is `HOST:PORT` (plain `ws://`) or a `ws://`, `wss://`, `http://` or `https://` URL.
+`ADDRESS` is `HOST:PORT` (TLS, `wss://`; plain `ws://` only for a loopback or private IP address, `localhost` or a `.local` name) or a `ws://`, `wss://`, `http://` or `https://` URL.
 `--ca-file` trusts the certificate(s) in a PEM file in addition to the system store (for the self-signed
 certificate of a development server, `tls.self_signed_cert_out` in [server.md](server.md)).
 
@@ -234,7 +234,7 @@ first seconds (the Rust receiver sends a picture-loss request at the start).
 - One video m-line, no audio. The `control` data channel exists (see above); the signalling `control` messages of protocol.md are still ignored by the cores.
 - One sender per `ReceiverCore`: after `peer_left` the core stops. A new sender needs a new core (and a new room code).
 - Candidates: native clients leave `sdpMid` out (`null`) and set `sdpMLineIndex` to 0. With media plus data channel, or a data channel alone, everything is in one BUNDLE group and this worked against Chromium; other browsers are untested.
-- Server addresses accepted: `host:port`, `host:port/ws`, `ws://...`, `wss://...`, `http://...` (read as `ws://`), `https://...` (read as `wss://`).
+- Server addresses accepted: `host:port`, `host:port/ws` (both read as `wss://`, or as `ws://` when the host is a loopback, private or link-local IP literal, `localhost` or a `.local` name), `ws://...`, `wss://...`, `http://...` (read as `ws://`), `https://...` (read as `wss://`).
 - Disconnected state: the library may report `Disconnected` and recover; both cores treat `Failed` and signalling loss as final, `Disconnected` is not.
   The receiver also gives up (error event) if no connection exists 30 s after the offer arrived (UNCERTAIN: placeholder value). The sender has no such timeout yet.
   UNCERTAIN: no reconnect or ICE restart logic.
