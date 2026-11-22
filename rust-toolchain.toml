@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Uses the newest stable Rust. rustfmt and clippy are needed for CI.
+# One exact Rust version for everybody: local builds, the check workflows and the release
+# (RUST_VERSION in .github/workflows/release.yml names the same one). "stable" moved under the
+# checks: generated code and lints changed with a new compiler without any change here. Bump by
+# hand, in both places, and run the checks. rustfmt and clippy are needed for CI.
 [toolchain]
-channel = "stable"
+channel = "1.97.0"
 components = ["rustfmt", "clippy"]

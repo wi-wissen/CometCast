@@ -63,8 +63,8 @@ jobs:
         run: node tools/check-site-links.mjs site --without-app
       - name: Install the Rust toolchain and the wasm target
         run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup toolchain install 1.97.0 --profile minimal --no-self-update
+          rustup default 1.97.0
           rustup target add wasm32-unknown-unknown
       # The wasm-bindgen CLI must be exactly the version of the wasm-bindgen crate in Cargo.lock.
       - name: Install the wasm-bindgen CLI of the version in Cargo.lock

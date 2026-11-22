@@ -402,6 +402,12 @@ fn run_worker(
     if let Some(root) = std::env::var_os("SystemRoot") {
         c.env("SystemRoot", root);
     }
+    // Descriptors this process got from whoever started it, or that a native library opened
+    // without close-on-exec, would be handed down to the worker (Rust itself opens everything
+    // close-on-exec). The worker reads hostile input, so it gets the three standard ones only:
+    // every other descriptor of this process is marked close-on-exec before the worker starts.
+    #[cfg(unix)]
+    close_fds::set_fds_cloexec_threadsafe(3, &[]);
     let mut child = c.spawn().map_err(|e| {
         OfficeError::WorkerUnavailable(format!("{}: {e}", worker.program.display()))
     })?;

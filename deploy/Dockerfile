@@ -44,8 +44,8 @@ RUN COMETCAST_BRANDING="$COMETCAST_BRANDING" npm run build
 FROM rust:1.99-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c AS build
 WORKDIR /src
 COPY . .
-# rust-toolchain.toml says channel = "stable". rustup would then try to DOWNLOAD a toolchain called
-# "stable" (the image only has the numbered one) and the build fails. Use the image's toolchain.
+# rust-toolchain.toml names a Rust version. rustup would then try to DOWNLOAD that toolchain (the
+# image only has its own numbered one) and the build fails. Use the image's toolchain.
 RUN rm -f rust-toolchain.toml
 # --locked: use exactly the versions in Cargo.lock.
 # The optional extra_ca secret is only for builds behind a TLS-intercepting proxy (see above).
