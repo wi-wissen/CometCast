@@ -22,9 +22,14 @@ const DOMAIN: &str = "cometcast/connection-check/v1";
 /// * a line ends at LF; one CR right before it belongs to the line end;
 /// * an SDP with any other CR, or with U+2028 / U+2029, is refused (a bare CR would hide a
 ///   line inside another attribute for one reader and not for the other);
-/// * every `a=fingerprint:` line whose algorithm is `sha-256` (in any case), at session and
-///   at media level, must hold exactly 32 hex pairs separated by colons (after spaces or
-///   tabs) and all of them must agree; otherwise the SDP is refused.
+/// * every `a=fingerprint:` line, at session and at media level, must name `sha-256` (in any
+///   case) and hold exactly 32 hex pairs separated by colons (after spaces or tabs), and all
+///   of them must agree; otherwise the SDP is refused. A line with another algorithm is
+///   refused too: the DTLS stack takes the first fingerprint line, whatever its algorithm;
+/// * a line that holds the word `fingerprint` (in any case) anywhere but does not start with
+///   exactly `a=fingerprint:` is refused. The DTLS stack trims the text after `a=`, so
+///   `a= fingerprint:..` is a fingerprint for it; without this rule a relay could pin DTLS
+///   to its own certificate with such a line and leave the genuine line for this check.
 ///
 /// Same rule as `sdpFingerprint` in the web client and the Swift core (vectors:
 /// `tests/fixtures/sas.json`).
@@ -39,11 +44,14 @@ pub fn sdp_fingerprint(sdp: &str) -> Option<String> {
             return None;
         }
         let Some(rest) = line.strip_prefix("a=fingerprint:") else {
+            if contains_fingerprint_word(line) {
+                return None;
+            }
             continue;
         };
         let alg_end = rest.find([' ', '\t']).unwrap_or(rest.len());
         if !rest[..alg_end].eq_ignore_ascii_case("sha-256") {
-            continue;
+            return None;
         }
         // One or more spaces or tabs, the fingerprint, optional trailing spaces or tabs.
         let fp = rest[alg_end..].trim_matches([' ', '\t']);
@@ -58,6 +66,14 @@ pub fn sdp_fingerprint(sdp: &str) -> Option<String> {
         }
     }
     found
+}
+
+/// Does the line hold `fingerprint`, in any ASCII case, anywhere?
+fn contains_fingerprint_word(line: &str) -> bool {
+    const WORD: &[u8] = b"fingerprint";
+    line.as_bytes()
+        .windows(WORD.len())
+        .any(|w| w.eq_ignore_ascii_case(WORD))
 }
 
 fn is_fingerprint(s: &str) -> bool {

@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::cryptoutil::{hex, random};
-use crate::error::{Result, SenderError};
+use crate::cryptoutil::{hex, random, unhex};
+use crate::discovery::Device;
+use crate::error::{Result, SenderError, clean};
 
 /// What we keep after a successful pairing. Seeds are secret: `Debug` hides them.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -23,6 +24,12 @@ pub enum Credentials {
         client_id: String,
         /// Ed25519 seed, 64 hex digits.
         seed: String,
+        /// The receiver's long-term Ed25519 public key (64 hex digits), remembered when the
+        /// pairing was made (trust on first use). `None` in files written by older versions
+        /// and for receivers that announced no usable key: pair-verify then cannot check who
+        /// answers (see `legacy::pair_verify`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        receiver_key: Option<String>,
     },
     /// HomeKit-style PIN pairing (`/pair-setup` with TLV8).
     Hap {
@@ -35,6 +42,35 @@ pub enum Credentials {
         /// The receiver's long-term Ed25519 public key, 64 hex digits.
         device_key: String,
     },
+}
+
+impl Credentials {
+    /// Remember the receiver's long-term Ed25519 public key in legacy credentials, so that
+    /// later pair-verify runs check the receiver's signature against it. `key_hex` is the
+    /// `pk` value of the receiver's mDNS record ([`Device::public_key`]); a missing value or
+    /// one that is not 64 hex digits of a valid key leaves the credentials without a key.
+    /// HomeKit credentials already hold the receiver's key and are returned unchanged.
+    ///
+    /// UNCERTAIN: the mDNS record is not authenticated. A device that answers in place of the
+    /// receiver while the pairing is made can get its own key remembered (trust on first use).
+    pub fn with_receiver_key(self, key_hex: Option<&str>) -> Self {
+        match self {
+            Self::Legacy {
+                client_id, seed, ..
+            } => {
+                let receiver_key = key_hex
+                    .and_then(unhex::<32>)
+                    .filter(|k| ed25519_dalek::VerifyingKey::from_bytes(k).is_ok())
+                    .map(|k| hex(&k));
+                Self::Legacy {
+                    client_id,
+                    seed,
+                    receiver_key,
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 impl std::fmt::Debug for Credentials {
@@ -57,6 +93,40 @@ impl std::fmt::Debug for Credentials {
                 .finish_non_exhaustive(),
         }
     }
+}
+
+/// One entry of the store file: the credentials, and the name the receiver had when it was
+/// paired. The name is written next to the fields of the credentials, so files of older
+/// versions (no name) still load and older versions ignore the name.
+#[derive(Clone, Serialize, Deserialize)]
+struct Entry {
+    /// The receiver's cleaned name at pairing time; `None` = unknown (older file).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(flatten)]
+    creds: Credentials,
+}
+
+/// Longest receiver name kept in the store (the length [`Device::name`] is cut to).
+const MAX_NAME_CHARS: usize = 128;
+
+/// The form in which receiver names are compared: cleaned, without outer spaces, lower case.
+fn name_key(name: &str) -> String {
+    clean(name, MAX_NAME_CHARS).trim().to_lowercase()
+}
+
+/// What the store knows about a receiver ([`PairingStore::lookup`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Lookup {
+    /// Credentials are stored for this receiver's key.
+    Paired(Credentials),
+    /// Nothing is stored for this receiver's key, but a receiver with the same name was
+    /// paired under another key. The device id comes from mDNS, which anybody on the network
+    /// can fake: this may be an impostor that copies the name of a paired receiver, so it
+    /// must not be used without authentication (pair it with its PIN, or refuse).
+    NameClash,
+    /// Nothing is stored for this key or this name.
+    Unknown,
 }
 
 /// A JSON file with the credentials of all paired receivers, keyed by device id.
@@ -96,7 +166,7 @@ impl PairingStore {
         &self.path
     }
 
-    fn load_all(&self) -> Result<BTreeMap<String, Credentials>> {
+    fn load_all(&self) -> Result<BTreeMap<String, Entry>> {
         let meta = match std::fs::metadata(&self.path) {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
@@ -112,15 +182,53 @@ impl PairingStore {
 
     /// Credentials for a device key, if any.
     pub fn get(&self, key: &str) -> Result<Option<Credentials>> {
-        Ok(self.load_all()?.remove(key))
+        Ok(self.load_all()?.remove(key).map(|e| e.creds))
+    }
+
+    /// What is stored for a receiver: its credentials (by [`Device::store_key`]), or the fact
+    /// that another key holds credentials for a receiver of the same name. Callers must not
+    /// use a [`Lookup::NameClash`] receiver without authentication.
+    pub fn lookup(&self, device: &Device) -> Result<Lookup> {
+        let mut all = self.load_all()?;
+        if let Some(e) = all.remove(&device.store_key()) {
+            return Ok(Lookup::Paired(e.creds));
+        }
+        let name = name_key(&device.name);
+        let clash = !name.is_empty()
+            && all
+                .values()
+                .any(|e| e.name.as_deref().is_some_and(|n| name_key(n) == name));
+        Ok(if clash {
+            Lookup::NameClash
+        } else {
+            Lookup::Unknown
+        })
     }
 
     /// Save (or replace) the credentials for a device key. Returns whether an entry for the
     /// key existed before (the caller should tell the user: the key comes from mDNS, which
     /// anybody on the network can fake, see `docs/airplay-sender.md`).
+    ///
+    /// No name is stored with the entry (a name already stored for the key is kept), so
+    /// [`PairingStore::lookup`] cannot warn about another device that uses this receiver's
+    /// name: prefer [`PairingStore::put_named`].
     pub fn put(&self, key: &str, creds: Credentials) -> Result<bool> {
+        self.put_entry(key, None, creds)
+    }
+
+    /// Like [`PairingStore::put`], and remember the receiver's name ([`Device::name`]) with
+    /// the credentials, for [`PairingStore::lookup`].
+    pub fn put_named(&self, key: &str, name: &str, creds: Credentials) -> Result<bool> {
+        self.put_entry(key, Some(name), creds)
+    }
+
+    fn put_entry(&self, key: &str, name: Option<&str>, creds: Credentials) -> Result<bool> {
         let mut all = self.load_all()?;
-        let replaced = all.insert(key.to_owned(), creds).is_some();
+        let name = match name {
+            Some(n) => Some(clean(n, MAX_NAME_CHARS)).filter(|n| !n.trim().is_empty()),
+            None => all.get(key).and_then(|e| e.name.clone()),
+        };
+        let replaced = all.insert(key.to_owned(), Entry { name, creds }).is_some();
         let text =
             serde_json::to_string_pretty(&all).map_err(|e| SenderError::Store(e.to_string()))?;
         let dir = match self.path.parent() {
@@ -204,6 +312,7 @@ mod tests {
         let c = Credentials::Legacy {
             client_id: "00AA00AA00AA00AA".into(),
             seed: "11".repeat(32),
+            receiver_key: None,
         };
         store.put("a", c.clone()).unwrap();
         assert_eq!(store.get("a").unwrap(), Some(c));
@@ -229,6 +338,7 @@ mod tests {
         let c = Credentials::Legacy {
             client_id: "00AA00AA00AA00AA".into(),
             seed: "11".repeat(32),
+            receiver_key: None,
         };
         assert!(!store.put("k", c.clone()).unwrap());
         assert_eq!(mode(store.path().parent().unwrap()), 0o700);
@@ -271,7 +381,121 @@ mod tests {
         let c = Credentials::Legacy {
             client_id: "X".into(),
             seed: "secretseed".into(),
+            receiver_key: None,
         };
         assert!(!format!("{c:?}").contains("secretseed"));
+    }
+
+    fn legacy() -> Credentials {
+        Credentials::Legacy {
+            client_id: "00AA00AA00AA00AA".into(),
+            seed: "11".repeat(32),
+            receiver_key: None,
+        }
+    }
+
+    fn device(name: &str, id: &str) -> Device {
+        crate::discovery::device_from_parts(
+            &format!("{name}._airplay._tcp.local."),
+            "tv.local.",
+            7000,
+            ["192.168.1.9".parse().unwrap()],
+            [("deviceid".to_owned(), id.to_owned())],
+        )
+    }
+
+    #[test]
+    fn a_new_device_id_with_the_name_of_a_paired_receiver_is_a_clash() {
+        let dir = temp_dir("clash");
+        let store = PairingStore::at(dir.join("p.json"));
+        let tv = device("Living Room", "AA:BB:CC:DD:EE:01");
+        assert_eq!(store.lookup(&tv).unwrap(), Lookup::Unknown);
+        assert!(
+            !store
+                .put_named(&tv.store_key(), &tv.name, legacy())
+                .unwrap()
+        );
+        assert_eq!(store.lookup(&tv).unwrap(), Lookup::Paired(legacy()));
+        // Same name, another device id: an impostor (or a replaced TV); never "unknown".
+        let other = device("Living Room", "AA:BB:CC:DD:EE:02");
+        assert_eq!(store.lookup(&other).unwrap(), Lookup::NameClash);
+        // Case and outer spaces do not hide the clash.
+        let disguised = device(" living ROOM ", "AA:BB:CC:DD:EE:03");
+        assert_eq!(store.lookup(&disguised).unwrap(), Lookup::NameClash);
+        // Another name is just an unknown device.
+        let kitchen = device("Kitchen", "AA:BB:CC:DD:EE:04");
+        assert_eq!(store.lookup(&kitchen).unwrap(), Lookup::Unknown);
+        // A plain `put` over the entry keeps the stored name.
+        assert!(store.put(&tv.store_key(), legacy()).unwrap());
+        assert_eq!(store.lookup(&other).unwrap(), Lookup::NameClash);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn files_of_older_versions_load_and_have_no_names() {
+        let dir = temp_dir("oldfile");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("p.json");
+        // The format before names and receiver keys were stored.
+        std::fs::write(
+            &p,
+            format!(
+                r#"{{"aa:bb:cc:dd:ee:01": {{"kind": "legacy", "client_id": "00AA00AA00AA00AA", "seed": "{}"}},
+                    "aa:bb:cc:dd:ee:05": {{"kind": "hap", "pairing_id": "p", "seed": "{}", "device_id": "d", "device_key": "k"}}}}"#,
+                "11".repeat(32),
+                "22".repeat(32)
+            ),
+        )
+        .unwrap();
+        let store = PairingStore::at(&p);
+        assert_eq!(store.get("aa:bb:cc:dd:ee:01").unwrap(), Some(legacy()));
+        assert!(matches!(
+            store.get("aa:bb:cc:dd:ee:05").unwrap(),
+            Some(Credentials::Hap { .. })
+        ));
+        // The name is unknown, so no clash can be reported for old entries.
+        let other = device("Living Room", "AA:BB:CC:DD:EE:02");
+        assert_eq!(store.lookup(&other).unwrap(), Lookup::Unknown);
+        // Writing keeps the old entries readable and adds the name only to the new one.
+        store
+            .put_named(&other.store_key(), &other.name, legacy())
+            .unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(text.matches("\"name\"").count(), 1, "{text}");
+        assert!(!text.contains("receiver_key"), "{text}");
+        assert!(matches!(
+            store.get("aa:bb:cc:dd:ee:05").unwrap(),
+            Some(Credentials::Hap { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn receiver_key_is_kept_only_when_it_is_a_key() {
+        let key = |c: Credentials| match c {
+            Credentials::Legacy { receiver_key, .. } => receiver_key,
+            Credentials::Hap { .. } => panic!("legacy expected"),
+        };
+        let pk = ed25519_dalek::SigningKey::from_bytes(&[7; 32])
+            .verifying_key()
+            .to_bytes();
+        let pk_hex = hex(&pk);
+        assert_eq!(
+            key(legacy().with_receiver_key(Some(&pk_hex.to_uppercase()))),
+            Some(pk_hex.clone())
+        );
+        assert_eq!(key(legacy().with_receiver_key(None)), None);
+        assert_eq!(key(legacy().with_receiver_key(Some("aa"))), None);
+        assert_eq!(
+            key(legacy().with_receiver_key(Some(&"zz".repeat(32)))),
+            None
+        );
+        // The key survives the store.
+        let dir = temp_dir("rkey");
+        let store = PairingStore::at(dir.join("p.json"));
+        let c = legacy().with_receiver_key(Some(&pk_hex));
+        store.put("a", c.clone()).unwrap();
+        assert_eq!(store.get("a").unwrap(), Some(c));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

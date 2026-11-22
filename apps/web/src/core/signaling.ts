@@ -3,6 +3,7 @@
 // Signalling client. Messages mirror crates/cc-proto and docs/protocol.md (version 2).
 
 import { isValidRoomCode } from './roomCode'
+import { sanitizeName } from './control'
 import { isWellFormedDevice, type JoinDevice } from './deviceIdentity'
 
 export const PROTO_VERSION = 2
@@ -100,8 +101,17 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
  * `room_name` is optional (protocol: additive). Absent, null, not a string or only white space all mean
  * "no room name"; the rest of the message stays valid. The server cleaned the text; it is shown as plain text.
  */
+/**
+ * A name that came from the server, made safe to show: invisible and bidirectional control characters removed
+ * and cut at 40 characters. The server does the same, but a relay is not trusted to have done it.
+ */
+function shownName(s: string): string {
+  return Array.from(sanitizeName(s)).slice(0, MAX_SHOWN_NAME).join('')
+}
+const MAX_SHOWN_NAME = 40
+
 function roomNameField(o: Record<string, unknown>): { room_name?: string } {
-  return isStr(o.room_name) && o.room_name.trim() !== '' ? { room_name: o.room_name } : {}
+  return isStr(o.room_name) && o.room_name.trim() !== '' ? { room_name: shownName(o.room_name) } : {}
 }
 
 /**
@@ -138,18 +148,18 @@ export function decodeServerMessage(text: unknown): ServerMessage | null {
     case 'room_ended':
       return { type: o.type }
     case 'blocked':
-      return isNum(o.id) && isStr(o.name) ? { type: 'blocked', id: o.id, name: o.name } : null
+      return isNum(o.id) && isStr(o.name) ? { type: 'blocked', id: o.id, name: shownName(o.name) } : null
     case 'unblocked':
       return isNum(o.id) ? { type: 'unblocked', id: o.id } : null
     case 'peer_joined':
-      return isStr(o.name) ? { type: 'peer_joined', name: o.name, ...(isStr(o.handover) ? { handover: o.handover } : {}), ...deviceField(o) } : null
+      return isStr(o.name) ? { type: 'peer_joined', name: shownName(o.name), ...(isStr(o.handover) ? { handover: o.handover } : {}), ...deviceField(o) } : null
     case 'join_pending':
       return isNum(o.timeout_secs) && isNum(o.check)
         ? { type: 'join_pending', timeout_secs: o.timeout_secs, check: o.check, ...roomNameField(o) }
         : null
     case 'join_request':
       return isNum(o.id) && isStr(o.name) && isNum(o.check)
-        ? { type: 'join_request', id: o.id, name: o.name, check: o.check, ...(isStr(o.handover) ? { handover: o.handover } : {}), ...deviceField(o) }
+        ? { type: 'join_request', id: o.id, name: shownName(o.name), check: o.check, ...(isStr(o.handover) ? { handover: o.handover } : {}), ...deviceField(o) }
         : null
     case 'join_request_cancelled':
       return isNum(o.id) && isStr(o.reason) ? { type: 'join_request_cancelled', id: o.id, reason: o.reason } : null

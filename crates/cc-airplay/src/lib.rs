@@ -29,4 +29,7 @@ pub use policy::{
 pub use receive::{
     AirplayReceiver, ReceiveEvent, ReceiveOptions, has_mirroring_signal, locate_uxplay,
 };
-pub use supervisor::{AirplayEvent, Backoff, Supervisor, SupervisorOptions, status_after};
+pub use supervisor::{
+    AirplayEvent, Backoff, MAX_PIN_TRIES, PIN_TRIES_WINDOW, Supervisor, SupervisorOptions,
+    status_after,
+};

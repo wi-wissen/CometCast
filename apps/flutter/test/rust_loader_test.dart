@@ -65,7 +65,7 @@ void main() {
     );
   });
 
-  test('Windows: lib\\ first, then next to the exe, then plain name', () {
+  test('Windows: lib\\ first, then next to the exe, never the plain name', () {
     const dir = r'C:\cc';
     expect(
       coreLibraryCandidates(os: CoreOs.windows, exeDir: dir, separator: r'\'),
@@ -89,7 +89,7 @@ void main() {
         separator: r'\',
         fileExists: (p) => false,
       ),
-      'cc_ffi.dll',
+      r'C:\cc\cc_ffi.dll',
     );
   });
 

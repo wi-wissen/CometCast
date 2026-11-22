@@ -29,16 +29,32 @@ cert_file = "/etc/cometcast/certs/fullchain.pem"
 key_file = "/etc/cometcast/certs/privkey.pem"
 
 [network]
-# Only if a reverse proxy runs in front: its address. Then X-Forwarded-For is believed
-# from it and from nobody else. Checked in the first run: with "172.16.0.0/12" a request that
-# reached the published port from the same host (it arrived from the Docker bridge address)
-# had its X-Forwarded-For honoured (read from the right), and without the header it was refused
-# when `allow` did not contain the bridge address. Do not trust a wider range than your proxy.
+# Only if a reverse proxy runs in front: its EXACT address as the server sees it. Then
+# X-Forwarded-For is believed from it and from nobody else.
+# With a reverse proxy, also publish the port on loopback only (docker-compose.yml:
+# "127.0.0.1:8443:8443"). Otherwise clients can reach the server directly, past the proxy,
+# and where Docker does not keep the source address (userland proxy, rootless Docker, Docker
+# Desktop) every such client arrives from the Docker bridge address: with a trusted range
+# like "172.16.0.0/12" each of them would be a "trusted proxy" and could put any address
+# into X-Forwarded-For (to pass `allow`, to escape limits and bans).
+# With the proxy on the Docker host the address is the gateway of the compose network; find it
+# with `docker network inspect <project>_default` (the "Gateway" line) and trust only that
+# one address, never a whole range. Leave the line out when no proxy is in front.
+# Checked in the first run with "172.16.0.0/12" (too wide, see above): a request that reached
+# the published port from the same host arrived from the Docker bridge address, had its
+# X-Forwarded-For honoured (read from the right), and without the header it was refused when
+# `allow` did not contain the bridge address.
 # UNCERTAIN: which source address the server sees for a REMOTE client through Docker's port
 # publishing (NAT keeps it, the userland proxy replaces it) was not tested.
-# trusted_proxies = ["172.16.0.0/12"]
-# Networks of the organisation. Empty = everybody may connect.
-# allow = ["10.0.0.0/8", "192.168.0.0/16"]
+# trusted_proxies = ["172.18.0.1"]
+# Networks of the organisation: only they may use the server. REQUIRED with [turn] below (the
+# server refuses to start with [turn] and an empty list): GET /ice-servers hands TURN
+# credentials to every client that passes this list, and port 8443 is published by
+# docker-compose.yml. These are the private IPv4 ranges and the IPv6 unique local range;
+# replace them with your own networks. If your users come from the internet, list their
+# networks, or (only if anybody may really use your TURN relay) empty this list and set
+# allow_public = true in [turn].
+allow = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
 
 [altcha]
 # "optional": only checked when the client sends a solution.
@@ -62,3 +78,6 @@ urls = ["turn:relay.example.org:3478?transport=udp", "turns:relay.example.org:53
 stun_urls = ["stun:relay.example.org:3478"]
 secret_file = "/run/secrets/turn_secret"
 ttl_secs = 3600
+# true = hand out TURN credentials although [network] allow is empty, that is to every host
+# that can reach the server. Not needed (and better left out) with an allow list.
+# allow_public = false

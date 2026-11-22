@@ -170,6 +170,9 @@ pub enum JoinProgress {
 const JOIN_ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// Extra time on top of the server's approval timeout before the client gives up itself.
 const APPROVAL_SLACK: Duration = Duration::from_secs(15);
+/// Longest wait for the host's answer that a server can ask for (its default is 60 s).
+/// UNCERTAIN: 10 minutes is a placeholder, far above every configured value we know of.
+const MAX_APPROVAL_SECS: u64 = 600;
 
 /// Join a room as a sender and wait until the server says `joined`.
 ///
@@ -228,8 +231,10 @@ pub async fn join_room_with(
                         room_name,
                     });
                 }
+                // The number is the server's: bounded, so that it can neither overflow the
+                // addition (a panic) nor switch the deadline off.
                 deadline = tokio::time::Instant::now()
-                    + Duration::from_secs(timeout_secs)
+                    + Duration::from_secs(timeout_secs.min(MAX_APPROVAL_SECS))
                     + APPROVAL_SLACK;
             }
             Some(ServerMsg::Error { code, message }) => {
@@ -263,8 +268,10 @@ mod tests {
     fn ws_url_forms() {
         let ok = |i: &str| ws_url(i).unwrap();
         assert_eq!(ok("127.0.0.1:8443"), "ws://127.0.0.1:8443/ws");
-        assert_eq!(ok("example.org:1/"), "ws://example.org:1/ws");
-        assert_eq!(ok("example.org:1/ws"), "ws://example.org:1/ws");
+        // No scheme: TLS, except inside the local network (see `ServerAddr::parse`).
+        assert_eq!(ok("example.org:1/"), "wss://example.org:1/ws");
+        assert_eq!(ok("example.org:1/ws"), "wss://example.org:1/ws");
+        assert_eq!(ok("192.168.0.9:1/ws"), "ws://192.168.0.9:1/ws");
         assert_eq!(ok("ws://x:1"), "ws://x:1/ws");
         assert_eq!(ok("ws://x:1/ws"), "ws://x:1/ws");
         assert_eq!(ok("http://x:1"), "ws://x:1/ws");

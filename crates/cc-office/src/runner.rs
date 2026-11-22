@@ -378,7 +378,16 @@ fn run_worker(
         .arg(limits.memory_bytes.to_string())
         .arg("--fsize")
         .arg(limits.max_output_bytes.to_string());
+    // The engine writes fonts that are embedded in the document into the temporary directory.
+    // That must be inside the private work directory: not the shared system one (readable by
+    // other users, and left behind when the worker is killed), which is what an empty
+    // environment would give. The work directory is removed with everything in it.
+    let tmp = work.0.join("tmp");
+    std::fs::create_dir(&tmp).map_err(|e| OfficeError::Io(e.to_string()))?;
     c.env_clear()
+        .env("TMPDIR", &tmp)
+        .env("TEMP", &tmp)
+        .env("TMP", &tmp)
         .current_dir(&work.0)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

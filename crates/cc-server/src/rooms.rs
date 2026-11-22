@@ -10,6 +10,7 @@ use cc_proto::{
 };
 use rand::Rng;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::sync::{Notify, mpsc};
 use tokio::time::Instant;
@@ -19,42 +20,107 @@ use tokio::time::Instant;
 pub(crate) enum Outgoing {
     /// Send this message as a JSON text frame.
     Msg(ServerMsg),
-    /// Send a WebSocket ping (liveness check).
-    Ping,
+    /// Send a WebSocket ping with this payload (liveness check; the pong must echo it).
+    Ping([u8; 8]),
     /// Send a close frame with this reason text, then stop.
     Close(&'static str),
 }
 
-/// Handle to one connection's outgoing queue. The queue is bounded: if a client
-/// does not read fast enough and the queue is full, the connection is told to
-/// close (via `kill`) instead of letting memory grow without limit.
+/// One entry of the outgoing queue: what [`Outgoing`] becomes when it is queued. A message
+/// is turned into its JSON text at once, so its size is known.
+#[derive(Debug)]
+pub(crate) enum Frame {
+    Text(String),
+    Ping([u8; 8]),
+    Close(&'static str),
+}
+
+impl Frame {
+    /// Bytes this entry counts toward the byte limit of the queue.
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Text(t) => t.len(),
+            Self::Ping(_) | Self::Close(_) => 0,
+        }
+    }
+}
+
+/// Handle to one connection's outgoing queue. The queue is bounded, by the number of
+/// messages and by their bytes: if a client does not read fast enough and the queue is
+/// full, the connection is told to close (via `kill`) instead of letting memory grow.
 #[derive(Clone)]
 pub(crate) struct Tx {
-    queue: mpsc::Sender<Outgoing>,
+    queue: mpsc::Sender<Frame>,
     kill: Arc<Notify>,
+    /// Bytes of text that are queued or being written right now.
+    queued: Arc<AtomicUsize>,
+    max_bytes: usize,
+}
+
+/// The receiving end of a [`Tx`], for the writer task.
+pub(crate) struct Rx {
+    queue: mpsc::Receiver<Frame>,
+    queued: Arc<AtomicUsize>,
+}
+
+impl Rx {
+    /// The next entry; `None` when every [`Tx`] is gone.
+    pub(crate) async fn recv(&mut self) -> Option<Frame> {
+        self.queue.recv().await
+    }
+
+    /// The writer is done with an entry (written or given up): its bytes no longer count.
+    pub(crate) fn written(&self, frame_len: usize) {
+        self.queued.fetch_sub(frame_len, Ordering::Relaxed);
+    }
 }
 
 impl Tx {
-    /// New queue with room for `len` messages. Returns the handle, the receiving end
-    /// for the writer task, and the signal the connection waits on to be closed.
-    pub(crate) fn new(len: usize) -> (Self, mpsc::Receiver<Outgoing>, Arc<Notify>) {
+    /// New queue with room for `len` messages and `max_bytes` bytes of text. Returns the
+    /// handle, the receiving end for the writer task, and the signal the connection waits on
+    /// to be closed.
+    pub(crate) fn new(len: usize, max_bytes: usize) -> (Self, Rx, Arc<Notify>) {
         let (queue, rx) = mpsc::channel(len.max(1));
         let kill = Arc::new(Notify::new());
+        let queued = Arc::new(AtomicUsize::new(0));
         (
             Self {
                 queue,
                 kill: kill.clone(),
+                queued: queued.clone(),
+                max_bytes,
             },
-            rx,
+            Rx { queue: rx, queued },
             kill,
         )
     }
 
-    /// Queue a message. Never waits. If the queue is full, the connection is killed.
+    /// Queue a message. Never waits. If the queue is full (too many messages, or too many
+    /// bytes), the connection is killed. A message that finds the queue empty always fits,
+    /// whatever its size, so one legitimate large message cannot kill a connection.
     pub(crate) fn send(&self, out: Outgoing) {
-        if let Err(mpsc::error::TrySendError::Full(_)) = self.queue.try_send(out) {
+        let frame = match out {
+            Outgoing::Msg(m) => match serde_json::to_string(&m) {
+                Ok(text) => Frame::Text(text),
+                Err(_) => return,
+            },
+            Outgoing::Ping(payload) => Frame::Ping(payload),
+            Outgoing::Close(reason) => Frame::Close(reason),
+        };
+        let len = frame.len();
+        let before = self.queued.fetch_add(len, Ordering::Relaxed);
+        let too_many_bytes = before > 0 && before.saturating_add(len) > self.max_bytes;
+        if too_many_bytes {
+            self.queued.fetch_sub(len, Ordering::Relaxed);
             // `notify_one` remembers the signal even if nobody waits yet.
             self.kill.notify_one();
+            return;
+        }
+        if let Err(e) = self.queue.try_send(frame) {
+            self.queued.fetch_sub(len, Ordering::Relaxed);
+            if let mpsc::error::TrySendError::Full(_) = e {
+                self.kill.notify_one();
+            }
         }
     }
 }
@@ -117,6 +183,8 @@ pub(crate) struct Rooms {
     map: HashMap<RoomCode, Room>,
     /// Rooms per owner address.
     per_owner: HashMap<IpAddr, usize>,
+    /// Rooms per IPv6 /48 of the owner (IPv6 owners only).
+    per_owner_wide: HashMap<IpAddr, usize>,
     /// Waiting join requests per client address (all rooms).
     pending_per_ip: HashMap<IpAddr, usize>,
 }
@@ -220,11 +288,9 @@ impl Rooms {
         for p in &room.pending {
             Self::dec(&mut self.pending_per_ip, p.ip);
         }
-        if let Some(n) = self.per_owner.get_mut(&room.owner) {
-            *n = n.saturating_sub(1);
-            if *n == 0 {
-                self.per_owner.remove(&room.owner);
-            }
+        Self::dec(&mut self.per_owner, room.owner);
+        if let Some(wide) = crate::limits::wide_key(room.owner) {
+            Self::dec(&mut self.per_owner_wide, wide);
         }
         Some(room)
     }
@@ -240,7 +306,8 @@ impl Rooms {
 
     /// Create a room with a fresh random code (retry on collision).
     /// Also returns a signal that fires when the room is removed.
-    /// Fails when `max_rooms` rooms exist already, or `owner` has `max_per_owner`.
+    /// Fails when `max_rooms` rooms exist already, `owner` has `max_per_owner`, or (IPv6) the
+    /// /48 of `owner` has `max_per_owner_wide`.
     /// `raw_room_name` is untrusted and gets cleaned ([`sanitize_room_name`]).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create(
@@ -250,6 +317,7 @@ impl Rooms {
         owner: IpAddr,
         max_rooms: usize,
         max_per_owner: usize,
+        max_per_owner_wide: usize,
         mode: JoinMode,
         raw_room_name: Option<&str>,
     ) -> Result<(RoomCode, Arc<Notify>), CreateError> {
@@ -257,6 +325,12 @@ impl Rooms {
             return Err(CreateError::ServerFull);
         }
         if self.per_owner.get(&owner).copied().unwrap_or(0) >= max_per_owner {
+            return Err(CreateError::OwnerFull);
+        }
+        let wide = crate::limits::wide_key(owner);
+        if wide.is_some_and(|w| {
+            self.per_owner_wide.get(&w).copied().unwrap_or(0) >= max_per_owner_wide
+        }) {
             return Err(CreateError::OwnerFull);
         }
         let mut rng = rand::rng();
@@ -296,6 +370,9 @@ impl Rooms {
                 },
             );
             *self.per_owner.entry(owner).or_insert(0) += 1;
+            if let Some(w) = wide {
+                *self.per_owner_wide.entry(w).or_insert(0) += 1;
+            }
             return Ok((code, cancel));
         }
     }
@@ -715,14 +792,14 @@ mod tests {
     #[tokio::test]
     async fn block_list_full_keeps_the_pending_counts() {
         let mut rooms = Rooms::default();
-        let (owner, _orx, _) = Tx::new(8);
+        let (owner, _orx, _) = Tx::new(8, 1 << 20);
         let (code, _) = rooms
-            .create(1, owner, ip(1), 10, 10, JoinMode::Confirm, None)
+            .create(1, owner, ip(1), 10, 10, 10, JoinMode::Confirm, None)
             .unwrap();
         let mut rxs = Vec::new();
         let mut reqs = Vec::new();
         for (id, n) in [(2, 2), (3, 3), (4, 3)] {
-            let (tx, rx, _) = Tx::new(8);
+            let (tx, rx, _) = Tx::new(8, 1 << 20);
             rxs.push(rx);
             match rooms.join(&code, id, tx, None, ip(n), 8, 8).unwrap() {
                 Joined::Pending { req, .. } => reqs.push(req),
@@ -745,14 +822,14 @@ mod tests {
     #[test]
     fn check_numbers_are_unique_and_never_hang() {
         let mut rooms = Rooms::default();
-        let (owner, _orx, _) = Tx::new(8);
+        let (owner, _orx, _) = Tx::new(8, 1 << 20);
         let (code, _) = rooms
-            .create(1, owner, ip(1), 10, 10, JoinMode::Confirm, None)
+            .create(1, owner, ip(1), 10, 10, 10, JoinMode::Confirm, None)
             .unwrap();
         let mut rxs = Vec::new();
         // 95 waiting requests: the first 90 get distinct numbers, the rest still return.
         for id in 0..95u64 {
-            let (tx, rx, _) = Tx::new(1);
+            let (tx, rx, _) = Tx::new(1, 1 << 20);
             rxs.push(rx);
             rooms
                 .join(&code, id + 2, tx, None, ip(2), 1000, 1000)
@@ -769,5 +846,73 @@ mod tests {
                 .iter()
                 .all(|p| (10..=99).contains(&p.check))
         );
+    }
+
+    fn text(n: usize) -> Outgoing {
+        Outgoing::Msg(ServerMsg::Offer { sdp: "x".repeat(n) })
+    }
+
+    #[tokio::test]
+    async fn outgoing_queue_is_bounded_by_bytes_too() {
+        // Room for 1000 messages, but only 10 000 bytes.
+        let (tx, mut rx, kill) = Tx::new(1000, 10_000);
+        let killed = || {
+            // `notified()` completes at once when a signal was stored.
+            tokio::time::timeout(std::time::Duration::from_millis(10), kill.notified())
+        };
+        // A message far above the limit passes when nothing waits.
+        tx.send(text(50_000));
+        assert!(killed().await.is_err(), "a single large message must pass");
+        // Anything more is too much while it is still queued.
+        tx.send(text(10));
+        assert!(killed().await.is_ok(), "over the byte limit");
+        // The writer takes the large one out: there is room again.
+        let first = rx.recv().await.unwrap();
+        assert!(first.len() > 50_000);
+        rx.written(first.len());
+        assert_eq!(tx.queued.load(Ordering::Relaxed), 0);
+        for _ in 0..9 {
+            tx.send(text(1_000));
+        }
+        assert!(killed().await.is_err(), "9 small messages fit");
+        tx.send(text(1_000));
+        assert!(killed().await.is_ok(), "the 10th does not");
+        // Pings and close frames have no bytes and are not refused for bytes.
+        tx.send(Outgoing::Ping([0; 8]));
+        tx.send(Outgoing::Close("bye"));
+        assert!(killed().await.is_err());
+    }
+
+    #[test]
+    fn rooms_of_an_ipv6_slash_48_are_capped_together() {
+        let mut rooms = Rooms::default();
+        let (owner, _orx, _) = Tx::new(8, 1 << 20);
+        let v6 = |s: &str| -> IpAddr { s.parse().unwrap() };
+        let create = |rooms: &mut Rooms, who: IpAddr| {
+            // 2 rooms per /64, 3 per /48.
+            rooms.create(1, owner.clone(), who, 100, 2, 3, JoinMode::Open, None)
+        };
+        let a = create(&mut rooms, v6("2001:db8:1:1::")).unwrap().0;
+        create(&mut rooms, v6("2001:db8:1:1::")).unwrap();
+        assert_eq!(
+            create(&mut rooms, v6("2001:db8:1:1::")).err(),
+            Some(CreateError::OwnerFull),
+            "per /64"
+        );
+        create(&mut rooms, v6("2001:db8:1:2::")).unwrap();
+        assert_eq!(
+            create(&mut rooms, v6("2001:db8:1:3::")).err(),
+            Some(CreateError::OwnerFull),
+            "per /48"
+        );
+        // Another /48 and IPv4 are not affected by it.
+        create(&mut rooms, v6("2001:db8:2:1::")).unwrap();
+        for n in 1..=5 {
+            create(&mut rooms, ip(n)).unwrap();
+        }
+        // A removed room frees its place in the /48.
+        rooms.remove(&a);
+        create(&mut rooms, v6("2001:db8:1:3::")).unwrap();
+        assert_eq!(rooms.per_owner_wide.len(), 2);
     }
 }

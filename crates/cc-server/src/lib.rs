@@ -10,6 +10,7 @@
 //! proof-of-work for creating rooms, and short-lived TURN credentials. See docs/server.md.
 
 mod config;
+mod conn_limit;
 mod cors;
 mod file_config;
 mod health;
@@ -39,8 +40,9 @@ use tower_http::services::ServeDir;
 pub use config::{
     AltchaConfig, AltchaMode, ConfigError, DEFAULT_HELLO_TIMEOUT, DEFAULT_IDLE_ROOM_TIMEOUT,
     DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_NO_ROOM_TIMEOUT, DEFAULT_OUTGOING_QUEUE_LEN,
-    DEFAULT_WIDE_FAILURE_FACTOR, LimitsConfig, MAX_STUN_URLS, Mode, NetworkConfig, Secret,
-    ServerConfig, TlsConfig, TurnConfig, check_stun_url,
+    DEFAULT_WIDE_FAILURE_FACTOR, DEFAULT_WIDE_OPEN_FACTOR, LimitsConfig, MAX_STUN_URLS, Mode,
+    NetworkConfig, OUTGOING_QUEUE_BYTES, Secret, ServerConfig, TlsConfig, TurnConfig,
+    check_stun_url, default_max_sockets, default_max_sockets_per_ip,
 };
 pub use file_config::{
     DEFAULT_CONFIG_TOML, check_allowed_origins_text, load_config, overrides_from_env,
@@ -147,7 +149,8 @@ fn build_app_with_shutdown(
         app = app.fallback_service(ServeDir::new(dir).fallback(axum::Router::new().fallback(spa)));
     }
     // The access check (allow/deny lists, client address) wraps everything, files included.
-    // CORS is outermost so that refusals (429, 403) stay readable for an allowed page.
+    // CORS is outside it so that refusals (429, 403) stay readable for an allowed page. The
+    // security headers are outermost: every response gets them, refusals included.
     app.layer(middleware::from_fn_with_state(
         state.clone(),
         net::access_middleware,
@@ -156,7 +159,46 @@ fn build_app_with_shutdown(
         state.clone(),
         cors::cors_middleware,
     ))
+    .layer(middleware::from_fn_with_state(
+        state.clone(),
+        security_headers,
+    ))
     .with_state(state)
+}
+
+/// How long browsers remember to use HTTPS only (`Strict-Transport-Security`): one year.
+const HSTS: &str = "max-age=31536000";
+
+/// Adds the security headers to every response (pages, files, API answers, refusals):
+///
+/// - `X-Content-Type-Options: nosniff`: the browser must not guess another content type.
+/// - `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`: no other
+///   page may show this one in a frame (clickjacking on the join approval and share buttons).
+/// - `Referrer-Policy: same-origin`: a room code in the address (`/K7QM2W`) is not sent to
+///   other sites.
+/// - `Strict-Transport-Security`: only when this server does TLS itself. Behind a reverse
+///   proxy that does TLS, the proxy is the place for it.
+///
+/// A header that a handler already set is kept.
+async fn security_headers(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    req: axum::extract::Request,
+    next: middleware::Next,
+) -> Response {
+    let mut resp = next.run(req).await;
+    let mut set = |name: header::HeaderName, value: &'static str| {
+        resp.headers_mut()
+            .entry(name)
+            .or_insert(HeaderValue::from_static(value));
+    };
+    set(header::X_CONTENT_TYPE_OPTIONS, "nosniff");
+    set(header::X_FRAME_OPTIONS, "DENY");
+    set(header::CONTENT_SECURITY_POLICY, "frame-ancestors 'none'");
+    set(header::REFERRER_POLICY, "same-origin");
+    if state.config.tls.enabled() {
+        set(header::STRICT_TRANSPORT_SECURITY, HSTS);
+    }
+    resp
 }
 
 /// Serve on an already bound listener until `shutdown` completes. Uses HTTPS when
@@ -173,6 +215,11 @@ pub async fn run(
     } else {
         None
     };
+    // Sockets are counted from `accept` on, before TLS and before any request (conn_limit.rs).
+    let sockets = conn_limit::LimitAcceptor::new(conn_limit::SocketLimiter::new(
+        &config.limits,
+        &config.network,
+    ));
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let app = build_app_with_shutdown(config, stop_rx.clone())
         .into_make_service_with_connect_info::<SocketAddr>();
@@ -196,16 +243,15 @@ pub async fn run(
     match tls {
         None => {
             let mut server = axum_server::from_tcp(listener)?
-                .acceptor(http_deadline::FirstRequestDeadline::new(
-                    axum_server::accept::DefaultAcceptor::new(),
-                ))
+                .acceptor(http_deadline::FirstRequestDeadline::new(sockets))
                 .handle(handle);
             http_deadline::tune(&mut server);
             server.serve(app).await
         }
         Some(tls) => {
             let mut server = axum_server::from_tcp_rustls(listener, tls)?
-                .map(http_deadline::FirstRequestDeadline::new)
+                // Order: count the socket, then the TLS handshake, then the request deadline.
+                .map(|tls| http_deadline::FirstRequestDeadline::new(tls.acceptor(sockets)))
                 .handle(handle);
             http_deadline::tune(&mut server);
             server.serve(app).await

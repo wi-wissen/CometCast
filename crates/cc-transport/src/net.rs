@@ -41,7 +41,11 @@ pub struct ServerAddr {
 
 impl ServerAddr {
     /// Parse `host:port`, `host:port/ws`, `ws://...`, `wss://...`, `http://...`, `https://...`.
-    /// Text without a scheme means plain `ws://`. An empty path becomes `/ws`.
+    /// Text without a scheme means TLS (`wss://`), except for a host inside the local network:
+    /// a loopback, private or link-local IP literal, `localhost` or a `.local` name is plain
+    /// `ws://` (the rule of `cc_discovery::address::network_server`). So an address such as
+    /// `relay.example.org:443` is never spoken to without TLS; plain `ws://` to another host
+    /// has to be written out. An empty path becomes `/ws`.
     pub fn parse(server: &str) -> Result<Self, TransportError> {
         let server = server.trim();
         let (tls, rest) = if let Some(r) = server.strip_prefix("wss://") {
@@ -57,11 +61,20 @@ impl ServerAddr {
                 "unknown URL scheme in {server:?}"
             )));
         } else {
-            (false, server)
+            // Decided below, once the host is known.
+            (true, server)
         };
+        let has_scheme = rest.len() != server.len();
         let (authority, path) = match rest.find('/') {
             Some(i) => rest.split_at(i),
             None => (rest, ""),
+        };
+        let tls = if has_scheme {
+            tls
+        } else {
+            // The port does not matter for the decision; parse once to get the host.
+            let (host, _) = split_host_port(authority, 0)?;
+            !is_local_host(&host)
         };
         let (host, port) = split_host_port(authority, if tls { 443 } else { 80 })?;
         let ws_path = if path.is_empty() || path == "/" {
@@ -90,6 +103,30 @@ impl ServerAddr {
     pub fn ws_url(&self) -> String {
         let scheme = if self.tls { "wss" } else { "ws" };
         format!("{scheme}://{}{}", self.authority(), self.ws_path)
+    }
+}
+
+/// Is `host` inside the local network by its text alone: a loopback, private (RFC 1918,
+/// `100.64.0.0/10`, unique-local IPv6) or link-local IP literal, `localhost`, or a `.local`
+/// name? No name resolution is done.
+fn is_local_host(host: &str) -> bool {
+    use std::net::IpAddr;
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(a)) => {
+            let o = a.octets();
+            a.is_loopback()
+                || a.is_private()
+                || a.is_link_local()
+                || (o[0] == 100 && (64..128).contains(&o[1]))
+        }
+        Ok(IpAddr::V6(a)) => {
+            let first = a.segments()[0];
+            a.is_loopback() || first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80
+        }
+        Err(_) => {
+            let h = host.strip_suffix('.').unwrap_or(host).to_ascii_lowercase();
+            h == "localhost" || h.ends_with(".local")
+        }
     }
 }
 
@@ -402,7 +439,25 @@ mod tests {
     fn server_addr_forms() {
         let p = |s: &str| ServerAddr::parse(s).unwrap();
         assert_eq!(p("127.0.0.1:8443").ws_url(), "ws://127.0.0.1:8443/ws");
-        assert_eq!(p("example.org:1/").ws_url(), "ws://example.org:1/ws");
+        // No scheme: TLS, unless the host is inside the local network.
+        assert_eq!(p("example.org:1/").ws_url(), "wss://example.org:1/ws");
+        assert_eq!(
+            p("relay.example.org:443").ws_url(),
+            "wss://relay.example.org:443/ws"
+        );
+        assert_eq!(
+            p("relay.example.org").ws_url(),
+            "wss://relay.example.org:443/ws"
+        );
+        assert_eq!(p("8.8.8.8:8443").ws_url(), "wss://8.8.8.8:8443/ws");
+        assert_eq!(p("192.168.1.5:8443").ws_url(), "ws://192.168.1.5:8443/ws");
+        assert_eq!(p("10.0.0.7").ws_url(), "ws://10.0.0.7:80/ws");
+        assert_eq!(p("box.local:8443").ws_url(), "ws://box.local:8443/ws");
+        assert_eq!(p("localhost:8443").ws_url(), "ws://localhost:8443/ws");
+        assert_eq!(p("[fd00::1]:9").ws_url(), "ws://[fd00::1]:9/ws");
+        assert_eq!(p("[2001:db8::1]:9").ws_url(), "wss://[2001:db8::1]:9/ws");
+        // Written out, plain stays plain.
+        assert_eq!(p("ws://example.org:1").ws_url(), "ws://example.org:1/ws");
         assert_eq!(p("ws://x:1/other").ws_url(), "ws://x:1/other");
         assert_eq!(p("http://x:1").ws_url(), "ws://x:1/ws");
         assert_eq!(p("http://x").ws_url(), "ws://x:80/ws");

@@ -50,6 +50,9 @@ final class PeerSession: NSObject {
     /// Sets the offer, prefers H.264, creates and sets the answer. Returns the answer's SDP text.
     func accept(offer: String) async throws -> String {
         guard let pc else { throw ServerError(code: "peer_failed") }
+        // Only an offer the connection check code can be made from: one unambiguous SHA-256 fingerprint by the
+        // strict rule of Sas.swift. Otherwise a relay could send an SDP that the library reads differently.
+        guard sdpFingerprint(offer) != nil else { throw ServerError(code: "peer_failed") }
         remoteSdp = offer
         try await pc.setRemoteDescription(LKRTCSessionDescription(type: .offer, sdp: offer))
         preferH264(pc)

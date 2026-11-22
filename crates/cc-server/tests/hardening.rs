@@ -690,6 +690,13 @@ async fn self_signed_certificate_serves_wss_and_https() {
         .unwrap();
     let h = http_over(stream, "/healthz", &[]).await;
     assert_eq!((h.status, h.body.as_str()), (200, "ok"));
+    // The server does TLS itself: browsers are told to keep using HTTPS.
+    assert!(
+        h.headers
+            .contains("strict-transport-security: max-age=31536000"),
+        "{}",
+        h.headers
+    );
 
     // A client that does not trust the certificate is refused.
     let untrusting = client_tls(
@@ -1223,4 +1230,287 @@ async fn silent_and_slow_http_clients_are_closed() {
     for d in [silent, partial] {
         assert!(d >= Duration::from_secs(10), "closed too early: {d:?}");
     }
+}
+
+// ---------- sockets before the WebSocket upgrade ----------
+
+/// A new socket that the server closes at once, without an answer (over a socket cap).
+async fn closed_at_accept(addr: SocketAddr) -> bool {
+    let Ok(mut tcp) = TcpStream::connect(addr).await else {
+        return true;
+    };
+    let _ = tcp
+        .write_all(b"GET /healthz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        .await;
+    let mut raw = Vec::new();
+    // Far below the 15 s that an idle socket is given.
+    let done = tokio::time::timeout(Duration::from_secs(3), tcp.read_to_end(&mut raw)).await;
+    done.is_ok() && raw.is_empty()
+}
+
+/// Ask `/healthz` until it answers 200 (a closed socket frees its place a moment later).
+async fn healthz_works_soon(addr: SocketAddr) -> bool {
+    for _ in 0..40 {
+        if !closed_at_accept(addr).await {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
+#[tokio::test]
+async fn sockets_per_address_are_capped_before_any_request() {
+    let mut c = ServerConfig::default();
+    c.limits.max_sockets_per_ip = 3;
+    let addr = start(c).await;
+    // Two idle sockets and one WebSocket: all three count, whatever they speak.
+    let idle_a = TcpStream::connect(addr).await.unwrap();
+    let idle_b = TcpStream::connect(addr).await.unwrap();
+    let mut ws = connect(addr).await;
+    hello(&mut ws, "receiver").await;
+    assert!(closed_at_accept(addr).await, "4th socket must be closed");
+    assert!(closed_at_accept(addr).await, "and stays refused");
+    // A closed socket frees its place.
+    drop(idle_a);
+    assert!(healthz_works_soon(addr).await);
+    // The WebSocket was not harmed, and closing it frees a place too.
+    send(&mut ws, json!({"type":"create_room"})).await;
+    assert_eq!(recv(&mut ws).await["type"], "room_created");
+    let idle_c = TcpStream::connect(addr).await.unwrap();
+    assert!(closed_at_accept(addr).await);
+    drop(ws);
+    assert!(healthz_works_soon(addr).await);
+    drop((idle_b, idle_c));
+}
+
+#[tokio::test]
+async fn sockets_of_the_whole_server_are_capped() {
+    let mut c = ServerConfig::default();
+    c.limits.max_sockets = 2;
+    // The peer is a trusted proxy: no per-address cap for it, but the server cap holds.
+    c.limits.max_sockets_per_ip = 1;
+    c.network.trusted_proxies = nets(&["127.0.0.1/32"]);
+    let addr = start(c).await;
+    let idle_a = TcpStream::connect(addr).await.unwrap();
+    assert_eq!(http_get(addr, "/healthz", &[]).await.status, 200);
+    let idle_b = TcpStream::connect(addr).await.unwrap();
+    assert!(closed_at_accept(addr).await, "3rd socket must be closed");
+    drop(idle_a);
+    assert!(healthz_works_soon(addr).await);
+    drop(idle_b);
+}
+
+#[tokio::test]
+async fn socket_cap_also_holds_before_the_tls_handshake() {
+    let mut c = ServerConfig::default();
+    c.tls.self_signed = true;
+    c.limits.max_sockets_per_ip = 2;
+    let addr = start(c).await;
+    wait_listening(addr).await;
+    // The probe socket of `wait_listening` is closed; give the server a moment to notice.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Sockets that never start a handshake hold their places (for the handshake time limit).
+    let _idle_a = TcpStream::connect(addr).await.unwrap();
+    let _idle_b = TcpStream::connect(addr).await.unwrap();
+    let mut tcp = TcpStream::connect(addr).await.unwrap();
+    let mut raw = Vec::new();
+    let done = tokio::time::timeout(Duration::from_secs(3), tcp.read_to_end(&mut raw)).await;
+    assert!(done.is_ok() && raw.is_empty(), "3rd socket must be closed");
+}
+
+// ---------- slow readers ----------
+
+#[tokio::test]
+async fn pongs_that_answer_no_ping_do_not_keep_a_connection_alive() {
+    let addr = start(tiny_liveness()).await;
+    let mut r = connect(addr).await;
+    hello(&mut r, "receiver").await;
+    send(&mut r, json!({"type":"create_room"})).await;
+    recv(&mut r).await;
+    // The client reads nothing (so it sees no ping) but sends pongs of its own all the time.
+    for i in 0..16u8 {
+        let payload = if i % 2 == 0 { Vec::new() } else { vec![i; 8] };
+        if r.send(Message::Pong(payload.into())).await.is_err() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    // The server gave up on it meanwhile (`ping_timeout`): what is left to read ends with a
+    // close frame or the end of the stream. (Which of the two depends on timing: pongs sent
+    // after the server closed make the kernel reset the connection.) A connection that was
+    // kept alive would go on delivering pings instead.
+    let closed = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            match r.next().await {
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                Some(Ok(_)) => {}
+            }
+        }
+    })
+    .await;
+    assert!(
+        closed.is_ok(),
+        "the connection was kept alive by unsolicited pongs"
+    );
+}
+
+#[tokio::test]
+async fn receiver_that_stops_reading_is_dropped_by_the_byte_limit_of_its_queue() {
+    let mut c = ServerConfig::default();
+    // Everything else out of the way: only the byte limit of the outgoing queue (1 MiB)
+    // can end the connection of the receiver here.
+    c.outgoing_queue_len = 1_000_000;
+    c.limits.msg_rate_per_sec = 1_000_000;
+    c.limits.msg_burst = 1_000_000;
+    c.limits.bytes_per_sec = u32::MAX;
+    c.limits.bytes_burst = u32::MAX;
+    c.limits.max_room_relay_bytes = u64::MAX;
+    let addr = start(c).await;
+    let (r, s, _) = paired(addr).await;
+    let (mut s_tx, mut s_rx) = s.split();
+    // The receiver never reads. The sender relays up to 60 MB to it: the TCP buffers between
+    // server and receiver fill up, then the server's queue for the receiver grows.
+    let flood = tokio::spawn(async move {
+        let offer = json!({"type":"offer","sdp":"z".repeat(60_000)}).to_string();
+        for _ in 0..1000 {
+            if s_tx.send(Message::text(offer.clone())).await.is_err() {
+                break;
+            }
+        }
+        s_tx
+    });
+    let told = tokio::time::timeout(Duration::from_secs(60), async {
+        while let Some(Ok(m)) = s_rx.next().await {
+            if let Message::Text(t) = m
+                && t.as_str().contains("peer_left")
+            {
+                return true;
+            }
+        }
+        false
+    })
+    .await;
+    flood.abort();
+    assert_eq!(
+        told,
+        Ok(true),
+        "the sender must be told that the receiver is gone"
+    );
+    drop(r);
+}
+
+// ---------- security headers ----------
+
+#[tokio::test]
+async fn every_response_carries_the_security_headers() {
+    let mut c = ServerConfig::default();
+    c.network.deny = nets(&["192.0.2.0/24"]);
+    c.network.trusted_proxies = nets(&["127.0.0.1/32"]);
+    let addr = start(c).await;
+    let denied = [("X-Forwarded-For", "192.0.2.7")];
+    for (path, headers, status) in [
+        ("/healthz", &[][..], 200),
+        ("/no-such-page", &[][..], 404),
+        ("/ice-servers", &[][..], 404),
+        ("/ws", &[][..], 400),
+        ("/altcha/challenge", &denied[..], 403),
+    ] {
+        let h = http_get(addr, path, headers).await;
+        assert_eq!(h.status, status, "{path}");
+        for line in [
+            "x-content-type-options: nosniff",
+            "x-frame-options: deny",
+            "content-security-policy: frame-ancestors 'none'",
+            "referrer-policy: same-origin",
+        ] {
+            assert!(
+                h.headers.contains(line),
+                "{path}: {line} missing in {}",
+                h.headers
+            );
+        }
+        // Plain HTTP: no HSTS (a reverse proxy that does TLS adds it itself).
+        assert!(!h.headers.contains("strict-transport-security"), "{path}");
+    }
+    // The WebSocket handshake answer has them too, and the upgrade still works.
+    let mut ws = connect(addr).await;
+    hello(&mut ws, "receiver").await;
+}
+
+// ---------- TURN needs an allow list ----------
+
+#[tokio::test]
+async fn turn_without_an_allow_list_is_refused_on_a_reachable_address() {
+    let mut c = ServerConfig::default();
+    c.turn = Some(turn_config());
+    // Loopback only, no proxy: nobody else reaches the server (development default).
+    assert!(c.validate().is_ok());
+    // Reachable from other hosts: refused, and the message names both ways out.
+    c.listen_addr = "0.0.0.0:8443".parse().unwrap();
+    let err = c.validate().unwrap_err().to_string();
+    assert!(err.contains("network.allow"), "{err}");
+    assert!(err.contains("turn.allow_public"), "{err}");
+    // The server does not start with it either.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let err = run(listener, c.clone(), std::future::pending())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("network.allow"), "{err}");
+    // Behind a proxy the loopback address says nothing about who the clients are.
+    let mut proxied = c.clone();
+    proxied.listen_addr = "127.0.0.1:8443".parse().unwrap();
+    proxied.network.trusted_proxies = nets(&["127.0.0.1/32"]);
+    assert!(proxied.validate().is_err());
+    // Way out 1: an allow list.
+    let mut listed = c.clone();
+    listed.network.allow = nets(&["10.0.0.0/8"]);
+    assert!(listed.validate().is_ok());
+    // Way out 2: the explicit opt-out.
+    let mut public = c.clone();
+    public.turn_allow_public = true;
+    assert!(public.validate().is_ok());
+    // Without [turn] an empty allow list is fine, as before.
+    c.turn = None;
+    assert!(c.validate().is_ok());
+}
+
+#[test]
+fn turn_allow_public_can_be_set_from_file_and_overrides() {
+    let base = [
+        ("listen".to_string(), "0.0.0.0:8443".to_string()),
+        (
+            "turn.urls".to_string(),
+            "turn:relay.example.org:3478".to_string(),
+        ),
+        (
+            "turn.secret".to_string(),
+            "abcdefghijklmnopqrstuvwxyz".to_string(),
+        ),
+    ];
+    let with = |extra: &[(&str, &str)]| {
+        let mut o = base.to_vec();
+        o.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        load_config(None, &o)
+    };
+    let err = with(&[]).unwrap_err().to_string();
+    assert!(err.contains("turn.allow_public"), "{err}");
+    assert!(with(&[("turn.allow_public", "false")]).is_err());
+    assert!(
+        with(&[("turn.allow_public", "true")])
+            .unwrap()
+            .turn_allow_public
+    );
+    let c = with(&[("network.allow", "10.0.0.0/8, 192.168.0.0/16")]).unwrap();
+    assert!(!c.turn_allow_public);
+    // The shipped example passes with the listen address of the container.
+    let example = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/config/cometcast-server.example.toml"
+    );
+    let text = std::fs::read_to_string(example).unwrap();
+    assert!(
+        text.contains("\nallow = ["),
+        "the example must ship an allow list"
+    );
 }

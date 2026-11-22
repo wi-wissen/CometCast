@@ -63,6 +63,7 @@ fn fast_options() -> SupervisorOptions {
             5,
         ),
         confirm: None,
+        pin_lockout: Duration::from_millis(300),
     }
 }
 
@@ -523,6 +524,108 @@ fn deny_after_a_session_started_is_ignored() {
         !rx.try_iter()
             .any(|e| matches!(e, AirplayEvent::Starting { attempt: 2 }))
     );
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+fn pins_of(events: &[AirplayEvent]) -> Vec<&str> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            AirplayEvent::PinShown { pin } => Some(pin.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn too_many_pins_without_a_mirror_pause_the_service() {
+    // The fake shows 9876 and then 0001 to 0005 at once: the fifth PIN (0004) is one try
+    // too many, so it is not shown and UxPlay is stopped for `pin_lockout`.
+    let (path, dir) = launcher("manypins", "manypins");
+    let mut opts = fast_options();
+    opts.pin_lockout = Duration::from_millis(700);
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    let mut denied_at = None;
+    let seen = collect_until(&rx, WAIT, |e| {
+        if *e == AirplayEvent::Denied {
+            denied_at = Some(Instant::now());
+        }
+        matches!(e, AirplayEvent::Starting { attempt: 2 })
+    });
+    let paused = denied_at.expect("Denied before the restart").elapsed();
+    assert!(paused >= Duration::from_millis(600), "paused {paused:?}");
+    let pins = pins_of(&seen);
+    assert_eq!(
+        pins[..cc_airplay::MAX_PIN_TRIES - 1],
+        ["9876", "0001", "0002", "0003"]
+    );
+    assert!(!pins.contains(&"0004"), "{pins:?}");
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn too_many_pins_do_not_cut_a_running_session() {
+    let (path, dir) = launcher("manypins-active", "manypins");
+    let (mut sup, rx) = Supervisor::start(config(path), fast_options()).unwrap();
+    sup.set_session_active(true);
+    let seen = collect_until(&rx, WAIT, |e| *e == AirplayEvent::DenyIgnored);
+    assert!(!pins_of(&seen).contains(&"0004"));
+    std::thread::sleep(Duration::from_millis(300)); // extra grace for the negative check
+    assert!(!rx.try_iter().any(|e| matches!(
+        e,
+        AirplayEvent::Denied | AirplayEvent::Starting { attempt: 2 }
+    )));
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// A dialog that stays open, of an app whose rules refuse every further device.
+struct Refusing(Arc<SlowHook>);
+impl ConfirmHook for Refusing {
+    fn confirm(&self, r: &ConfirmRequest) -> Decision {
+        self.0.confirm(r)
+    }
+    fn would_reject(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_request_during_an_open_dialog_is_denied_when_the_rules_refuse_it() {
+    let (path, dir) = launcher("twopins-reject", "twopins");
+    let (hook, release) = slow_hook();
+    let mut opts = fast_options();
+    opts.confirm = Some(Arc::new(Refusing(hook.clone())));
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    // The first PIN opens the dialog; the second arrives while it is open and is denied
+    // (UxPlay restarts) instead of being left alone with its PIN.
+    let seen = collect_until(&rx, WAIT, |e| {
+        matches!(e, AirplayEvent::Starting { attempt: 2 })
+    });
+    assert!(seen.contains(&AirplayEvent::Denied), "{seen:?}");
+    assert_eq!(hook.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    release.send(Decision::Accept).unwrap();
+    sup.stop();
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_request_during_a_session_is_refused_without_cutting_the_session() {
+    let (path, dir) = launcher("active-reject", "normal");
+    let (hook, _release) = slow_hook();
+    let mut opts = fast_options();
+    opts.confirm = Some(Arc::new(Refusing(hook.clone())));
+    let (mut sup, rx) = Supervisor::start(config(path), opts).unwrap();
+    sup.set_session_active(true);
+    collect_until(&rx, WAIT, |e| *e == AirplayEvent::DenyIgnored);
+    std::thread::sleep(Duration::from_millis(300)); // extra grace for the negative check
+    assert_eq!(hook.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(!rx.try_iter().any(|e| matches!(
+        e,
+        AirplayEvent::Denied | AirplayEvent::Starting { attempt: 2 }
+    )));
     sup.stop();
     let _ = fs::remove_dir_all(dir);
 }

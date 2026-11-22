@@ -8,6 +8,11 @@
 //! `pk`/`proof`, then `epk`/`authTag`), later `POST /pair-verify` twice (X25519 key
 //! exchange, Ed25519 signature encrypted with AES-128-CTR).
 //!
+//! The receiver is authenticated by trust on first use: credentials may hold the receiver's
+//! Ed25519 public key as it was announced when the pairing was made
+//! ([`Credentials::with_receiver_key`]); pair-verify then checks the receiver's signature
+//! against it and fails with [`RECEIVER_KEY_MISMATCH`] when another key signed.
+//!
 //! UNCERTAIN: the exact behaviour of Apple receivers; tested only against UxPlay 1.68 and
 //! against our own test fake.
 
@@ -18,7 +23,7 @@ use aes::cipher::{KeyIvInit, StreamCipher};
 use aes_gcm::AesGcm;
 use aes_gcm::aead::consts::U16;
 use aes_gcm::aead::{Aead, KeyInit, Nonce};
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use plist::{Dictionary, Value};
 use sha1::Sha1;
 use x25519_dalek::{PublicKey, StaticSecret};
@@ -32,6 +37,16 @@ use crate::srp::{Client, Group, KeyKind};
 use zeroize::Zeroizing;
 
 const USER_AGENT: &str = "AirPlay/320.20";
+
+/// The text of the [`SenderError::Auth`] error of [`pair_verify`] when the receiver did not
+/// sign with the key that was remembered at pairing (see [`is_receiver_key_mismatch`]).
+pub const RECEIVER_KEY_MISMATCH: &str = "the receiver did not prove the key it had when it was paired (another device answers, or the receiver was reset); pair it again";
+
+/// Whether an error says that the receiver's signature did not match the remembered key.
+/// The pairing can be made again with the PIN (that authenticates the receiver anew).
+pub fn is_receiver_key_mismatch(e: &SenderError) -> bool {
+    matches!(e, SenderError::Auth(m) if m == RECEIVER_KEY_MISMATCH)
+}
 
 type Aes128Gcm16 = AesGcm<Aes128, U16>;
 type Aes128Ctr = ctr::Ctr128BE<Aes128>;
@@ -161,20 +176,44 @@ pub fn pair_finish<S: Read + Write>(conn: &mut Conn<S>, pin: &str) -> Result<Cre
         ],
     )?;
 
+    // The receiver's long-term key is not part of what we read from the answers; the caller
+    // adds the announced one with `Credentials::with_receiver_key`.
+    // UNCERTAIN: UxPlay is said to answer step 3 with its own key, encrypted like ours; that
+    // would be a source bound to the PIN, but neither pyatv nor our test fake has it.
     Ok(Credentials::Legacy {
         client_id,
         seed: hex(seed.as_slice()),
+        receiver_key: None,
     })
 }
 
 /// Pair-verify with stored credentials (two POSTs). Afterwards the receiver treats this
 /// connection as paired.
 ///
-/// The receiver's signature is not checked: a legacy receiver's long-term key is not known
-/// to us (pyatv does not check it either).
+/// With a receiver key in the credentials (remembered at pairing, trust on first use) the
+/// receiver's signature is checked and a mismatch ends the exchange with the error
+/// [`RECEIVER_KEY_MISMATCH`] before we prove anything. Without one (credentials of older
+/// versions, or a receiver that announced no key) it cannot be checked: then nothing shows
+/// that the device that answers is the one that was paired (pyatv does not check it either).
+///
+/// The signed message is the receiver's X25519 public key followed by ours, the mirror of
+/// what we sign. UNCERTAIN: this order is what our test fake does and what UxPlay's
+/// `pairing_session_get_signature` is remembered to do; it was not run against a real
+/// receiver with a remembered key.
 pub fn pair_verify<S: Read + Write>(conn: &mut Conn<S>, creds: &Credentials) -> Result<()> {
-    let Credentials::Legacy { seed, .. } = creds else {
+    let Credentials::Legacy {
+        seed, receiver_key, ..
+    } = creds
+    else {
         return Err(SenderError::Input("not legacy credentials".into()));
+    };
+    let receiver_key = match receiver_key {
+        Some(k) => Some(
+            unhex::<32>(k)
+                .and_then(|b| VerifyingKey::from_bytes(&b).ok())
+                .ok_or_else(|| SenderError::Store("stored receiver key is not a key".into()))?,
+        ),
+        None => None,
     };
     let seed: Zeroizing<[u8; 32]> = Zeroizing::new(
         unhex(seed).ok_or_else(|| SenderError::Store("stored seed is not 64 hex digits".into()))?,
@@ -217,10 +256,22 @@ pub fn pair_verify<S: Read + Write>(conn: &mut Conn<S>, creds: &Credentials) -> 
     let mut signature = signing.sign(&to_sign).to_bytes();
     let mut cipher = Aes128Ctr::new_from_slices(key, iv)
         .map_err(|_| SenderError::Auth("bad AES key length".into()))?;
-    // The keystream first runs over the receiver's 64 encrypted bytes (we do not need their
-    // content), then encrypts our signature. This is what pyatv does.
-    let mut skipped = r1.body[32..].to_vec();
-    cipher.apply_keystream(&mut skipped);
+    // The keystream first runs over the receiver's 64 encrypted bytes (its signature), then
+    // encrypts our signature. This is what pyatv does (without looking at the signature).
+    let mut theirs = [0u8; 64];
+    theirs.copy_from_slice(&r1.body[32..]);
+    cipher.apply_keystream(&mut theirs);
+    if let Some(key) = receiver_key {
+        let mut signed = Vec::with_capacity(64);
+        signed.extend_from_slice(&server_pub);
+        signed.extend_from_slice(&our_pub);
+        if key
+            .verify_strict(&signed, &Signature::from_bytes(&theirs))
+            .is_err()
+        {
+            return Err(SenderError::Auth(RECEIVER_KEY_MISMATCH.into()));
+        }
+    }
     cipher.apply_keystream(&mut signature);
 
     let mut second = vec![0, 0, 0, 0];

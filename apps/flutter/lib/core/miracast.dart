@@ -395,7 +395,7 @@ List<String> miracastLibraryCandidates({
 }
 
 /// Path to load: the environment override, else the first candidate that exists, else the
-/// plain file name (system loader path).
+/// full path next to the executable (which then fails to load; never the system loader path).
 String resolveMiracastLibraryPath({
   Map<String, String>? environment,
   String? executableDir,
@@ -412,7 +412,9 @@ String resolveMiracastLibraryPath({
   )) {
     if (exists(c)) return c;
   }
-  return 'cc_miracast_ffi.dll';
+  // Never the plain name: the Windows search order includes the current directory and PATH,
+  // so a missing file must fail instead of loading a DLL from somewhere else.
+  return [exeDir, 'cc_miracast_ffi.dll'].join(separator ?? Platform.pathSeparator);
 }
 
 /// Mirror of `CcFrameInfo` in crates/cc-miracast-ffi/src/abi.rs (repr(C): u32, u32, u64).

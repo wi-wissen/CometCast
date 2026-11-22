@@ -141,6 +141,9 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `limits.ice_per_min` | 300 | 30 | `/ice-servers` per address (its own bucket, not shared with `/altcha/challenge`) |
 | `limits.max_rooms` | 100000 | 10000 | Rooms, whole server |
 | `limits.max_connections` | 20000 | 5000 | Open WebSockets, whole server |
+| `limits.max_sockets` | 25000 | 6250 | Accepted TCP connections (HTTP, TLS handshakes, WebSockets), whole server; follows `max_connections` when not set |
+| `limits.max_sockets_per_ip` | 4000 | 160 | Accepted TCP connections per peer address; follows `max_connections_per_ip` when not set; trusted proxies are exempt |
+| `limits.wide_open_factor` | 4 | 4 | An IPv6 /48 may hold this many times the per-address caps (connections, sockets, rooms) |
 | `limits.ban_after_failed_joins` | 30 | 10 | Failed joins within the window cause a ban |
 | `limits.failed_join_window_secs` | 600 | | The window |
 | `limits.ban_secs` | `[60, 300, 1800]` | | 1st, 2nd, 3rd+ ban |
@@ -173,6 +176,7 @@ checks that. The "open" column shows the default when `mode = "open"` where it d
 | `stun.urls` | `[]` | `[]` | Public STUN URLs listed at `/ice-servers`; allowed in **both** modes; max 4, only `stun:`/`stuns:` `host[:port]`, no credentials |
 | `turn.urls`, `turn.stun_urls` | not set | not allowed | URLs given to clients (`turn.stun_urls` is checked like `stun.urls`) |
 | `turn.secret` / `secret_file` | not set | not allowed | Shared secret with coturn |
+| `turn.allow_public` | `false` | not allowed | `[turn]` with an empty `network.allow` is a start error unless this is `true` (or the server listens on loopback only and trusts no proxy) |
 | `turn.ttl_secs` | 3600 | | Credential lifetime |
 
 Notes that the table cannot show: `ban_secs` repeats its last value; the failure table is capped at

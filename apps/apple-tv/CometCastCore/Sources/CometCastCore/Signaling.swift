@@ -113,7 +113,8 @@ public enum ServerMessage: Equatable, Sendable {
             guard let v = o["proto_version"]?.numberValue else { return nil }
             return .hello(protoVersion: v)
         case "room_created":
-            guard let c = str("code"), let m = mode("join_mode") else { return nil }
+            // The code is shown big, put into the QR code and signed over by presenters: only a well-formed one counts.
+            guard let c = str("code"), isValidRoomCode(c), let m = mode("join_mode") else { return nil }
             return .roomCreated(code: c, joinMode: m)
         case "joined": return .joined(roomName: roomName())
         case "peer_joined": return str("name").map { .peerJoined(name: $0, device: parseJoinDevice(o["device"])) }

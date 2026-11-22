@@ -75,7 +75,8 @@ List<String> coreLibraryCandidates({
 /// Where the library is looked for, first match wins:
 /// 1. the file named in `COMETCAST_FFI_LIB`,
 /// 2. the candidates of [coreLibraryCandidates] for the platform,
-/// 3. the system loader path (plain file name).
+/// 3. the system loader path (plain file name); on Windows the full path next to the
+///    executable instead, so a missing file fails and no DLL is loaded from elsewhere.
 ///
 /// All inputs can be injected for tests; the defaults describe the running process.
 /// UNCERTAIN: the macOS and Windows locations were never exercised on those systems.
@@ -97,6 +98,11 @@ String resolveCoreLibraryPath({
     separator: separator ?? Platform.pathSeparator,
   )) {
     if (exists(candidate)) return candidate;
+  }
+  // Windows: never the plain name. The system search order includes the current directory
+  // and PATH, so a missing file must fail instead of loading a DLL from somewhere else.
+  if (theOs == CoreOs.windows) {
+    return [exeDir, coreLibraryFileName(theOs)].join(separator ?? Platform.pathSeparator);
   }
   return coreLibraryFileName(theOs);
 }

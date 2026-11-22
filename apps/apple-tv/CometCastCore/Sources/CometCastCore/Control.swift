@@ -67,7 +67,7 @@ public enum ControlMessage: Equatable, Sendable {
     }
 }
 
-public enum TransferErrorCode: String, Equatable, Sendable, CaseIterable {
+public enum TransferErrorCode: String, Equatable, Sendable, CaseIterable, Error {
     case unexpectedChunk = "unexpected_chunk"
     case tooLarge = "too_large"
     case sizeMismatch = "size_mismatch"
@@ -193,15 +193,17 @@ public func parseControlMessage(_ text: String) -> ControlMessage? {
 
 // MARK: reassembly
 
-/// Reassembles one image or PDF from its announcement and binary chunks. One buffer of the announced size is
-/// allocated up front; every chunk must be exactly `chunkSize` bytes unless it completes the transfer (so the
-/// number of messages is bounded by size / chunkSize). Time is passed in (`nowMs`) so tests need no timers:
-/// the owner of the assembler calls `stalled(nowMs:)` regularly (the app does it once a second).
+/// Reassembles one image or PDF from its announcement and binary chunks. Nothing is allocated for an announcement:
+/// the buffer is reserved (not filled) when the first chunk arrives and grows by appending, so announcing a size
+/// costs the sender at least one chunk. Every chunk must be exactly `chunkSize` bytes unless it completes the
+/// transfer (so the number of messages is bounded by size / chunkSize). Time is passed in (`nowMs`) so tests need
+/// no timers: the owner of the assembler calls `stalled(nowMs:)` regularly (the app does it once a second).
 public final class ImageAssembler {
     struct Current {
         var name: String
         var mime: String
         var size: Int
+        /// The bytes so far, in order: `buf.count == received`.
         var buf: [UInt8]
         var received: Int
         var lastActivity: Double
@@ -217,7 +219,7 @@ public final class ImageAssembler {
 
     /// Begins a transfer; one in progress is dropped. The size limit is enforced by `parseControlMessage`.
     public func start(name: String, mime: String, size: Int, nowMs: Double) {
-        cur = Current(name: name, mime: mime, size: size, buf: [UInt8](repeating: 0, count: size), received: 0, lastActivity: nowMs)
+        cur = Current(name: name, mime: mime, size: size, buf: [], received: 0, lastActivity: nowMs)
     }
 
     /// Returns an error code (and drops the transfer) if the chunk is not acceptable.
@@ -226,7 +228,11 @@ public final class ImageAssembler {
         let end = c.received + chunk.count
         if end > c.size { reset(); return .tooLarge }
         if chunk.count != chunkSize && end != c.size { reset(); return .badChunk }
-        c.buf.replaceSubrange(c.received..<end, with: chunk)
+        // `c` must be the only reference to the buffer while it grows; otherwise every chunk would copy all of it
+        // (copy on write). It is stored back below.
+        cur = nil
+        if c.buf.isEmpty { c.buf.reserveCapacity(c.size) }
+        c.buf.append(contentsOf: chunk)
         c.received = end
         c.lastActivity = nowMs
         cur = c

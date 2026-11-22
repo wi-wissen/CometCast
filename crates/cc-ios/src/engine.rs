@@ -7,6 +7,7 @@
 //! sink is called on a runtime thread; it must not block and must not call [`stop`].
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -208,7 +209,44 @@ pub struct Config {
     pub device_key: Option<String>,
 }
 
+/// Closes the status sink for good. The host promises that what the sink points to (the `user`
+/// pointer of the C interface) stays valid until [`stop`] returned, so after that the sink must
+/// never run again, also not from a task that outlived the stop timeouts.
+#[derive(Default)]
+struct SinkGate {
+    closed: AtomicBool,
+    /// Calls of the sink that are running right now.
+    running: AtomicUsize,
+}
+
+impl SinkGate {
+    /// The sink behind the gate: a call after [`SinkGate::close`] does nothing.
+    fn wrap(self: &Arc<Self>, sink: Sink) -> Sink {
+        let gate = Arc::clone(self);
+        Arc::new(move |s: &Status| {
+            // Counted before the check, so `close` either sees this call or this call sees
+            // the closed gate.
+            gate.running.fetch_add(1, Ordering::SeqCst);
+            if !gate.closed.load(Ordering::SeqCst) {
+                sink(s);
+            }
+            gate.running.fetch_sub(1, Ordering::SeqCst);
+        })
+    }
+
+    /// Close the gate and wait a short time for a call that is still running. (No lock is
+    /// held while the sink runs: a sink that waits for the thread that stops must not hang it.)
+    fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        let until = std::time::Instant::now() + Duration::from_secs(1);
+        while self.running.load(Ordering::SeqCst) > 0 && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
 struct Running {
+    sink_gate: Arc<SinkGate>,
     runtime: Runtime,
     input: ExternalInput,
     stop: Option<oneshot::Sender<()>>,
@@ -241,6 +279,7 @@ pub fn start(config: Config, sink: Sink) -> Result<(), ErrorCode> {
         && let Some(old) = guard.take()
     {
         old.runtime.shutdown_background();
+        old.sink_gate.close();
     }
     if guard.is_some() {
         return Err(ErrorCode::AlreadyRunning);
@@ -260,6 +299,8 @@ pub fn start(config: Config, sink: Sink) -> Result<(), ErrorCode> {
     let (stop_tx, stop_rx) = oneshot::channel();
     log.line(&format!("start: relay {}", config.relay_url));
     let control = Arc::new(Mutex::new(None));
+    let sink_gate = Arc::new(SinkGate::default());
+    let sink = sink_gate.wrap(sink);
     let task = runtime.spawn(run(
         config,
         code,
@@ -270,6 +311,7 @@ pub fn start(config: Config, sink: Sink) -> Result<(), ErrorCode> {
         Arc::clone(&control),
     ));
     *guard = Some(Running {
+        sink_gate,
         runtime,
         input,
         stop: Some(stop_tx),
@@ -358,6 +400,8 @@ pub fn stop() {
         .runtime
         .block_on(async { tokio::time::timeout(STOP_TIMEOUT, task).await });
     running.runtime.shutdown_timeout(Duration::from_secs(1));
+    // A task that outlived both timeouts must not reach the host any more.
+    running.sink_gate.close();
 }
 
 /// Map an error of the sender's start (before streaming) to a code.

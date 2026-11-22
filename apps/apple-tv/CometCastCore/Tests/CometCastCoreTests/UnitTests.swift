@@ -29,8 +29,19 @@ final class JSONTests: XCTestCase {
     }
 
     func testDepthLimit() {
-        XCTAssertNotNil(JSON.parse(String(repeating: "[", count: 900) + String(repeating: "]", count: 900)))
-        XCTAssertNil(JSON.parse(String(repeating: "[", count: 1100) + String(repeating: "]", count: 1100)))
+        XCTAssertEqual(JSON.maxDepth, 64)
+        func nested(_ n: Int, _ inner: String = "") -> String { String(repeating: "[", count: n) + inner + String(repeating: "]", count: n) }
+        // the outermost value is at depth 0, so the innermost of 65 arrays is at depth 64 and a value in it at 65
+        XCTAssertNotNil(JSON.parse(nested(64, "1")))
+        XCTAssertNotNil(JSON.parse(nested(65)))
+        XCTAssertNil(JSON.parse(nested(65, "1")))
+        XCTAssertNil(JSON.parse(nested(66)))
+        XCTAssertNil(JSON.parse(nested(1100)))
+        XCTAssertNotNil(JSON.parse(String(repeating: "{\"a\":", count: 64) + "1" + String(repeating: "}", count: 64)))
+        XCTAssertNil(JSON.parse(String(repeating: "{\"a\":", count: 65) + "1" + String(repeating: "}", count: 65)))
+        // a message that nests too deep is refused as a whole
+        XCTAssertNotNil(parseControlMessage("{\"kind\":\"image_end\",\"a\":" + nested(60) + "}"))
+        XCTAssertNil(parseControlMessage("{\"kind\":\"image_end\",\"a\":" + nested(100) + "}"))
     }
 
     func testSerializeIsCanonicalAndRoundTrips() {
@@ -268,7 +279,8 @@ final class MachineTests: XCTestCase {
         m.fetchesIce = false
         _ = m.handle(.start)
         _ = m.handle(.message(.roomCreated(code: "ABC234", joinMode: .open)))
-        _ = m.handle(.message(.offer(sdp: "O")))
+        _ = m.handle(.message(.peerJoined(name: "Ana")))
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [.acceptOffer(sdp: "O")])
         _ = m.handle(.answerFailed)
         XCTAssertEqual(m.state.errorCode, "peer_failed")
     }
@@ -495,6 +507,70 @@ final class ServerListTests: XCTestCase {
         var u = a; u.source = .user
         XCTAssertTrue(needsRelayConfirmation(u, confirmed: []))
         for s in [RelaySource.mdm, .dnsSrv, .defaultList] { var r = a; r.source = s; XCTAssertFalse(needsRelayConfirmation(r, confirmed: [])) }
+    }
+}
+
+final class ImageAssemblerTests: XCTestCase {
+    func pattern(_ n: Int) -> [UInt8] { (0..<n).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ 7) } }
+
+    func testAnAnnouncementAllocatesNothing() {
+        let a = ImageAssembler()
+        a.start(name: "d.pdf", mime: "application/pdf", size: maxDocumentBytes, nowMs: 0)
+        XCTAssertEqual(a.cur?.buf.count, 0)
+        XCTAssertEqual(a.cur?.buf.capacity, 0)
+        XCTAssertEqual(a.progress?.received, 0)
+        XCTAssertEqual(a.progress?.size, maxDocumentBytes)
+        // announced again and again: still nothing, and the end without the bytes is a size mismatch
+        for _ in 0..<1000 { a.start(name: "d.pdf", mime: "application/pdf", size: maxDocumentBytes, nowMs: 0) }
+        XCTAssertEqual(a.cur?.buf.capacity, 0)
+        XCTAssertEqual(a.finish(), .failed(.sizeMismatch))
+        XCTAssertFalse(a.active)
+    }
+
+    func testChunksAreAppendedInOrder() {
+        let a = ImageAssembler()
+        let size = 3 * chunkSize + 5
+        let all = pattern(size)
+        a.start(name: "a.png", mime: "image/png", size: size, nowMs: 0)
+        var at = 0
+        while at < size {
+            let end = min(at + chunkSize, size)
+            XCTAssertNil(a.push(Array(all[at..<end]), nowMs: Double(at)))
+            at = end
+            XCTAssertEqual(a.progress?.received, at)
+            XCTAssertEqual(a.cur?.buf.count, at)
+        }
+        XCTAssertEqual(a.finish(), .done(bytes: all, mime: "image/png", name: "a.png"))
+        XCTAssertEqual(a.finish(), .failed(.noTransfer))
+    }
+
+    func testChunkRulesAreUnchanged() {
+        let a = ImageAssembler()
+        XCTAssertEqual(a.push([1], nowMs: 0), .unexpectedChunk)
+        // more than announced
+        a.start(name: "a.png", mime: "image/png", size: 10, nowMs: 0)
+        XCTAssertEqual(a.push(pattern(11), nowMs: 0), .tooLarge)
+        XCTAssertFalse(a.active)
+        // a short chunk that does not complete the transfer
+        a.start(name: "a.png", mime: "image/png", size: 2 * chunkSize, nowMs: 0)
+        XCTAssertEqual(a.push(pattern(100), nowMs: 0), .badChunk)
+        XCTAssertFalse(a.active)
+        // the end before all bytes arrived
+        a.start(name: "a.png", mime: "image/png", size: 2 * chunkSize, nowMs: 0)
+        XCTAssertNil(a.push(pattern(chunkSize), nowMs: 0))
+        XCTAssertEqual(a.finish(), .failed(.sizeMismatch))
+        // a new announcement drops the transfer in progress
+        a.start(name: "a.png", mime: "image/png", size: 4, nowMs: 0)
+        XCTAssertNil(a.push([9, 9, 9, 9], nowMs: 0))
+        a.start(name: "b.png", mime: "image/png", size: 3, nowMs: 0)
+        XCTAssertNil(a.push([1, 2, 3], nowMs: 0))
+        XCTAssertEqual(a.finish(), .done(bytes: [1, 2, 3], mime: "image/png", name: "b.png"))
+        // the stall check still sees the time of the last chunk
+        a.start(name: "a.png", mime: "image/png", size: 2 * chunkSize, nowMs: 0)
+        XCTAssertNil(a.push(pattern(chunkSize), nowMs: 1000))
+        XCTAssertFalse(a.stalled(nowMs: 1000 + stallTimeoutMs - 1))
+        XCTAssertTrue(a.stalled(nowMs: 1000 + stallTimeoutMs))
+        XCTAssertFalse(a.active)
     }
 }
 

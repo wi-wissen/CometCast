@@ -420,6 +420,7 @@ impl ReceiverCore {
             handover,
             code.to_string(),
             options.device_memory,
+            join_mode,
         ));
         Ok(Self {
             code,
@@ -613,6 +614,119 @@ impl TokenAdmission {
     }
 }
 
+/// Who may become the presenter, as the host decided it. The server enforces the join mode,
+/// but a wrong or hostile server could send `peer_joined` and an offer for somebody the host
+/// never let in; so the display keeps its own record and answers only a presenter that
+///
+/// * joined while the room was `open`, or
+/// * made a request that this core allowed (the host's Yes, or a hand-over token).
+///
+/// Nobody joins a `locked` room. The mode that counts is the one this display shows: the mode
+/// of `room_created`, then every change the host asked for and the server confirmed. A change
+/// the host did not ask for only counts when it makes the room stricter.
+struct Admission {
+    mode: JoinMode,
+    /// The mode of the last `set_join_mode` that is not confirmed yet.
+    asked: Option<JoinMode>,
+    /// Waiting requests: id and name.
+    waiting: Vec<(u64, String)>,
+    /// Allowed requests whose `peer_joined` is still to come: id and name.
+    allowed: Vec<(u64, String)>,
+    /// A newcomer was refused and its `peer_left` is still to come.
+    refused: bool,
+}
+
+impl Admission {
+    /// The server holds at most 8 waiting requests per room.
+    const CAP: usize = 16;
+
+    fn new(mode: JoinMode) -> Self {
+        Self {
+            mode,
+            asked: None,
+            waiting: Vec::new(),
+            allowed: Vec::new(),
+            refused: false,
+        }
+    }
+
+    fn strictness(mode: JoinMode) -> u8 {
+        match mode {
+            JoinMode::Open => 0,
+            JoinMode::Confirm => 1,
+            JoinMode::Locked => 2,
+        }
+    }
+
+    /// The host asked for this mode. Stricter counts at once, more open once it is confirmed.
+    fn mode_requested(&mut self, mode: JoinMode) {
+        self.asked = Some(mode);
+        if Self::strictness(mode) > Self::strictness(self.mode) {
+            self.mode = mode;
+        }
+        if self.mode == JoinMode::Locked {
+            self.waiting.clear();
+            self.allowed.clear();
+        }
+    }
+
+    /// The server reports the mode of the room.
+    fn mode_changed(&mut self, mode: JoinMode) {
+        if self.asked == Some(mode) {
+            self.asked = None;
+            self.mode = mode;
+        } else if Self::strictness(mode) > Self::strictness(self.mode) {
+            self.mode = mode;
+        }
+    }
+
+    fn requested(&mut self, id: u64, name: &str) {
+        self.waiting.retain(|(i, _)| *i != id);
+        if self.waiting.len() >= Self::CAP {
+            self.waiting.remove(0);
+        }
+        self.waiting.push((id, name.to_owned()));
+    }
+
+    /// A decision of this core on request `id` (`None`: on all waiting requests).
+    fn decided(&mut self, id: Option<u64>, allow: bool) {
+        let Some(id) = id else {
+            self.waiting.clear();
+            return;
+        };
+        let Some(at) = self.waiting.iter().position(|(i, _)| *i == id) else {
+            return;
+        };
+        let request = self.waiting.remove(at);
+        if allow && self.mode != JoinMode::Locked {
+            if self.allowed.len() >= Self::CAP {
+                self.allowed.remove(0);
+            }
+            self.allowed.push(request);
+        }
+    }
+
+    fn cancelled(&mut self, id: u64) {
+        self.waiting.retain(|(i, _)| *i != id);
+        self.allowed.retain(|(i, _)| *i != id);
+    }
+
+    /// May the `peer_joined` of `name` be taken? An allowed request is used up by it.
+    fn admit(&mut self, name: &str) -> bool {
+        match self.mode {
+            JoinMode::Open => true,
+            JoinMode::Locked => false,
+            JoinMode::Confirm => match self.allowed.iter().position(|(_, n)| n == name) {
+                Some(at) => {
+                    self.allowed.remove(at);
+                    true
+                }
+                None => false,
+            },
+        }
+    }
+}
+
 /// The verified devices of join requests (docs/design/presenter-identity.md): while a request
 /// waits (by request id), and after the host allowed it until the server's `peer_joined` shows
 /// that the presenter is in (only then the pair goes into the memory). Both lists are small:
@@ -749,6 +863,7 @@ async fn run(
     handover: Arc<HandoverStore>,
     code: String,
     mut memory: DeviceMemory,
+    join_mode: JoinMode,
 ) {
     let mut session = Arc::clone(&shared_session.lock().unwrap_or_else(|p| p.into_inner()));
     let mut content_task: Option<tokio::task::JoinHandle<()>> = None;
@@ -768,6 +883,9 @@ async fn run(
     // Verified devices of the waiting requests (by request id) and of the requests that were
     // allowed and whose `peer_joined` is still to come (docs/design/presenter-identity.md).
     let mut request_devices = RequestDevices::default();
+    // Who may become the presenter is decided here too, not only by the server: a `peer_joined`
+    // or an offer that the host did not let in is refused (see [`Admission`]).
+    let mut admission = Admission::new(join_mode);
     // The presenter the host asked to remove, until its `peer_left` arrives.
     let mut removed_peer: Option<String> = None;
     let (hand_tx, mut hand_rx) = mpsc::unbounded_channel::<content::TaskMsg>();
@@ -796,6 +914,11 @@ async fn run(
                         ClientMsg::JoinDecision { block: true, .. } => handover.clear(),
                         _ => 0,
                     };
+                    match cmd {
+                        ClientMsg::SetJoinMode { join_mode } => admission.mode_requested(*join_mode),
+                        ClientMsg::JoinDecision { id, allow, .. } => admission.decided(*id, *allow),
+                        _ => {}
+                    }
                     if let ClientMsg::JoinDecision { id: Some(id), allow, .. } = cmd {
                         request_devices.decided(*id, *allow);
                     }
@@ -861,6 +984,18 @@ async fn run(
                     emit(ReceiverEvent::Error("signalling connection closed".into()));
                     break;
                 }
+                Some(ServerMsg::PeerJoined { name, .. })
+                    if peer_name.is_some() || !admission.admit(&name) =>
+                {
+                    // Nobody the host let in: a server that sends this is wrong or hostile.
+                    // The join is not shown and nothing of this peer is answered. Without a
+                    // presenter in the room the server is told to drop the newcomer; its
+                    // `peer_left` is then not reported either.
+                    if peer_name.is_none() {
+                        admission.refused = true;
+                        let _ = sig.send(ClientMsg::RemovePeer { block: false }).await;
+                    }
+                }
                 Some(ServerMsg::PeerJoined { name, handover: token, device }) => {
                     // A join that needed no decision (join mode open) carries its token here;
                     // one that was allowed by us below was checked when the request came.
@@ -897,7 +1032,9 @@ async fn run(
                     // A token this display issued to this person: let them in without asking.
                     // Anything else (no token, expired, used, another name, another room) is
                     // an ordinary request for the host.
+                    admission.requested(id, &name);
                     if token.is_some_and(|t| handover.take(&t, &name, Instant::now())) {
+                        admission.decided(Some(id), true);
                         admitted_by_token.admitted(id, name);
                         request_devices.decided(id, true);
                         let _ = sig
@@ -908,11 +1045,13 @@ async fn run(
                     }
                 }
                 Some(ServerMsg::JoinRequestCancelled { id, reason }) => {
+                    admission.cancelled(id);
                     admitted_by_token.cancelled(id);
                     request_devices.cancelled(id);
                     emit(ReceiverEvent::JoinRequestCancelled { id, reason })
                 }
                 Some(ServerMsg::JoinModeChanged { join_mode }) => {
+                    admission.mode_changed(join_mode);
                     emit(ReceiverEvent::JoinModeChanged(join_mode));
                     // Nobody may join a locked room, a hand-over join included. (`confirm`
                     // keeps the tokens: they stand for an approval the host already gave.)
@@ -926,6 +1065,9 @@ async fn run(
                     emit(ReceiverEvent::RoomEnded);
                     break;
                 }
+                // An offer or a candidate without a presenter that was let in is not answered.
+                Some(ServerMsg::Offer { .. } | ServerMsg::IceCandidate { .. })
+                    if peer_name.is_none() => {}
                 Some(ServerMsg::Offer { sdp }) => {
                     if conn.offer_at.is_some() {
                         // A second offer in a connection that had one: the sender begins a
@@ -966,6 +1108,10 @@ async fn run(
                 Some(ServerMsg::IceCandidate { candidate }) => {
                     // A bad candidate is not fatal: others may still work.
                     let _ = session.add_remote_candidate(&candidate).await;
+                }
+                // The newcomer this core refused is gone: it was never reported as joined.
+                Some(ServerMsg::PeerLeft) if peer_name.is_none() && admission.refused => {
+                    admission.refused = false;
                 }
                 Some(ServerMsg::PeerLeft) => {
                     // Content that is still on its way is handed over first.
@@ -1096,6 +1242,64 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_open_room_admits_everybody_and_a_locked_room_nobody() {
+        let mut a = Admission::new(JoinMode::Open);
+        assert!(a.admit("Ada"));
+        let mut a = Admission::new(JoinMode::Locked);
+        a.requested(1, "Ada");
+        a.decided(Some(1), true);
+        assert!(!a.admit("Ada"));
+    }
+
+    #[test]
+    fn a_confirm_room_admits_only_an_allowed_request_and_only_once() {
+        let mut a = Admission::new(JoinMode::Confirm);
+        // No request, a waiting request, a denied request: nobody comes in.
+        assert!(!a.admit("Ada"));
+        a.requested(1, "Ada");
+        assert!(!a.admit("Ada"));
+        a.decided(Some(1), false);
+        assert!(!a.admit("Ada"));
+        // Allowed: this name, once.
+        a.requested(2, "Ada");
+        a.decided(Some(2), true);
+        assert!(!a.admit("Eve"));
+        assert!(a.admit("Ada"));
+        assert!(!a.admit("Ada"));
+        // An allowed request that was cancelled, and one that was denied with all others.
+        a.requested(3, "Ada");
+        a.decided(Some(3), true);
+        a.cancelled(3);
+        assert!(!a.admit("Ada"));
+        a.requested(4, "Ada");
+        a.decided(None, false);
+        a.decided(Some(4), true);
+        assert!(!a.admit("Ada"));
+        // A decision on a request that never came counts for nothing.
+        a.decided(Some(99), true);
+        assert!(!a.admit("Ada"));
+    }
+
+    #[test]
+    fn the_mode_follows_the_host_and_never_a_server_that_opens_the_room_unasked() {
+        let mut a = Admission::new(JoinMode::Confirm);
+        // The server says "open" although the host did not ask: still confirm.
+        a.mode_changed(JoinMode::Open);
+        assert!(!a.admit("Eve"));
+        // The host asks for open: it counts once the server confirmed it.
+        a.mode_requested(JoinMode::Open);
+        assert!(!a.admit("Eve"));
+        a.mode_changed(JoinMode::Open);
+        assert!(a.admit("Ada"));
+        // Stricter counts at once, also when only the server says so.
+        a.mode_requested(JoinMode::Locked);
+        assert!(!a.admit("Ada"));
+        let mut a = Admission::new(JoinMode::Open);
+        a.mode_changed(JoinMode::Confirm);
+        assert!(!a.admit("Ada"));
+    }
 
     #[test]
     fn error_codes_are_read_from_the_messages_of_this_crate() {

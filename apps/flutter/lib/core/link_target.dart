@@ -122,8 +122,10 @@ enum ServerDecision {
 }
 
 /// Which servers are used without asking: the built-in relay, the policy server, the DNS
-/// server, the in-house box (an announcement of a display) and every server the person
-/// confirmed on this device before. Anything else has to be confirmed.
+/// server and every server the person confirmed on this device before. Anything else has to
+/// be confirmed, also the in-house box: anybody on the local network can send the
+/// announcement of a display (docs/discovery.md, trust policy), so a link or QR code must
+/// not be able to pick such a server silently.
 class ServerTrust {
   const ServerTrust({
     this.suggestions = const [],
@@ -148,7 +150,6 @@ class ServerTrust {
       final trusted = switch (x.kind) {
         ServerSourceKind.policy ||
         ServerSourceKind.dns ||
-        ServerSourceKind.announced ||
         ServerSourceKind.defaultList => true,
         _ => false,
       };

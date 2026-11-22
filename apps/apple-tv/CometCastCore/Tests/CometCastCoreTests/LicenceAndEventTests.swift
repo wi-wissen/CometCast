@@ -140,9 +140,14 @@ final class HostEventTests: XCTestCase {
 
     func testJoinLeaveAndEnd() {
         var m = room()
+        // approval is on: a sender comes in after the host said Yes to its request
+        _ = m.handle(.message(.joinRequest(id: 1, name: "Lena", check: 11)))
+        _ = m.handle(.decide(id: 1, allow: true, block: false))
         _ = m.handle(.message(.peerJoined(name: "Lena")))
         XCTAssertEqual(m.state.peerUnnamed, false)
         _ = m.handle(.message(.peerLeft))
+        _ = m.handle(.message(.joinRequest(id: 2, name: "", check: 12)))
+        _ = m.handle(.decide(id: 2, allow: true, block: false))
         _ = m.handle(.message(.peerJoined(name: "")))
         XCTAssertEqual(m.state.peerUnnamed, true)
         _ = m.handle(.message(.roomEnded))

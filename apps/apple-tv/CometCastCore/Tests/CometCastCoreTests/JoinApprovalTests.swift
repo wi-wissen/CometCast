@@ -258,7 +258,7 @@ final class JoinMachineTests: XCTestCase {
     }
 
     func testPeerNameAndEndingThePresentation() {
-        var m = room()
+        var m = room(.open)
         XCTAssertEqual(m.handle(.message(.peerJoined(name: " A\u{202E}na  M "))), [.createPeer])
         XCTAssertEqual(m.state.peerName, "Ana M")
         XCTAssertEqual(m.state.phase, .negotiating)
@@ -281,11 +281,15 @@ final class JoinMachineTests: XCTestCase {
 
     func testEndRoomStartsANewRoomOnTheSameConnection() {
         var m = room(.confirm)
+        // a sender the host allowed is in; locking afterwards does not remove it
+        _ = m.handle(.message(.joinRequest(id: 7, name: "Ana", check: 17)))
+        _ = m.handle(.decide(id: 7, allow: true, block: false))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.createPeer])
         _ = m.handle(.setJoinMode(.locked))
         _ = m.handle(.message(.joinModeChanged(.locked)))
         _ = m.handle(.message(.joinRequest(id: 1, name: "a", check: 11)))
         _ = m.handle(.message(.blocked(id: 5, name: "b")))
-        _ = m.handle(.message(.peerJoined(name: "Ana")))
+        XCTAssertEqual(m.state.peerName, "Ana")
         XCTAssertEqual(m.handle(.endRoom), [.send(.endRoom)])
         XCTAssertEqual(m.state.code, "K7M2QX") // nothing changes before the server answers
         let fx = m.handle(.message(.roomEnded))
@@ -300,6 +304,156 @@ final class JoinMachineTests: XCTestCase {
         XCTAssertEqual(m.handle(.message(.roomCreated(code: "B4N9HT", joinMode: .open))), [])
         XCTAssertEqual(m.state.code, "B4N9HT")
         XCTAssertEqual(m.state.phase, .waitingSender)
+    }
+
+    // MARK: the display enforces the join rules itself (a hostile signalling server)
+
+    /// A machine whose clock the test moves.
+    final class Clock: @unchecked Sendable { var ms: UInt64 = 1_700_000_000_000 }
+
+    func room(_ mode: JoinMode, clock: Clock) -> ReceiverMachine {
+        var m = ReceiverMachine(joinMode: mode); m.fetchesIce = false
+        m.nowMs = { clock.ms }
+        _ = m.handle(.start)
+        _ = m.handle(.serverReady)
+        _ = m.handle(.message(.roomCreated(code: "K7M2QX", joinMode: mode)))
+        return m
+    }
+
+    func testLockedRoomRefusesAPeerTheServerAnnounces() {
+        var m = room(.confirm)
+        _ = m.handle(.setJoinMode(.locked))
+        _ = m.handle(.message(.joinModeChanged(.locked)))
+        let before = m.state
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.state, before) // nothing on the screen changes
+        XCTAssertEqual(m.takeEvents(), []) // no toast
+        // nothing of that sender is taken: no peer was made
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [])
+        XCTAssertEqual(m.handle(.message(.iceCandidate(candidate: "C"))), [])
+        XCTAssertEqual(m.state, before)
+        // a Yes that was given before the room was locked does not count any more
+        var n = room(.confirm)
+        _ = n.handle(.message(.joinRequest(id: 1, name: "Ana", check: 11)))
+        _ = n.handle(.decide(id: 1, allow: true, block: false))
+        _ = n.handle(.message(.joinModeChanged(.locked)))
+        XCTAssertEqual(n.handle(.message(.peerJoined(name: "Ana"))), [.send(.removePeer(block: false))])
+        _ = n.handle(.message(.joinModeChanged(.confirm)))
+        XCTAssertEqual(n.handle(.message(.peerJoined(name: "Ana"))), [.send(.removePeer(block: false))])
+        XCTAssertNil(n.state.peerName)
+    }
+
+    func testApprovalNeedsAYesOfTheHost() {
+        var m = room(.confirm)
+        // no request at all
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.state.phase, .waitingSender)
+        XCTAssertNil(m.state.peerName)
+        // a request that is still waiting, or that was denied, lets nobody in
+        _ = m.handle(.message(.joinRequest(id: 1, name: "Mallory", check: 11)))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.state.requests.map(\.id), [1]) // the request still waits for the host
+        _ = m.handle(.decide(id: 1, allow: false, block: false))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        _ = m.handle(.message(.joinRequest(id: 2, name: "Mallory", check: 12)))
+        _ = m.handle(.denyAll)
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.takeEvents(), [])
+        // Yes: exactly one sender comes in
+        _ = m.handle(.message(.joinRequest(id: 3, name: "Ana", check: 13)))
+        XCTAssertEqual(m.handle(.decide(id: 3, allow: true, block: false)), [.send(.joinDecision(id: 3, allow: true, block: false))])
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.createPeer])
+        XCTAssertEqual(m.state.phase, .negotiating)
+        XCTAssertEqual(m.state.peerName, "Ana")
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [.acceptOffer(sdp: "O")])
+        // the Yes is used up: a second announcement makes no new peer and does not touch the one that is in
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.state.peerName, "Ana")
+        _ = m.handle(.message(.peerLeft))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.state.phase, .peerLeft)
+    }
+
+    func testSeveralYesLetOneSenderIn() {
+        var m = room(.confirm)
+        _ = m.handle(.message(.joinRequest(id: 1, name: "Ana", check: 11)))
+        _ = m.handle(.message(.joinRequest(id: 2, name: "Ben", check: 12)))
+        _ = m.handle(.decide(id: 1, allow: true, block: false))
+        _ = m.handle(.decide(id: 2, allow: true, block: false))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.createPeer])
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ben"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(m.state.peerName, "Ana")
+    }
+
+    func testAYesDoesNotLastForever() {
+        let clock = Clock()
+        var m = room(.confirm, clock: clock)
+        _ = m.handle(.message(.joinRequest(id: 1, name: "Ana", check: 11)))
+        _ = m.handle(.decide(id: 1, allow: true, block: false))
+        clock.ms += joinAllowanceMs + 1
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.send(.removePeer(block: false))])
+        // in time: let in
+        _ = m.handle(.message(.joinRequest(id: 2, name: "Ana", check: 12)))
+        _ = m.handle(.decide(id: 2, allow: true, block: false))
+        clock.ms += joinAllowanceMs
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.createPeer])
+    }
+
+    func testAYesDoesNotSurviveTheRoomOrTheConnection() {
+        var m = room(.confirm)
+        _ = m.handle(.message(.joinRequest(id: 1, name: "Ana", check: 11)))
+        _ = m.handle(.decide(id: 1, allow: true, block: false))
+        _ = m.handle(.message(.roomEnded))
+        _ = m.handle(.message(.roomCreated(code: "B4N9HT", joinMode: .confirm)))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.send(.removePeer(block: false))])
+        _ = m.handle(.message(.joinRequest(id: 1, name: "Ana", check: 11)))
+        _ = m.handle(.decide(id: 1, allow: true, block: false))
+        _ = m.handle(.start)
+        _ = m.handle(.serverReady)
+        _ = m.handle(.message(.roomCreated(code: "K7M2QX", joinMode: .confirm)))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.send(.removePeer(block: false))])
+    }
+
+    func testOpenRoomLetsEverybodyInAndAnOfferAloneMakesNoPeer() {
+        var m = room(.open)
+        // the server announces a sender before it relays its offer: an offer without one is ignored
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [])
+        XCTAssertEqual(m.state.phase, .waitingSender)
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [.createPeer])
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [.acceptOffer(sdp: "O")])
+        // also not after the sender left
+        _ = m.handle(.message(.peerLeft))
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O2"))), [])
+        XCTAssertEqual(m.state.phase, .peerLeft)
+        // a peer_joined before any room exists does nothing at all (no code: nothing to remove)
+        var n = ReceiverMachine(joinMode: .confirm); n.fetchesIce = false
+        _ = n.handle(.start)
+        XCTAssertEqual(n.handle(.message(.peerJoined(name: "Mallory"))), [])
+        XCTAssertEqual(n.state.phase, .connecting)
+    }
+
+    func testTheJoinCheckIsDoneWhenTheMessageArrivesNotWhenItIsReplayed() {
+        // The ICE server list is not known yet: peer messages are held. The mode that counts is the one at arrival.
+        var m = ReceiverMachine() // open
+        _ = m.handle(.start)
+        _ = m.handle(.serverReady)
+        _ = m.handle(.message(.roomCreated(code: "K7M2QX", joinMode: .open)))
+        XCTAssertEqual(m.handle(.message(.peerJoined(name: "Ana"))), [])
+        XCTAssertEqual(m.handle(.message(.offer(sdp: "O"))), [])
+        _ = m.handle(.message(.joinModeChanged(.locked))) // locking does not remove a sender who is in
+        XCTAssertEqual(m.handle(.iceLoaded), [.createPeer, .acceptOffer(sdp: "O")])
+        XCTAssertEqual(m.state.peerName, "Ana")
+        // locked at arrival: refused at once, not held
+        var n = ReceiverMachine(joinMode: .locked)
+        _ = n.handle(.start)
+        _ = n.handle(.serverReady)
+        _ = n.handle(.message(.roomCreated(code: "K7M2QX", joinMode: .locked)))
+        XCTAssertEqual(n.handle(.message(.peerJoined(name: "Mallory"))), [.send(.removePeer(block: false))])
+        XCTAssertEqual(n.handle(.message(.offer(sdp: "O"))), [])
+        _ = n.handle(.message(.joinModeChanged(.open)))
+        XCTAssertEqual(n.handle(.iceLoaded), [])
+        XCTAssertNil(n.state.peerName)
+        XCTAssertEqual(n.state.phase, .waitingSender)
     }
 
     func testActionsWithoutARoomDoNothing() {
@@ -365,9 +519,18 @@ final class JoinMachineTests: XCTestCase {
             #"{"type":"blocked","id":1}"#,
             #"{"type":"unblocked"}"#,
             #"{"type":"room_created","code":"ABC234","join_mode":"Open"}"#,
+            // the room code must be six characters of the alphabet
+            #"{"type":"room_created","code":"","join_mode":"open"}"#,
+            #"{"type":"room_created","code":"abc234","join_mode":"open"}"#,
+            #"{"type":"room_created","code":"ABC23","join_mode":"open"}"#,
+            #"{"type":"room_created","code":"ABC2345","join_mode":"open"}"#,
+            #"{"type":"room_created","code":"ABC01O","join_mode":"open"}"#,
+            #"{"type":"room_created","code":"ABC 234","join_mode":"open"}"#,
+            #"{"type":"room_created","code":"<b>x</b>","join_mode":"open"}"#,
             #"{"type":"join_pending","timeout_secs":60}"#,
         ]
         for t in bad { XCTAssertNil(ServerMessage.decode(t), t) }
         XCTAssertEqual(ServerMessage.decode(#"{"type":"room_ended","x":1}"#), .roomEnded)
+        XCTAssertEqual(ServerMessage.decode(#"{"type":"room_created","code":"ABC234","join_mode":"open"}"#), .roomCreated(code: "ABC234", joinMode: .open))
     }
 }

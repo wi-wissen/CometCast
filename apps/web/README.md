@@ -193,7 +193,8 @@ getDisplayMedia worked headless in the preinstalled Chromium with
 `--use-fake-ui-for-media-stream --auto-select-desktop-capture-source=Entire screen`
 (UNCERTAIN: observed only in this one environment; the captured source there is whatever the headless
 browser offers, not a real desktop). As a fallback there is a **TEST-ONLY** query flag `?testVideo=1`
-on the page: the sender then sends an animated canvas instead of the screen. Run
+on the page: the sender then sends an animated canvas instead of the screen. The flag only exists in the
+dev server and in a build made with `VITE_E2E=1` (a release build ignores it). Run
 `E2E_TEST_VIDEO=1 npm run e2e` to use it. Do not use it for anything else.
 
 ## Join approval test

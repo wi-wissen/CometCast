@@ -200,7 +200,7 @@ export interface RelayConfigResult {
 }
 
 /** Reads at most `max` bytes of a response body as text; `null` when it is longer. */
-async function readCapped(res: Response, max: number): Promise<string | null> {
+export async function readCapped(res: Response, max: number): Promise<string | null> {
   if (!res.body) {
     const t = await res.text()
     return t.length > max ? null : t

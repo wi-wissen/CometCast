@@ -4,7 +4,8 @@
 //! Clients are counted per IPv4 address or per IPv6 /64 network (one home or
 //! office usually owns a whole /64, so counting single IPv6 addresses would be useless).
 //! Failures and bans are also counted per IPv6 /48, because an attacker who owns a /48
-//! can otherwise just move to the next /64.
+//! can otherwise just move to the next /64. For the same reason open connections (and rooms,
+//! see rooms.rs) have a second, larger cap per /48.
 
 use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, Ipv6Addr};
@@ -36,7 +37,7 @@ pub(crate) fn limit_key(ip: IpAddr) -> IpAddr {
 }
 
 /// IPv6 reduced to its /48 (None for IPv4).
-fn wide_key(ip: IpAddr) -> Option<IpAddr> {
+pub(crate) fn wide_key(ip: IpAddr) -> Option<IpAddr> {
     match ip {
         IpAddr::V4(_) => None,
         IpAddr::V6(_) => Some(mask_v6(ip, 3)),
@@ -55,6 +56,11 @@ fn mask_v6(ip: IpAddr, keep: usize) -> IpAddr {
             IpAddr::V6(Ipv6Addr::from(seg))
         }
     }
+}
+
+/// The cap of an IPv6 /48: `factor` times the cap of one address (`wide_open_factor`).
+pub(crate) fn wide_cap(per_address: usize, factor: u32) -> usize {
+    per_address.saturating_mul(factor.max(1) as usize)
 }
 
 /// Key of the failure table: (address or /64, is it the wide /48 entry?).
@@ -119,7 +125,8 @@ pub(crate) struct Guard {
     http: Keyed,
     ice: Keyed,
     state: Mutex<StateTable>,
-    per_ip_connections: Mutex<HashMap<IpAddr, usize>>,
+    /// Open connections per address (`false`) and per IPv6 /48 (`true`).
+    per_ip_connections: Mutex<HashMap<StateKey, usize>>,
     /// All bad events (for the ALTCHA difficulty).
     events: Mutex<EventWindow>,
     /// Failed joins of the whole server (for the global brake).
@@ -139,6 +146,8 @@ pub(crate) struct Guard {
 pub(crate) struct ConnSlot {
     guard: Arc<Guard>,
     key: IpAddr,
+    /// The IPv6 /48 this connection is also counted under.
+    wide: Option<IpAddr>,
 }
 
 impl Drop for ConnSlot {
@@ -149,10 +158,13 @@ impl Drop for ConnSlot {
             .per_ip_connections
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if let Some(n) = map.get_mut(&self.key) {
-            *n = n.saturating_sub(1);
-            if *n == 0 {
-                map.remove(&self.key);
+        let keys = [Some((self.key, false)), self.wide.map(|w| (w, true))];
+        for key in keys.into_iter().flatten() {
+            if let Some(n) = map.get_mut(&key) {
+                *n = n.saturating_sub(1);
+                if *n == 0 {
+                    map.remove(&key);
+                }
             }
         }
     }
@@ -333,26 +345,34 @@ impl Guard {
             self.note_event(now);
             return Err(Deny::RateLimited(retry_after(self.cfg.connections_per_min)));
         }
+        // IPv6 only: the /48 has a cap of its own, so that the many /64s of one /56 or /48
+        // do not each get the full per-address cap.
+        let wide = wide_key(ip);
         {
             let mut map = self
                 .per_ip_connections
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            let n = map.entry(key).or_insert(0);
-            if *n >= self.cfg.max_connections_per_ip {
-                if *n == 0 {
-                    map.remove(&key);
-                }
+            let count = |k: StateKey| map.get(&k).copied().unwrap_or(0);
+            let wide_max = wide_cap(self.cfg.max_connections_per_ip, self.cfg.wide_open_factor);
+            if count((key, false)) >= self.cfg.max_connections_per_ip
+                || wide.is_some_and(|w| count((w, true)) >= wide_max)
+            {
+                drop(map);
                 self.note_event(now);
                 return Err(Deny::RateLimited(Duration::from_secs(5)));
             }
-            *n += 1;
+            *map.entry((key, false)).or_insert(0) += 1;
+            if let Some(w) = wide {
+                *map.entry((w, true)).or_insert(0) += 1;
+            }
         }
         // Reserve a place, undo if the server is full.
         let before = self.open_connections.fetch_add(1, Ordering::Relaxed);
         let slot = ConnSlot {
             guard: self.clone(),
             key,
+            wide,
         };
         if before >= self.cfg.max_connections {
             // Dropping the slot gives both counters back.
@@ -520,6 +540,11 @@ impl Guard {
     /// Per-address cap on rooms.
     pub(crate) fn max_rooms_per_ip(&self) -> usize {
         self.cfg.max_rooms_per_ip
+    }
+
+    /// Cap on rooms of one IPv6 /48.
+    pub(crate) fn max_rooms_per_wide(&self) -> usize {
+        wide_cap(self.cfg.max_rooms_per_ip, self.cfg.wide_open_factor)
     }
 
     /// The limits (timeouts etc.) for the connection loop.
@@ -734,6 +759,46 @@ mod tests {
         // A closed connection frees its place.
         drop(a);
         assert!(g.admit_connection(ip("192.0.2.1"), now).is_ok());
+    }
+
+    #[test]
+    fn connections_of_an_ipv6_slash_48_are_capped_together() {
+        // 2 per /64, factor 2: 4 per /48.
+        let g = Guard::new(LimitsConfig {
+            max_connections: 100,
+            connections_per_min: 1000,
+            max_connections_per_ip: 2,
+            wide_open_factor: 2,
+            ..limits()
+        });
+        let now = Instant::now();
+        // One connection from each of four /64s of the same /48: the fifth /64 is refused.
+        let mut slots: Vec<ConnSlot> = (0..4u16)
+            .map(|i| {
+                let who: IpAddr = format!("2001:db8:1:{i}::1").parse().unwrap();
+                g.admit_connection(who, now).unwrap()
+            })
+            .collect();
+        assert!(matches!(
+            g.admit_connection(ip("2001:db8:1:ffff::1"), now),
+            Err(Deny::RateLimited(_))
+        ));
+        // Another /48 is not affected, and the per-/64 cap still holds there.
+        let _a = g.admit_connection(ip("2001:db8:2::1"), now).unwrap();
+        let _b = g.admit_connection(ip("2001:db8:2::2"), now).unwrap();
+        assert!(g.admit_connection(ip("2001:db8:2::3"), now).is_err());
+        // A closed connection frees its place in the /48.
+        slots.pop();
+        assert!(g.admit_connection(ip("2001:db8:1:ffff::1"), now).is_ok());
+        // IPv4 has no wide cap: many addresses of one network are all admitted.
+        for i in 1..=20 {
+            let who: IpAddr = format!("192.0.2.{i}").parse().unwrap();
+            slots.push(g.admit_connection(who, now).unwrap());
+        }
+        // Nothing is left behind when everything closes.
+        drop(slots);
+        drop((_a, _b));
+        assert!(g.per_ip_connections.lock().unwrap().is_empty());
     }
 
     #[test]

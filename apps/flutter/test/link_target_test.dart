@@ -147,14 +147,13 @@ void main() {
     );
 
     test(
-      'built-in, policy, DNS, in-house box and confirmed are used at once',
+      'built-in, policy, DNS and confirmed are used at once',
       () {
         for (final s in [
           'relay.cometcast.de',
           'RELAY.cometcast.de:443',
           'mdm.corp.example',
           'dns.corp.example:8443',
-          'box.local:8443',
           'cast.example.org',
         ]) {
           expect(trust.decide(s), ServerDecision.use, reason: s);
@@ -165,6 +164,7 @@ void main() {
     test('everything else is confirmed first', () {
       for (final s in [
         'evil.example',
+        'box.local:8443', // announced: anybody on the network can send that
         'dns.corp.example', // another port than the DNS entry
         'last.example.org', // last used is not on the list of the spec
         '127.0.0.1:8443',

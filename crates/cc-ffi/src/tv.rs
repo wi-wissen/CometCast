@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use cc_airplay_sender::client::Session;
-use cc_airplay_sender::creds::{Credentials, PairingStore};
+use cc_airplay_sender::creds::{Credentials, Lookup, PairingStore};
 use cc_airplay_sender::discovery::{Device as AirplayDevice, feature};
 use cc_airplay_sender::error::SenderError;
 use cc_airplay_sender::hap::{self, PinSetup};
@@ -282,6 +282,60 @@ enum Pending {
     Hap(PinSetup),
 }
 
+/// How to open a session to an AirPlay receiver.
+#[derive(Debug, PartialEq, Eq)]
+enum AirplayPlan {
+    /// Credentials are stored: prove them (pair-verify).
+    Verify(Credentials),
+    /// Make the TV show its code and pair first.
+    Pair,
+    /// No pairing was ever made with a receiver of this name and it asks for none: connect
+    /// without credentials (transient pairing where the receiver offers it).
+    Open,
+    /// The name belongs to a paired receiver, but this device has another id and offers no
+    /// PIN pairing: do not connect.
+    RefuseImpostor,
+}
+
+/// Decide how to connect from what the pairing store knows about the device.
+///
+/// The device id comes from mDNS and proves nothing. A device that copies the name of a paired
+/// TV under a new id must never get a session without authentication (it would get the
+/// screen), so for such a name only PIN pairing is left; without it the device is refused.
+fn airplay_plan(found: Lookup, wants_pin: bool) -> AirplayPlan {
+    match (found, wants_pin) {
+        (Lookup::Paired(c), _) => AirplayPlan::Verify(c),
+        (_, true) => AirplayPlan::Pair,
+        (Lookup::NameClash, false) => AirplayPlan::RefuseImpostor,
+        (Lookup::Unknown, false) => AirplayPlan::Open,
+    }
+}
+
+/// The credentials of a finished pairing, or why they must not be used. `announced_key` is
+/// the `pk` of the receiver's mDNS record.
+fn pairing_result(
+    legacy_kind: bool,
+    result: Result<(Credentials, bool), SenderError>,
+    announced_key: Option<&str>,
+) -> Result<Credentials, SenderError> {
+    let (creds, verified) = result?;
+    if legacy_kind {
+        // Legacy pairing gives no receiver key: remember the announced one, so that later
+        // sessions check the receiver against it (trust on first use).
+        return Ok(creds.with_receiver_key(announced_key));
+    }
+    if verified {
+        Ok(creds)
+    } else {
+        // The receiver did not prove its long-term key (M6): credentials with that key
+        // would be trusted for every later session, so the pairing counts as failed. Not
+        // `Auth`: the code was right, a new try with a new code would not help.
+        Err(SenderError::Protocol(
+            "the TV did not prove its identity while pairing; nothing was stored".into(),
+        ))
+    }
+}
+
 struct AirplayLink {
     dev: AirplayDevice,
     store: Option<PairingStore>,
@@ -338,16 +392,40 @@ impl TvLink for AirplayLink {
     }
 
     fn connect(&mut self) -> Result<(), TvFail> {
-        let creds = self
+        // UNCERTAIN: a store that cannot be read counts as "nothing stored", as before; then
+        // a name clash cannot be seen either. Nobody on the network can cause that state.
+        let found = self
             .store
             .as_ref()
-            .and_then(|s| s.get(&self.dev.store_key()).ok().flatten());
-        if creds.is_none() && self.wants_pin() {
-            self.start_pairing()?;
-            return Err(TvFail::PairingRequired);
-        }
+            .and_then(|s| s.lookup(&self.dev).ok())
+            .unwrap_or(Lookup::Unknown);
+        let creds = match airplay_plan(found, self.wants_pin()) {
+            AirplayPlan::Verify(c) => Some(c),
+            AirplayPlan::Open => None,
+            AirplayPlan::Pair => {
+                self.start_pairing()?;
+                return Err(TvFail::PairingRequired);
+            }
+            AirplayPlan::RefuseImpostor => {
+                return Err(TvFail::Refused(
+                    "a TV with this name was paired before, but this device has another id \
+                     and offers no pairing with a code; not connecting without authentication"
+                        .into(),
+                ));
+            }
+        };
         let mut s = Session::connect(&self.dev).map_err(|e| map_sender(&e))?;
-        s.authenticate(creds.as_ref()).map_err(|e| map_sender(&e))?;
+        match s.authenticate(creds.as_ref()) {
+            Ok(_) => {}
+            // The receiver no longer has the key it was paired with (reset, or another device
+            // answers for it). The code on the TV's screen authenticates it anew.
+            Err(e) if legacy::is_receiver_key_mismatch(&e) && self.wants_pin() => {
+                drop(s);
+                self.start_pairing()?;
+                return Err(TvFail::PairingRequired);
+            }
+            Err(e) => return Err(map_sender(&e)),
+        }
         self.session = Some(s);
         Ok(())
     }
@@ -356,19 +434,27 @@ impl TvLink for AirplayLink {
         let (Some(mut s), Some(pending)) = (self.session.take(), self.pending.take()) else {
             return Err(TvFail::Failed("not waiting for a code".into()));
         };
-        let creds: Result<Credentials, SenderError> = match pending {
-            Pending::Legacy => legacy::pair_finish(s.conn_mut(), pin),
-            Pending::Hap(p) => hap::setup_pin_finish(s.conn_mut(), p, pin).map(|(c, _)| c),
+        let (legacy_kind, result) = match pending {
+            Pending::Legacy => (
+                true,
+                legacy::pair_finish(s.conn_mut(), pin).map(|c| (c, true)),
+            ),
+            Pending::Hap(p) => (false, hap::setup_pin_finish(s.conn_mut(), p, pin)),
         };
+        let creds = pairing_result(legacy_kind, result, self.dev.public_key.as_deref());
         match creds {
             Ok(c) => {
-                if let Some(store) = &self.store {
-                    let _ = store.put(&self.dev.store_key(), c.clone());
-                }
                 drop(s);
-                let mut fresh = Session::connect(&self.dev).map_err(|e| map_sender(&e))?;
-                fresh.authenticate(Some(&c)).map_err(|e| map_sender(&e))?;
-                self.session = Some(fresh);
+                let fresh = Session::connect(&self.dev)
+                    .and_then(|mut f| f.authenticate(Some(&c)).map(|_| f));
+                // Credentials that the receiver refuses at once, or whose receiver does not
+                // prove the key they hold, are not kept: they would only block this TV.
+                if !matches!(fresh, Err(SenderError::Auth(_)))
+                    && let Some(store) = &self.store
+                {
+                    let _ = store.put_named(&self.dev.store_key(), &self.dev.name, c);
+                }
+                self.session = Some(fresh.map_err(|e| map_sender(&e))?);
                 Ok(())
             }
             Err(SenderError::Auth(_)) => {
@@ -1237,6 +1323,87 @@ mod tests {
             TvUiEvent::Gone {
                 id: "cast:ab12".into()
             }
+        );
+    }
+
+    fn legacy_creds() -> Credentials {
+        Credentials::Legacy {
+            client_id: "00AA00AA00AA00AA".into(),
+            seed: "11".repeat(32),
+            receiver_key: None,
+        }
+    }
+
+    #[test]
+    fn a_paired_name_under_a_new_id_never_connects_without_authentication() {
+        // Stored credentials are verified, whatever the device announces.
+        assert_eq!(
+            airplay_plan(Lookup::Paired(legacy_creds()), false),
+            AirplayPlan::Verify(legacy_creds())
+        );
+        // A device nobody paired: the code if it asks for one, else open.
+        assert_eq!(airplay_plan(Lookup::Unknown, true), AirplayPlan::Pair);
+        assert_eq!(airplay_plan(Lookup::Unknown, false), AirplayPlan::Open);
+        // The impostor: the name of a paired TV, a new id, no pairing offered.
+        assert_eq!(
+            airplay_plan(Lookup::NameClash, false),
+            AirplayPlan::RefuseImpostor
+        );
+        // With pairing offered the code decides (a replaced TV can be paired again).
+        assert_eq!(airplay_plan(Lookup::NameClash, true), AirplayPlan::Pair);
+
+        // End to end with a store: pair "Living Room", then the same name under a new id.
+        let dir = std::env::temp_dir().join(format!("cc-ffi-tv-clash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = PairingStore::at(dir.join("p.json"));
+        let Tv::AirPlay(tv) = airplay("0x1,0x0") else {
+            unreachable!()
+        };
+        store
+            .put_named(&tv.store_key(), &tv.name, legacy_creds())
+            .unwrap();
+        let mut impostor = tv.clone();
+        impostor.device_id = Some("11:22:33:44:55:66".into());
+        let mut link = AirplayLink::new(impostor);
+        link.store = Some(store);
+        assert!(!link.wants_pin());
+        assert!(matches!(link.connect(), Err(TvFail::Refused(_))));
+        assert!(link.session.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unverified_homekit_pairing_is_a_failure() {
+        let hap = || Credentials::Hap {
+            pairing_id: "p".into(),
+            seed: "11".repeat(32),
+            device_id: "d".into(),
+            device_key: "22".repeat(32),
+        };
+        assert_eq!(
+            pairing_result(false, Ok((hap(), true)), None).unwrap(),
+            hap()
+        );
+        let err = pairing_result(false, Ok((hap(), false)), None).unwrap_err();
+        // Not `Auth` (that means "wrong code" and asks for a new one).
+        assert!(matches!(err, SenderError::Protocol(_)), "{err:?}");
+        assert!(matches!(map_sender(&err), TvFail::Failed(_)));
+        // Errors of the pairing itself pass through.
+        assert!(matches!(
+            pairing_result(false, Err(SenderError::Auth("x".into())), None),
+            Err(SenderError::Auth(_))
+        ));
+        // Legacy pairing remembers the announced receiver key, if it is one.
+        let pk = "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29";
+        let Credentials::Legacy { receiver_key, .. } =
+            pairing_result(true, Ok((legacy_creds(), true)), Some(pk)).unwrap()
+        else {
+            panic!("legacy expected")
+        };
+        assert_eq!(receiver_key.as_deref(), Some(pk));
+        assert_eq!(
+            pairing_result(true, Ok((legacy_creds(), true)), None).unwrap(),
+            legacy_creds()
         );
     }
 

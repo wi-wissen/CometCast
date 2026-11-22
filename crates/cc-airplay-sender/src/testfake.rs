@@ -63,6 +63,8 @@ pub(crate) struct FakeState {
 }
 
 pub(crate) struct FakeReceiver {
+    /// The fake's long-term Ed25519 public key (what a receiver announces as `pk`).
+    pub(crate) public_key: [u8; 32],
     pub(crate) addr: SocketAddr,
     pub(crate) state: Arc<Mutex<FakeState>>,
     stop: Arc<AtomicBool>,
@@ -91,12 +93,14 @@ impl FakeReceiver {
         let addr = listener.local_addr().expect("addr");
         let state = Arc::new(Mutex::new(FakeState::default()));
         let stop = Arc::new(AtomicBool::new(false));
+        let acc_seed: [u8; 32] = random();
+        let public_key = SigningKey::from_bytes(&acc_seed).verifying_key().to_bytes();
         let shared = Arc::new(Shared {
             mode,
             pin: pin.into(),
             fetch_hls,
             rtsp_only,
-            acc_seed: random(),
+            acc_seed,
             acc_id: b"FAKE-RECEIVER-ID".to_vec(),
             state: Arc::clone(&state),
         });
@@ -115,6 +119,7 @@ impl FakeReceiver {
             }
         });
         Self {
+            public_key,
             addr,
             state,
             stop,

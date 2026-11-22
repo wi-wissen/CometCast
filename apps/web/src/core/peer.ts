@@ -2,7 +2,7 @@
 //
 // Thin RTCPeerConnection wrapper. Signalling happens elsewhere; this class only deals with WebRTC.
 import type { ControlChannel } from './control'
-import { connectionCode } from './sas'
+import { connectionCode, sdpFingerprint } from './sas'
 
 export type PeerState = 'connecting' | 'connected' | 'failed'
 
@@ -47,6 +47,18 @@ export type PeerFactory = (handlers: PeerHandlers, config?: RTCConfiguration) =>
 // Without a server-provided list there are no STUN/TURN servers, so this only works for
 // direct/LAN connections. UNCERTAIN: how well TURN works is not measured (measurement point 1,
 // docs/measurement-points.md).
+/** ICE candidates kept while the remote description is not set yet; more are dropped. */
+const MAX_PENDING_CANDIDATES = 64
+
+/**
+ * A remote description is only taken when the connection check code can be made from it: one
+ * unambiguous SHA-256 fingerprint by the strict rule of sas.ts. Otherwise a relay could send an SDP
+ * that the browser reads differently, and the session would run with no code to compare.
+ */
+function checkRemoteFingerprint(sdp: string): void {
+  if (sdpFingerprint(sdp) === null) throw new Error('remote description has no unambiguous SHA-256 fingerprint')
+}
+
 export const DEFAULT_RTC_CONFIG: RTCConfiguration = { iceServers: [] }
 
 export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DEFAULT_RTC_CONFIG): Peer {
@@ -114,6 +126,7 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
       return offer.sdp ?? ''
     },
     async acceptOffer(sdp) {
+      checkRemoteFingerprint(sdp)
       await pc.setRemoteDescription({ type: 'offer', sdp })
       await flush()
       const answer = await pc.createAnswer()
@@ -121,13 +134,17 @@ export function createPeer(handlers: PeerHandlers, config: RTCConfiguration = DE
       return answer.sdp ?? ''
     },
     async acceptAnswer(sdp) {
+      checkRemoteFingerprint(sdp)
       await pc.setRemoteDescription({ type: 'answer', sdp })
       await flush()
     },
     async addIceCandidate(candidateJson) {
       const init = JSON.parse(candidateJson) as RTCIceCandidateInit
       // Candidates may arrive before the remote description; they are queued until it is set.
-      if (!remoteSet) pending.push(init)
+      if (!remoteSet) {
+        // Bounded: a relay must not be able to grow this list without end.
+        if (pending.length < MAX_PENDING_CANDIDATES) pending.push(init)
+      }
       else await pc.addIceCandidate(init)
     },
     async connectionCode() {

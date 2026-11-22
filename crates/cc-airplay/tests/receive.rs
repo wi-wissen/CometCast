@@ -54,6 +54,7 @@ fn options(path: PathBuf, ask_first: bool) -> ReceiveOptions {
             5,
         ),
         confirm: None,
+        pin_lockout: Duration::from_millis(300),
     };
     o
 }

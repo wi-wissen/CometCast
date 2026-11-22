@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.0.3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: swift test
         working-directory: apps/apple-tv/CometCastCore
 
   macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: swift test
         working-directory: apps/apple-tv/CometCastCore

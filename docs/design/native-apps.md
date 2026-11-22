@@ -425,7 +425,7 @@ Screen sharing on Linux, Windows and macOS opens the system picker directly (sec
 - **Accepted URL forms** (link, referrer, scanned QR; amended by 21.6: also `https://cometcast.de/app/{CODE}`, and App Links move to `cometcast.de`): `https://{host}/{CODE}` and `https://{host}/{CODE}?server={server}`, `{CODE}` = 6 characters of the code alphabet (spaces and dashes removed; anything else = no code). The server is `{server}` if given, else `{host}`.
 - **App Links / Universal Links:** only for the built-in relay's host (`assetlinks.json`, `apple-app-site-association` served there, path `/*` with a 6-character code). Other hosts stay browser links.
 - **Android install referrer:** `code` and `server` parameters, same rules (spec 12: still an assumption; without it Android behaves like iOS).
-- **Trust:** a server that is the built-in relay, the policy server, the DNS server, the in-house box or confirmed on this device before is used at once (chip). Any other server opens the relay confirmation page (spec 7.2, `relay.confirm.bodyApp`) before anything connects; Use stores it as confirmed. A link never changes the stored "last used" server until a join succeeded.
+- **Trust:** a server that is the built-in relay, the policy server, the DNS server or confirmed on this device before is used at once (chip). Any other server, also an announced in-house box (anybody on the local network can send an announcement), opens the relay confirmation page (spec 7.2, `relay.confirm.bodyApp`) before anything connects; Use stores it as confirmed. A link never changes the stored "last used" server until a join succeeded.
 - **Scanner:** section 8; result handling spec 5.3 (`app.scanWrong` for anything else).
 
 ### 20.5 iOS screen sharing: hand-over of the join (N32)

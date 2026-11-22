@@ -1,5 +1,5 @@
 {
-  "description": "Connection check code (apps/web/src/core/sas.ts, crates/cc-transport/src/sas.rs, apps/apple-tv Sas.swift): `code` = connectionCode(local_sdp, remote_sdp); `fingerprint` = sdpFingerprint(sdp). Lines end at LF with an optional CR before it, as for the DTLS stack's SDP parser; an SDP with a bare CR, U+2028 or U+2029 is refused (null), and so is one whose sha-256 fingerprint lines (session and media level, algorithm name in any case) do not all agree or are malformed.",
+  "description": "Connection check code (apps/web/src/core/sas.ts, crates/cc-transport/src/sas.rs, apps/apple-tv Sas.swift): `code` = connectionCode(local_sdp, remote_sdp); `fingerprint` = sdpFingerprint(sdp). Lines end at LF with an optional CR before it, as for the DTLS stack's SDP parser; an SDP with a bare CR, U+2028 or U+2029 is refused (null), and so is one whose sha-256 fingerprint lines (session and media level, algorithm name in any case) do not all agree or are malformed. A fingerprint line with another algorithm than sha-256 is refused as well (a DTLS stack takes the first fingerprint line), and so is any other line that holds the word `fingerprint` in any case, such as `a= fingerprint:..`: a lenient SDP parser reads that as a fingerprint, so a relay could otherwise pin DTLS to its own certificate and leave the genuine line for this check.",
   "code": [
     {
       "name": "two simple fingerprints",
@@ -104,10 +104,10 @@
       "expect": null
     },
     {
-      "name": "sha-1 line before the sha-256 line",
+      "name": "sha-1 line before the sha-256 line is refused",
       "local_sdp": "a=fingerprint:sha-1 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
       "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
-      "expect": "783 078"
+      "expect": null
     },
     {
       "name": "indented line is not a match",
@@ -198,6 +198,36 @@
       "local_sdp": "",
       "remote_sdp": "",
       "expect": null
+    },
+    {
+      "name": "space after a= hides a fingerprint from DTLS only: refused",
+      "local_sdp": "v=0\r\na= fingerprint:sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "tab after a= is refused",
+      "local_sdp": "v=0\r\na=\tfingerprint:sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "upper case attribute name is refused",
+      "local_sdp": "v=0\r\na=Fingerprint:sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "space before the colon is refused",
+      "local_sdp": "v=0\r\na=fingerprint :sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "sha-1 line after the sha-256 line is refused",
+      "local_sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-1 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\na=setup:actpass\r\n",
+      "remote_sdp": "v=0\r\na=group:BUNDLE 0\r\na=fingerprint:sha-256 12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12\r\na=setup:actpass\r\n",
+      "expect": null
     }
   ],
   "fingerprint": [
@@ -287,9 +317,9 @@
       "expect": null
     },
     {
-      "name": "sha-1 line before the sha-256 line",
+      "name": "sha-1 line before the sha-256 line is refused",
       "sdp": "a=fingerprint:sha-1 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd\r\n",
-      "expect": "cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd:cd"
+      "expect": null
     },
     {
       "name": "indented line is not a match",
@@ -364,6 +394,31 @@
     {
       "name": "both empty",
       "sdp": "",
+      "expect": null
+    },
+    {
+      "name": "space after a= hides a fingerprint from DTLS only: refused",
+      "sdp": "v=0\r\na= fingerprint:sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "tab after a= is refused",
+      "sdp": "v=0\r\na=\tfingerprint:sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "upper case attribute name is refused",
+      "sdp": "v=0\r\na=Fingerprint:sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "space before the colon is refused",
+      "sdp": "v=0\r\na=fingerprint :sha-256 EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE:EE\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=setup:actpass\r\n",
+      "expect": null
+    },
+    {
+      "name": "sha-1 line after the sha-256 line is refused",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-1 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD\r\na=setup:actpass\r\n",
       "expect": null
     }
   ]
