@@ -19,7 +19,10 @@ pub(crate) fn rss_kib_of(pid: u32) -> Option<u64> {
     }
     #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
     {
-        let out = std::process::Command::new("ps")
+        // By full path and with an empty environment: a `ps` planted on PATH would run
+        // outside every limit and could switch the memory watchdog off.
+        let out = std::process::Command::new("/bin/ps")
+            .env_clear()
             .args(["-o", "rss=", "-p", &pid.to_string()])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -30,7 +33,14 @@ pub(crate) fn rss_kib_of(pid: u32) -> Option<u64> {
     #[cfg(windows)]
     {
         // CSV line: "name.exe","1234","Console","1","12,345 K"; digits of the last field.
-        let out = std::process::Command::new("tasklist")
+        // By full path: a `tasklist.exe` planted in the application or current directory
+        // would run outside every limit and could switch the memory watchdog off.
+        let system_root = std::env::var_os("SystemRoot")
+            .unwrap_or_else(|| std::ffi::OsString::from(r"C:\Windows"));
+        let tasklist = std::path::Path::new(&system_root)
+            .join("System32")
+            .join("tasklist.exe");
+        let out = std::process::Command::new(tasklist)
             .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

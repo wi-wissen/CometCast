@@ -217,7 +217,16 @@ mod linux {
         let mut rules: Vec<(i64, Vec<SeccompRule>)> = vec![
             // Memory.
             m(libc::SYS_brk),
-            m(libc::SYS_mmap),
+            // Anonymous memory only: mapping a file would be a way to read, or with a shared
+            // writable mapping to write, a handle that the parent leaked into this process.
+            (
+                libc::SYS_mmap,
+                vec![rule(vec![cond(
+                    3,
+                    SeccompCmpOp::MaskedEq(libc::MAP_ANONYMOUS as u64),
+                    libc::MAP_ANONYMOUS as u64,
+                )])],
+            ),
             m(libc::SYS_munmap),
             m(libc::SYS_mremap),
             m(libc::SYS_mprotect),
@@ -255,10 +264,9 @@ mod linux {
             m(libc::SYS_nanosleep),
             m(libc::SYS_gettimeofday),
             m(libc::SYS_getrandom),
-            // Reading the request, the open `/proc/self/status` handle, closing handles.
-            m(libc::SYS_read),
-            m(libc::SYS_pread64),
-            m(libc::SYS_lseek),
+            // Reading: only the request on stdin (the `/proc/self/status` handle is added
+            // below). Any other handle, for example one the parent leaked, cannot be read.
+            (libc::SYS_read, vec![rule(vec![cond32(0, 0)])]),
             m(libc::SYS_close),
             // Writing: only to stdout and stderr.
             (libc::SYS_write, std_out_or_err()),
@@ -271,6 +279,14 @@ mod linux {
         ];
         #[cfg(target_arch = "x86_64")]
         rules.push(m(libc::SYS_arch_prctl));
+        // The memory figure is read from the handle that was opened before the file system
+        // was closed, and from that handle only. Without the handle the calls stay refused.
+        if let Some(Some(f)) = super::PROC_STATUS.get() {
+            use std::os::fd::AsRawFd;
+            let fd = f.as_raw_fd() as u64;
+            rules.push((libc::SYS_pread64, vec![rule(vec![cond32(0, fd)])]));
+            rules.push((libc::SYS_lseek, vec![rule(vec![cond32(0, fd)])]));
+        }
         let map: BTreeMap<i64, Vec<SeccompRule>> = rules.into_iter().collect();
         let filter = SeccompFilter::new(
             map,
