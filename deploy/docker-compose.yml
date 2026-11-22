@@ -85,7 +85,7 @@ services:
     # coturn/turnserver.conf.template with the new version (the template depends on the option set
     # of 4.18). No variable on purpose (it replaced COTURN_VERSION in .env): Dependabot can update
     # a literal pin (.github/dependabot.yml).
-    image: coturn/coturn:4.18.0@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
+    image: coturn/coturn:4.19.1@sha256:81f69dc7cb672eb73ab3414afbb199637c37ab8069919d1c6caaed96ff16fb88
     restart: unless-stopped
     # Own UID and GID instead of the image's nobody:nogroup (65534): on Debian/Ubuntu hosts GID
     # 65534 is shared by other daemons, and with group 65534 on turnserver.conf (static-auth-secret)
